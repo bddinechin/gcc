@@ -1,0 +1,16 @@
+TM_H += $(srcdir)/config/lvx/lvx-protos.h
+PASSES_EXTRA += $(srcdir)/config/lvx/lvx-passes.def
+
+lvx-prologue-stack-limit.o: $(srcdir)/config/lvx/lvx-prologue-stack-limit.cc
+	$(COMPILE) $<
+	$(COMPILE) $< -Wall -Wextra -Werror
+	$(POSTCOMPILE)
+
+lvx-shaker.o: $(srcdir)/config/lvx/lvx-shaker.c
+	$(COMPILE) $< -Wall -Wextra -Werror
+	$(POSTCOMPILE)
+
+MULTILIB_EXTRA_OPTS = fdata-sections ffunction-sections
+MULTILIB_OPTIONS = march=lvx-1
+MULTILIB_DIRNAMES = lvx-1
+MULTILIB_EXCLUSIONS = !march=lvx-1

@@ -1,0 +1,4 @@
+MULTILIB_EXTRA_OPTS = fdata-sections ffunction-sections
+MULTILIB_OPTIONS = march=lvx-1
+MULTILIB_DIRNAMES = lvx-1
+MULTILIB_EXCLUSIONS = !march=lvx-1
