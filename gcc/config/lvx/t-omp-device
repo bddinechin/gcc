@@ -1,0 +1,4 @@
+omp-device-properties-lvx: $(srcdir)/config/lvx/lvx.cc
+	echo kind: gpu > $@
+	echo arch: lvx >> $@
+	echo isa: lvx-1 >> $@

@@ -1,0 +1,392 @@
+/*
+ * Copyright (C) 2021 Kalray SA.
+ *
+ * Routines for LVX division and modulus on 64-bit integers.
+ *
+ * Based on the "TMS320C5x User Guide".
+ *
+ *     #define STSU(b, r) ( ((r) >= (b)) ? (((r) - (b)) << 1 | 1) : ((r) << 1) )
+ *
+ *     divmod_result_t
+ *     divmodu_3(uint32_t a, uint32_t b)
+ *     {
+ *         uint64_t acc = (uint64_t)a;
+ *         uint64_t src = (uint64_t)b << (32 - 1);
+ *         uint32_t q = 0, r = a;
+ *         if (b == 0) TRAP;
+ *         if (b > a)
+ *             goto end;
+ *         for (int i = 0; i < 32; i++) {
+ *           acc = STSU(src, acc);
+ *         }
+ *         q = acc;
+ *         r = acc >> 32;
+ *     end:;
+ *         return (divmod_result_t){ q, r };
+ *     }
+ *
+ * For SIMD execution, we make the `if (b > a)` path pass through the loop by
+ * setting `src = b << 32` so iterating 32 times `acc = STSU(src, acc)` computes
+ * `acc == a << 32` then `q == 0` and `r == a`.
+ *
+ *     divmod_result_t
+ *     divmodu_4(uint32_t a, uint32_t b)
+ *     {
+ *         uint64_t acc = (uint64_t)a;
+ *         uint64_t src = (uint64_t)b << (32 - 1);
+ *         if (b == 0) TRAP;
+ *         if (b > a)
+ *           src <<= 1;
+ *         for (int i = 0; i < 32; i++) {
+ *           acc = STSU(src, acc);
+ *         }
+ *         uint32_t q = acc;
+ *         uint32_t r = acc >> 32;
+ *     end:;
+ *         return (divmod_result_t){ q, r };
+ *     }
+ *
+ * -- Benoit Dupont de Dinechin (benoit.dinechin@kalray.eu)
+ */
+
+#include "divmodtypes.h"
+
+////////////////////////////////////////////////////////////////////////////////
+
+static inline uint32x4_t
+uint32x2_divmod (uint32x2_t a, uint32x2_t b)
+{
+  uint64x2_t src = __builtin_lvx_widenwdp (b, ".z") << (32 - 1);
+  uint64x2_t wb = __builtin_lvx_widenwdp (b, ".z");
+  DIV_BY_ZERO_MAY_TRAP (__builtin_lvx_anywp, b);
+  uint64x2_t acc = __builtin_lvx_widenwdp (a, ".z");
+  // As `src == b << (32 -1)` adding src yields `src == b << 32`.
+  src += src & (wb > acc);
+  for (int i = 0; i < 32; i++)
+    {
+      acc = __builtin_lvx_stsudp (src, acc);
+    }
+  uint32x2_t q = __builtin_lvx_narrowdwp (acc, "");
+  uint32x2_t r = __builtin_lvx_narrowdwp (acc >> 32, "");
+  return __builtin_lvx_cat128 (q, r);
+}
+
+uint32x2_t
+__udivv2si3 (uint32x2_t a, uint32x2_t b)
+{
+  uint32x4_t divmod = uint32x2_divmod (a, b);
+  return __builtin_lvx_low64 (divmod);
+}
+
+uint32x2_t
+__umodv2si3 (uint32x2_t a, uint32x2_t b)
+{
+  uint32x4_t divmod = uint32x2_divmod (a, b);
+  return __builtin_lvx_high64 (divmod);
+}
+
+uint32x2_t
+__udivmodv2si4 (uint32x2_t a, uint32x2_t b, uint32x2_t *c)
+{
+  uint32x4_t divmod = uint32x2_divmod (a, b);
+  *c = __builtin_lvx_high64 (divmod);
+  return __builtin_lvx_low64 (divmod);
+}
+
+int32x2_t
+__divv2si3 (int32x2_t a, int32x2_t b)
+{
+  uint32x2_t absa = __builtin_lvx_abswp (a, "");
+  uint32x2_t absb = __builtin_lvx_abswp (b, "");
+  uint32x4_t divmod = uint32x2_divmod (absa, absb);
+  int32x2_t result = __builtin_lvx_low64 (divmod);
+  return __builtin_lvx_selectwp (-result, result, a ^ b, ".ltz");
+}
+
+int32x2_t
+__modv2si3 (int32x2_t a, int32x2_t b)
+{
+  uint32x2_t absa = __builtin_lvx_abswp (a, "");
+  uint32x2_t absb = __builtin_lvx_abswp (b, "");
+  uint32x4_t divmod = uint32x2_divmod (absa, absb);
+  int32x2_t result = __builtin_lvx_high64 (divmod);
+  return __builtin_lvx_selectwp (-result, result, a, ".ltz");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+static inline uint32x8_t
+uint32x4_divmod (uint32x4_t a, uint32x4_t b)
+{
+  uint64x4_t src = __builtin_lvx_widenwdq (b, ".z") << (32 - 1);
+  uint64x4_t wb = __builtin_lvx_widenwdq (b, ".z");
+  DIV_BY_ZERO_MAY_TRAP (__builtin_lvx_anywq, b);
+  uint64x4_t acc = __builtin_lvx_widenwdq (a, ".z");
+  // As `src == b << (32 -1)` adding src yields `src == b << 32`.
+  src += src & (wb > acc);
+  for (int i = 0; i < 32; i++)
+    {
+      acc = __builtin_lvx_stsudq (src, acc);
+    }
+  uint32x4_t q = __builtin_lvx_narrowdwq (acc, "");
+  uint32x4_t r = __builtin_lvx_narrowdwq (acc >> 32, "");
+  return __builtin_lvx_cat256 (q, r);
+}
+
+uint32x4_t
+__udivv4si3 (uint32x4_t a, uint32x4_t b)
+{
+  uint32x8_t divmod = uint32x4_divmod (a, b);
+  return __builtin_lvx_low128 (divmod);
+}
+
+uint32x4_t
+__umodv4si3 (uint32x4_t a, uint32x4_t b)
+{
+  uint32x8_t divmod = uint32x4_divmod (a, b);
+  return __builtin_lvx_high128 (divmod);
+}
+
+uint32x4_t
+__udivmodv4si4 (uint32x4_t a, uint32x4_t b, uint32x4_t *c)
+{
+  uint32x8_t divmod = uint32x4_divmod (a, b);
+  *c = __builtin_lvx_high128 (divmod);
+  return __builtin_lvx_low128 (divmod);
+}
+
+int32x4_t
+__divmodv4si4 (int32x4_t a, int32x4_t b, int32x4_t * c)
+{
+  uint32x8_t divmod = uint32x4_divmod (__builtin_lvx_abswq (a, ""),
+				       __builtin_lvx_abswq (b, ""));
+  int32x4_t q = __builtin_lvx_low128 (divmod);
+  q = __builtin_lvx_selectwq (-q, q, a ^ b, ".ltz");
+  *c = a - b * q;
+  return q;
+}
+
+int32x4_t
+__divv4si3 (int32x4_t a, int32x4_t b)
+{
+  uint32x4_t absa = __builtin_lvx_abswq (a, "");
+  uint32x4_t absb = __builtin_lvx_abswq (b, "");
+  uint32x8_t divmod = uint32x4_divmod (absa, absb);
+  int32x4_t result = __builtin_lvx_low128 (divmod);
+  return __builtin_lvx_selectwq (-result, result, a ^ b, ".ltz");
+}
+
+int32x4_t
+__modv4si3 (int32x4_t a, int32x4_t b)
+{
+  uint32x4_t absa = __builtin_lvx_abswq (a, "");
+  uint32x4_t absb = __builtin_lvx_abswq (b, "");
+  uint32x8_t divmod = uint32x4_divmod (absa, absb);
+  int32x4_t result = __builtin_lvx_high128 (divmod);
+  return __builtin_lvx_selectwq (-result, result, a, ".ltz");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+static inline uint32x16_t
+uint32x8_divmod (uint32x8_t a, uint32x8_t b)
+{
+  uint64x8_t src = __builtin_lvx_widenwdo (b, ".z") << (32 - 1);
+  uint64x8_t wb = __builtin_lvx_widenwdo (b, ".z");
+  DIV_BY_ZERO_MAY_TRAP (__builtin_lvx_anywo, b);
+  uint64x8_t acc = __builtin_lvx_widenwdo (a, ".z");
+  // As `src == b << (32 -1)` adding src yields `src == b << 32`.
+  src += src & (wb > acc);
+  for (int i = 0; i < 32; i++)
+    {
+      acc = __builtin_lvx_stsudo (src, acc);
+    }
+  uint32x8_t q = __builtin_lvx_narrowdwo (acc, "");
+  uint32x8_t r = __builtin_lvx_narrowdwo (acc >> 32, "");
+  return __builtin_lvx_cat512 (q, r);
+}
+
+uint32x8_t
+__udivv8si3 (uint32x8_t a, uint32x8_t b)
+{
+  uint32x16_t divmod = uint32x8_divmod (a, b);
+  return __builtin_lvx_low256 (divmod);
+}
+
+uint32x8_t
+__umodv8si3 (uint32x8_t a, uint32x8_t b)
+{
+  uint32x16_t divmod = uint32x8_divmod (a, b);
+  return __builtin_lvx_high256 (divmod);
+}
+
+uint32x8_t
+__udivmodv8si4 (uint32x8_t a, uint32x8_t b, uint32x8_t *c)
+{
+  uint32x16_t divmod = uint32x8_divmod (a, b);
+  *c = __builtin_lvx_high256 (divmod);
+  return __builtin_lvx_low256 (divmod);
+}
+
+int32x8_t
+__divmodv8si4 (int32x8_t a, int32x8_t b, int32x8_t * c)
+{
+  uint32x16_t divmod = uint32x8_divmod (__builtin_lvx_abswo (a, ""),
+					__builtin_lvx_abswo (b, ""));
+  int32x8_t q = __builtin_lvx_low256 (divmod);
+  q = __builtin_lvx_selectwo (-q, q, a ^ b, ".ltz");
+  *c = a - b * q;
+  return q;
+}
+
+int32x8_t
+__divv8si3 (int32x8_t a, int32x8_t b)
+{
+  uint32x8_t absa = __builtin_lvx_abswo (a, "");
+  uint32x8_t absb = __builtin_lvx_abswo (b, "");
+  uint32x16_t divmod = uint32x8_divmod (absa, absb);
+  int32x8_t result = __builtin_lvx_low256 (divmod);
+  return __builtin_lvx_selectwo (-result, result, a ^ b, ".ltz");
+}
+
+int32x8_t
+__modv8si3 (int32x8_t a, int32x8_t b)
+{
+  uint32x8_t absa = __builtin_lvx_abswo (a, "");
+  uint32x8_t absb = __builtin_lvx_abswo (b, "");
+  uint32x16_t divmod = uint32x8_divmod (absa, absb);
+  int32x8_t result = __builtin_lvx_high256 (divmod);
+  return __builtin_lvx_selectwo (-result, result, a, ".ltz");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#ifdef TEST_V2SI
+#define LANE 1
+
+uint32_t
+__udivsi3 (uint32_t a, uint32_t b)
+{
+  uint32x2_t udivv2si3 = __udivv2si3 (a - (uint32x2_t){}, b - (uint32x2_t){});
+  return (uint32_t)udivv2si3[LANE];
+}
+
+uint32_t
+__umodsi3 (uint32_t a, uint32_t b)
+{
+  uint32x2_t umodv2si3 = __umodv2si3 (a - (uint32x2_t){}, b - (uint32x2_t){});
+  return (uint32_t)umodv2si3[LANE];
+}
+
+uint32_t
+__udivmodsi4 (uint32_t a, uint32_t b, uint32_t *c)
+{
+  uint32x2_t c_ = {0, 0};
+  uint32x2_t udivmodv2si4 = __udivmodv2si4 (a - (uint32x2_t){}, b - (uint32x2_t){}, &c_);
+  if (c)
+    *c = c_[LANE];
+  return (uint32_t)udivmodv2si4[LANE];
+}
+
+int32_t
+__divsi3 (int32_t a, int32_t b)
+{
+  int32x2_t divv2si3 = __divv2si3 (a - (int32x2_t){}, b - (int32x2_t){});
+  return (int32_t)divv2si3[LANE];
+}
+
+int32_t
+__modsi3 (int32_t a, int32_t b)
+{
+  int32x2_t modv2si3 = __modv2si3 (a - (int32x2_t){}, b - (int32x2_t){});
+  return (int32_t)modv2si3[LANE];
+}
+
+#endif // TEST_V2SI
+
+#ifdef TEST_V4SI
+#define LANE 2
+
+uint32_t
+__udivsi3 (uint32_t a, uint32_t b)
+{
+  uint32x4_t udivv4si3 = __udivv4si3 (a - (uint32x4_t){}, b - (uint32x4_t){});
+  return (uint32_t)udivv4si3[LANE];
+}
+
+uint32_t
+__umodsi3 (uint32_t a, uint32_t b)
+{
+  uint32x4_t umodv4si3 = __umodv4si3 (a - (uint32x4_t){}, b - (uint32x4_t){});
+  return (uint32_t)umodv4si3[LANE];
+}
+
+uint32_t
+__udivmodsi4 (uint32_t a, uint32_t b, uint32_t *c)
+{
+  uint32x4_t c_ = {0, 0};
+  uint32x4_t udivmodv4si4 = __udivmodv4si4 (a - (uint32x4_t){}, b - (uint32x4_t){}, &c_);
+  if (c)
+    *c = c_[LANE];
+  return (uint32_t)udivmodv4si4[LANE];
+}
+
+int32_t
+__divsi3 (int32_t a, int32_t b)
+{
+  int32x4_t divv4si3 = __divv4si3 (a - (int32x4_t){}, b - (int32x4_t){});
+  return (int32_t)divv4si3[LANE];
+}
+
+int32_t
+__modsi3 (int32_t a, int32_t b)
+{
+  int32x4_t modv4si3 = __modv4si3 (a - (int32x4_t){}, b - (int32x4_t){});
+  return (int32_t)modv4si3[LANE];
+}
+
+#endif // TEST_V4SI
+
+#ifdef TEST_V8SI
+#define LANE 3
+
+uint32_t
+__udivsi3 (uint32_t a, uint32_t b)
+{
+  uint32x8_t udivv8si3 = __udivv8si3 (a - (uint32x8_t){}, b - (uint32x8_t){});
+  return (uint32_t)udivv8si3[LANE];
+}
+
+uint32_t
+__umodsi3 (uint32_t a, uint32_t b)
+{
+  uint32x8_t umodv8si3 = __umodv8si3 (a - (uint32x8_t){}, b - (uint32x8_t){});
+  return (uint32_t)umodv8si3[LANE];
+}
+
+uint32_t
+__udivmodsi4 (uint32_t a, uint32_t b, uint32_t *c)
+{
+  uint32x8_t c_ = {0, 0};
+  uint32x8_t udivmodv8si4 = __udivmodv8si4 (a - (uint32x8_t){}, b - (uint32x8_t){}, &c_);
+  if (c)
+    *c = c_[LANE];
+  return (uint32_t)udivmodv8si4[LANE];
+}
+
+int32_t
+__divsi3 (int32_t a, int32_t b)
+{
+  int32x8_t divv8si3 = __divv8si3 (a - (int32x8_t){}, b - (int32x8_t){});
+  return (int32_t)divv8si3[LANE];
+}
+
+int32_t
+__modsi3 (int32_t a, int32_t b)
+{
+  int32x8_t modv8si3 = __modv8si3 (a - (int32x8_t){}, b - (int32x8_t){});
+  return (int32_t)modv8si3[LANE];
+}
+
+#endif // TEST_V4SI
+

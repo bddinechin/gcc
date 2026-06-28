@@ -1,0 +1,38 @@
+HOST_LIBGCC2_CFLAGS += -ffunction-sections -fdata-sections
+
+softfp_func_exclude := divsf3 divdf3
+softfp_file_list := \
+  $(filter-out $(addsuffix .c, \
+                           $(addprefix $(srcdir)/soft-fp/, \
+                                       $(softfp-func-exclude))), \
+               $(softfp_file_list))
+
+softfp_float_modes := sf df
+softfp_int_modes := si di ti
+softfp_extensions := sfdf
+softfp_truncations := dfsf
+softfp_extras := fixhfti fixunshfti floattihf floatuntihf
+softfp_exclude_libgcc2 := n
+
+lvx-libgcc-funcs := \
+  $(softfp_func_exclude) \
+  divmoddi divmodsi \
+  divmodvxdi divmodvxsi divmodvxhi divmodvxqi \
+  divv2df3 divv2sf3 divv4df3 divv4sf3 divv8sf3
+
+lvx-libgcc-c := $(addsuffix .c,$(lvx-libgcc-funcs))
+lvx-libgcc-o := $(addsuffix .o,$(lvx-libgcc-funcs))
+lvx-libgcc-files := $(addprefix $(srcdir)/config/lvx/, $(lvx-libgcc-c))
+
+$(lvx-libgcc-o): CFLAGS += -Werror
+
+LIB2ADD += $(lvx-libgcc-files)
+LIB2FUNCS_EXCLUDE += $(addprefix _,$(softfp-func-exclude))
+
+SHLIB_MAPFILES += $(srcdir)/config/lvx/libgcc-vector.ver
+
+crtcxa.o: $(srcdir)/config/lvx/crtcxa.c
+	$(crt_compile) -c $<
+
+crtcxa_s.o: $(srcdir)/config/lvx/crtcxa.c
+	$(crt_compile) -DSHARED -c $<
