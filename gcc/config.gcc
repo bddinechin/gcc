@@ -613,6 +613,21 @@ xtensa*-*-*)
 	extra_options="${extra_options} fused-madd.opt"
 	extra_objs="xtensa-dynconfig.o"
 	;;
+lvx-*-*)
+	cpu_type=lvx
+	need_64bit_hwint=yes
+	extra_headers="lvx_builtins.h"
+	extra_objs="lvx-builtins.o"
+	case ${target} in
+		lvx-*-cos*)
+			extra_objs="${extra_objs} lvx-prologue-stack-limit.o"
+			extra_objs="${extra_objs} lvx-shaker.o"
+			;;
+		*)
+			;;
+	esac
+	target_gtfiles="\$(srcdir)/config/lvx/lvx-builtins.cc"
+	;;
 esac
 
 tm_file=${cpu_type}/${cpu_type}.h
@@ -2435,6 +2450,23 @@ iq2000*-*-elf*)
         out_file=iq2000/iq2000.cc
         md_file=iq2000/iq2000.md
         ;;
+lvx-*-mbr*)
+	tm_file="${tm_file} lvx/lvx-registers.h elfos.h lvx/lvx-mbr.h newlib-stdint.h"
+	tmake_file="lvx/t-lvx lvx/t-mbr"
+	;;
+lvx-*-cos*)
+	tm_file="${tm_file} lvx/lvx-registers.h elfos.h lvx/lvx-cos.h newlib-stdint.h"
+	tmake_file="lvx/t-lvx lvx/t-cos"
+	extra_options="${extra_options} lvx/lvx-cos.opt"
+	if test x$enable_as_accelerator = xyes; then
+		extra_programs="${extra_programs} mkoffload\$(exeext)"
+		tm_file="${tm_file} lvx/offload.h"
+	fi
+	;;
+lvx-*-linux*)
+	tm_file="${tm_file} lvx/lvx-registers.h elfos.h gnu-user.h linux.h lvx/lvx-linux.h glibc-stdint.h"
+	tmake_file="${tmake_file} t-linux lvx/t-lvx lvx/t-linux"
+	;;
 lm32-*-elf*)
         tm_file="elfos.h ${tm_file} newlib-stdint.h"
 	tmake_file="${tmake_file} lm32/t-lm32"
@@ -4846,6 +4878,21 @@ case "${target}" in
 			exit 1
 			;;
 		esac
+		;;
+
+	lvx-*-*)
+		supported_defaults="arch"
+
+		case "${with_arch}" in
+		"" | lvx-1)
+			# OK.
+			;;
+		*)
+			echo "--with-arch=${with_arch} is not supported.  The argument must be lvx-1." 1>&2
+			exit 1
+			;;
+		esac
+
 		;;
 
 	riscv*-*-*)
