@@ -1,0 +1,82 @@
+HeaderInclude
+config/lvx/lvx-opts.h
+
+ffixed-reg
+Target RejectNegative Joined Var(lvx_deferred_options) Defer
+Set the passed register range as fixed
+
+fstack-limit-register=
+Common RejectNegative Joined Var(lvx_deferred_options) Defer
+
+fstack-limit-symbol=
+Common RejectNegative Joined Var(lvx_deferred_options) Defer
+
+fshaker-seed=
+Target RejectNegative Joined Var(lvx_deferred_options) Defer
+
+march=
+Target RejectNegative Joined Enum(lvx_arch_type) Var(lvx_arch_name) Init(LVX_ARCH_LVX_1)
+-march=ARCHITECTURE  Compile for specified ARCHITECTURE
+
+Enum
+Name(lvx_arch_type) Type(enum lvx_arch_type)
+Known LVX architecture types (for use with the -march option):
+
+EnumValue
+Enum(lvx_arch_type) String(lvx-1) Value(LVX_ARCH_LVX_1)
+
+mfarcall
+Target Var(LVX_FARCALL)
+Avoid all range limits on call instructions
+
+mdump-costs
+Target Var(DUMP_COSTS) Init(0)
+Dump calls to target-dependent cost functions
+
+mhal
+Target MASK(MPPA_HARDWARE_LAYER_MODE)
+Enable mppa hardware layer mode.
+
+fhwloop
+Target Mask(HWLOOP)
+Enable hardware loop code generation when optimizing (active by default)
+
+fdual-bcu
+Target Mask(DUAL_BCU)
+Enable dual BCU code generation when optimizing (active by default)
+
+fdual-lsu
+Target Mask(DUAL_LSU)
+Enable dual LSU code generation when optimizing (active by default)
+
+fsched2-dates
+Target Mask(SCHED2_DATES)
+Display sched2 schedule dates in assembly output (active by default)
+
+fdivmod0-trap
+Target Mask(DIVMOD0_TRAP)
+Trigger trap in case of integer division/modulus by zero (active by default).
+
+fstrict-align
+Target Mask(STRICT_ALIGN)
+Do not generate misaligned memory accesses 
+
+fstack-check-use-tls
+Target RejectNegative Mask(STACK_CHECK_USE_TLS)
+Use a TLS slot named __stack_end to store the stack boundary instead of $sr1
+
+mabi=
+Target RejectNegative Joined Enum(lvx_abi) Var(lvx_abi) Init(LVX_ABI_DEFAULT)
+-mabi=ABI	Generate code that conforms to the specified ABI
+
+Enum
+Name(lvx_abi) Type(int)
+Known LVX MPPA ABIs (for use with the -mabi= option):
+
+Waddress-space-conversion
+C Warning Var(LVX_WARN_ADDRESS_SPACE_CONVERSION) Init(0)
+Warn if an __bypass pointer is converted to a general one or vice versa
+
+EnumValue
+Enum(lvx_abi) String(lp64) Value(LVX_ABI_LP64)
+
