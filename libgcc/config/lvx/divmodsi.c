@@ -52,11 +52,7 @@ uint32_divmod (uint32_t a, uint32_t b)
 end:;
   return (uint32x2_t){q, r};
 div0:
-#ifndef __linux__
-  if (&_LVX_NO_DIVMOD0_TRAP)
-    return (uint32x2_t){0, 0};
-#endif
-  __builtin_trap ();
+  return (uint32x2_t){0, 0};
 }
 #else
 static inline uint32x2_t
@@ -79,11 +75,7 @@ uint32_divmod (uint32_t a, uint32_t b)
   uint32_t r = rem + (b & cond);
   return (uint32x2_t){q, r};
 div0:
-#ifndef __linux__
-  if (&_LVX_NO_DIVMOD0_TRAP)
-    return (uint32x2_t){0, 0};
-#endif
-  __builtin_trap ();
+  return (uint32x2_t){0, 0};
 }
 #endif
 

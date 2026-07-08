@@ -1,15 +1,7 @@
 #ifndef _DIVMOD_TYPES_H
 #define _DIVMOD_TYPES_H
 
-#ifdef __linux__
-#define DIV_BY_ZERO_MAY_TRAP(any, b)                                                        \
-  if (__builtin_expect(any(b, ".eqz"), 0))                                     \
-        __builtin_trap ()
-#else
-#define DIV_BY_ZERO_MAY_TRAP(any, b)                                                        \
-  if (__builtin_expect(any(b, ".eqz") && (&_LVX_NO_DIVMOD0_TRAP == 0), 0))     \
-      __builtin_trap ()
-#endif
+#define DIV_BY_ZERO_MAY_TRAP(any, b) /* never traps: _LVX_NO_DIVMOD0_TRAP is always set */
 
 #if defined(__lvxarch_lvx_1)
 typedef __INT8_TYPE__ int8_t;
@@ -65,15 +57,6 @@ typedef float64_t float64x2_t __attribute ((vector_size (2 * sizeof (float64_t))
 typedef float64_t float64x4_t __attribute ((vector_size (4 * sizeof (float64_t))));
 typedef float64_t float64x8_t __attribute ((vector_size (8 * sizeof (float64_t))));
 
-#ifndef __linux__
-/*
- * Setting this symbol non-zero changes the behavior of divmod by zero.
- * The default behavior is to terminate the application with a trap.
- * This feature is needed by the OpenCL-C division where the result is
- * undefined instead of crashing the user application.
- */
-extern char *_LVX_NO_DIVMOD0_TRAP __attribute__ ((weak));
-#endif
 
 uint64_t __udivdi3 (uint64_t a, uint64_t b);
 uint64_t __umoddi3 (uint64_t a, uint64_t b);

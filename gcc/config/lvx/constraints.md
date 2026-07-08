@@ -1,3 +1,9 @@
+(define_register_constraint "R" "(EGR_REGS)"
+     "Even-numbered general registers (required by LITE paired-word instructions).")
+
+(define_register_constraint "Q" "(OGR_REGS)"
+     "Odd-numbered general registers (alternative to R for LITE paired-word instructions).")
+
 (define_register_constraint "SAB" "(SAB_REGS)"
      "A system register forcing SET and WFX* alone in bundle.")
 
@@ -12,7 +18,7 @@
   (ior (match_code "const_double,const_int")
        (match_test "lvx_symbol_operand(op,mode)")))
 
-(define_constraint "REF"
+(define_constraint "Cp"
   "Code label reference in PIC mode."
   (and (match_code "label_ref")
        (match_test "flag_pic")))
