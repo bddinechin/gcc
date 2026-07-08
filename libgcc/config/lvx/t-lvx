@@ -17,14 +17,19 @@ softfp_exclude_libgcc2 := n
 lvx-libgcc-funcs := \
   $(softfp_func_exclude) \
   divmoddi divmodsi \
-  divmodvxdi divmodvxsi divmodvxhi divmodvxqi \
-  divv2df3 divv2sf3 divv4df3 divv4sf3 divv8sf3
+  divmodvxdi divmodvxsi \
+  divv2df3
 
 lvx-libgcc-c := $(addsuffix .c,$(lvx-libgcc-funcs))
 lvx-libgcc-o := $(addsuffix .o,$(lvx-libgcc-funcs))
 lvx-libgcc-files := $(addprefix $(srcdir)/config/lvx/, $(lvx-libgcc-c))
 
 $(lvx-libgcc-o): CFLAGS += -Werror
+
+# reorg_loops introduces pseudo-conditioned RTL that crashes sched2; hwloop
+# patterns aren't useful in EH bookkeeping code anyway.
+CFLAGS-unwind-dw2-fde.c += -fno-hwloop
+CFLAGS-unwind-sjlj.c    += -fno-hwloop
 
 LIB2ADD += $(lvx-libgcc-files)
 LIB2FUNCS_EXCLUDE += $(addprefix _,$(softfp-func-exclude))

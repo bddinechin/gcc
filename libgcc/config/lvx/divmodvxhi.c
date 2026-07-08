@@ -110,7 +110,7 @@ __divmodv4hi4 (int16x4_t sa, int16x4_t sb, int16x4_t * c)
   uint16x4_t b = __builtin_lvx_abshq (sb, "");
   uint16x8_t divmod = uint16x4_divmod (a, b);
   int16x4_t q = __builtin_lvx_low64 (divmod);
-  q = (sa ^ sb) < 0 ? -q : q;
+  q = __builtin_lvx_selecthq (-q, q, sa ^ sb, ".ltz");
   *c = sa - q * sb;
   return q;
 }

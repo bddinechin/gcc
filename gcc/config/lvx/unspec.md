@@ -112,6 +112,7 @@
 
         UNSPEC_FADD
         UNSPEC_FSBF
+        UNSPEC_FDIV
         UNSPEC_FMUL
         UNSPEC_FFMA
         UNSPEC_FFMS

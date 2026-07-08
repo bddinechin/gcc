@@ -1529,7 +1529,7 @@
   [(set (match_operand:V4HI 0 "register_operand" "=r")
         (unspec:V4HI [(match_operand:V8QI 1 "register_operand" "r")] UNSPEC_QXE))]
   ""
-  "sllhqs %0 = %1, 8"
+  "sllhq %0 = %1, 8"
   [(set_attr "type" "alu_thin")]
 )
 
@@ -1537,7 +1537,7 @@
   [(set (match_operand:V8HI 0 "register_operand" "=r")
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_QXE))]
   ""
-  "sllhqs %x0 = %x1, 8\n\tsllhqs %y0 = %y1, 8"
+  "sllhq %x0 = %x1, 8\n\tsllhq %y0 = %y1, 8"
   [(set_attr "type" "alu_thin_x2")
    (set_attr "length"         "8")]
 )
@@ -1576,7 +1576,7 @@
   [(set (match_operand:V2SI 0 "register_operand" "=r")
         (unspec:V2SI [(match_operand:V4HI 1 "register_operand" "r")] UNSPEC_QXE))]
   ""
-  "sllwps %0 = %1, 16"
+  "sllwp %0 = %1, 16"
   [(set_attr "type" "alu_thin")]
 )
 
@@ -1584,7 +1584,7 @@
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_QXE))]
   ""
-  "sllwps %x0 = %x1, 16\n\tsllwps %y0 = %y1, 16"
+  "sllwp %x0 = %x1, 16\n\tsllwp %y0 = %y1, 16"
   [(set_attr "type" "alu_thin_x2")
    (set_attr "length"         "8")]
 )
@@ -1663,7 +1663,7 @@
   [(set (match_operand:V4HI 0 "register_operand" "=r")
         (unspec:V4HI [(match_operand:V8QI 1 "register_operand" "r")] UNSPEC_ZXO))]
   ""
-  "srlhqs %0 = %1, 8"
+  "srlhq %0 = %1, 8"
   [(set_attr "type" "alu_thin")]
 )
 
@@ -1671,7 +1671,7 @@
   [(set (match_operand:V8HI 0 "register_operand" "=r")
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_ZXO))]
   ""
-  "srlhqs %x0 = %x1, 8\n\tsrlhqs %y0 = %y1, 8"
+  "srlhq %x0 = %x1, 8\n\tsrlhq %y0 = %y1, 8"
   [(set_attr "type" "alu_thin_x2")
    (set_attr "length"         "8")]
 )
@@ -1710,7 +1710,7 @@
   [(set (match_operand:V2SI 0 "register_operand" "=r")
         (unspec:V2SI [(match_operand:V4HI 1 "register_operand" "r")] UNSPEC_ZXO))]
   ""
-  "srlwps %0 = %1, 16"
+  "srlwp %0 = %1, 16"
   [(set_attr "type" "alu_thin")]
 )
 
@@ -1718,7 +1718,7 @@
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_ZXO))]
   ""
-  "srlwps %x0 = %x1, 16\n\tsrlwps %y0 = %y1, 16"
+  "srlwp %x0 = %x1, 16\n\tsrlwp %y0 = %y1, 16"
   [(set_attr "type" "alu_thin_x2")
    (set_attr "length"         "8")]
 )
@@ -3359,37 +3359,31 @@
 )
 
 
-;; FREC*
+;; FREC* — LVX has no FRECW instruction; implement reciprocal via FDIVW.
 
-(define_insn "*lvx_frecw"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (unspec:SF [(subreg:SF (match_operand:V2SF 1 "register_operand" "r") 0)
-                    (match_operand 2 "" "")] UNSPEC_FREC))]
+(define_expand "lvx_frecw"
+  [(match_operand:SF 0 "register_operand" "")
+   (match_operand:SF 1 "register_operand" "")
+   (match_operand 2 "" "")]
   ""
-  "frecw%2 %0 = %1"
-  [(set_attr "type" "alu_full_sfu")]
-)
-
-(define_insn "lvx_frecw"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (unspec:SF [(match_operand:SF 1 "register_operand" "r")
-                    (match_operand 2 "" "")] UNSPEC_FREC))]
-  ""
-  "frecw%2 %0 = %1"
-  [(set_attr "type" "alu_full_sfu")]
-)
-
-(define_insn_and_split "lvx_frechf"
-  [(set (match_operand:HF 0 "register_operand" "=r")
-        (unspec:HF [(match_operand:HF 1 "register_operand" "r")
-                    (match_operand 2 "" "")] UNSPEC_FREC))
-   (match_scratch:SF 3 "=r")]
-  "" "#" ""
-  [(set (match_dup 3) (float_extend:SF (match_dup 1)))
-   (set (match_dup 3) (unspec:SF [(match_dup 3) (match_dup 2)] UNSPEC_FREC))
-   (set (match_dup 0) (float_truncate:HF (match_dup 3)))]
   {
-    operands[3] = gen_reg_rtx (SFmode);
+    rtx one = force_reg (SFmode, CONST1_RTX (SFmode));
+    emit_insn (gen_lvx_fdivw (operands[0], one, operands[1], operands[2]));
+    DONE;
+  }
+)
+
+(define_expand "lvx_frechf"
+  [(match_operand:HF 0 "register_operand" "")
+   (match_operand:HF 1 "register_operand" "")
+   (match_operand 2 "" "")]
+  ""
+  {
+    rtx sf_tmp = gen_reg_rtx (SFmode);
+    emit_insn (gen_extendhfsf2 (sf_tmp, operands[1]));
+    emit_insn (gen_lvx_frecw (sf_tmp, sf_tmp, operands[2]));
+    emit_insn (gen_truncsfhf2 (operands[0], sf_tmp));
+    DONE;
   }
 )
 
@@ -3740,7 +3734,7 @@
                     (match_operand:HF 2 "register_operand" "r")
                     (match_operand 3 "" "")] UNSPEC_FADD))]
   ""
-  "faddhq%3 %0 = %1, %2"
+  "faddh%3 %0 = %1, %2"
   [(set_attr "type" "mult_fp3")]
 )
 
@@ -3765,14 +3759,13 @@
 )
 
 (define_insn "lvx_fadd<suffix>"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (unspec:S64F [(match_operand:S64F 1 "register_operand" "r")
-                      (match_operand:S64F 2 "register_operand" "r")
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (unspec:S64F [(match_operand:S64F 1 "register_operand" "R,Q")
+                      (match_operand:S64F 2 "register_operand" "R,Q")
                       (match_operand 3 "" "")] UNSPEC_FADD))]
   ""
   "fadd<suffix>%3 %0 = %1, %2"
-  [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "mult_fp3") (const_string "mult_fp4")))]
+  [(set_attr "type" "mult_fp4")]
 )
 
 (define_insn_and_split "lvx_faddho"
@@ -4163,7 +4156,7 @@
                     (match_operand:HF 2 "register_operand" "r")
                     (match_operand 3 "" "")] UNSPEC_FSBF))]
   ""
-  "fsbfhq%3 %0 = %1, %2"
+  "fsbfh%3 %0 = %1, %2"
   [(set_attr "type" "mult_fp3")]
 )
 
@@ -4188,14 +4181,13 @@
 )
 
 (define_insn "lvx_fsbf<suffix>"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (unspec:S64F [(match_operand:S64F 1 "register_operand" "r")
-                      (match_operand:S64F 2 "register_operand" "r")
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (unspec:S64F [(match_operand:S64F 1 "register_operand" "R,Q")
+                      (match_operand:S64F 2 "register_operand" "R,Q")
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
   ""
   "fsbf<suffix>%3 %0 = %1, %2"
-  [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "mult_fp3") (const_string "mult_fp4")))]
+  [(set_attr "type" "mult_fp4")]
 )
 
 (define_insn_and_split "lvx_fsbfho"
@@ -4422,7 +4414,7 @@
                     (match_operand:HF 2 "register_operand" "r")
                     (match_operand 3 "" "")] UNSPEC_FMUL))]
   ""
-  "fmulhq%3 %0 = %1, %2"
+  "fmulh%3 %0 = %1, %2"
   [(set_attr "type" "mult_fp3")]
 )
 
@@ -4446,15 +4438,34 @@
   [(set_attr "type" "mult_fp4")]
 )
 
+(define_insn "lvx_fdivw"
+  [(set (match_operand:SF 0 "register_operand" "=r")
+        (unspec:SF [(match_operand:SF 1 "register_operand" "r")
+                    (match_operand:SF 2 "register_operand" "r")
+                    (match_operand 3 "" "")] UNSPEC_FDIV))]
+  ""
+  "fdivw%3 %0 = %1, %2"
+  [(set_attr "type" "alu_full_sfu")]
+)
+
+(define_insn "lvx_fdivd"
+  [(set (match_operand:DF 0 "register_operand" "=r")
+        (unspec:DF [(match_operand:DF 1 "register_operand" "r")
+                    (match_operand:DF 2 "register_operand" "r")
+                    (match_operand 3 "" "")] UNSPEC_FDIV))]
+  ""
+  "fdivd%3 %0 = %1, %2"
+  [(set_attr "type" "alu_full_sfu")]
+)
+
 (define_insn "lvx_fmul<suffix>"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (unspec:S64F [(match_operand:S64F 1 "register_operand" "r")
-                      (match_operand:S64F 2 "register_operand" "r")
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (unspec:S64F [(match_operand:S64F 1 "register_operand" "R,Q")
+                      (match_operand:S64F 2 "register_operand" "R,Q")
                       (match_operand 3 "" "")] UNSPEC_FMUL))]
   ""
   "fmul<suffix>%3 %0 = %1, %2"
-  [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "mult_fp3") (const_string "mult_fp4")))]
+  [(set_attr "type" "mult_fp4")]
 )
 
 (define_insn_and_split "lvx_fmulho"
@@ -5070,7 +5081,7 @@
                     (match_operand:HF 3 "register_operand" "0")
                     (match_operand 4 "" "")] UNSPEC_FFMA))]
   ""
-  "ffmahq%4 %0 = %1, %2"
+  "ffmah%4 %0 = %1, %2"
   [(set_attr "type" "madd_fp3")]
 )
 
@@ -5097,15 +5108,14 @@
 )
 
 (define_insn "lvx_ffma<suffix>"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (unspec:S64F [(match_operand:S64F 1 "register_operand" "r")
-                      (match_operand:S64F 2 "register_operand" "r")
-                      (match_operand:S64F 3 "register_operand" "0")
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (unspec:S64F [(match_operand:S64F 1 "register_operand" "R,Q")
+                      (match_operand:S64F 2 "register_operand" "R,Q")
+                      (match_operand:S64F 3 "register_operand" "0,0")
                       (match_operand 4 "" "")] UNSPEC_FFMA))]
   ""
   "ffma<suffix>%4 %0 = %1, %2"
-  [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "madd_fp3") (const_string "madd_fp4")))]
+  [(set_attr "type" "madd_fp4")]
 )
 
 (define_expand "lvx_ffma<suffix>"
@@ -5498,7 +5508,7 @@
                     (match_operand:HF 3 "register_operand" "0")
                     (match_operand 4 "" "")] UNSPEC_FFMS))]
   ""
-  "ffmshq%4 %0 = %1, %2"
+  "ffmsh%4 %0 = %1, %2"
   [(set_attr "type" "madd_fp3")]
 )
 
@@ -5525,15 +5535,14 @@
 )
 
 (define_insn "lvx_ffms<suffix>"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (unspec:S64F [(match_operand:S64F 1 "register_operand" "r")
-                      (match_operand:S64F 2 "register_operand" "r")
-                      (match_operand:S64F 3 "register_operand" "0")
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (unspec:S64F [(match_operand:S64F 1 "register_operand" "R,Q")
+                      (match_operand:S64F 2 "register_operand" "R,Q")
+                      (match_operand:S64F 3 "register_operand" "0,0")
                       (match_operand 4 "" "")] UNSPEC_FFMS))]
   ""
   "ffms<suffix>%4 %0 = %1, %2"
-  [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "madd_fp3") (const_string "madd_fp4")))]
+  [(set_attr "type" "madd_fp4")]
 )
 
 (define_expand "lvx_ffms<suffix>"
@@ -7371,7 +7380,7 @@
         (unspec:SF [(match_operand:HF 1 "register_operand" "r")
                     (match_operand 2 "" "")] UNSPEC_FWIDEN))]
   ""
-  "fwidenlhw%2 %0 = %1"
+  "fwidenhw%2 %0 = %1"
   [(set_attr "type" "alu_lite")]
 )
 
@@ -7380,7 +7389,7 @@
         (unspec:DF [(match_operand:SF 1 "register_operand" "r")
                     (match_operand 2 "" "")] UNSPEC_FWIDEN))]
   ""
-  "fwidenlwd%2 %0 = %1"
+  "fwidenwd%2 %0 = %1"
   [(set_attr "type" "alu_lite")]
 )
 

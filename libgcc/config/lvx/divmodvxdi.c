@@ -44,11 +44,7 @@ uint64x2_divmod (uint64x2_t a, uint64x2_t b)
   return __builtin_lvx_cat256 (q, r);
 
 div0:
-#ifndef __linux__
-  if (&_LVX_NO_DIVMOD0_TRAP)
-    return 0 - (uint64x4_t){};
-#endif
-  __builtin_trap ();
+  return 0 - (uint64x4_t){};
 }
 
 uint64x2_t
@@ -143,11 +139,7 @@ uint64x4_divmod (uint64x4_t a, uint64x4_t b)
   return __builtin_lvx_cat512 (q, r);
 
 div0:
-#ifndef __linux__
-  if (&_LVX_NO_DIVMOD0_TRAP)
-    return 0 - (uint64x8_t){};
-#endif
-  __builtin_trap ();
+  return 0 - (uint64x8_t){};
 }
 
 uint64x4_t

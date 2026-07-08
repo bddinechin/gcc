@@ -830,7 +830,7 @@
   [(set (match_operand:V8QI 0 "register_operand" "=r")
         (unspec:V8QI [(match_operand:V4HI 1 "register_operand" "r")
                       (match_operand:V4HI 2 "register_operand" "r")] UNSPEC_OROE))]
-  ""
+  "0"
   "iord %0 = %1, %2"
   [(set_attr "type" "alu_tiny")]
 )
@@ -1729,19 +1729,19 @@
 ;; S64I (V4HI V2SI)
 
 (define_insn "add<mode>3"
-  [(set (match_operand:S64I 0 "register_operand" "=r")
-        (plus:S64I (match_operand:S64I 1 "register_operand" "r")
-                   (match_operand:S64I 2 "register_operand" "r")))]
+  [(set (match_operand:S64I 0 "register_operand" "=R,Q")
+        (plus:S64I (match_operand:S64I 1 "register_operand" "R,Q")
+                   (match_operand:S64I 2 "register_operand" "R,Q")))]
   ""
   "add<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")]
+  [(set_attr "type" "alu_lite")]
 )
 
 (define_insn "ssadd<mode>3"
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (ss_plus:S64I (match_operand:S64I 1 "register_operand" "r")
                       (match_operand:S64I 2 "register_operand" "r")))]
-  ""
+  "0"
   "adds<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
@@ -1750,7 +1750,7 @@
   [(match_operand:S64I 0 "register_operand" "")
    (match_operand:S64I 1 "register_operand" "")
    (match_operand:S64I 2 "register_operand" "")]
-  ""
+  "0"
   {
     if (!HAVE_LVX_US_PLUS_<MODE>)
       emit_insn (gen_usadd<mode>3_1 (operands[0], operands[1], operands[2]));
@@ -1766,9 +1766,9 @@
                       (match_operand:S64I 2 "register_operand" "r")))
    (clobber (match_scratch:S64I 3 "=&r"))
    (clobber (match_scratch:S64I 4 "=&r"))]
-  "!HAVE_LVX_US_PLUS_<MODE>"
+  "0"
   "#"
-  "!HAVE_LVX_US_PLUS_<MODE>"
+  "0"
   [(set (match_dup 3)
         (plus:S64I (match_dup 1) (match_dup 2)))
    (set (match_dup 4)
@@ -1788,7 +1788,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (us_plus:S64I (match_operand:S64I 1 "register_operand" "r")
                       (match_operand:S64I 2 "register_operand" "r")))]
-  "HAVE_LVX_US_PLUS_<MODE>"
+  "0"
   "addus<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_tiny")]
 )
@@ -1834,19 +1834,19 @@
 )
 
 (define_insn "sub<mode>3"
-  [(set (match_operand:S64I 0 "register_operand" "=r")
-        (minus:S64I (match_operand:S64I 1 "register_operand" "r")
-                    (match_operand:S64I 2 "register_operand" "r")))]
+  [(set (match_operand:S64I 0 "register_operand" "=R,Q")
+        (minus:S64I (match_operand:S64I 1 "register_operand" "R,Q")
+                    (match_operand:S64I 2 "register_operand" "R,Q")))]
   ""
   "sbf<suffix> %0 = %2, %1"
-  [(set_attr "type" "alu_tiny")]
+  [(set_attr "type" "alu_lite")]
 )
 
 (define_insn "sssub<mode>3"
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (ss_minus:S64I (match_operand:S64I 1 "register_operand" "r")
                        (match_operand:S64I 2 "register_operand" "r")))]
-  ""
+  "0"
   "sbfs<suffix> %0 = %2, %1"
   [(set_attr "type" "alu_thin")]
 )
@@ -1855,7 +1855,7 @@
   [(match_operand:S64I 0 "register_operand" "")
    (match_operand:S64I 1 "register_operand" "")
    (match_operand:S64I 2 "register_operand" "")]
-  ""
+  "0"
   {
     if (!HAVE_LVX_US_MINUS_<MODE>)
       emit_insn (gen_ussub<mode>3_1 (operands[0], operands[1], operands[2]));
@@ -1870,9 +1870,9 @@
         (us_minus:S64I (match_operand:S64I 1 "register_operand" "r")
                        (match_operand:S64I 2 "register_operand" "r")))
    (clobber (match_scratch:S64I 3 "=&r"))]
-  "!HAVE_LVX_US_MINUS_<MODE>"
+  "0"
   "#"
-  "!HAVE_LVX_US_MINUS_<MODE>"
+  "0"
   [(set (match_dup 3)
         (umin:S64I (match_dup 1) (match_dup 2)))
    (set (match_dup 0)
@@ -1888,7 +1888,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (us_minus:S64I (match_operand:S64I 1 "register_operand" "r")
                        (match_operand:S64I 2 "register_operand" "r")))]
-  "HAVE_LVX_US_MINUS_<MODE>"
+  "0"
   "sbfus<suffix> %0 = %2, %1"
   [(set_attr "type" "alu_tiny")]
 )
@@ -1937,7 +1937,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (mult:S64I (match_operand:S64I 1 "register_operand" "r")
                    (match_operand:S64I 2 "register_operand" "r")))]
-  ""
+  "0"
   "mul<suffix> %0 = %1, %2"
   [(set_attr "type" "mult_int")]
 )
@@ -1946,7 +1946,7 @@
   [(set (match_operand:S64I 0 "register_operand" "")
         (div:S64I (match_operand:S64I 1 "register_operand" "")
                   (match_operand:S64I 2 "register_operand" "")))]
-  ""
+  "0"
   {
     rtx dest = emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "__div<mode>3"),
                                         operands[0], LCT_CONST, <MODE>mode,
@@ -1961,7 +1961,7 @@
   [(set (match_operand:S64I 0 "register_operand" "")
         (mod:S64I (match_operand:S64I 1 "register_operand" "")
                   (match_operand:S64I 2 "register_operand" "")))]
-  ""
+  "0"
   {
     rtx dest = emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "__mod<mode>3"),
                                         operands[0], LCT_CONST, <MODE>mode,
@@ -1976,7 +1976,7 @@
   [(set (match_operand:S64I 0 "register_operand" "")
         (udiv:S64I (match_operand:S64I 1 "register_operand" "")
                    (match_operand:S64I 2 "register_operand" "")))]
-  ""
+  "0"
   {
     rtx dest = emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "__udiv<mode>3"),
                                         operands[0], LCT_CONST, <MODE>mode,
@@ -1991,7 +1991,7 @@
   [(set (match_operand:S64I 0 "register_operand" "")
         (umod:S64I (match_operand:S64I 1 "register_operand" "")
                    (match_operand:S64I 2 "register_operand" "")))]
-  ""
+  "0"
   {
     rtx dest = emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "__umod<mode>3"),
                                         operands[0], LCT_CONST, <MODE>mode,
@@ -2006,7 +2006,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (smin:S64I (match_operand:S64I 1 "register_operand" "r")
                    (match_operand:S64I 2 "register_operand" "r")))]
-  ""
+  "0"
   "min<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_tiny")]
 )
@@ -2015,7 +2015,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (smax:S64I (match_operand:S64I 1 "register_operand" "r")
                    (match_operand:S64I 2 "register_operand" "r")))]
-  ""
+  "0"
   "max<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_tiny")]
 )
@@ -2024,7 +2024,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (umin:S64I (match_operand:S64I 1 "register_operand" "r")
                    (match_operand:S64I 2 "register_operand" "r")))]
-  ""
+  "0"
   "minu<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_tiny")]
 )
@@ -2033,7 +2033,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (umax:S64I (match_operand:S64I 1 "register_operand" "r")
                    (match_operand:S64I 2 "register_operand" "r")))]
-  ""
+  "0"
   "maxu<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_tiny")]
 )
@@ -2043,7 +2043,7 @@
         (plus:S64I (mult:S64I (match_operand:S64I 1 "register_operand" "r")
                               (match_operand:S64I 2 "register_operand" "r"))
                    (match_operand:S64I 3 "register_operand" "0")))]
-  ""
+  "0"
   "madd<suffix> %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
@@ -2053,7 +2053,7 @@
         (minus:S64I (match_operand:S64I 3 "register_operand" "0")
                     (mult:S64I (match_operand:S64I 1 "register_operand" "r")
                                (match_operand:S64I 2 "register_operand" "r"))))]
-  ""
+  "0"
   "msbf<suffix> %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
@@ -2062,8 +2062,8 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (ashift:S64I (match_operand:S64I 1 "register_operand" "r")
                      (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "sll<suffix>s %0 = %1, %2"
+  "0"
+  "sll<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
 
@@ -2071,7 +2071,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (ss_ashift:S64I (match_operand:S64I 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
+  "0"
   "sls<suffix>s %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
@@ -2080,7 +2080,7 @@
   [(match_operand:S64I 0 "register_operand" "")
    (match_operand:S64I 1 "register_operand" "")
    (match_operand:SI 2 "reg_shift_operand" "")]
-  ""
+  "0"
   {
     if (!HAVE_LVX_US_ASHIFT_<MODE>)
       emit_insn (gen_usashl<mode>3_1 (operands[0], operands[1], operands[2]));
@@ -2097,9 +2097,9 @@
    (clobber (match_scratch:S64I 3 "=&r"))
    (clobber (match_scratch:S64I 4 "=&r"))
    (clobber (match_scratch:S64I 5 "=&r"))]
-  "!HAVE_LVX_US_ASHIFT_<MODE>"
+  "0"
   "#"
-  "!HAVE_LVX_US_ASHIFT_<MODE>"
+  "0"
   [(set (match_dup 3)
         (ashift:S64I (match_dup 1) (match_dup 2)))
    (set (match_dup 4)
@@ -2122,7 +2122,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (us_ashift:S64I (match_operand:S64I 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "HAVE_LVX_US_ASHIFT_<MODE>"
+  "0"
   "slus<suffix>s %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
@@ -2131,8 +2131,8 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (ashiftrt:S64I (match_operand:S64I 1 "register_operand" "r")
                        (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "sra<suffix>s %0 = %1, %2"
+  "0"
+  "sra<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
 
@@ -2140,8 +2140,8 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (lshiftrt:S64I (match_operand:S64I 1 "register_operand" "r")
                        (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "srl<suffix>s %0 = %1, %2"
+  "0"
+  "srl<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
 
@@ -2149,7 +2149,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (unspec:S64I [(match_operand:S64I 1 "register_operand" "r")
                       (match_operand:SI 2 "reg_shift_operand" "rU06")] UNSPEC_SRS))]
-  ""
+  "0"
   "srs<suffix>s %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
@@ -2158,7 +2158,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (unspec:S64I [(match_operand:S64I 1 "register_operand" "r")
                       (match_operand:S64I 2 "register_operand" "r")] UNSPEC_AVG))]
-  ""
+  "0"
   "avg<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
@@ -2167,7 +2167,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (unspec:S64I [(match_operand:S64I 1 "register_operand" "r")
                       (match_operand:S64I 2 "register_operand" "r")] UNSPEC_AVGR))]
-  ""
+  "0"
   "avgr<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
@@ -2176,7 +2176,7 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (unspec:S64I [(match_operand:S64I 1 "register_operand" "r")
                       (match_operand:S64I 2 "register_operand" "r")] UNSPEC_AVGU))]
-  ""
+  "0"
   "avgu<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
@@ -2185,24 +2185,23 @@
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (unspec:S64I [(match_operand:S64I 1 "register_operand" "r")
                       (match_operand:S64I 2 "register_operand" "r")] UNSPEC_AVGRU))]
-  ""
+  "0"
   "avgru<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
 
 (define_insn "neg<mode>2"
-  [(set (match_operand:S64I 0 "register_operand" "=r")
-        (neg:S64I (match_operand:S64I 1 "register_operand" "r")))]
+  [(set (match_operand:S64I 0 "register_operand" "=R,Q")
+        (neg:S64I (match_operand:S64I 1 "register_operand" "R,Q")))]
   ""
   "neg<suffix> %0 = %1"
-  [(set_attr "type" "alu_tiny_x")
-   (set_attr "length"        "8")]
+  [(set_attr "type" "alu_lite")]
 )
 
 (define_insn "ssneg<mode>2"
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (ss_neg:S64I (match_operand:S64I 1 "register_operand" "r")))]
-  ""
+  "0"
   "sbfs<suffix> %0 = %1, 0"
   [(set_attr "type" "alu_thin_x")
    (set_attr "length"        "8")]
@@ -2211,7 +2210,7 @@
 (define_insn "abs<mode>2"
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (abs:S64I (match_operand:S64I 1 "register_operand" "r")))]
-  ""
+  "0"
   "abs<suffix> %0 = %1"
   [(set_attr "type" "alu_thin_x")
    (set_attr "length"        "8")]
@@ -2220,16 +2219,16 @@
 (define_expand "ssabs<mode>2"
   [(set (match_operand:S64I 0 "register_operand" "")
         (ss_abs:S64I (match_operand:S64I 1 "register_operand" "")))]
-  ""
+  "0"
   ""
 )
 
 (define_insn_and_split "ssabs<mode>2_1"
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (ss_abs:S64I (match_operand:S64I 1 "register_operand" "r")))]
-  "!HAVE_LVX_SS_ABS_<MODE>"
+  "0"
   "#"
-  "!HAVE_LVX_SS_ABS_<MODE>"
+  "0"
   [(set (match_dup 0)
         (ss_neg:S64I (match_dup 1)))
    (set (match_dup 0)
@@ -2240,7 +2239,7 @@
 (define_insn "ssabs<mode>2_2"
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (ss_abs:S64I (match_operand:S64I 1 "register_operand" "r")))]
-  "HAVE_LVX_SS_ABS_<MODE>"
+  "0"
   "abss<suffix> %0 = %1"
   [(set_attr "type" "alu_tiny")]
 )
@@ -2248,7 +2247,7 @@
 (define_insn "clrsb<mode>2"
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (clrsb:S64I (match_operand:S64I 1 "register_operand" "r")))]
-  ""
+  "0"
   "cls<suffix> %0 = %1"
   [(set_attr "type" "alu_lite")]
 )
@@ -2256,7 +2255,7 @@
 (define_insn "clz<mode>2"
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (clz:S64I (match_operand:S64I 1 "register_operand" "r")))]
-  ""
+  "0"
   "clz<suffix> %0 = %1"
   [(set_attr "type" "alu_lite")]
 )
@@ -2264,7 +2263,7 @@
 (define_insn "ctz<mode>2"
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (ctz:S64I (match_operand:S64I 1 "register_operand" "r")))]
-  ""
+  "0"
   "ctz<suffix> %0 = %1"
   [(set_attr "type" "alu_lite")]
 )
@@ -2272,7 +2271,7 @@
 (define_insn "popcount<mode>2"
   [(set (match_operand:S64I 0 "register_operand" "=r")
         (popcount:S64I (match_operand:S64I 1 "register_operand" "r")))]
-  ""
+  "0"
   "cbs<suffix> %0 = %1"
   [(set_attr "type" "alu_lite")]
 )
@@ -2382,7 +2381,7 @@
         (minus:S64I (smax:S64I (match_operand:S64I 1 "register_operand" "r")
                                (match_operand:S64I 2 "register_operand" "r"))
                     (smin:S64I (match_dup 1) (match_dup 2))))]
-  ""
+  "0"
   "abd<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
@@ -2418,9 +2417,9 @@
                        (smin:S64I (match_dup 1) (match_dup 2))))
    (clobber (match_scratch:S64I 3 "=&r"))
    (clobber (match_scratch:S64I 4 "=&r"))]
-  "!HAVE_LVX_SS_ABD_<MODE>"
+  "0"
   "#"
-  "!HAVE_LVX_SS_ABD_<MODE>"
+  "0"
   [(set (match_dup 3)
         (smax:S64I (match_dup 1) (match_dup 2)))
    (set (match_dup 4)
@@ -2466,9 +2465,9 @@
                     (umin:S64I (match_dup 1) (match_dup 2))))
    (clobber (match_scratch:S64I 3 "=&r"))
    (clobber (match_scratch:S64I 4 "=&r"))]
-  "!HAVE_LVX_UABD_<MODE>"
+  "0"
   "#"
-  "!HAVE_LVX_UABD_<MODE>"
+  "0"
   [(set (match_dup 3)
         (umax:S64I (match_dup 1) (match_dup 2)))
    (set (match_dup 4)
@@ -2533,9 +2532,9 @@
    (clobber (match_scratch:SI 3 "=&r"))
    (clobber (match_scratch:V4HI 4 "=&r"))
    (clobber (match_scratch:V4HI 5 "=&r"))]
-  ""
+  "0"
   "#"
-  ""
+  "0"
   [(set (match_dup 3) (neg:SI (match_dup 2)))
    (set (match_dup 4) (ashift:V4HI (match_dup 1) (match_dup 2)))
    (set (match_dup 5) (lshiftrt:V4HI (match_dup 1) (match_dup 3)))
@@ -2557,9 +2556,9 @@
    (clobber (match_scratch:SI 3 "=&r"))
    (clobber (match_scratch:V4HI 4 "=&r"))
    (clobber (match_scratch:V4HI 5 "=&r"))]
-  ""
+  "0"
   "#"
-  ""
+  "0"
   [(set (match_dup 3) (neg:SI (match_dup 2)))
    (set (match_dup 4) (lshiftrt:V4HI (match_dup 1) (match_dup 2)))
    (set (match_dup 5) (ashift:V4HI (match_dup 1) (match_dup 3)))
@@ -2578,7 +2577,7 @@
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (mult:V4SI (sign_extend:V4SI (match_operand:V4HI 1 "register_operand" "r"))
                    (sign_extend:V4SI (match_operand:V4HI 2 "register_operand" "r"))))]
-  ""
+  "0"
   "mulhwq %0 = %1, %2"
   [(set_attr "type" "mult_int")]
 )
@@ -2587,7 +2586,7 @@
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (mult:V4SI (zero_extend:V4SI (match_operand:V4HI 1 "register_operand" "r"))
                    (zero_extend:V4SI (match_operand:V4HI 2 "register_operand" "r"))))]
-  ""
+  "0"
   "muluhwq %0 = %1, %2"
   [(set_attr "type" "mult_int")]
 )
@@ -2597,7 +2596,7 @@
         (plus:V4SI (sign_extend:V4SI (mult:V4HI (match_operand:V4HI 1 "register_operand" "r")
                                                 (match_operand:V4HI 2 "register_operand" "r")))
                    (match_operand:V4SI 3 "register_operand" "0")))]
-  ""
+  "0"
   "maddhwq %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
@@ -2607,7 +2606,7 @@
         (plus:V4SI (zero_extend:V4SI (mult:V4HI (match_operand:V4HI 1 "register_operand" "r")
                                                 (match_operand:V4HI 2 "register_operand" "r")))
                    (match_operand:V4SI 3 "register_operand" "0")))]
-  ""
+  "0"
   "madduhwq %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
@@ -2617,7 +2616,7 @@
         (minus:V4SI (match_operand:V4SI 3 "register_operand" "0")
                     (sign_extend:V4SI (mult:V4HI (match_operand:V4HI 1 "register_operand" "r")
                                                  (match_operand:V4HI 2 "register_operand" "r")))))]
-  ""
+  "0"
   "msbfhwq %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
@@ -2627,7 +2626,7 @@
         (minus:V4SI (match_operand:V4SI 3 "register_operand" "0")
                     (zero_extend:V4SI (mult:V4HI (match_operand:V4HI 1 "register_operand" "r")
                                                  (match_operand:V4HI 2 "register_operand" "r")))))]
-  ""
+  "0"
   "msbfuhwq %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
@@ -2639,7 +2638,7 @@
   [(set (match_operand:V2SI 0 "register_operand" "=r")
         (rotate:V2SI (match_operand:V2SI 1 "register_operand" "r")
                      (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
+  "0"
   "rolwps %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
@@ -2648,7 +2647,7 @@
   [(set (match_operand:V2SI 0 "register_operand" "=r")
         (rotatert:V2SI (match_operand:V2SI 1 "register_operand" "r")
                        (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
+  "0"
   "rorwps %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
@@ -2657,7 +2656,7 @@
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (mult:V2DI (sign_extend:V2DI (match_operand:V2SI 1 "register_operand" "r"))
                    (sign_extend:V2DI (match_operand:V2SI 2 "register_operand" "r"))))]
-  ""
+  "0"
   "mulwdp %0 = %1, %2"
   [(set_attr "type" "mult_int")]
 )
@@ -2666,7 +2665,7 @@
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (mult:V2DI (zero_extend:V2DI (match_operand:V2SI 1 "register_operand" "r"))
                    (zero_extend:V2DI (match_operand:V2SI 2 "register_operand" "r"))))]
-  ""
+  "0"
   "muluwdp %0 = %1, %2"
   [(set_attr "type" "mult_int")]
 )
@@ -2678,7 +2677,7 @@
         (ashift:S128I (match_operand:S128I 1 "register_operand" "r")
                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
-  "sll<chunkxs> %x0 = %x1, %2\n\tsll<chunkxs> %y0 = %y1, %2"
+  "sll<chunkx> %x0 = %x1, %2\n\tsll<chunkx> %y0 = %y1, %2"
   [(set_attr "type" "alu_thin_x2")
    (set_attr "length" "8")]
 )
@@ -2750,7 +2749,7 @@
         (ashiftrt:S128I (match_operand:S128I 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
-  "sra<chunkxs> %x0 = %x1, %2\n\tsra<chunkxs> %y0 = %y1, %2"
+  "sra<chunkx> %x0 = %x1, %2\n\tsra<chunkx> %y0 = %y1, %2"
   [(set_attr "type" "alu_thin_x2")
    (set_attr "length" "8")]
 )
@@ -2760,7 +2759,7 @@
         (lshiftrt:S128I (match_operand:S128I 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
-  "srl<chunkxs> %x0 = %x1, %2\n\tsrl<chunkxs> %y0 = %y1, %2"
+  "srl<chunkx> %x0 = %x1, %2\n\tsrl<chunkx> %y0 = %y1, %2"
   [(set_attr "type" "alu_thin_x2")
    (set_attr "length" "8")]
 )
@@ -4209,8 +4208,8 @@
                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   "HAVE_LVX_ASHIFT_<MODE>"
   {
-    return "sll<chunkxs> %x0 = %x1, %2\n\tsll<chunkxs> %y0 = %y1, %2\n\t"
-           "sll<chunkxs> %z0 = %z1, %2\n\tsll<chunkxs> %t0 = %t1, %2";
+    return "sll<chunkx> %x0 = %x1, %2\n\tsll<chunkx> %y0 = %y1, %2\n\t"
+           "sll<chunkx> %z0 = %z1, %2\n\tsll<chunkx> %t0 = %t1, %2";
   }
   [(set_attr "type" "alu_tiny_x4")
    (set_attr "length" "16")]
@@ -4323,8 +4322,8 @@
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   "HAVE_LVX_ASHIFTRT_<MODE>"
   {
-    return "sra<chunkxs> %x0 = %x1, %2\n\tsra<chunkxs> %y0 = %y1, %2\n\t"
-           "sra<chunkxs> %z0 = %z1, %2\n\tsra<chunkxs> %t0 = %t1, %2";
+    return "sra<chunkx> %x0 = %x1, %2\n\tsra<chunkx> %y0 = %y1, %2\n\t"
+           "sra<chunkx> %z0 = %z1, %2\n\tsra<chunkx> %t0 = %t1, %2";
   }
   [(set_attr "type" "alu_tiny_x4")
    (set_attr "length" "16")]
@@ -4361,8 +4360,8 @@
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   "HAVE_LVX_LSHIFTRT_<MODE>"
   {
-    return "srl<chunkxs> %x0 = %x1, %2\n\tsrl<chunkxs> %y0 = %y1, %2\n\t"
-           "srl<chunkxs> %z0 = %z1, %2\n\tsrl<chunkxs> %t0 = %t1, %2";
+    return "srl<chunkx> %x0 = %x1, %2\n\tsrl<chunkx> %y0 = %y1, %2\n\t"
+           "srl<chunkx> %z0 = %z1, %2\n\tsrl<chunkx> %t0 = %t1, %2";
   }
   [(set_attr "type" "alu_tiny_x4")
    (set_attr "length" "16")]
@@ -6573,62 +6572,57 @@
 ;; S64F (V4HF V2SF)
 
 (define_insn "add<mode>3"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (plus:S64F (match_operand:S64F 1 "register_operand" "r")
-                   (match_operand:S64F 2 "register_operand" "r")))]
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (plus:S64F (match_operand:S64F 1 "register_operand" "R,Q")
+                   (match_operand:S64F 2 "register_operand" "R,Q")))]
   ""
   "fadd<suffix> %0 = %1, %2"
-  [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "mult_fp3") (const_string "mult_fp4")))]
+  [(set_attr "type" "mult_fp4")]
 )
 
 (define_insn "sub<mode>3"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (minus:S64F (match_operand:S64F 1 "register_operand" "r")
-                    (match_operand:S64F 2 "register_operand" "r")))]
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (minus:S64F (match_operand:S64F 1 "register_operand" "R,Q")
+                    (match_operand:S64F 2 "register_operand" "R,Q")))]
   ""
   "fsbf<suffix> %0 = %2, %1"
-  [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "mult_fp3") (const_string "mult_fp4")))]
+  [(set_attr "type" "mult_fp4")]
 )
 
 (define_insn "mul<mode>3"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (mult:S64F (match_operand:S64F 1 "register_operand" "r")
-                   (match_operand:S64F 2 "register_operand" "r")))]
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (mult:S64F (match_operand:S64F 1 "register_operand" "R,Q")
+                   (match_operand:S64F 2 "register_operand" "R,Q")))]
   ""
   "fmul<suffix> %0 = %1, %2"
-  [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "mult_fp3") (const_string "mult_fp4")))]
+  [(set_attr "type" "mult_fp4")]
 )
 
 (define_insn "fma<mode>4"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (fma:S64F (match_operand:S64F 1 "register_operand" "r")
-                  (match_operand:S64F 2 "register_operand" "r")
-                  (match_operand:S64F 3 "register_operand" "0")))]
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (fma:S64F (match_operand:S64F 1 "register_operand" "R,Q")
+                  (match_operand:S64F 2 "register_operand" "R,Q")
+                  (match_operand:S64F 3 "register_operand" "0,0")))]
   ""
   "ffma<suffix> %0 = %1, %2"
-  [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "madd_fp3") (const_string "madd_fp4")))]
+  [(set_attr "type" "madd_fp4")]
 )
 
 (define_insn "fnma<mode>4"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (fma:S64F (neg:S64F (match_operand:S64F 1 "register_operand" "r"))
-                  (match_operand:S64F 2 "register_operand" "r")
-                  (match_operand:S64F 3 "register_operand" "0")))]
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (fma:S64F (neg:S64F (match_operand:S64F 1 "register_operand" "R,Q"))
+                  (match_operand:S64F 2 "register_operand" "R,Q")
+                  (match_operand:S64F 3 "register_operand" "0,0")))]
   ""
   "ffms<suffix> %0 = %1, %2"
-  [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "madd_fp3") (const_string "madd_fp4")))]
+  [(set_attr "type" "madd_fp4")]
 )
 
 (define_insn "fmin<mode>3"
   [(set (match_operand:S64F 0 "register_operand" "=r")
         (smin:S64F (match_operand:S64F 1 "register_operand" "r")
                    (match_operand:S64F 2 "register_operand" "r")))]
-  "HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans)"
+  "0"
   "fmin<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
@@ -6637,32 +6631,32 @@
   [(set (match_operand:S64F 0 "register_operand" "=r")
         (smax:S64F (match_operand:S64F 1 "register_operand" "r")
                    (match_operand:S64F 2 "register_operand" "r")))]
-  "HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans)"
+  "0"
   "fmax<suffix> %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
 
 (define_insn "neg<mode>2"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (neg:S64F (match_operand:S64F 1 "register_operand" "r")))]
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (neg:S64F (match_operand:S64F 1 "register_operand" "R,Q")))]
   ""
   "fneg<suffix> %0 = %1"
-  [(set_attr "type" "alu_thin")]
+  [(set_attr "type" "alu_lite")]
 )
 
 (define_insn "abs<mode>2"
-  [(set (match_operand:S64F 0 "register_operand" "=r")
-        (abs:S64F (match_operand:S64F 1 "register_operand" "r")))]
+  [(set (match_operand:S64F 0 "register_operand" "=R,Q")
+        (abs:S64F (match_operand:S64F 1 "register_operand" "R,Q")))]
   ""
   "fabs<suffix> %0 = %1"
-  [(set_attr "type" "alu_thin")]
+  [(set_attr "type" "alu_lite")]
 )
 
 (define_expand "copysign<mode>3"
   [(match_operand:S64F 0 "register_operand")
    (match_operand:S64F 1 "register_operand")
    (match_operand:S64F 2 "register_operand")]
-  ""
+  "0"
   {
     rtx fabs1 = gen_reg_rtx (<MODE>mode);
     emit_insn (gen_abs<mode>2 (fabs1, operands[1]));
@@ -6680,7 +6674,7 @@
   [(match_operand:S64F 0 "register_operand")
    (match_operand:S64F 1 "register_operand")
    (match_operand:S64F 2 "register_operand")]
-  ""
+  "0"
   {
     rtx maskv4hf __attribute__((unused)) = GEN_INT (0x8000800080008000);
     rtx maskv2sf __attribute__((unused)) = GEN_INT (0x8000000080000000);
@@ -6697,15 +6691,15 @@
 (define_insn "truncv4sfv4hf2"
   [(set (match_operand:V4HF 0 "register_operand" "=r")
         (float_truncate:V4HF (match_operand:V4SF 1 "register_operand" "r")))]
-  ""
-  "fnarrowwhq %0 = %1"
+  "0"
+  "fnarrowwh %0 = %1"
   [(set_attr "type" "alu_lite")]
 )
 
 (define_insn "extendv4hfv4sf2"
   [(set (match_operand:V4SF 0 "register_operand" "=r")
         (float_extend:V4SF (match_operand:V4HF 1 "register_operand" "r")))]
-  ""
+  "0"
   "fwidenlhwp %x0 = %1\n\tfwidenmhwp %y0 = %1"
   [(set_attr "type" "alu_lite_x2")
    (set_attr "length"         "8")]
@@ -6715,9 +6709,9 @@
   [(set (match_operand:V4HF 0 "register_operand" "=r")
         (float:V4HF (match_operand:V4SI 1 "register_operand" "r")))
    (clobber (match_scratch:V4SF 2 "=&r"))]
-  ""
+  "0"
   "#"
-  ""
+  "0"
   [(set (match_dup 2)
         (float:V4SF (match_dup 1)))
    (set (match_dup 0)
@@ -6732,9 +6726,9 @@
   [(set (match_operand:V4HF 0 "register_operand" "=r")
         (unsigned_float:V4HF (match_operand:V4SI 1 "register_operand" "r")))
    (clobber (match_scratch:V4SF 2 "=&r"))]
-  ""
+  "0"
   "#"
-  ""
+  "0"
   [(set (match_dup 2)
         (unsigned_float:V4SF (match_dup 1)))
    (set (match_dup 0)
@@ -6749,9 +6743,9 @@
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (fix:V4SI (match_operand:V4HF 1 "register_operand" "r")))
    (clobber (match_scratch:V4SF 2 "=&r"))]
-  ""
+  "0"
   "#"
-  ""
+  "0"
   [(set (match_dup 2)
         (float_extend:V4SF (match_dup 1)))
    (set (match_dup 0)
@@ -6766,9 +6760,9 @@
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unsigned_fix:V4SI (match_operand:V4HF 1 "register_operand" "r")))
    (clobber (match_scratch:V4SF 2 "=&r"))]
-  ""
+  "0"
   "#"
-  ""
+  "0"
   [(set (match_dup 2)
         (float_extend:V4SF (match_dup 1)))
    (set (match_dup 0)
@@ -6787,7 +6781,7 @@
         (unspec:SF [(match_operand:V2SF 1 "register_operand" "r")
                     (match_operand:V2SF 2 "register_operand" "r")
                     (match_operand 3 "" "")] UNSPEC_FDOT2))]
-  "HAVE_LVX_FDOT_SF_V2SF_V2SF"
+  "0"
   "fdot2w%3 %0 = %1, %2"
   [(set_attr "type" "mult_fp4")]
 )
@@ -6797,7 +6791,7 @@
         (unspec:DF [(match_operand:V2SF 1 "register_operand" "r")
                     (match_operand:V2SF 2 "register_operand" "r")
                     (match_operand 3 "" "")] UNSPEC_FDOT2))]
-  "HAVE_LVX_FDOT_DF_V2SF_V2SF"
+  "0"
   "fdot2wd%3 %0 = %1, %2"
   [(set_attr "type" "mult_fp4")]
 )
@@ -6807,7 +6801,7 @@
         (unspec:V2DF [(match_operand:V4SF 1 "register_operand" "r")
                       (match_operand:V4SF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FDOT2))]
-  "HAVE_LVX_FDOT_V2DF_V4SF_V4SF"
+  "0"
   "fdot2wdp%3 %0 = %1, %2"
   [(set_attr "type" "mulwq_fp4")]
 )
@@ -6817,14 +6811,14 @@
         (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")
                       (match_operand:V4SF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FDOT2))]
-  "HAVE_LVX_FDOT_V4SF_V4SF_V4SF"
+  "0"
   "fdot2wzp%3 %0 = %1, %2"
   [(set_attr "type" "mulwq_fp4")]
 )
 
 (define_insn "floatv2siv2sf2"
-  [(set (match_operand:V2SF 0 "register_operand" "=r")
-        (float:V2SF (match_operand:V2SI 1 "register_operand" "r")))]
+  [(set (match_operand:V2SF 0 "register_operand" "=R,Q")
+        (float:V2SF (match_operand:V2SI 1 "register_operand" "R,Q")))]
   ""
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
@@ -6837,7 +6831,7 @@
 (define_insn "floatunsv2siv2sf2"
   [(set (match_operand:V2SF 0 "register_operand" "=r")
         (unsigned_float:V2SF (match_operand:V2SI 1 "register_operand" "r")))]
-  ""
+  "0"
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
       return "floatuwp.rn %0 = %1, 0";
@@ -6847,8 +6841,8 @@
 )
 
 (define_insn "fix_truncv2sfv2si2"
-  [(set (match_operand:V2SI 0 "register_operand" "=r")
-        (fix:V2SI (match_operand:V2SF 1 "register_operand" "r")))]
+  [(set (match_operand:V2SI 0 "register_operand" "=R,Q")
+        (fix:V2SI (match_operand:V2SF 1 "register_operand" "R,Q")))]
   ""
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
@@ -6861,7 +6855,7 @@
 (define_insn "fixuns_truncv2sfv2si2"
   [(set (match_operand:V2SI 0 "register_operand" "=r")
         (unsigned_fix:V2SI (match_operand:V2SF 1 "register_operand" "r")))]
-  ""
+  "0"
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
       return "fixeduwp.rz %0 = %1, 0";
@@ -6873,7 +6867,7 @@
 (define_insn "truncv2dfv2sf2"
   [(set (match_operand:V2SF 0 "register_operand" "=r")
         (float_truncate:V2SF (match_operand:V2DF 1 "register_operand" "r")))]
-  ""
+  "0"
   "fnarrowdwp %0 = %1"
   [(set_attr "type" "alu_full")]
 )
@@ -6881,7 +6875,7 @@
 (define_insn "extendv2sfv2df2"
   [(set (match_operand:V2DF 0 "register_operand" "=r")
         (float_extend:V2DF (match_operand:V2SF 1 "register_operand" "r")))]
-  ""
+  "0"
   "fwidenlwd %x0 = %1\n\tfwidenmwd %y0 = %1"
   [(set_attr "type" "alu_lite_x2")
    (set_attr "length"         "8")]
@@ -6891,9 +6885,9 @@
   [(set (match_operand:V2SF 0 "register_operand" "=r")
         (float:V2SF (match_operand:V2DI 1 "register_operand" "r")))
    (clobber (match_scratch:V2DF 2 "=&r"))]
-  ""
+  "0"
   "#"
-  ""
+  "0"
   [(set (match_dup 2)
         (float:V2DF (match_dup 1)))
    (set (match_dup 0)
@@ -6908,9 +6902,9 @@
   [(set (match_operand:V2SF 0 "register_operand" "=r")
         (unsigned_float:V2SF (match_operand:V2DI 1 "register_operand" "r")))
    (clobber (match_scratch:V2DF 2 "=&r"))]
-  ""
+  "0"
   "#"
-  ""
+  "0"
   [(set (match_dup 2)
         (unsigned_float:V2DF (match_dup 1)))
    (set (match_dup 0)
@@ -6925,9 +6919,9 @@
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (fix:V2DI (match_operand:V2SF 1 "register_operand" "r")))
    (clobber (match_scratch:V2DF 2 "=&r"))]
-  ""
+  "0"
   "#"
-  ""
+  "0"
   [(set (match_dup 2)
         (float_extend:V2DF (match_dup 1)))
    (set (match_dup 0)
@@ -6942,9 +6936,9 @@
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (unsigned_fix:V2DI (match_operand:V2SF 1 "register_operand" "r")))
    (clobber (match_scratch:V2DF 2 "=&r"))]
-  ""
+  "0"
   "#"
-  ""
+  "0"
   [(set (match_dup 2)
         (float_extend:V2DF (match_dup 1)))
    (set (match_dup 0)

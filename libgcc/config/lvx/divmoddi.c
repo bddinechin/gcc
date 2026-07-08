@@ -88,11 +88,7 @@ uint64_divmod (uint64_t a, uint64_t b)
 end:
   return (uint64x2_t){q, r};
 div0:
-#ifndef __linux__
-  if (&_LVX_NO_DIVMOD0_TRAP)
-    return (uint64x2_t){0, 0};
-#endif
-  __builtin_trap ();
+  return (uint64x2_t){0, 0};
 }
 #else
 static inline uint64x2_t
@@ -130,11 +126,7 @@ uint64_divmod (uint64_t a, uint64_t b)
   return (uint64x2_t){q, r};
 
 div0:
-#ifndef __linux__
-  if (&_LVX_NO_DIVMOD0_TRAP)
-    return 0 - (uint64x2_t){};
-#endif
-  __builtin_trap ();
+  return 0 - (uint64x2_t){};
 }
 #endif
 

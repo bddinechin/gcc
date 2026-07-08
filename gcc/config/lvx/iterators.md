@@ -1402,33 +1402,35 @@
 ])
 
 ;; Iterator for the small element 64-bit vector FP modes.
+;; LVX supports 128-bit+ SIMD only; 64-bit SIMD is disabled.
+;; V2SF and V2SI are kept exclusively for _Complex float/_Complex int support.
 (define_mode_iterator S64F [
-  V4HF V2SF
+  (V4HF "0") (V2SF "")
 ])
 
 ;; Iterator for the non-byte small element 64-bit vector integer modes.
 (define_mode_iterator S64I [
-  V4HI V2SI
+  (V4HI "0") (V2SI "")
 ])
 
 ;; Iterator S64L.
 (define_mode_iterator S64K [
-  (V8QI "1") V4HI V2SI
+  (V8QI "0") (V4HI "0") (V2SI "0")
 ])
 
 ;; Iterator for all the small element 64-bit vector integer modes.
 (define_mode_iterator S64L [
-  V8QI V4HI V2SI
+  (V8QI "0") (V4HI "0") (V2SI "0")
 ])
 
 ;; Iterator for the non-standard 64-bit vector integer modes.
 (define_mode_iterator S64M [
-  V8QI V4HI
+  (V8QI "0") (V4HI "0")
 ])
 
 ;; Iterator for the 64-bit vector complex integer modes.
 (define_mode_iterator V64CI [
-  (V8QI "1") V4HI
+  (V8QI "0") (V4HI "0")
 ])
 
 ;; Iterator for the small element 128-bit vector FP modes.
@@ -1615,7 +1617,7 @@
 
 ;; Iterator for the vector HF modes.
 (define_mode_iterator VXHF [
-  V4HF
+  (V4HF "0")
   V8HF
   V16HF
   V32HF
@@ -1623,7 +1625,7 @@
 
 ;; Iterator for the vector SF modes.
 (define_mode_iterator VXSF [
-  V2SF
+  (V2SF "0")
   V4SF
   V8SF
 ])
@@ -1636,7 +1638,7 @@
 
 ;; Iterator for the vector QI modes.
 (define_mode_iterator VXQI [
-  V8QI
+  (V8QI "0")
   V16QI
   V32QI
 ])
@@ -1651,7 +1653,7 @@
 
 ;; Iterator for the non-byte integer vector modes.
 (define_mode_iterator VWXI [
-  V4HI V2SI
+  (V4HI "0") (V2SI "0")
   V8HI V4SI
 ])
 

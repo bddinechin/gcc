@@ -3351,7 +3351,7 @@
         (plus:HF (match_operand:HF 1 "register_operand" "r")
                  (match_operand:HF 2 "register_operand" "r")))]
   ""
-  "faddhq %0 = %1, %2"
+  "faddh %0 = %1, %2"
   [(set_attr "type" "mult_fp3")]
 )
 
@@ -3360,7 +3360,7 @@
         (minus:HF (match_operand:HF 1 "register_operand" "r")
                   (match_operand:HF 2 "register_operand" "r")))]
   ""
-  "fsbfhq %0 = %2, %1"
+  "fsbfh %0 = %2, %1"
   [(set_attr "type" "mult_fp3")]
 )
 
@@ -3369,7 +3369,7 @@
         (mult:HF (match_operand:HF 1 "register_operand" "r")
                  (match_operand:HF 2 "register_operand" "r")))]
   ""
-  "fmulhq %0 = %1, %2"
+  "fmulh %0 = %1, %2"
   [(set_attr "type" "mult_fp3")]
 )
 
@@ -3384,20 +3384,17 @@
 
 (define_expand "divhf3"
   [(set (match_operand:HF 0 "register_operand" "")
-        (div:HF (match_operand:HF 1 "register_float1_operand" "")
+        (div:HF (match_operand:HF 1 "register_operand" "")
                 (match_operand:HF 2 "register_operand" "")))]
   ""
   {
-    rtx a = gen_reg_rtx(SFmode);
-    rtx b = gen_reg_rtx(SFmode);
-    rtx r = gen_reg_rtx(SFmode);
-    rtx d = gen_reg_rtx(SFmode);
-    operands[1] = force_reg (GET_MODE (operands[1]), operands[1]);
+    rtx a = gen_reg_rtx (SFmode);
+    rtx b = gen_reg_rtx (SFmode);
+    rtx d = gen_reg_rtx (SFmode);
     emit_insn (gen_extendhfsf2 (a, operands[1]));
     emit_insn (gen_extendhfsf2 (b, operands[2]));
     rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
-    emit_insn (gen_lvx_frecw (r, b, rm));
-    emit_insn (gen_mulsf3 (d, a, r));
+    emit_insn (gen_lvx_fdivw (d, a, b, rm));
     emit_insn (gen_truncsfhf2 (operands[0], d));
     DONE;
   }
@@ -3409,7 +3406,7 @@
                  (match_operand:HF 2 "register_operand" "r")
                  (match_operand:HF 3 "register_operand" "0")))]
   ""
-  "ffmahq %0 = %1, %2"
+  "ffmah %0 = %1, %2"
   [(set_attr "type" "madd_fp3")]
 )
 
@@ -3429,7 +3426,7 @@
                  (match_operand:HF 2 "register_operand" "r")
                  (match_operand:HF 3 "register_operand" "0")))]
   ""
-  "ffmshq %0 = %1, %2"
+  "ffmsh %0 = %1, %2"
   [(set_attr "type" "madd_fp3")]
 )
 
@@ -3458,7 +3455,7 @@
         (smin:HF (match_operand:HF 1 "register_operand" "r")
                  (match_operand:HF 2 "register_operand" "r")))]
   "HAVE_LVX_MIN_HF && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans)"
-  "fminhq %0 = %1, %2"
+  "fminh %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
 
@@ -3467,7 +3464,7 @@
         (smax:HF (match_operand:HF 1 "register_operand" "r")
                  (match_operand:HF 2 "register_operand" "r")))]
   "HAVE_LVX_MAX_HF && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans)"
-  "fmaxhq %0 = %1, %2"
+  "fmaxh %0 = %1, %2"
   [(set_attr "type" "alu_thin")]
 )
 
@@ -3475,7 +3472,7 @@
   [(set (match_operand:HF 0 "register_operand" "=r")
         (neg:HF (match_operand:HF 1 "register_operand" "r")))]
   ""
-  "fneghq %0 = %1"
+  "fnegh %0 = %1"
   [(set_attr "type" "alu_thin")]
 )
 
@@ -3483,7 +3480,7 @@
   [(set (match_operand:HF 0 "register_operand" "=r")
         (abs:HF (match_operand:HF 1 "register_operand" "r")))]
   ""
-  "fabshq %0 = %1"
+  "fabsh %0 = %1"
   [(set_attr "type" "alu_thin")]
 )
 
@@ -3587,7 +3584,7 @@
   [(set (match_operand:SF 0 "register_operand" "=r")
         (float_extend:SF (match_operand:HF 1 "register_operand" "r")))]
   ""
-  "fwidenlhw %0 = %1"
+  "fwidenhw %0 = %1"
   [(set_attr "type" "alu_lite")]
 )
 
@@ -3644,45 +3641,12 @@
 
 (define_expand "divsf3"
   [(set (match_operand:SF 0 "register_operand" "")
-        (div:SF (match_operand:SF 1 "register_float1_operand" "")
+        (div:SF (match_operand:SF 1 "register_operand" "")
                 (match_operand:SF 2 "register_operand" "")))]
   ""
   {
     rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
-    rtx rn = gen_rtx_CONST_STRING (VOIDmode, ".rn");
-    rtx a = operands[1], b = operands[2];
-    if (a == CONST1_RTX (SFmode))
-      {
-        emit_insn (gen_lvx_frecw (operands[0], b, rm));
-      }
-    else if (flag_reciprocal_math)
-      {
-        rtx t = gen_reg_rtx(SFmode);
-        emit_insn (gen_lvx_frecw (t, b, rm));
-        emit_insn (gen_lvx_fmulw (operands[0], a, t, rm));
-      }
-    else if (flag_unsafe_math_optimizations)
-      {
-        rtx re = gen_reg_rtx (SFmode);
-        emit_insn (gen_lvx_frecw (re, b, rn));
-        rtx y0 = gen_reg_rtx (SFmode);
-        emit_insn (gen_lvx_fmulw (y0, a, re, rn));
-        rtx e0 = gen_reg_rtx (SFmode);
-        emit_insn (gen_lvx_ffmsw (e0, b, y0, a, rn));
-        rtx y1 = gen_reg_rtx (SFmode);
-        emit_insn (gen_lvx_ffmaw (y1, e0, re, y0, rn));
-        rtx e1 = gen_reg_rtx (SFmode);
-        emit_insn (gen_lvx_ffmsw (e1, b, y1, a, rn));
-        rtx y2 = operands[0];
-        emit_insn (gen_lvx_ffmaw (y2, e1, re, y1, rm));
-      }
-    else
-      {
-        emit_library_call_value
-          (gen_rtx_SYMBOL_REF (Pmode, "__divsf3"),
-          operands[0], LCT_CONST, SFmode,
-          operands[1], SFmode, operands[2], SFmode);
-      }
+    emit_insn (gen_lvx_fdivw (operands[0], operands[1], operands[2], rm));
     DONE;
   }
 )
@@ -3945,7 +3909,7 @@
   [(set (match_operand:DF 0 "register_operand" "=r")
         (float_extend:DF (match_operand:SF 1 "register_operand" "r")))]
   ""
-  "fwidenlwd %0 = %1"
+  "fwidenwd %0 = %1"
   [(set_attr "type" "alu_lite")]
 )
 
@@ -4071,10 +4035,8 @@
                 (match_operand:DF 2 "register_operand" "")))]
   ""
   {
-    emit_library_call_value
-      (gen_rtx_SYMBOL_REF (Pmode, "__divdf3"),
-      operands[0], LCT_CONST, DFmode,
-      operands[1], DFmode, operands[2], DFmode);
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
+    emit_insn (gen_lvx_fdivd (operands[0], operands[1], operands[2], rm));
     DONE;
   }
 )
