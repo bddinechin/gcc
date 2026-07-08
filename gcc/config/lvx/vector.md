@@ -24,7 +24,7 @@
       case 7: case 8: case 9:
         return "sh%X0 %0 = %1";
       case 10: case 11: case 12:
-        return "make %0 = %1";
+        return "maked %0 = %1";
       default:
         gcc_unreachable ();
       }
@@ -59,7 +59,7 @@
       case 7: case 8: case 9:
         return "sw%X0 %0 = %1";
       case 10: case 11: case 12:
-        return "make %0 = %1";
+        return "maked %0 = %1";
       default:
         gcc_unreachable ();
       }
@@ -94,7 +94,7 @@
       case 7: case 8: case 9:
         return "sd%X0 %0 = %1";
       case 10: case 11: case 12:
-        return "make %0 = %1";
+        return "maked %0 = %1";
       default:
         gcc_unreachable ();
       }

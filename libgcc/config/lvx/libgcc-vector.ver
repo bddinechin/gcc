@@ -21,7 +21,6 @@
 %inherit GCC_12.0.0 GCC_7.0.0
 GCC_12.0.0 {
   __divv2df3
-  __divv2sf3
   __divv4df3
   __divv4sf3
   __divv8sf3
@@ -36,11 +35,6 @@ GCC_12.0.0 {
   __udivmodv4di4
   __divv4di3
   __modv4di3
-  __udivv2si3
-  __umodv2si3
-  __udivmodv2si4
-  __divv2si3
-  __modv2si3
   __udivv4si3
   __umodv4si3
   __udivmodv4si4

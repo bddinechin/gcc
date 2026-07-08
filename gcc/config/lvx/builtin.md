@@ -605,25 +605,6 @@
   [(set_attr "type" "madd_int")]
 )
 
-(define_insn "lvx_mm212w"
-  [(set (match_operand:V4SI 0 "register_operand" "=r")
-        (unspec:V4SI [(match_operand:V2SI 1 "register_operand" "r")
-                      (match_operand:V2SI 2 "register_operand" "r")] UNSPEC_MM))]
-  ""
-  "mm212w %0 = %1, %2"
-  [(set_attr "type" "mult_int")]
-)
-
-(define_insn "lvx_mma212w"
-  [(set (match_operand:V4SI 0 "register_operand" "=r")
-        (unspec:V4SI [(match_operand:V2SI 1 "register_operand" "r")
-                      (match_operand:V2SI 2 "register_operand" "r")
-		      (match_operand:V4SI 3 "register_operand" "0")] UNSPEC_MMA))]
-  ""
-  "mma212w %0 = %1, %2"
-  [(set_attr "type" "madd_int")]
-)
-
 (define_insn "lvx_mms212w"
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unspec:V4SI [(match_operand:V2SI 1 "register_operand" "r")
