@@ -3,37 +3,29 @@
 
 #define DIV_BY_ZERO_MAY_TRAP(any, b) /* never traps: _LVX_NO_DIVMOD0_TRAP is always set */
 
-#if defined(__lvxarch_lvx_1)
 typedef __INT8_TYPE__ int8_t;
 typedef __UINT8_TYPE__ uint8_t;
-typedef int8_t int8x8_t __attribute ((vector_size (8 * sizeof (int8_t))));
 typedef int8_t int8x16_t __attribute ((vector_size (16 * sizeof (int8_t))));
 typedef int8_t int8x32_t __attribute ((vector_size (32 * sizeof (int8_t))));
 typedef int8_t int8x64_t __attribute ((vector_size (64 * sizeof (int8_t))));
-typedef uint8_t uint8x8_t __attribute ((vector_size (8 * sizeof (uint8_t))));
 typedef uint8_t uint8x16_t __attribute ((vector_size (16 * sizeof (uint8_t))));
 typedef uint8_t uint8x32_t __attribute ((vector_size (32 * sizeof (uint8_t))));
 typedef uint8_t uint8x64_t __attribute ((vector_size (64 * sizeof (uint8_t))));
-#endif//__lvx_1__
 
 typedef __INT16_TYPE__ int16_t;
 typedef __UINT16_TYPE__ uint16_t;
-typedef int16_t int16x4_t __attribute ((vector_size (4 * sizeof (int16_t))));
 typedef int16_t int16x8_t __attribute ((vector_size (8 * sizeof (int16_t))));
 typedef int16_t int16x16_t __attribute ((vector_size (16 * sizeof (int16_t))));
 typedef int16_t int16x32_t __attribute ((vector_size (32 * sizeof (int16_t))));
-typedef uint16_t uint16x4_t __attribute ((vector_size (4 * sizeof (uint16_t))));
 typedef uint16_t uint16x8_t __attribute ((vector_size (8 * sizeof (uint16_t))));
 typedef uint16_t uint16x16_t __attribute ((vector_size (16 * sizeof (uint16_t))));
 typedef uint16_t uint16x32_t __attribute ((vector_size (32 * sizeof (uint16_t))));
 
 typedef __INT32_TYPE__ int32_t;
 typedef __UINT32_TYPE__ uint32_t;
-typedef int32_t int32x2_t __attribute ((vector_size (2 * sizeof (int32_t))));
 typedef int32_t int32x4_t __attribute ((vector_size (4 * sizeof (int32_t))));
 typedef int32_t int32x8_t __attribute ((vector_size (8 * sizeof (int32_t))));
 typedef int32_t int32x16_t __attribute ((vector_size (16 * sizeof (int32_t))));
-typedef uint32_t uint32x2_t __attribute ((vector_size (2 * sizeof (uint32_t))));
 typedef uint32_t uint32x4_t __attribute ((vector_size (4 * sizeof (uint32_t))));
 typedef uint32_t uint32x8_t __attribute ((vector_size (8 * sizeof (uint32_t))));
 typedef uint32_t uint32x16_t __attribute ((vector_size (16 * sizeof (uint32_t))));
@@ -48,7 +40,6 @@ typedef uint64_t uint64x4_t __attribute ((vector_size (4 * sizeof (uint64_t))));
 typedef uint64_t uint64x8_t __attribute ((vector_size (8 * sizeof (uint64_t))));
 
 typedef float float32_t;
-typedef float32_t float32x2_t __attribute ((vector_size (2 * sizeof (float32_t))));
 typedef float32_t float32x4_t __attribute ((vector_size (4 * sizeof (float32_t))));
 typedef float32_t float32x8_t __attribute ((vector_size (8 * sizeof (float32_t))));
 
@@ -84,12 +75,6 @@ uint64x4_t __udivmodv4di4 (uint64x4_t a, uint64x4_t b, uint64x4_t *c);
 int64x4_t __divv4di3 (int64x4_t a, int64x4_t b);
 int64x4_t __modv4di3 (int64x4_t a, int64x4_t b);
 
-uint32x2_t __udivv2si3 (uint32x2_t a, uint32x2_t b);
-uint32x2_t __umodv2si3 (uint32x2_t a, uint32x2_t b);
-uint32x2_t __udivmodv2si4 (uint32x2_t a, uint32x2_t b, uint32x2_t *c);
-int32x2_t __divv2si3 (int32x2_t a, int32x2_t b);
-int32x2_t __modv2si3 (int32x2_t a, int32x2_t b);
-
 uint32x4_t __udivv4si3 (uint32x4_t a, uint32x4_t b);
 uint32x4_t __umodv4si3 (uint32x4_t a, uint32x4_t b);
 uint32x4_t __udivmodv4si4 (uint32x4_t a, uint32x4_t b, uint32x4_t *c);
@@ -103,13 +88,6 @@ uint32x8_t __udivmodv8si4 (uint32x8_t a, uint32x8_t b, uint32x8_t *c);
 int32x8_t __divv8si3 (int32x8_t a, int32x8_t b);
 int32x8_t __modv8si3 (int32x8_t a, int32x8_t b);
 int32x8_t __divmodv8si4 (int32x8_t a, int32x8_t b, int32x8_t *c);
-
-uint16x4_t __udivv4hi3 (uint16x4_t a, uint16x4_t b);
-uint16x4_t __umodv4hi3 (uint16x4_t a, uint16x4_t b);
-uint16x4_t __udivmodv4hi4 (uint16x4_t a, uint16x4_t b, uint16x4_t *c);
-int16x4_t __divv4hi3 (int16x4_t a, int16x4_t b);
-int16x4_t __modv4hi3 (int16x4_t a, int16x4_t b);
-int16x4_t __divmodv4hi4 (int16x4_t a, int16x4_t b, int16x4_t *c);
 
 uint16x8_t __udivv8hi3 (uint16x8_t a, uint16x8_t b);
 uint16x8_t __umodv8hi3 (uint16x8_t a, uint16x8_t b);
@@ -125,13 +103,6 @@ int16x16_t __divv16hi3 (int16x16_t a, int16x16_t b);
 int16x16_t __modv16hi3 (int16x16_t a, int16x16_t b);
 int16x16_t __divmodv16hi4 (int16x16_t a, int16x16_t b, int16x16_t * c);
 
-#if defined(__lvxarch_lvx_1)
-uint8x8_t __udivv8qi3 (uint8x8_t a, uint8x8_t b);
-uint8x8_t __umodv8qi3 (uint8x8_t a, uint8x8_t b);
-uint8x8_t __udivmodv8qi4 (uint8x8_t a, uint8x8_t b, uint8x8_t *c);
-int8x8_t __divv8qi3 (int8x8_t a, int8x8_t b);
-int8x8_t __modv8qi3 (int8x8_t a, int8x8_t b);
-
 uint8x16_t __udivv16qi3 (uint8x16_t a, uint8x16_t b);
 uint8x16_t __umodv16qi3 (uint8x16_t a, uint8x16_t b);
 uint8x16_t __udivmodv16qi4 (uint8x16_t a, uint8x16_t b, uint8x16_t *c);
@@ -143,7 +114,6 @@ uint8x32_t __umodv32qi3 (uint8x32_t a, uint8x32_t b);
 uint8x32_t __udivmodv32qi4 (uint8x32_t a, uint8x32_t b, uint8x32_t *c);
 int8x32_t __divv32qi3 (int8x32_t a, int8x32_t b);
 int8x32_t __modv32qi3 (int8x32_t a, int8x32_t b);
-#endif//__lvx_1__
 
 //#define TEST_V2SI
 //#define TEST_V4SI

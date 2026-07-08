@@ -258,7 +258,7 @@
     case 0:
       return "copy<ALLIF:copyx> %0 = %1";
     case 1: case 2: case 3: case 16:
-      return "make %0 = %1";
+      return "maked %0 = %1";
     case 4: case 5: case 6:
       return "s<ALLIF:lsusize>%X0 %0 = %1";
     case 7: case 8: case 9: case 10: case 11: case 12:

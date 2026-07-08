@@ -54,69 +54,6 @@
 #if defined(__lvxarch_lvx_1)
 ////////////////////////////////////////////////////////////////////////////////
 
-static inline uint8x16_t
-uint8x8_divmod (uint8x8_t a, uint8x8_t b)
-{
-  uint16x8_t src = __builtin_lvx_widenbho (b, ".z") << (8 - 1);
-  uint16x8_t wb = __builtin_lvx_widenbho (b, ".z");
-  DIV_BY_ZERO_MAY_TRAP (__builtin_lvx_anybo, b);
-  uint16x8_t acc = __builtin_lvx_widenbho (a, ".z");
-  // As `src == b << (8 -1)` adding src yields `src == b << 8`.
-  src += src & (wb > acc);
-#pragma GCC unroll 8
-  for (int i = 0; i < 8; i++)
-    {
-      acc = __builtin_lvx_stsuho (src, acc);
-    }
-  uint8x8_t q = __builtin_lvx_narrowhbo (acc, "");
-  uint8x8_t r = __builtin_lvx_narrowhbo (acc >> 8, "");
-  return __builtin_lvx_cat128 (q, r);
-}
-
-uint8x8_t
-__udivv8qi3 (uint8x8_t a, uint8x8_t b)
-{
-  uint8x16_t divmod = uint8x8_divmod (a, b);
-  return __builtin_lvx_low64 (divmod);
-}
-
-uint8x8_t
-__umodv8qi3 (uint8x8_t a, uint8x8_t b)
-{
-  uint8x16_t divmod = uint8x8_divmod (a, b);
-  return __builtin_lvx_high64 (divmod);
-}
-
-uint8x8_t
-__udivmodv8qi4 (uint8x8_t a, uint8x8_t b, uint8x8_t *c)
-{
-  uint8x16_t divmod = uint8x8_divmod (a, b);
-  *c = __builtin_lvx_high64 (divmod);
-  return __builtin_lvx_low64 (divmod);
-}
-
-int8x8_t
-__divv8qi3 (int8x8_t a, int8x8_t b)
-{
-  uint8x8_t absa = __builtin_lvx_absbo (a, "");
-  uint8x8_t absb = __builtin_lvx_absbo (b, "");
-  uint8x16_t divmod = uint8x8_divmod (absa, absb);
-  int8x8_t result = __builtin_lvx_low64 (divmod);
-  return __builtin_lvx_selectbo (-result, result, a ^ b, ".ltz");
-}
-
-int8x8_t
-__modv8qi3 (int8x8_t a, int8x8_t b)
-{
-  uint8x8_t absa = __builtin_lvx_absbo (a, "");
-  uint8x8_t absb = __builtin_lvx_absbo (b, "");
-  uint8x16_t divmod = uint8x8_divmod (absa, absb);
-  int8x8_t result = __builtin_lvx_high64 (divmod);
-  return __builtin_lvx_selectbo (-result, result, a, ".ltz");
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 static inline uint8x32_t
 uint8x16_divmod (uint8x16_t a, uint8x16_t b)
 {

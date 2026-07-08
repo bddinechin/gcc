@@ -3171,7 +3171,7 @@
   ""
   "#"
   "reload_completed"
-  ;; "make %x0 = 0\n\tslld %y0 = %x1, (%2 & 63)"
+  ;; "maked %x0 = 0\n\tslld %y0 = %x1, (%2 & 63)"
   [(set (subreg:DI (match_dup 0) 0)
         (const_int 0))
    (set (subreg:DI (match_dup 0) 8)
