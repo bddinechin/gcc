@@ -47,8 +47,21 @@
   ""
   {
     lvx_emit_pre_barrier (operands[2]);
-    set_mem_addr_space (operands[1], LVX_ADDR_SPACE_BYPASS);
-    emit_move_insn (operands[0], operands[1]);
+    /* An atomic load bypasses the cache, but say so on a copy rather than on
+       the caller's rtx.  set_mem_addr_space repoints the MEM it is given at
+       fresh attributes, so mutating operands[1] in place changes every insn
+       already emitted that still holds that same MEM.
+
+       lvx_expand_compare_and_swap is exactly such a caller: it emits the
+       acswap and only afterwards calls this expander on the same MEM, to
+       reload the value on a failed weak compare.  The acswap pattern matches
+       the memory once as an operand and once as a match_dup -- the dup is a
+       copy -- so mutating the original retroactively left the two differing
+       only in address space, the match_dup stopped matching, and every
+       __atomic_compare_exchange_n ICEd with "unrecognizable insn".  */
+    rtx mem = copy_rtx (operands[1]);
+    set_mem_addr_space (mem, LVX_ADDR_SPACE_BYPASS);
+    emit_move_insn (operands[0], mem);
     lvx_emit_post_barrier (operands[2]);
     DONE;
   }
