@@ -1883,7 +1883,6 @@ lvx_expand_builtin_xswapd256 (rtx target, tree args)
     target = gen_reg_rtx (tmode);
   else
     target = force_reg (tmode, target);
-  emit_insn (gen_lvx_xswapd256 (target, arg1, arg2, arg3));
   return target;
 }
 

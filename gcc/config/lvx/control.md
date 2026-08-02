@@ -381,35 +381,6 @@
    (set_attr "length"        "16")]
 )
 
-;; not selectionable
-;; (define_insn "*compdq_s3"
-;;   [(set (match_operand:V4DI 0 "register_operand" "=r")
-;;         (neg:V4DI (match_operator:V4DI 1 "comparison_operator"
-;;                    [(match_operand:V4DI 2 "register_operand" "r")
-;;                     (vec_duplicate:V4DI (match_operand:DI 3 "nonmemory_operand" "r"))])))]
-;;   ""
-;;   {
-;;     return "compd.%1 %x0 = %x2, %3\n\tcompd.%1 %y0 = %y2, %3\n\t"
-;;            "compd.%1 %z0 = %z2, %3\n\tcompd.%1 %t0 = %t2, %3";
-;;   }
-;;   [(set_attr "type" "alu_tiny_x4")
-;;    (set_attr "length"        "16")]
-;; )
-
-
-;; *COMPN*
-
-(define_insn "*compn<suffix>"
-  [(set (match_operand:<MASK> 0 "register_operand" "=r,r")
-        (match_operator:<MASK> 1 "comparison_operator"
-         [(match_operand:S64K 2 "register_operand" "r,r")
-          (match_operand:S64K 3 "reg_zero_mone_operand" "r,S01")]))]
-  ""
-  "compn<chunkx>.%1 %0 = %2, %3"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length"      "4,         8")]
-)
-
 (define_insn "*compn<suffix>"
   [(set (match_operand:<MASK> 0 "register_operand" "=r,r")
         (match_operator:<MASK> 1 "comparison_operator"
@@ -666,63 +637,6 @@
   ""
 )
 
-;; not selectionable
-;; (define_insn_and_split "*compn<suffix>_s3"
-;;   [(set (match_operand:<MASK> 0 "register_operand" "=&r")
-;;         (match_operator:<MASK> 1 "comparison_operator"
-;;          [(match_operand:V512L 2 "register_operand" "r")
-;;           (vec_duplicate:V512L (match_operand:<CHUNK> 3 "register_operand" "r"))]))]
-;;   ""
-;;   "#"
-;;   "reload_completed"
-;;   [(set (subreg:<QMASK> (match_dup 0) 0)
-;;         (match_op_dup:<QMASK> 1
-;;          [(subreg:<QUART> (match_dup 2) 0)
-;;           (vec_duplicate:<QUART> (match_dup 3))]))
-;;    (set (subreg:<QMASK> (match_dup 0) 16)
-;;         (match_op_dup:<QMASK> 1
-;;          [(subreg:<QUART> (match_dup 2) 16)
-;;           (vec_duplicate:<QUART> (match_dup 3))]))
-;;    (set (subreg:<QMASK> (match_dup 0) 32)
-;;         (match_op_dup:<QMASK> 1
-;;          [(subreg:<QUART> (match_dup 2) 32)
-;;           (vec_duplicate:<QUART> (match_dup 3))]))
-;;    (set (subreg:<QMASK> (match_dup 0) 48)
-;;         (match_op_dup:<QMASK> 1
-;;          [(subreg:<QUART> (match_dup 2) 48)
-;;           (vec_duplicate:<QUART> (match_dup 3))]))]
-;;   ""
-;; )
-
-
-;; COMPN with ANY and NONE.
-
-(define_insn "*compn<suffix>_any"
-  [(set (match_operand:<MASK> 0 "register_operand" "=r")
-        (ne:<MASK>
-          (and:S64K
-            (match_operand:S64K 1 "register_operand" "r")
-            (match_operand:S64K 2 "register_operand" "r"))
-          (match_operand:S64K 3 "const_zero_operand" "")))]
-  ""
-  "compn<chunkx>.any %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
-   (set_attr "length"      "4")]
-)
-
-(define_insn "*compn<suffix>_none"
-  [(set (match_operand:<MASK> 0 "register_operand" "=r")
-        (eq:<MASK>
-          (and:S64K
-            (match_operand:S64K 1 "register_operand" "r")
-            (match_operand:S64K 2 "register_operand" "r"))
-          (match_operand:S64K 3 "const_zero_operand" "")))]
-  ""
-  "compn<chunkx>.none %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
-   (set_attr "length"      "4")]
-)
-
 (define_insn "*compn<suffix>_any"
   [(set (match_operand:<MASK> 0 "register_operand" "=r")
         (ne:<MASK>
@@ -868,19 +782,6 @@
   }
   [(set_attr "type" "alu_tiny_x4")
    (set_attr "length"        "16")]
-)
-
-
-;; *FCOMPN*
-
-(define_insn "*fcompn<suffix>"
-  [(set (match_operand:<MASK> 0 "register_operand" "=r")
-        (match_operator:<MASK> 1 "float_comparison_operator"
-         [(match_operand:S64F 2 "register_operand" "r")
-          (match_operand:S64F 3 "register_operand" "r")]))]
-  ""
-  "fcompn<suffix>.%F1 %0 = %2, %3"
-  [(set_attr "type" "alu_thin")]
 )
 
 (define_insn "*fcompn<suffix>"
@@ -1611,48 +1512,6 @@
     lvx_expand_conditional_move (target, select1, select2, operands[1]);
     DONE;
   }
-)
-
-
-;; *SELECT*
-
-(define_insn "*select<suffix>"
-  [(set (match_operand:S64B 0 "register_operand" "=r")
-        (if_then_else:S64B (match_operator 2 "zero_comparison_operator"
-                                           [(match_operand:<MASK> 3 "register_operand" "r")
-                                            (match_operand:<MASK> 5 "const_zero_operand" "")])
-                           (match_operand:S64B 1 "register_operand" "r")
-                           (match_operand:S64B 4 "register_operand" "0")))]
-  ""
-  "cmove<suffix>.%2z %3? %0 = %1"
-  [(set_attr "type" "alu_thin")]
-)
-
-(define_insn "*select<suffix>_nez"
-  [(set (match_operand:S64B 0 "register_operand" "=r")
-        (if_then_else:S64B (ne (match_operator:<MASK> 2 "zero_comparison_operator"
-                                               [(match_operand:<MASK> 3 "register_operand" "r")
-                                                (match_operand:<MASK> 5 "const_zero_operand" "")])
-                               (match_operand:<MASK> 6 "const_zero_operand" ""))
-                           (match_operand:S64B 1 "register_operand" "r")
-                           (match_operand:S64B 4 "register_operand" "0")))]
-  ""
-  "cmove<suffix>.%2z %3? %0 = %1"
-  [(set_attr "type" "alu_thin")]
-)
-
-(define_insn "*select<suffix>_nez_eqz"
-  [(set (match_operand:S64B 0 "register_operand" "=r")
-        (if_then_else:S64B (ne (eq:<MASK> (match_operator:<MASK> 2 "zero_comparison_operator"
-                                                          [(match_operand:<MASK> 3 "register_operand" "r")
-                                                           (match_operand:<MASK> 5 "const_zero_operand" "")])
-                                          (match_operand:<MASK> 6 "const_zero_operand" ""))
-                               (match_operand:<MASK> 7 "const_zero_operand" ""))
-                           (match_operand:S64B 1 "register_operand" "r")
-                           (match_operand:S64B 4 "register_operand" "0")))]
-  ""
-  "cmove<suffix>.%R2z %3? %0 = %1"
-  [(set_attr "type" "alu_thin")]
 )
 
 (define_insn "*select<suffix>"

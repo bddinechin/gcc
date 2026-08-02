@@ -23,12 +23,17 @@ along with GCC; see the file COPYING3.  If not see
 
 enum lvx_arch_type
 {
-  LVX_ARCH_LVX_1
+  LVX_ARCH_LVX_1,
+  LVX_ARCH_LVX_2
 };
 
+/* lvx-2 is a strict extension of lvx-1: every lvx-1 instruction exists on
+   lvx-2 (checked against opcodes/lvx-opc.c -- 0 mnemonics are lvx_v1-only,
+   293 are lvx_v2-only).  So LVX is "any LVX", LVX_1 means "exactly lvx-1"
+   and LVX_2 gates everything the SIMD surface needs.  */
 #define LVX (1)
 #define LVX_1 (lvx_arch_name == LVX_ARCH_LVX_1)
-#define LVX_2 (0)
+#define LVX_2 (lvx_arch_name == LVX_ARCH_LVX_2)
 
 #define HAVE_LVX_FP_CONV_WITH_SHIFT (0)
 #define HAVE_LVX_SILENT_FP_OPS (0)

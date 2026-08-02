@@ -1,8 +1,14 @@
-(define_register_constraint "R" "(EGR_REGS)"
-     "Even-numbered general registers (required by LITE paired-word instructions).")
-
-(define_register_constraint "Q" "(OGR_REGS)"
-     "Odd-numbered general registers (alternative to R for LITE paired-word instructions).")
+;; There are no "R" (EGR_REGS) and "Q" (OGR_REGS) constraints.  They existed
+;; to satisfy the even/odd parity requirement of the LITE paired-word
+;; instructions, whose W and Z operands had to come from RegClass worddRegE
+;; or worddRegO.  The LVX ISA refactoring removed every Format that relied on
+;; those classes: include/opcode/lvx.h now has singleReg, pairedReg and
+;; quadReg for the general registers, with no parity variant at all (the only
+;; surviving RegE/RegO pair, xwordqRegE/xwordqRegO, is on the XVR extended
+;; vector file, not the GPRs).  So the affected operands take plain "r".
+;;
+;; EGR_REGS itself was a hand edit on top of BE/GCC-generated lvx-registers.h
+;; -- the generated file never had it -- and goes away with this.
 
 (define_register_constraint "SAB" "(SAB_REGS)"
      "A system register forcing SET and WFX* alone in bundle.")

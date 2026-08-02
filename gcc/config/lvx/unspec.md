@@ -243,6 +243,13 @@
         UNSPEC_XFMMA424D_0
         UNSPEC_XFMMA424D_1
 
+        ;; WIDEN* -- LVX's SIMD lane extension.  Each takes a 128-bit source
+        ;; and the mostsig modifier selecting its least ("") or most (".m")
+        ;; significant half, widening those lanes into a 128-bit result.
+        UNSPEC_WIDENS
+        UNSPEC_WIDENZ
+        UNSPEC_WIDENQ
+
         UNSPEC_COMPND ;; todo: get rid of this unspec
         UNSPECV_NOP
    ]

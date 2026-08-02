@@ -82,7 +82,7 @@
   [(set (match_operand:V256 0 "register_operand" "=r")
         (unspec:V256 [(match_operand:X256 1 "register_operand" "x")]
                      UNSPEC_XMOVEF))]
-   "HAVE_LVX_MOV_FROM_CORE_V4DI_TO_EXT_V1OI"
+   "LVX_2 && (HAVE_LVX_MOV_FROM_CORE_V4DI_TO_EXT_V1OI)"
    "xmovefo %0 = %1"
    [(set_attr "type" "movef_ext")]
 )
@@ -92,7 +92,7 @@
         (unspec:V2DI [(match_operand:X256 1 "register_operand" "x")
                       (match_operand 2 "" "")]
                      UNSPEC_XMOVEF))]
-   "HAVE_LVX_MOV_FROM_CORE_V2DI_TO_EXT_V1OI"
+   "LVX_2 && (HAVE_LVX_MOV_FROM_CORE_V2DI_TO_EXT_V1OI)"
    "xmovefq %0 = %1%2"
    [(set_attr "type" "movef_ext")]
 )
@@ -102,7 +102,7 @@
         (unspec:DI [(match_operand:X256 1 "register_operand" "x")
                     (match_operand 2 "" "")]
                    UNSPEC_XMOVEF))]
-   "HAVE_LVX_MOV_FROM_CORE_V1DI_TO_EXT_V1OI"
+   "LVX_2 && (HAVE_LVX_MOV_FROM_CORE_V1DI_TO_EXT_V1OI)"
    "xmovefd %0 = %1%2"
    [(set_attr "type" "movef_ext")]
 )
@@ -111,7 +111,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (unspec:X256 [(match_operand:V256 1 "register_operand" "r")]
                      UNSPEC_XMOVET))]
-  "HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V2DI"
+  "LVX_2 && (HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V2DI)"
   "#"
   "reload_completed"
   [(const_int 0)]
@@ -147,7 +147,7 @@
                       (match_operand:DI 2 "register_operand" "r")
                       (match_operand 3 "" "")]
                      UNSPEC_XMOVET))]
-  "HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V1DI"
+  "LVX_2 && (HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V1DI)"
   "xmovetd %0%3 = %2"
   [(set_attr "type" "alu_tiny_recv")
    (set_attr "length" "4")]
@@ -174,7 +174,7 @@
 (define_insn "*mov<mode>"
   [(set (match_operand:X256 0 "nonimmediate_operand" "=x,x,x,x,a,b,m,r,x,r")
         (match_operand:X256 1 "nonimmediate_operand"  "x,a,b,m,x,x,x,x,r,r"))]
-  "!HAVE_LVX_EXT_CACHED_LOAD"
+  "LVX_2 && (!HAVE_LVX_EXT_CACHED_LOAD)"
   {
     switch (which_alternative)
       {
@@ -201,7 +201,7 @@
 (define_insn "*mov<mode>"
   [(set (match_operand:X256 0 "nonimmediate_operand" "=x, x, x, x, x, x, x,a,b,m,r,x,r")
         (match_operand:X256 1 "nonimmediate_operand"  "x,Ca,Cb,Cm,Za,Zb,Zm,x,x,x,x,r,r"))]
-  "HAVE_LVX_EXT_CACHED_LOAD"
+  "LVX_2 && (HAVE_LVX_EXT_CACHED_LOAD)"
   {
     switch (which_alternative)
       {
@@ -228,7 +228,7 @@
 (define_insn "*xmovef<mode>"
   [(set (match_operand:ALL256X 0 "register_operand" "=r")
         (match_operand:ALL256X 1 "register_operand" "x"))]
-  ""
+  "LVX_2"
   "xmovefo %0 = %1"
   [(set_attr "type" "movef_ext")
    (set_attr "length" "4")]
@@ -278,7 +278,7 @@
 (define_expand "mov<mode>"
   [(set (match_operand:XMOVM 0 "nonimmediate_operand" "")
         (match_operand:XMOVM 1 "general_operand" ""))]
-  ""
+  "LVX_2"
   {
     if (MEM_P(operands[0]))
       operands[1] = force_reg (<MODE>mode, operands[1]);
@@ -941,7 +941,7 @@
   [(set (match_operand:<CHUNK> 0 "register_operand" "=x")
         (unspec:<CHUNK> [(match_operand:XBUFF 1 "register_operand" "x")
                          (match_operand:DI 2 "register_operand" "r")] UNSPEC_XALIGN256))]
-  "HAVE_LVX_EXT_BUFFER_MOV_EXT_<CHUNK>_<XBUFF:MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_BUFFER_MOV_EXT_<CHUNK>_<XBUFF:MODE>)"
   "xaligno %0 = %b1, %2"
   [(set_attr "type" "copy_ext")]
 )
@@ -950,7 +950,7 @@
   [(set (match_operand:V256 0 "register_operand" "=r")
         (unspec:V256 [(match_operand:XBUFF 1 "register_operand" "x")
                       (match_operand:DI 2 "register_operand" "r")] UNSPEC_XACCESS256))]
-  "HAVE_LVX_EXT_BUFFER_MOV_CORE_<V256:MODE>_<XBUFF:MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_BUFFER_MOV_CORE_<V256:MODE>_<XBUFF:MODE>)"
   "xaccesso %0 = %b1, %2"
   [(set_attr "type" "movef_ext")]
 )
@@ -962,7 +962,7 @@
         (unspec:X256 [(match_operand:X256 1 "register_operand" "x")
                       (match_operand:DI 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_XFSCALEWO))]
-  "HAVE_LVX_EXT_SCALE_V1OI"
+  "LVX_2 && (HAVE_LVX_EXT_SCALE_V1OI)"
   "xfscalewo%3 %0 = %1, %2"
   [(set_attr "type" "copy_ext")]
 )
@@ -1518,7 +1518,7 @@
 (define_insn "lvx_xmt44d"
   [(set (match_operand:X1024 0 "register_operand" "=x")
         (unspec:X1024 [(match_operand:X1024 1 "register_operand" "x")] UNSPEC_XMT44D))]
-  "HAVE_LVX_EXT_MATRIX_TRANSPOSE_M4x4_DI_M4x4_DI"
+  "LVX_2 && (HAVE_LVX_EXT_MATRIX_TRANSPOSE_M4x4_DI_M4x4_DI)"
   "xmt44d %0 = %1"
   [(set_attr "type" "ext_int")]
 )
@@ -1648,26 +1648,12 @@
   }
 )
 
-(define_expand "lvx_xswapd256"
-  [(match_operand:DI 0 "register_operand" "")
-   (match_operand:X256 1 "memory_operand" "")
-   (match_operand:DI 2 "register_operand" "")
-   (match_operand 3 "" "")]
-  ""
-  {
-    rtx swapped = force_reg (<X256:MODE>mode, operands[1]);
-    emit_insn (gen_lvx_xswapd256di_ (operands[0], swapped, operands[2], operands[3]));
-    emit_move_insn (operands[1], swapped);
-    DONE;
-  }
-)
-
 (define_insn "lvx_xswapo256<ALL256:mode>_"
   [(set (match_operand:ALL256 0 "register_operand" "=r")
         (unspec:ALL256 [(match_operand:X256 1 "register_operand" "+x")] UNSPEC_XSWAP256))
    (set (match_dup 1)
         (unspec:X256 [(match_operand:ALL256 2 "register_operand" "0")] UNSPEC_XSWAP256))]
-  ""
+  "LVX_2"
   "xmovefo %0 = %1\n\txmovetq %1.lo = %x2, %y2\n\txmovetq %1.hi = %z2, %t2"
   [(set_attr "type" "all")
    (set_attr "length" "12")]
@@ -1679,20 +1665,8 @@
    (set (match_dup 1)
         (unspec:X256 [(match_operand:ALL128 2 "register_operand" "0")
                       (match_operand 3 "" "")] UNSPEC_XSWAP256))]
-  "HAVE_LVX_MOV_FROM_CORE_V2DI_TO_EXT_V1OI"
+  "LVX_2 && (HAVE_LVX_MOV_FROM_CORE_V2DI_TO_EXT_V1OI)"
   "xmovefq %0 = %1%3\n\txmovetq %1%3 = %x2, %y2"
-  [(set_attr "type" "all")
-   (set_attr "length" "8")]
-)
-
-(define_insn "lvx_xswapd256<ALL64:mode>_"
-  [(set (match_operand:ALL64 0 "register_operand" "=r")
-        (unspec:ALL64 [(match_operand:X256 1 "register_operand" "+x")] UNSPEC_XSWAP256))
-   (set (match_dup 1)
-        (unspec:X256 [(match_operand:ALL64 2 "register_operand" "0")
-                      (match_operand 3 "" "")] UNSPEC_XSWAP256))]
-  "HAVE_LVX_MOV_FROM_CORE_V1DI_TO_EXT_V1OI"
-  "xmovefd %0 = %1%3\n\txmovetd %1%3 = %0"
   [(set_attr "type" "all")
    (set_attr "length" "8")]
 )
@@ -1717,7 +1691,7 @@
                       (match_operand:X512 2 "register_operand" "x")
                       (match_operand:X512 3 "register_operand" "0")
                       (match_operand 4 "" "")] UNSPEC_XFMMA444W_1))]
-  "HAVE_LVX_EXT_MATRIX444_FMA_V2OI"
+  "LVX_2 && (HAVE_LVX_EXT_MATRIX444_FMA_V2OI)"
   "xfmma444w.1%4 %0 = %1, %2"
   [(set_attr "type" "ext_float")]
 )

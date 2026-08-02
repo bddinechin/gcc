@@ -45,6 +45,13 @@
 	  builtin_define ("__lvx_1__");                                        \
 	  builtin_define ("__LVX_64__");                                       \
 	}                                                                      \
+      if (lvx_arch_name == LVX_ARCH_LVX_2)                                     \
+	{                                                                      \
+	  builtin_assert ("machine=lvx-2");                                    \
+	  builtin_define ("__lvxarch_lvx_2");                                  \
+	  builtin_define ("__lvx_2__");                                        \
+	  builtin_define ("__LVX_64__");                                       \
+	}                                                                      \
       if (TARGET_STRICT_ALIGN)                                                 \
 	builtin_define ("__STRICT_ALIGN__");                                   \
       if (TARGET_STACK_CHECK_USE_TLS)                                          \
