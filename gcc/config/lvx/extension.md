@@ -149,7 +149,7 @@
                      UNSPEC_XMOVET))]
   "LVX_2 && (HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V1DI)"
   "xmovetd %0%3 = %2"
-  [(set_attr "type" "alu_tiny_recv")
+  [(set_attr "type" "alu_lite_recv")
    (set_attr "length" "4")]
 )
 

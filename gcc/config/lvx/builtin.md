@@ -867,7 +867,7 @@
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_ZXE))]
   ""
   "andq %0 = %1, 0x00FF00FF.@"
-  [(set_attr "type" "alu_tiny_x2_x")
+  [(set_attr "type" "alu_lite_x2_x")
    (set_attr "length"          "16")]
 )
 
@@ -900,7 +900,7 @@
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_ZXE))]
   ""
   "andq %0 = %1, 0x0000FFFF.@"
-  [(set_attr "type" "alu_tiny_x2_x")
+  [(set_attr "type" "alu_lite_x2_x")
    (set_attr "length"          "16")]
 )
 
@@ -1131,7 +1131,7 @@
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_QXO))]
   ""
   "andq %0 = %1, 0xFF00FF00.@"
-  [(set_attr "type" "alu_tiny_x2_x")
+  [(set_attr "type" "alu_lite_x2_x")
    (set_attr "length"          "16")]
 )
 
@@ -1164,7 +1164,7 @@
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_QXO))]
   ""
   "andq %0 = %1, 0xFFFF0000.@"
-  [(set_attr "type" "alu_tiny_x2_x")
+  [(set_attr "type" "alu_lite_x2_x")
    (set_attr "length"          "16")]
 )
 
@@ -1408,7 +1408,7 @@
                     (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmoved%4 %3? %0 = %1"
-  [(set_attr "type" "alu_thin")
+  [(set_attr "type" "alu_lite")
    (set_attr "length"      "4")]
 )
 
@@ -1420,7 +1420,7 @@
                     (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmoved%4 %3? %0 = %1"
-  [(set_attr "type" "alu_thin")
+  [(set_attr "type" "alu_lite")
    (set_attr "length"      "4")]
 )
 
@@ -1432,7 +1432,7 @@
                       (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmoved%4 %3? %x0 = %x1\n\tcmoved%4 %3? %y0 = %y1"
-  [(set_attr "type" "alu_thin_x2")
+  [(set_attr "type" "alu_lite_x2")
    (set_attr "length"         "8")]
 )
 
@@ -1654,7 +1654,7 @@
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmove<chunkx>%4 %x3? %x0 = %x1\n\tcmove<chunkx>%4 %y3? %y0 = %y1"
-  [(set_attr "type" "alu_thin_x2")
+  [(set_attr "type" "alu_lite_x2")
    (set_attr "length"         "8")]
 )
 
@@ -1781,7 +1781,7 @@
                     (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmoved%4 %3? %0 = %1"
-  [(set_attr "type" "alu_thin")
+  [(set_attr "type" "alu_lite")
    (set_attr "length"      "4")]
 )
 
@@ -1793,7 +1793,7 @@
                     (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmoved%4 %3? %0 = %1"
-  [(set_attr "type" "alu_thin")
+  [(set_attr "type" "alu_lite")
    (set_attr "length"      "4")]
 )
 
@@ -1805,7 +1805,7 @@
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmove<chunkx>%4 %x3? %x0 = %x1\n\tcmove<chunkx>%4 %y3? %y0 = %y1"
-  [(set_attr "type" "alu_thin_x2")
+  [(set_attr "type" "alu_lite_x2")
    (set_attr "length"         "8")]
 )
 
@@ -1941,7 +1941,7 @@
                     (match_operand:DI 2 "register_operand" "r")] UNSPEC_STSU))]
   "HAVE_LVX_STSU_DI"
   "stsud %0 = %1, %2"
-  [(set_attr "type" "alu_thin")
+  [(set_attr "type" "alu_tiny")
    (set_attr "length" "4")]
 )
 
@@ -1977,7 +1977,7 @@
         (unspec:V2DI [(subreg:V2DI (match_dup 1) 16)
                       (subreg:V2DI (match_dup 2) 16)] UNSPEC_STSU))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "lvx_stsudq_2"
@@ -2018,7 +2018,7 @@
                     (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")] UNSPEC_SBMM8D))]
   "HAVE_LVX_SBMM8_DI"
   "sbmm8d %0 = %1, %2"
-  [(set_attr "type" "alu_thin,alu_thin,alu_thin_x,alu_thin_y")
+  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
 
@@ -2038,7 +2038,7 @@
                         (match_operand:SIMD128 2 "register_operand" "r")] UNSPEC_SBMM8D))]
   "HAVE_LVX_SBMM8_<ALL128:MODE>"
   "sbmm8d %x0 = %1, %x2\n\tsbmm8d %y0 = %1, %y2"
-  [(set_attr "type" "alu_thin_x2")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"         "8")]
 )
 
@@ -2048,7 +2048,7 @@
                         (vec_duplicate:V2DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMM8D))]
   "HAVE_LVX_SBMM8_<ALL128:MODE>"
   "sbmm8d %x0 = %x1, %2\n\tsbmm8d %y0 = %y1, %2"
-  [(set_attr "type" "alu_thin_x2")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"         "8")]
 )
 
@@ -2059,7 +2059,7 @@
                         (match_operand:DI 3 "register_operand" "r")] UNSPEC_SBMM8DXY))]
   "HAVE_LVX_SBMM8_<ALL128:MODE>"
   "sbmm8d %x0 = %x1, %2\n\tsbmm8d %y0 = %y1, %3"
-  [(set_attr "type" "alu_thin_x2")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"         "8")]
 )
 
@@ -2208,7 +2208,7 @@
                     (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")] UNSPEC_SBMMT8D))]
   "HAVE_LVX_TSBMM8_DI"
   "sbmmt8 %0 = %1, %2"
-  [(set_attr "type" "alu_thin,alu_thin,alu_thin_x,alu_thin_y")
+  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
 
@@ -2218,7 +2218,7 @@
                       (match_operand:V2DI 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
   "HAVE_LVX_TSBMM8_V2DI"
   "sbmmt8 %x0 = %x1, %x2\n\tsbmmt8 %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"         "8")]
 )
 
@@ -2228,7 +2228,7 @@
                         (match_operand:SIMD128 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
   "HAVE_LVX_TSBMM8_<ALL128:MODE>"
   "sbmmt8 %x0 = %1, %x2\n\tsbmmt8 %y0 = %1, %y2"
-  [(set_attr "type" "alu_thin_x2")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"         "8")]
 )
 
@@ -2238,7 +2238,7 @@
                         (vec_duplicate:V2DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMMT8D))]
   "HAVE_LVX_TSBMM8_<ALL128:MODE>"
   "sbmmt8 %x0 = %x1, %2\n\tsbmmt8 %y0 = %y1, %2"
-  [(set_attr "type" "alu_thin_x2")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"         "8")]
 )
 
@@ -4447,7 +4447,7 @@
                     (match_operand 2 "" "")] UNSPEC_FNARROW))]
   ""
   "fnarrowdw%2 %0 = %1"
-  [(set_attr "type" "alu_full")]
+  [(set_attr "type" "alu_lite")]
 )
 
 (define_insn "lvx_fconjwcp"
@@ -4464,7 +4464,7 @@
         (unspec:V2DF [(match_operand:V2DF 1 "register_operand" "r")] UNSPEC_FCONJ))]
   ""
   "copyd %x0 = %x1\n\tfnegd %y0 = %y1"
-  [(set_attr "type" "alu_thin_x2")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"         "8")]
 )
 
@@ -4479,7 +4479,7 @@
    (set (subreg:V4SF (match_dup 0) 16)
         (unspec:V4SF [(subreg:V4SF (match_dup 1) 16)] UNSPEC_FCONJ))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "lvx_fconjdcp"
@@ -4502,7 +4502,7 @@
    (set (subreg:V4DF (match_dup 0) 32)
         (unspec:V4DF [(subreg:V4DF (match_dup 1) 32)] UNSPEC_FCONJ))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 

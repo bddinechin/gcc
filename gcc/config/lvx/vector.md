@@ -407,7 +407,7 @@
                         (match_operand:DI 2 "register_operand" "r")] UNSPEC_ANDD))]
   ""
   "andq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -429,7 +429,7 @@
                         (match_operand:ALL128 2 "register_operand" "r")] UNSPEC_ANDD))]
   ""
   "andq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -460,7 +460,7 @@
                         (match_operand:ALL128 2 "register_operand" "r")] UNSPEC_XORD))]
   ""
   "eorq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -527,7 +527,7 @@
                        (match_operand:V8HI 2 "register_operand" "r")] UNSPEC_OROE))]
   ""
   "iorq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -649,7 +649,7 @@
         (UNARITH:V16QI (match_operand:V16QI 1 "register_operand" "r")))]
   "LVX_2 && (HAVE_LVX_<unarith>_V16QI)"
   "<stem>bx %0 = %1"
-  [(set_attr "type" "alu_tiny_x2_x")
+  [(set_attr "type" "alu_lite_x2_x")
    (set_attr "length"          "16")]
 )
 (define_insn "*<prefix>v32qi2_2"
@@ -2179,7 +2179,7 @@
         (neg:V128J (match_operand:V128J 1 "register_operand" "r")))]
   "LVX_2"
   "neg<suffix> %0 = %1"
-  [(set_attr "type" "alu_tiny_x2_x")
+  [(set_attr "type" "alu_lite_x2_x")
    (set_attr "length"          "16")]
 )
 
@@ -2188,7 +2188,7 @@
         (ss_neg:V128J (match_operand:V128J 1 "register_operand" "r")))]
   "LVX_2"
   "sbfs<suffix> %0 = %1, 0"
-  [(set_attr "type" "alu_thin_x2_x")
+  [(set_attr "type" "alu_lite_x2_x")
    (set_attr "length"          "16")]
 )
 
@@ -2197,7 +2197,7 @@
         (abs:V128J (match_operand:V128J 1 "register_operand" "r")))]
   "LVX_2"
   "abs<suffix> %0 = %1"
-  [(set_attr "type" "alu_thin_x2_x")
+  [(set_attr "type" "alu_lite_x2_x")
    (set_attr "length"          "16")]
 )
 
@@ -2226,7 +2226,7 @@
         (ss_abs:V128J (match_operand:V128J 1 "register_operand" "r")))]
   "LVX_2 && (HAVE_LVX_SS_ABS_<MODE>)"
   "abss<suffix> %0 = %1"
-  [(set_attr "type" "alu_tiny_x2_x")
+  [(set_attr "type" "alu_lite_x2_x")
    (set_attr "length"          "16")]
 )
 
@@ -2275,7 +2275,7 @@
                    (match_operand:V128L 2 "register_operand" "r")))]
   ""
   "andq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -2285,7 +2285,7 @@
                    (not:V128L (match_operand:V128L 2 "register_operand" "r"))))]
   ""
   "nandq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -2295,7 +2295,7 @@
                    (match_operand:V128L 2 "register_operand" "r")))]
   ""
   "andnq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -2305,7 +2305,7 @@
                    (match_operand:V128L 2 "register_operand" "r")))]
   ""
   "iorq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -2315,7 +2315,7 @@
                    (not:V128L (match_operand:V128L 2 "register_operand" "r"))))]
   ""
   "niorq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -2325,7 +2325,7 @@
                    (match_operand:V128L 2 "register_operand" "r")))]
   ""
   "iornq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -2335,7 +2335,7 @@
                    (match_operand:V128L 2 "register_operand" "r")))]
   ""
   "eorq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -2345,7 +2345,7 @@
                               (match_operand:V128L 2 "register_operand" "r"))))]
   ""
   "neorq %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -2354,7 +2354,7 @@
         (not:V128L (match_operand:V128L 1 "register_operand" "r")))]
   ""
   "notq %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu_lite")
    (set_attr "length" "4")]
 )
 
@@ -3233,7 +3233,7 @@
         (ss_plus:<HALF> (vec_duplicate:<HALF> (match_dup 1))
                         (subreg:<HALF> (match_dup 2) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "*ssadd<mode>3_s1"
@@ -3262,7 +3262,7 @@
         (ss_plus:<HALF> (subreg:<HALF> (match_dup 1) 16)
                         (vec_duplicate:<HALF> (match_dup 2))))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "*ssadd<mode>3_s2"
@@ -3406,7 +3406,7 @@
                                     (const_int 1))
                      (subreg:<HALF> (match_dup 2) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "*addx2<suffix>"
@@ -3439,7 +3439,7 @@
                                     (const_int 2))
                      (subreg:<HALF> (match_dup 2) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "*addx4<suffix>"
@@ -3472,7 +3472,7 @@
                                     (const_int 3))
                      (subreg:<HALF> (match_dup 2) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "*addx8<suffix>"
@@ -3505,7 +3505,7 @@
                                     (const_int 4))
                      (subreg:<HALF> (match_dup 2) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "*addx16<suffix>"
@@ -3608,7 +3608,7 @@
         (ss_minus:<HALF> (vec_duplicate:<HALF> (match_dup 1))
                          (subreg:<HALF> (match_dup 2) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "*sssub<mode>3_s1"
@@ -3637,7 +3637,7 @@
         (ss_minus:<HALF> (subreg:<HALF> (match_dup 1) 16)
                          (vec_duplicate:<HALF> (match_dup 2))))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "*sssub<mode>3_s2"
@@ -3776,7 +3776,7 @@
                       (ashift:<HALF> (subreg:<HALF> (match_dup 2) 16)
                                      (const_int 1))))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "*sbfx2<suffix>"
@@ -3809,7 +3809,7 @@
                       (ashift:<HALF> (subreg:<HALF> (match_dup 2) 16)
                                      (const_int 2))))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "*sbfx4<suffix>"
@@ -3842,7 +3842,7 @@
                       (ashift:<HALF> (subreg:<HALF> (match_dup 2) 16)
                                      (const_int 3))))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "*sbfx8<suffix>"
@@ -5827,7 +5827,7 @@
         (smin:<HALF> (subreg:<HALF> (match_dup 1) 16)
                      (subreg:<HALF> (match_dup 2) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn_and_split "*fmin<mode>3_s1"
@@ -5844,7 +5844,7 @@
         (smin:<HALF> (vec_duplicate:<HALF> (match_dup 1))
                      (subreg:<HALF> (match_dup 2) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn_and_split "*fmin<mode>3_s2"
@@ -5861,7 +5861,7 @@
         (smin:<HALF> (subreg:<HALF> (match_dup 1) 16)
                      (vec_duplicate:<HALF> (match_dup 2))))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn_and_split "fmax<mode>3"
@@ -5878,7 +5878,7 @@
         (smax:<HALF> (subreg:<HALF> (match_dup 1) 16)
                      (subreg:<HALF> (match_dup 2) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn_and_split "*fmax<mode>3_s1"
@@ -5895,7 +5895,7 @@
         (smax:<HALF> (vec_duplicate:<HALF> (match_dup 1))
                      (subreg:<HALF> (match_dup 2) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn_and_split "*fmax<mode>3_s2"
@@ -5912,7 +5912,7 @@
         (smax:<HALF> (subreg:<HALF> (match_dup 1) 16)
                      (vec_duplicate:<HALF> (match_dup 2))))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn_and_split "neg<mode>2"
@@ -5926,7 +5926,7 @@
    (set (subreg:<HALF> (match_dup 0) 16)
         (neg:<HALF> (subreg:<HALF> (match_dup 1) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn_and_split "abs<mode>2"
@@ -5940,7 +5940,7 @@
    (set (subreg:<HALF> (match_dup 0) 16)
         (abs:<HALF> (subreg:<HALF> (match_dup 1) 16)))]
   ""
-  [(set_attr "type" "alu_thin_x2")]
+  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_expand "copysign<mode>3"

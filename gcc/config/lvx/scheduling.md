@@ -24,7 +24,6 @@
    lvx_lite0_u,
    lvx_lite1_u,
    lvx_full_u,
-   lvx_mau_u,
    lvx_lsu0_u,
    lvx_lsu1_u,
    lvx_ext0_u,
@@ -189,13 +188,20 @@
 (define_reservation "lvx_v1_lsu_memw_x_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_issue_x2_u")
 (define_reservation "lvx_v1_lsu_memw_y_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_issue_x3_u")
 (define_reservation "lvx_v1_alu_auxr_r" "lvx_tiny_u + lvx_auxr_u + lvx_issue_u")
-(define_reservation "lvx_v1_alu_auxw_r" "lvx_tiny_u + lvx_auxw_u + lvx_issue_u")
 (define_reservation "lvx_v1_ext_r" "(lvx_ext0_u | lvx_ext1_u) + lvx_issue_u")
-(define_reservation "lvx_v1_ext_mau_r" "(lvx_ext0_u | lvx_ext1_u) + lvx_mau_u + lvx_issue_u")
+(define_reservation "lvx_v1_ext_auxw_r" "(lvx_ext0_u | lvx_ext1_u) + lvx_auxw_u + lvx_issue_u")
 (define_reservation "lvx_v1_nop_r" "lvx_tiny_u + lvx_issue_u")
 
 
-;; LVX_1 instruction reservations
+;; Instruction reservations.
+;;
+;; Do not gate these on LVX_1/LVX_2.  mulwq_int and mulwq_fp4 used to carry a
+;; (match_test "LVX_1") guard, which was backwards: mulwq does not exist on
+;; lvx-1 at all and is ALU_LITE on lvx-2, so the guard removed the reservation
+;; on precisely the core that has the instruction.  With no reservation the
+;; automaton does not model the insn, the bundler packs it freely, and the
+;; assembler rejects the result ("too many ALU FULL or LITE instructions in
+;; bundle") -- which is what -march=lvx-2 -O2 did to tests/lvx/diff/c/array.c.
 (define_insn_reservation "lvx_v1_nop" 1 (eq_attr "type" "nop") "lvx_v1_nop_r")
 (define_insn_reservation "lvx_v1_all" 1 (eq_attr "type" "all") "lvx_v1_all_r")
 (define_insn_reservation "lvx_v1_alu_full" 1 (eq_attr "type" "alu_full") "lvx_v1_alu_full_r")
@@ -203,6 +209,11 @@
 (define_insn_reservation "lvx_v1_alu_full_y" 1 (eq_attr "type" "alu_full_y") "lvx_v1_alu_full_y_r")
 (define_insn_reservation "lvx_v1_alu_full_sfu" 15 (eq_attr "type" "alu_full_sfu") "lvx_v1_alu_full_r")
 (define_insn_reservation "lvx_v1_alu_lite" 1 (eq_attr "type" "alu_lite") "lvx_v1_alu_lite_r")
+(define_insn_reservation "lvx_v1_alu_lite_w" 1 (eq_attr "type" "alu_lite_w") "lvx_v1_alu_lite_x_r")
+;; LITE counterparts of alu_tiny_recv / alu_full_sfu, for mnemonics the MDS
+;; schedules as ALU_LITE (xmovetd, fsrsrw).
+(define_insn_reservation "lvx_v1_alu_lite_recv" 1 (eq_attr "type" "alu_lite_recv") "lvx_v1_alu_lite_r")
+(define_insn_reservation "lvx_v1_alu_lite_sfu" 15 (eq_attr "type" "alu_lite_sfu") "lvx_v1_alu_lite_r")
 (define_insn_reservation "lvx_v1_alu_lite_x" 1 (eq_attr "type" "alu_lite_x") "lvx_v1_alu_lite_x_r")
 (define_insn_reservation "lvx_v1_alu_lite_y" 1 (eq_attr "type" "alu_lite_y") "lvx_v1_alu_lite_y_r")
 (define_insn_reservation "lvx_v1_alu_lite_x2" 1 (eq_attr "type" "alu_lite_x2") "lvx_v1_alu_lite_x2_r")
@@ -221,16 +232,6 @@
 (define_insn_reservation "lvx_v1_alu_tiny_x4" 1 (eq_attr "type" "alu_tiny_x4") "lvx_v1_alu_tiny_x4_r")
 (define_insn_reservation "lvx_v1_alu_tiny_x4_x" 1 (eq_attr "type" "alu_tiny_x4_x") "lvx_v1_alu_tiny_x4_x_r")
 (define_insn_reservation "lvx_v1_alu_tiny_w" 1 (eq_attr "type" "alu_tiny_w") "lvx_v1_alu_tiny_x_r")
-(define_insn_reservation "lvx_v1_alu_thin" 1 (eq_attr "type" "alu_thin") "lvx_v1_alu_lite_r")
-;; "lvx_v1_alu_thin_v2"
-(define_insn_reservation "lvx_v1_alu_thin_x" 1 (eq_attr "type" "alu_thin_x") "lvx_v1_alu_lite_x_r")
-;; "lvx_v1_alu_thin_x_v2"
-(define_insn_reservation "lvx_v1_alu_thin_y" 1 (eq_attr "type" "alu_thin_y") "lvx_v1_alu_lite_y_r")
-;; "lvx_v1_alu_thin_y_v2"
-(define_insn_reservation "lvx_v1_alu_thin_x2" 1 (eq_attr "type" "alu_thin_x2") "lvx_v1_alu_lite_x2_r")
-;; "lvx_v1_alu_thin_x2_v2"
-(define_insn_reservation "lvx_v1_alu_thin_x2_x" 1 (eq_attr "type" "alu_thin_x2_x") "lvx_v1_alu_lite_x2_x_r")
-;; "lvx_v1_alu_thin_x2_x_v2"
 (define_insn_reservation "lvx_v1_movet_ext_v2" 2 (eq_attr "type" "movet_ext") "lvx_v1_alu_auxr_r")
 (define_insn_reservation "lvx_v1_movet_ext_lo_v2" 2 (eq_attr "type" "movet_ext_lo") "lvx_v1_alu_auxr_r")
 (define_insn_reservation "lvx_v1_movet_ext_hi_v2" 2 (eq_attr "type" "movet_ext_hi") "lvx_v1_alu_auxr_r")
@@ -286,6 +287,7 @@
 (define_insn_reservation "lvx_v1_copy_core" 3 (eq_attr "type" "copy_core") "lvx_v1_lsu_auxr_auxw_r")
 (define_insn_reservation "lvx_v1_mult_int" 2 (eq_attr "type" "mult_int") "lvx_v1_alu_lite_r")
 (define_insn_reservation "lvx_v1_mult_int_x" 2 (eq_attr "type" "mult_int_x") "lvx_v1_alu_lite_x_r")
+(define_insn_reservation "lvx_v1_mult_int_y" 2 (eq_attr "type" "mult_int_y") "lvx_v1_alu_lite_y_r")
 ;; "lvx_v1_mult_int_y"
 (define_insn_reservation "lvx_v1_mult_fp3" 3 (eq_attr "type" "mult_fp3") "lvx_v1_alu_lite_r")
 (define_insn_reservation "lvx_v1_mult_fp4" 4 (eq_attr "type" "mult_fp4") "lvx_v1_alu_lite_r")
@@ -297,8 +299,8 @@
 (define_insn_reservation "lvx_v1_madd_fp3" 3 (eq_attr "type" "madd_fp3") "lvx_v1_alu_lite_r")
 (define_insn_reservation "lvx_v1_madd_fp4" 4 (eq_attr "type" "madd_fp4") "lvx_v1_alu_lite_r")
 (define_insn_reservation "lvx_v1_dmda_fp4" 4 (eq_attr "type" "dmda_fp4") "lvx_v1_alu_full_r")
-(define_insn_reservation "lvx_v1_mulwq_int" 2 (and (match_test "LVX_1") (eq_attr "type" "mulwq_int")) "lvx_v1_alu_lite_r")
-(define_insn_reservation "lvx_v1_mulwq_fp4" 4 (and (match_test "LVX_1") (eq_attr "type" "mulwq_fp4")) "lvx_v1_alu_lite_r")
+(define_insn_reservation "lvx_v1_mulwq_int" 2 (eq_attr "type" "mulwq_int") "lvx_v1_alu_lite_r")
+(define_insn_reservation "lvx_v1_mulwq_fp4" 4 (eq_attr "type" "mulwq_fp4") "lvx_v1_alu_lite_r")
 
 (define_insn_reservation "lvx_v1_bcu" 1 (and (eq_attr "type" "bcu") (match_test "TARGET_DUAL_BCU")) "lvx_v1_bcu_r")
 (define_insn_reservation "lvx_v1_bcu_xfer" 1 (and (eq_attr "type" "bcu_xfer") (match_test "TARGET_DUAL_BCU")) "lvx_v1_bcu_xfer_r")
@@ -307,11 +309,11 @@
 (define_insn_reservation "lvx_v1_bcu_" 1 (and (eq_attr "type" "bcu") (match_test "!TARGET_DUAL_BCU")) "lvx_v1_bcu_r + lvx_bcu_x2_u")
 (define_insn_reservation "lvx_v1_bcu_xfer_" 1 (and (eq_attr "type" "bcu_xfer") (match_test "!TARGET_DUAL_BCU")) "lvx_v1_bcu_xfer_r + lvx_bcu_x2_u")
 
-(define_insn_reservation "lvx_v1_movef_ext" 3 (eq_attr "type" "movef_ext") "lvx_v1_alu_auxw_r")
+(define_insn_reservation "lvx_v1_movef_ext" 3 (eq_attr "type" "movef_ext") "lvx_v1_ext_auxw_r")
 (define_insn_reservation "lvx_v1_copy_ext" 1 (eq_attr "type" "copy_ext") "lvx_v1_ext_r")
-(define_insn_reservation "lvx_v1_ext" 1 (eq_attr "type" "ext") "lvx_v1_ext_mau_r")
-(define_insn_reservation "lvx_v1_ext_int" 3 (eq_attr "type" "ext_int") "lvx_v1_ext_mau_r")
-(define_insn_reservation "lvx_v1_ext_float" 4 (eq_attr "type" "ext_float") "lvx_v1_ext_mau_r")
+(define_insn_reservation "lvx_v1_ext" 1 (eq_attr "type" "ext") "lvx_v1_ext_r")
+(define_insn_reservation "lvx_v1_ext_int" 3 (eq_attr "type" "ext_int") "lvx_v1_ext_r")
+(define_insn_reservation "lvx_v1_ext_float" 4 (eq_attr "type" "ext_float") "lvx_v1_ext_r")
 
 ;; Bypasses
 ;; The stores read their input one cycle later than other execution units.

@@ -143,13 +143,11 @@ struct lvx_sched_resources
   const char *message;
   unsigned insn_count;
   unsigned tiny_count;
-  unsigned thin_count;
   unsigned lite_count;
   unsigned full_count;
   unsigned auxr_count;
   unsigned xfer_count;
   unsigned lsu_count;
-  unsigned mau_count;
   unsigned bcu_count;
   unsigned ext_count;
 };
@@ -6522,13 +6520,6 @@ lvx_type_tiny_cost (int nunits, int penalty, bool speed)
 }
 
 static int
-lvx_type_thin_cost (int nunits, int penalty, bool speed)
-{
-  int factor = COST_FACTOR (2) * nunits;
-  return speed ? COSTS_N_INSNS (factor) + penalty : COSTS_N_INSNS (1);
-}
-
-static int
 lvx_type_lite_cost (int nunits, int penalty, bool speed)
 {
   int factor = COST_FACTOR (2) * nunits;
@@ -7067,7 +7058,7 @@ lvx_insn_cost (rtx_insn *insn, bool speed)
     {
       cost = lvx_type_all_cost (1, 0, speed);
     }
-  else if (type >= TYPE_ALU_TINY && type < TYPE_ALU_THIN)
+  else if (type >= TYPE_ALU_TINY && type < TYPE_ALU_LITE)
     {
       int nunits = 1;
       if (type >= TYPE_ALU_TINY_X2 && type <= TYPE_ALU_TINY_X2_Y)
@@ -7075,13 +7066,6 @@ lvx_insn_cost (rtx_insn *insn, bool speed)
       if (type >= TYPE_ALU_TINY_X4 && type <= TYPE_ALU_TINY_X4_X)
 	nunits = 4;
       cost += lvx_type_tiny_cost (nunits, 0, speed);
-    }
-  else if (type >= TYPE_ALU_THIN && type < TYPE_ALU_LITE)
-    {
-      int nunits = 1;
-      if (type >= TYPE_ALU_THIN_X2 && type < TYPE_ALU_LITE)
-	nunits = 2;
-      cost += lvx_type_thin_cost (nunits, 0, speed);
     }
   else if (type >= TYPE_ALU_LITE && type < TYPE_ALU_FULL)
     {
@@ -7234,9 +7218,8 @@ lvx_sched_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
       enum attr_type type = get_attr_type (insn);
       if (type == TYPE_ALL)
 	{
-	  resources->tiny_count++, resources->thin_count++;
-	  resources->lite_count++, resources->full_count++;
-	  resources->lsu_count++, resources->mau_count++;
+	  resources->tiny_count++, resources->lite_count++;
+	  resources->full_count++, resources->lsu_count++;
 	  resources->bcu_count++, resources->ext_count++;
 	}
       else if (type == TYPE_NOP)
@@ -7247,12 +7230,12 @@ lvx_sched_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
 	    resources->tiny_count++;
 	  else if (type >= TYPE_ALU_TINY_X2 && type < TYPE_ALU_TINY_X4)
 	    resources->tiny_count += 2;
-	  else if (type >= TYPE_ALU_TINY_X4 && type < TYPE_ALU_THIN)
+	  else if (type >= TYPE_ALU_TINY_X4 && type < TYPE_MOVET_EXT)
 	    resources->tiny_count += 4;
-	  else if (type >= TYPE_ALU_THIN && type < TYPE_ALU_THIN_X2)
-	    resources->thin_count++;
-	  else if (type >= TYPE_ALU_THIN_X2 && type < TYPE_ALU_LITE)
-	    resources->thin_count += 2;
+	  else if (type >= TYPE_MOVET_EXT && type < TYPE_ALU_LITE)
+	    /* movet_ext* reserve lvx_v1_alu_auxr_r, i.e. a TINY slot plus an
+	       AUXR port; the port is accounted separately below.  */
+	    resources->tiny_count++;
 	  else if (type >= TYPE_ALU_LITE && type < TYPE_ALU_LITE_X2)
 	    resources->lite_count++;
 	  else if (type >= TYPE_ALU_LITE_X2 && type < TYPE_ALU_FULL)
@@ -7270,7 +7253,7 @@ lvx_sched_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
 	}
       else if (type >= TYPE_MULT_INT && type < TYPE_BCU)
 	{
-	  resources->mau_count++;
+	  resources->lite_count++;
 	  if (type >= TYPE_MADD_INT)
 	    resources->auxr_count++;
 	}
@@ -7291,8 +7274,6 @@ static int lvx_sched_issue_rate (void);
 static unsigned
 lvx_sched_resources_full_bundles (struct lvx_sched_resources *resources)
 {
-  resources->tiny_count += resources->thin_count;
-
   unsigned bcu_issues = 2;
   unsigned lsu_issues = 2;
   unsigned lite_issues = 2;
@@ -7310,10 +7291,8 @@ lvx_sched_resources_full_bundles (struct lvx_sched_resources *resources)
     result = resources->xfer_count;
   if (result < resources->auxr_count)
     result = resources->auxr_count;
-  if (result < (resources->lsu_count + lsu_issues - 1) / lsu_issues);
+  if (result < (resources->lsu_count + lsu_issues - 1) / lsu_issues)
     result = (resources->lsu_count + lsu_issues - 1) / lsu_issues;
-  if (result < resources->mau_count)
-    result = resources->mau_count;
   if (result < (resources->bcu_count + bcu_issues - 1) / bcu_issues)
     result = (resources->bcu_count + bcu_issues - 1) / bcu_issues;
   if (result < resources->ext_count)

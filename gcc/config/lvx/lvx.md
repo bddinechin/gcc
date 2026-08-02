@@ -285,7 +285,7 @@
 ]
   ""
   "pcrel %0 = %T1"
-  [(set_attr "type" "alu_full_y")
+  [(set_attr "type" "alu_tiny_y")
    (set_attr "length" "12")]
 )
 
@@ -402,7 +402,7 @@
          (unspec:P [(const_int 0)] UNSPEC_PIC))]
    ""
    "pcrel %0 = @gotaddr()"
-  [(set_attr "type" "alu_full<symlen1>")
+  [(set_attr "type" "alu_tiny<symlen1>")
    (set_attr "length" "<symlen2>")]
 )
 
