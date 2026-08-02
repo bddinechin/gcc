@@ -5119,11 +5119,13 @@
     rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
     rtx rn = gen_rtx_CONST_STRING (VOIDmode, ".rn");
     rtx a = operands[1], b = operands[2];
-    if (a == CONST1_RTX (<MODE>mode))
-      {
-        emit_insn (gen_lvx_fsrec<suffix> (operands[0], b, rm));
-      }
-    else if (flag_reciprocal_math)
+    /* No unguarded 1.0/b shortcut.  KVX had frec*, an exact reciprocal, and
+       LVX generalises that to the fdiv* instructions -- but only at scalar
+       width, so there is nothing exact to use here.  fsrec* is a *seed*, so
+       using it unconditionally would silently approximate a division the
+       user did not ask to have approximated.  The flag-guarded paths below
+       are where an approximation is legitimate.  */
+    if (flag_reciprocal_math)
       {
         rtx t = gen_reg_rtx (<MODE>mode);
         emit_insn (gen_lvx_fsrec<suffix> (t, b, rm));

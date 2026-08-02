@@ -19,6 +19,15 @@ softfp_truncations := dfsf
 softfp_extras := fixhfti fixunshfti floattihf floatuntihf
 softfp_exclude_libgcc2 := n
 
+# The vector divide/modulo helpers are left out of the default (lvx-1) build.
+#
+# NOTE the scalar and vector cases differ.  divsf3.c/divdf3.c were retired
+# outright because they are genuinely unreachable -- divsf3/divdf3/divhf3
+# expand straight to fdivw/fdivd/fdivh.  The *vector* dividers are not: there
+# is no vector fdiv, so on lvx-2 a v4sf division still emits a call to
+# __divv4sf3, which nothing currently defines.  They are excluded rather than
+# obsolete, and need reinstating together with an lvx-2 multilib.
+#
 # divmodvxdi, divmodvxsi and divv2df3 are the vector divide/modulo helpers.
 # They are written against vector types and SIMD builtins, and SIMD on LVX is
 # lvx-2 only -- every packed arithmetic instruction is Opcode-lvx_v2, so
