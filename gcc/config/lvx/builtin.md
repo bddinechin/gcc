@@ -866,7 +866,7 @@
   [(set (match_operand:V8HI 0 "register_operand" "=r")
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_ZXE))]
   ""
-  "andd %x0 = %x1, 0x00FF00FF.@\n\tandd %y0 = %y1, 0x00FF00FF.@"
+  "andq %0 = %1, 0x00FF00FF.@"
   [(set_attr "type" "alu_tiny_x2_x")
    (set_attr "length"          "16")]
 )
@@ -874,12 +874,11 @@
 (define_insn "lvx_zxebhx"
   [(set (match_operand:V16HI 0 "register_operand" "=r")
         (unspec:V16HI [(match_operand:V32QI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  ""
+  "LVX_2"
   {
-    return "andd %x0 = %x1, 0x00FF00FF.@\n\tandd %y0 = %y1, 0x00FF00FF.@\n\t"
-           "andd %z0 = %z1, 0x00FF00FF.@\n\tandd %t0 = %t1, 0x00FF00FF.@";
+    return "andq %L0 = %L1, 0x00FF00FF.@\n\tandq %M0 = %M1, 0x00FF00FF.@";
   }
-  [(set_attr "type" "alu_tiny_x4_x")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"          "32")]
 )
 
@@ -900,7 +899,7 @@
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_ZXE))]
   ""
-  "andd %x0 = %x1, 0x0000FFFF.@\n\tandd %y0 = %y1, 0x0000FFFF.@"
+  "andq %0 = %1, 0x0000FFFF.@"
   [(set_attr "type" "alu_tiny_x2_x")
    (set_attr "length"          "16")]
 )
@@ -908,12 +907,11 @@
 (define_insn "lvx_zxehwo"
   [(set (match_operand:V8SI 0 "register_operand" "=r")
         (unspec:V8SI [(match_operand:V16HI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  ""
+  "LVX_2"
   {
-    return "andd %x0 = %x1, 0x0000FFFF.@\n\tandd %y0 = %y1, 0x0000FFFF.@\n\t"
-           "andd %z0 = %z1, 0x0000FFFF.@\n\tandd %t0 = %t1, 0x0000FFFF.@";
+    return "andq %L0 = %L1, 0x0000FFFF.@\n\tandq %M0 = %M1, 0x0000FFFF.@";
   }
-  [(set_attr "type" "alu_tiny_x4_x")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"          "32")]
 )
 
@@ -929,7 +927,7 @@
 (define_insn "lvx_zxewdq"
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V8SI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  ""
+  "LVX_2"
   {
     return "zxwd %x0 = %x1\n\tzxwd %y0 = %y1\n\t"
            "zxwd %z0 = %z1\n\tzxwd %t0 = %t1";
@@ -941,10 +939,10 @@
 (define_insn "lvx_qxebho"
   [(set (match_operand:V8HI 0 "register_operand" "=r")
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_QXE))]
-  ""
-  "sllhq %x0 = %x1, 8\n\tsllhq %y0 = %y1, 8"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "sllho %0 = %1, 8"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn_and_split "lvx_qxebhx"
@@ -980,10 +978,10 @@
 (define_insn "lvx_qxehwq"
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_QXE))]
-  ""
-  "sllwp %x0 = %x1, 16\n\tsllwp %y0 = %y1, 16"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "sllwq %0 = %1, 16"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn_and_split "lvx_qxehwo"
@@ -1002,22 +1000,21 @@
 (define_insn "lvx_qxewdp"
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (unspec:V2DI [(match_operand:V4SI 1 "register_operand" "r")] UNSPEC_QXE))]
-  ""
-  "slld %x0 = %x1, 32\n\tslld %y0 = %y1, 32"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "slldp %0 = %1, 32"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "lvx_qxewdq"
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V8SI 1 "register_operand" "r")] UNSPEC_QXE))]
-  ""
+  "LVX_2"
   {
-    return "slld %x0 = %x1, 32\n\tslld %y0 = %y1, 32\n\t"
-           "slld %z0 = %z1, 32\n\tslld %t0 = %t1, 32";
+    return "slldp %L0 = %L1, 32\n\tslldp %M0 = %M1, 32";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 
@@ -1051,10 +1048,10 @@
 (define_insn "lvx_zxobho"
   [(set (match_operand:V8HI 0 "register_operand" "=r")
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_ZXO))]
-  ""
-  "srlhq %x0 = %x1, 8\n\tsrlhq %y0 = %y1, 8"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "srlho %0 = %1, 8"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn_and_split "lvx_zxobhx"
@@ -1090,10 +1087,10 @@
 (define_insn "lvx_zxohwq"
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_ZXO))]
-  ""
-  "srlwp %x0 = %x1, 16\n\tsrlwp %y0 = %y1, 16"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "srlwq %0 = %1, 16"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn_and_split "lvx_zxohwo"
@@ -1112,29 +1109,28 @@
 (define_insn "lvx_zxowdp"
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (unspec:V2DI [(match_operand:V4SI 1 "register_operand" "r")] UNSPEC_ZXO))]
-  ""
-  "srld %x0 = %x1, 32\n\tsrld %y0 = %y1, 32"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "srldp %0 = %1, 32"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "lvx_zxowdq"
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V8SI 1 "register_operand" "r")] UNSPEC_ZXO))]
-  ""
+  "LVX_2"
   {
-    return "srld %x0 = %x1, 32\n\tsrld %y0 = %y1, 32\n\t"
-           "srld %z0 = %z1, 32\n\tsrld %t0 = %t1, 32";
+    return "srldp %L0 = %L1, 32\n\tsrldp %M0 = %M1, 32";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "lvx_qxobho"
   [(set (match_operand:V8HI 0 "register_operand" "=r")
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_QXO))]
   ""
-  "andd %x0 = %x1, 0xFF00FF00.@\n\tandd %y0 = %y1, 0xFF00FF00.@"
+  "andq %0 = %1, 0xFF00FF00.@"
   [(set_attr "type" "alu_tiny_x2_x")
    (set_attr "length"          "16")]
 )
@@ -1142,12 +1138,11 @@
 (define_insn "lvx_qxobhx"
   [(set (match_operand:V16HI 0 "register_operand" "=r")
         (unspec:V16HI [(match_operand:V32QI 1 "register_operand" "r")] UNSPEC_QXO))]
-  ""
+  "LVX_2"
   {
-    return "andd %x0 = %x1, 0xFF00FF00.@\n\tandd %y0 = %y1, 0xFF00FF00.@\n\t"
-           "andd %z0 = %z1, 0xFF00FF00.@\n\tandd %t0 = %t1, 0xFF00FF00.@";
+    return "andq %L0 = %L1, 0xFF00FF00.@\n\tandq %M0 = %M1, 0xFF00FF00.@";
   }
-  [(set_attr "type" "alu_tiny_x4_x")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"          "32")]
 )
 
@@ -1168,7 +1163,7 @@
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_QXO))]
   ""
-  "andd %x0 = %x1, 0xFFFF0000.@\n\tandd %y0 = %y1, 0xFFFF0000.@"
+  "andq %0 = %1, 0xFFFF0000.@"
   [(set_attr "type" "alu_tiny_x2_x")
    (set_attr "length"          "16")]
 )
@@ -1176,12 +1171,11 @@
 (define_insn "lvx_qxohwo"
   [(set (match_operand:V8SI 0 "register_operand" "=r")
         (unspec:V8SI [(match_operand:V16HI 1 "register_operand" "r")] UNSPEC_QXO))]
-  ""
+  "LVX_2"
   {
-    return "andd %x0 = %x1, 0xFFFF0000.@\n\tandd %y0 = %y1, 0xFFFF0000.@\n\t"
-           "andd %z0 = %z1, 0xFFFF0000.@\n\tandd %t0 = %t1, 0xFFFF0000.@";
+    return "andq %L0 = %L1, 0xFFFF0000.@\n\tandq %M0 = %M1, 0xFFFF0000.@";
   }
-  [(set_attr "type" "alu_tiny_x4_x")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"          "32")]
 )
 
@@ -1481,7 +1475,7 @@
                       (match_operand:V256 2 "register_operand" "0")
                       (match_operand:DI 3 "register_operand" "r")
                       (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "HAVE_LVX_SELECT_<MODE>"
+  "LVX_2 && (HAVE_LVX_SELECT_<MODE>)"
   {
     return "cmoved%4 %3? %x0 = %x1\n\tcmoved%4 %3? %y0 = %y1\n\t"
            "cmoved%4 %3? %z0 = %z1\n\tcmoved%4 %3? %t0 = %t1";
@@ -1622,7 +1616,7 @@
                        (match_operand:V32QI 2 "register_operand" "0")
                        (match_operand:V32QI 3 "register_operand" "r")
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "HAVE_LVX_SELECT_V32QI"
+  "LVX_2 && (HAVE_LVX_SELECT_V32QI)"
   {
     return "cmovebo%4 %x3? %x0 = %x1\n\tcmovebo%4 %y3? %y0 = %y1\n\t"
            "cmovebo%4 %z3? %z0 = %z1\n\tcmovebo%4 %t3? %t0 = %t1";
@@ -1703,7 +1697,7 @@
                        (match_operand:V256J 2 "register_operand" "0")
                        (match_operand:V256J 3 "register_operand" "r")
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "HAVE_LVX_SELECT_<MODE>"
+  "LVX_2 && (HAVE_LVX_SELECT_<MODE>)"
   {
     return "cmove<chunkx>%4 %x3? %x0 = %x1\n\tcmove<chunkx>%4 %y3? %y0 = %y1\n\t"
            "cmove<chunkx>%4 %z3? %z0 = %z1\n\tcmove<chunkx>%4 %t3? %t0 = %t1";
@@ -1854,7 +1848,7 @@
                        (match_operand:V256F 2 "register_operand" "0")
                        (match_operand:<MASK> 3 "register_operand" "r")
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "HAVE_LVX_SELECT_<MODE>"
+  "LVX_2 && (HAVE_LVX_SELECT_<MODE>)"
   {
     return "cmove<chunkx>%4 %x3? %x0 = %x1\n\tcmove<chunkx>%4 %y3? %y0 = %y1\n\t"
            "cmove<chunkx>%4 %z3? %z0 = %z1\n\tcmove<chunkx>%4 %t3? %t0 = %t1";
@@ -1867,23 +1861,22 @@
   [(set (match_operand:V8HI 0 "register_operand" "=r")
         (unspec:V8HI [(match_operand:V8HI 1 "register_operand" "r")
                       (match_operand:V8HI 2 "register_operand" "r")] UNSPEC_STSU))]
-  "HAVE_LVX_STSU_V4HI"
-  "stsuhq %x0 = %x1, %x2\n\tstsuhq %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_STSU_V4HI)"
+  "stsuho %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "lvx_stsuhx"
   [(set (match_operand:V16HI 0 "register_operand" "=r")
         (unspec:V16HI [(match_operand:V16HI 1 "register_operand" "r")
                        (match_operand:V16HI 2 "register_operand" "r")] UNSPEC_STSU))]
-  "HAVE_LVX_STSU_V4HI"
+  "LVX_2 && (HAVE_LVX_STSU_V4HI)"
   {
-    return "stsuhq %x0 = %x1, %x2\n\tstsuhq %y0 = %y1, %y2\n\t"
-           "stsuhq %z0 = %z1, %z2\n\tstsuhq %t0 = %t1, %t2";
+    return "stsuho %L0 = %L1, %L2\n\tstsuho %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "lvx_stsuhv"
@@ -1907,23 +1900,22 @@
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unspec:V4SI [(match_operand:V4SI 1 "register_operand" "r")
                       (match_operand:V4SI 2 "register_operand" "r")] UNSPEC_STSU))]
-  "HAVE_LVX_STSU_V2SI"
-  "stsuwp %x0 = %x1, %x2\n\tstsuwp %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_STSU_V2SI)"
+  "stsuwq %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "lvx_stsuwo"
   [(set (match_operand:V8SI 0 "register_operand" "=r")
         (unspec:V8SI [(match_operand:V8SI 1 "register_operand" "r")
                       (match_operand:V8SI 2 "register_operand" "r")] UNSPEC_STSU))]
-  "HAVE_LVX_STSU_V2SI"
+  "LVX_2 && (HAVE_LVX_STSU_V2SI)"
   {
-    return "stsuwp %x0 = %x1, %x2\n\tstsuwp %y0 = %y1, %y2\n\t"
-           "stsuwp %z0 = %z1, %z2\n\tstsuwp %t0 = %t1, %t2";
+    return "stsuwq %L0 = %L1, %L2\n\tstsuwq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "lvx_stsuwx"
@@ -1957,10 +1949,10 @@
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (unspec:V2DI [(match_operand:V2DI 1 "register_operand" "r")
                       (match_operand:V2DI 2 "register_operand" "r")] UNSPEC_STSU))]
-  "HAVE_LVX_STSU_V2DI"
-  "stsud %x0 = %x1, %x2\n\tstsud %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_STSU_V2DI)"
+  "stsudp %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_expand "lvx_stsudq"
@@ -1992,13 +1984,12 @@
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V4DI 1 "register_operand" "r")
                       (match_operand:V4DI 2 "register_operand" "r")] UNSPEC_STSU))]
-  "HAVE_LVX_STSU_V4DI"
+  "LVX_2 && (HAVE_LVX_STSU_V4DI)"
   {
-    return "stsud %x0 = %x1, %x2\n\tstsud %y0 = %y1, %y2\n\t"
-           "stsud %z0 = %z1, %z2\n\tstsud %t0 = %t1, %t2";
+    return "stsudp %L0 = %L1, %L2\n\tstsudp %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "lvx_stsudo"
@@ -2035,10 +2026,10 @@
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (unspec:V2DI [(match_operand:V2DI 1 "register_operand" "r")
                       (match_operand:V2DI 2 "register_operand" "r")] UNSPEC_SBMM8D))]
-  "HAVE_LVX_SBMM8_V2DI"
-  "sbmm8d %x0 = %x1, %x2\n\tsbmm8d %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_SBMM8_V2DI)"
+  "sbmm8dp %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*sbmm8dp_s1"
@@ -2132,39 +2123,36 @@
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V4DI 1 "register_operand" "r")
                       (match_operand:V4DI 2 "register_operand" "r")] UNSPEC_SBMM8D))]
-  "HAVE_LVX_SBMM8_V4DI"
+  "LVX_2 && (HAVE_LVX_SBMM8_V4DI)"
   {
-    return "sbmm8d %x0 = %x1, %x2\n\tsbmm8d %y0 = %y1, %y2\n\t"
-           "sbmm8d %z0 = %z1, %z2\n\tsbmm8d %t0 = %t1, %t2";
+    return "sbmm8dp %L0 = %L1, %L2\n\tsbmm8dp %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*sbmm8dq_s1"
   [(set (match_operand:ALL256 0 "register_operand" "=r")
         (unspec:ALL256 [(vec_duplicate:V4DI (match_operand:DI 1 "register_operand" "r"))
                         (match_operand:SIMD256 2 "register_operand" "r")] UNSPEC_SBMM8D))]
-  "HAVE_LVX_SBMM8_V4DI"
+  "LVX_2 && (HAVE_LVX_SBMM8_V4DI)"
   {
-    return "sbmm8d %x0 = %1, %x2\n\tsbmm8d %y0 = %1, %y2\n\t"
-           "sbmm8d %z0 = %1, %z2\n\tsbmm8d %t0 = %1, %t2";
+    return "sbmm8dp %L0 = %1, %L2\n\tsbmm8dp %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*sbmm8dq_s2"
   [(set (match_operand:ALL256 0 "register_operand" "=r")
         (unspec:ALL256 [(match_operand:SIMD256 1 "register_operand" "r")
                         (vec_duplicate:V4DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMM8D))]
-  "HAVE_LVX_SBMM8_V4DI"
+  "LVX_2 && (HAVE_LVX_SBMM8_V4DI)"
   {
-    return "sbmm8d %x0 = %x1, %2\n\tsbmm8d %y0 = %y1, %2\n\t"
-           "sbmm8d %z0 = %z1, %2\n\tsbmm8d %t0 = %t1, %2";
+    return "sbmm8dp %L0 = %L1, %2\n\tsbmm8dp %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "lvx_sbmm8do"
@@ -2314,7 +2302,7 @@
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V4DI 1 "register_operand" "r")
                       (match_operand:V4DI 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
-  "HAVE_LVX_TSBMM8_V4DI"
+  "LVX_2 && (HAVE_LVX_TSBMM8_V4DI)"
   {
     return "sbmmt8 %x0 = %x1, %x2\n\tsbmmt8 %y0 = %y1, %y2\n\t"
            "sbmmt8 %z0 = %z1, %z2\n\tsbmmt8 %t0 = %t1, %t2";
@@ -2327,7 +2315,7 @@
   [(set (match_operand:ALL256 0 "register_operand" "=r")
         (unspec:ALL256 [(vec_duplicate:V4DI (match_operand:DI 1 "register_operand" "r"))
                         (match_operand:SIMD256 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
-  "HAVE_LVX_TSBMM8_V4DI"
+  "LVX_2 && (HAVE_LVX_TSBMM8_V4DI)"
   {
     return "sbmmt8 %x0 = %1, %x2\n\tsbmmt8 %y0 = %1, %y2\n\t"
            "sbmmt8 %z0 = %1, %z2\n\tsbmmt8 %t0 = %1, %t2";
@@ -2340,7 +2328,7 @@
   [(set (match_operand:ALL256 0 "register_operand" "=r")
         (unspec:ALL256 [(match_operand:SIMD256 1 "register_operand" "r")
                         (vec_duplicate:V4DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMMT8D))]
-  "HAVE_LVX_TSBMM8_V4DI"
+  "LVX_2 && (HAVE_LVX_TSBMM8_V4DI)"
   {
     return "sbmmt8 %x0 = %x1, %2\n\tsbmmt8 %y0 = %y1, %2\n\t"
            "sbmmt8 %z0 = %z1, %2\n\tsbmmt8 %t0 = %t1, %2";
@@ -4464,10 +4452,10 @@
 (define_insn "lvx_fconjwcp"
   [(set (match_operand:V4SF 0 "register_operand" "=r")
         (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")] UNSPEC_FCONJ))]
-  ""
-  "fnegd %x0 = %x1\n\tfnegd %y0 = %y1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "fnegdp %0 = %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "lvx_fconjdc"
@@ -4496,7 +4484,7 @@
 (define_insn "lvx_fconjdcp"
   [(set (match_operand:V4DF 0 "register_operand" "=r")
         (unspec:V4DF [(match_operand:V4DF 1 "register_operand" "r")] UNSPEC_FCONJ))]
-  ""
+  "LVX_2"
   "copyd %x0 = %x1\n\tfnegd %y0 = %y1\n\tcopyd %z0 = %z1\n\tfnegd %t0 = %t1"
   [(set_attr "type" "alu_tiny_x4")
    (set_attr "length"        "16")]

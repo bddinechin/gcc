@@ -383,13 +383,12 @@
   [(set (match_operand:ALL256 0 "register_operand" "=r")
         (unspec:ALL256 [(match_operand:SIMD256 1 "register_operand" "r")
                         (match_operand:DI 2 "register_operand" "r")] UNSPEC_ADDD))]
-  ""
+  "LVX_2"
   {
-    return "addd %x0 = %x1, %2\n\taddd %y0 = %y1, %2\n\t"
-           "addd %z0 = %z1, %2\n\taddd %t0 = %t1, %2";
+    return "adddp %L0 = %L1, %2\n\tadddp %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*andd"
@@ -407,22 +406,21 @@
         (unspec:ALL128 [(match_operand:SIMD128 1 "register_operand" "r")
                         (match_operand:DI 2 "register_operand" "r")] UNSPEC_ANDD))]
   ""
-  "andd %x0 = %x1, %2\n\tandd %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "andq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*anddq"
   [(set (match_operand:ALL256 0 "register_operand" "=r")
         (unspec:ALL256 [(match_operand:SIMD256 1 "register_operand" "r")
                         (match_operand:DI 2 "register_operand" "r")] UNSPEC_ANDD))]
-  ""
+  "LVX_2"
   {
-    return "andd %x0 = %x1, %2\n\tandd %y0 = %y1, %2\n\t"
-           "andd %z0 = %z1, %2\n\tandd %t0 = %t1, %2";
+    return "andq %L0 = %L1, %2\n\tandq %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*anddp"
@@ -430,22 +428,21 @@
         (unspec:ALL128 [(match_operand:ALL128 1 "register_operand" "r")
                         (match_operand:ALL128 2 "register_operand" "r")] UNSPEC_ANDD))]
   ""
-  "andd %x0 = %x1, %x2\n\tandd %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "andq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*anddq"
   [(set (match_operand:ALL256 0 "register_operand" "=r")
         (unspec:ALL256 [(match_operand:ALL256 1 "register_operand" "r")
                         (match_operand:ALL256 2 "register_operand" "r")] UNSPEC_ANDD))]
-  ""
+  "LVX_2"
   {
-    return "andd %x0 = %x1, %x2\n\tandd %y0 = %y1, %y2\n\t"
-           "andd %z0 = %z1, %z2\n\tandd %t0 = %t1, %t2";
+    return "andq %L0 = %L1, %L2\n\tandq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*xord"
@@ -462,22 +459,21 @@
         (unspec:ALL128 [(match_operand:ALL128 1 "register_operand" "r")
                         (match_operand:ALL128 2 "register_operand" "r")] UNSPEC_XORD))]
   ""
-  "eord %x0 = %x1, %x2\n\teord %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "eorq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*xordq"
   [(set (match_operand:ALL256 0 "register_operand" "=r")
         (unspec:ALL256 [(match_operand:ALL256 1 "register_operand" "r")
                         (match_operand:ALL256 2 "register_operand" "r")] UNSPEC_XORD))]
-  ""
+  "LVX_2"
   {
-    return "eord %x0 = %x1, %x2\n\teord %y0 = %y1, %y2\n\t"
-           "eord %z0 = %z1, %z2\n\teord %t0 = %t1, %t2";
+    return "eorq %L0 = %L1, %L2\n\teorq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*dup128"
@@ -530,22 +526,21 @@
         (unspec:V16QI [(match_operand:V8HI 1 "register_operand" "r")
                        (match_operand:V8HI 2 "register_operand" "r")] UNSPEC_OROE))]
   ""
-  "iord %x0 = %x1, %x2\n\tiord %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "iorq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "lvx_oroebv"
   [(set (match_operand:V32QI 0 "register_operand" "=r")
         (unspec:V32QI [(match_operand:V16HI 1 "register_operand" "r")
                        (match_operand:V16HI 2 "register_operand" "r")] UNSPEC_OROE))]
-  ""
+  "LVX_2"
   {
-    return "iord %x0 = %x1, %x2\n\tiord %y0 = %y1, %y2\n\t"
-           "iord %z0 = %z1, %z2\n\tiord %t0 = %t1, %t2";
+    return "iorq %L0 = %L1, %L2\n\tiorq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "lvx_oroebt"
@@ -652,20 +647,19 @@
 (define_insn "*<prefix>v16qi2_2"
   [(set (match_operand:V16QI 0 "register_operand" "=r")
         (UNARITH:V16QI (match_operand:V16QI 1 "register_operand" "r")))]
-  "HAVE_LVX_<unarith>_V16QI"
-  "<stem>bo %x0 = %x1\n\t<stem>bo %y0 = %y1"
+  "LVX_2 && (HAVE_LVX_<unarith>_V16QI)"
+  "<stem>bx %0 = %1"
   [(set_attr "type" "alu_tiny_x2_x")
    (set_attr "length"          "16")]
 )
 (define_insn "*<prefix>v32qi2_2"
   [(set (match_operand:V32QI 0 "register_operand" "=r")
         (UNARITH:V32QI (match_operand:V32QI 1 "register_operand" "r")))]
-  "HAVE_LVX_<unarith>_V32QI"
+  "LVX_2 && (HAVE_LVX_<unarith>_V32QI)"
   {
-    return "<stem>bo %x0 = %x1\n\t<stem>bo %y0 = %y1\n\t"
-           "<stem>bo %z0 = %z1\n\t<stem>bo %t0 = %t1";
+    return "<stem>bx %L0 = %L1\n\t<stem>bx %M0 = %M1";
   }
-  [(set_attr "type" "alu_tiny_x4_x")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"          "32")]
 )
 
@@ -705,43 +699,41 @@
   [(set (match_operand:V16QI 0 "register_operand" "=r")
         (BINARITHC:V16QI (match_operand:V16QI 1 "register_operand" "r")
                          (match_operand:V16QI 2 "register_operand" "r")))]
-  "HAVE_LVX_<binarithc>_V16QI"
-  "<stem>bo %x0 = %x1, %x2\n\t<stem>bo %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_<binarithc>_V16QI)"
+  "<stem>bx %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 (define_insn "*<prefix>v32qi3_2"
   [(set (match_operand:V32QI 0 "register_operand" "=r")
         (BINARITHC:V32QI (match_operand:V32QI 1 "register_operand" "r")
                          (match_operand:V32QI 2 "register_operand" "r")))]
-  "HAVE_LVX_<binarithc>_V32QI"
+  "LVX_2 && (HAVE_LVX_<binarithc>_V32QI)"
   {
-    return "<stem>bo %x0 = %x1, %x2\n\t<stem>bo %y0 = %y1, %y2\n\t"
-           "<stem>bo %z0 = %z1, %z2\n\t<stem>bo %t0 = %t1, %t2";
+    return "<stem>bx %L0 = %L1, %L2\n\t<stem>bx %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 (define_insn "*<prefix>v16qi3_2"
   [(set (match_operand:V16QI 0 "register_operand" "=r")
         (BINMINUS:V16QI (match_operand:V16QI 1 "register_operand" "r")
                         (match_operand:V16QI 2 "register_operand" "r")))]
-  "HAVE_LVX_<binminus>_V16QI"
-  "<stem>bo %x0 = %x2, %x1\n\t<stem>bo %y0 = %y2, %y1"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_<binminus>_V16QI)"
+  "<stem>bx %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 (define_insn "*<prefix>v32qi3_2"
   [(set (match_operand:V32QI 0 "register_operand" "=r")
         (BINMINUS:V32QI (match_operand:V32QI 1 "register_operand" "r")
                         (match_operand:V32QI 2 "register_operand" "r")))]
-  "HAVE_LVX_<binminus>_V32QI"
+  "LVX_2 && (HAVE_LVX_<binminus>_V32QI)"
   {
-    return "<stem>bo %x0 = %x2, %x1\n\t<stem>bo %y0 = %y2, %y1\n\t"
-           "<stem>bo %z0 = %z2, %z1\n\t<stem>bo %t0 = %t2, %t1";
+    return "<stem>bx %L0 = %L2, %L1\n\t<stem>bx %M0 = %M2, %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "mul<mode>3"
@@ -974,7 +966,7 @@
   [(set (match_operand:V32QI 0 "register_operand" "=r")
         (unspec:V32QI [(match_operand:V32QI 1 "register_operand" "r")
                        (match_operand:V32QI 2 "register_operand" "r")] UNSPEC_AVGI))]
-  "HAVE_LVX_<AVGPRE>_V32QI"
+  "LVX_2 && (HAVE_LVX_<AVGPRE>_V32QI)"
   {
     return "<avgm>bo %x0 = %x1, %x2\n\t<avgm>bo %y0 = %y1, %y2\n\t"
            "<avgm>bo %z0 = %z1, %z2\n\t<avgm>bo %t0 = %t1, %t2";
@@ -1023,31 +1015,30 @@
   [(set (match_operand:V16QI 0 "register_operand" "=r")
         (BINSHLRT:V16QI (match_operand:V16QI 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "HAVE_LVX_<binshlrt>_V16QI"
-  "<stem>bos %x0 = %x1, %2\n\t<stem>bos %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length" "8")]
+  "LVX_2 && (HAVE_LVX_<binshlrt>_V16QI)"
+  "<stem>bx %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 (define_insn "*<prefix>v32qi3_2"
   [(set (match_operand:V32QI 0 "register_operand" "=r")
         (BINSHLRT:V32QI (match_operand:V32QI 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "HAVE_LVX_<binshlrt>_V32QI"
+  "LVX_2 && (HAVE_LVX_<binshlrt>_V32QI)"
   {
-    return "<stem>bos %x0 = %x1, %2\n\t<stem>bos %y0 = %y1, %2\n\t"
-           "<stem>bos %z0 = %z1, %2\n\t<stem>bos %t0 = %t1, %2";
+    return "<stem>bx %L0 = %L1, %2\n\t<stem>bx %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length" "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 (define_insn "*<prefix>v16qi3_2"
   [(set (match_operand:V16QI 0 "register_operand" "=r")
         (BINSHLRL:V16QI (match_operand:V16QI 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "HAVE_LVX_<binshlrl>_V16QI"
-  "<stem>bos %x0 = %x1, %2\n\t<stem>bos %y0 = %y1, %2"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length" "8")]
+  "LVX_2 && (HAVE_LVX_<binshlrl>_V16QI)"
+  "<stem>bx %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 (define_insn_and_split "*<prefix>v32qi3_2"
   [(set (match_operand:V32QI 0 "register_operand" "=&r,r")
@@ -1280,10 +1271,10 @@
   [(set (match_operand:S128I 0 "register_operand" "=r")
         (ashift:S128I (match_operand:S128I 1 "register_operand" "r")
                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "sll<chunkx> %x0 = %x1, %2\n\tsll<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length" "8")]
+  "LVX_2"
+  "sll<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "ssashl<mode>3"
@@ -1352,20 +1343,20 @@
   [(set (match_operand:S128I 0 "register_operand" "=r")
         (ashiftrt:S128I (match_operand:S128I 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "sra<chunkx> %x0 = %x1, %2\n\tsra<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length" "8")]
+  "LVX_2"
+  "sra<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "lshr<mode>3"
   [(set (match_operand:S128I 0 "register_operand" "=r")
         (lshiftrt:S128I (match_operand:S128I 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "srl<chunkx> %x0 = %x1, %2\n\tsrl<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length" "8")]
+  "LVX_2"
+  "srl<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "sshr<mode>3"
@@ -1382,40 +1373,40 @@
   [(set (match_operand:S128I 0 "register_operand" "=r")
         (unspec:S128I [(match_operand:S128I 1 "register_operand" "r")
                        (match_operand:S128I 2 "register_operand" "r")] UNSPEC_AVG))]
-  ""
-  "avg<chunkx> %x0 = %x1, %x2\n\tavg<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "avg<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "avg<mode>3_ceil"
   [(set (match_operand:S128I 0 "register_operand" "=r")
         (unspec:S128I [(match_operand:S128I 1 "register_operand" "r")
                        (match_operand:S128I 2 "register_operand" "r")] UNSPEC_AVGR))]
-  ""
-  "avgr<chunkx> %x0 = %x1, %x2\n\tavgr<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "avgr<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "uavg<mode>3_floor"
   [(set (match_operand:S128I 0 "register_operand" "=r")
         (unspec:S128I [(match_operand:S128I 1 "register_operand" "r")
                        (match_operand:S128I 2 "register_operand" "r")] UNSPEC_AVGU))]
-  ""
-  "avgu<chunkx> %x0 = %x1, %x2\n\tavgu<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "avgu<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "uavg<mode>3_ceil"
   [(set (match_operand:S128I 0 "register_operand" "=r")
         (unspec:S128I [(match_operand:S128I 1 "register_operand" "r")
                        (match_operand:S128I 2 "register_operand" "r")] UNSPEC_AVGRU))]
-  ""
-  "avgru<chunkx> %x0 = %x1, %x2\n\tavgru<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "avgru<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_expand "extend<mode><wide>2"
@@ -1547,60 +1538,60 @@
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (plus:V128J (match_operand:V128J 1 "register_operand" "r")
                     (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "add<chunkx> %x0 = %x1, %x2\n\tadd<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "add<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*add<mode>3_s1"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (plus:V128J (vec_duplicate:V128J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "add<chunkx> %x0 = %1, %x2\n\tadd<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "add<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*add<mode>3_s2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (plus:V128J (match_operand:V128J 1 "register_operand" "r")
                     (vec_duplicate:V128J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
-  "add<chunkx> %x0 = %x1, %2\n\tadd<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "add<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "ssadd<mode>3"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (ss_plus:V128J (match_operand:V128J 1 "register_operand" "r")
                        (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "adds<chunkx> %x0 = %x1, %x2\n\tadds<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "adds<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*ssadd<mode>3_s1"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (ss_plus:V128J (vec_duplicate:V128J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                        (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "adds<chunkx> %x0 = %1, %x2\n\tadds<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "adds<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*ssadd<mode>3_s2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (ss_plus:V128J (match_operand:V128J 1 "register_operand" "r")
                        (vec_duplicate:V128J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
-  "adds<chunkx> %x0 = %x1, %2\n\tadds<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "adds<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_expand "usadd<mode>3"
@@ -1683,30 +1674,30 @@
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (us_plus:V128J (match_operand:V128J 1 "register_operand" "r")
                        (match_operand:V128J 2 "register_operand" "r")))]
-  "HAVE_LVX_US_PLUS_<MODE>"
-  "addus<chunkx> %x0 = %x1, %x2\n\taddus<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_US_PLUS_<MODE>)"
+  "addus<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*usadd<mode>3_s1"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (us_plus:V128J (vec_duplicate:V128J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                        (match_operand:V128J 2 "register_operand" "r")))]
-  "HAVE_LVX_US_PLUS_<MODE>"
-  "addus<chunkx> %x0 = %1, %x2\n\taddus<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_US_PLUS_<MODE>)"
+  "addus<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*usadd<mode>3_s2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (us_plus:V128J (match_operand:V128J 1 "register_operand" "r")
                        (vec_duplicate:V128J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "HAVE_LVX_US_PLUS_<MODE>"
-  "addus<chunkx> %x0 = %x1, %2\n\taddus<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_US_PLUS_<MODE>)"
+  "addus<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*addx2<suffix>"
@@ -1714,10 +1705,10 @@
         (plus:V128K (ashift:V128K (match_operand:V128K 1 "register_operand" "r")
                                   (const_int 1))
                     (match_operand:V128K 2 "register_operand" "r")))]
-  "HAVE_LVX_MUL02_ADD_<MODE>"
-  "addx2<chunkx> %x0 = %x1, %x2\n\taddx2<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MUL02_ADD_<MODE>)"
+  "addx2<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*addx4<suffix>"
@@ -1725,10 +1716,10 @@
         (plus:V128K (ashift:V128K (match_operand:V128K 1 "register_operand" "r")
                                   (const_int 2))
                     (match_operand:V128K 2 "register_operand" "r")))]
-  "HAVE_LVX_MUL04_ADD_<MODE>"
-  "addx4<chunkx> %x0 = %x1, %x2\n\taddx4<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MUL04_ADD_<MODE>)"
+  "addx4<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*addx8<suffix>"
@@ -1736,10 +1727,10 @@
         (plus:V128K (ashift:V128K (match_operand:V128K 1 "register_operand" "r")
                                   (const_int 3))
                     (match_operand:V128K 2 "register_operand" "r")))]
-  "HAVE_LVX_MUL08_ADD_<MODE>"
-  "addx8<chunkx> %x0 = %x1, %x2\n\taddx8<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MUL08_ADD_<MODE>)"
+  "addx8<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*addx16<suffix>"
@@ -1747,70 +1738,70 @@
         (plus:V128K (ashift:V128K (match_operand:V128K 1 "register_operand" "r")
                                   (const_int 4))
                     (match_operand:V128K 2 "register_operand" "r")))]
-  "HAVE_LVX_MUL16_ADD_<MODE>"
-  "addx16<chunkx> %x0 = %x1, %x2\n\taddx16<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MUL16_ADD_<MODE>)"
+  "addx16<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "sub<mode>3"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (minus:V128J (match_operand:V128J 1 "register_operand" "r")
                      (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "sbf<chunkx> %x0 = %x2, %x1\n\tsbf<chunkx> %y0 = %y2, %y1"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "sbf<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*sub<mode>3_s1"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (minus:V128J (vec_duplicate:V128J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                      (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "sbf<chunkx> %x0 = %x2, %1\n\tsbf<chunkx> %y0 = %y2, %1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "sbf<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*sub<mode>3_s2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (minus:V128J (match_operand:V128J 1 "register_operand" "r")
                      (vec_duplicate:V128J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
-  "sbf<chunkx> %x0 = %2, %x1\n\tsbf<chunkx> %y0 = %2, %y1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "sbf<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "sssub<mode>3"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (ss_minus:V128J (match_operand:V128J 1 "register_operand" "r")
                         (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "sbfs<chunkx> %x0 = %x2, %x1\n\tsbfs<chunkx> %y0 = %y2, %y1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "sbfs<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*sssub<mode>3_s1"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (ss_minus:V128J (vec_duplicate:V128J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                         (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "sbfs<chunkx> %x0 = %x2, %1\n\tsbfs<chunkx> %y0 = %y2, %1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "sbfs<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*sssub<mode>3_s2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (ss_minus:V128J (match_operand:V128J 1 "register_operand" "r")
                         (vec_duplicate:V128J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
-  "sbfs<chunkx> %x0 = %2, %x1\n\tsbfs<chunkx> %y0 = %2, %y1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "sbfs<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_expand "ussub<mode>3"
@@ -1888,30 +1879,30 @@
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (us_minus:V128J (match_operand:V128J 1 "register_operand" "r")
                         (match_operand:V128J 2 "register_operand" "r")))]
-  "HAVE_LVX_US_MINUS_<MODE>"
-  "sbfus<chunkx> %x0 = %x2, %x1\n\tsbfus<chunkx> %y0 = %y2, %y1"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_US_MINUS_<MODE>)"
+  "sbfus<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*ussub<mode>3_s1"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (us_minus:V128J (vec_duplicate:V128J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                         (match_operand:V128J 2 "register_operand" "r")))]
-  "HAVE_LVX_US_MINUS_<MODE>"
-  "sbfus<chunkx> %x0 = %x2, %1\n\tsbfus<chunkx> %y0 = %y2, %1"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_US_MINUS_<MODE>)"
+  "sbfus<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*ussub<mode>3_s2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (us_minus:V128J (match_operand:V128J 1 "register_operand" "r")
                         (vec_duplicate:V128J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "HAVE_LVX_US_MINUS_<MODE>"
-  "sbfus<chunkx> %x0 = %2, %x1\n\tsbfus<chunkx> %y0 = %2, %y1"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_US_MINUS_<MODE>)"
+  "sbfus<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*sbfx2<suffix>"
@@ -1919,10 +1910,10 @@
         (minus:V128K (match_operand:V128K 1 "register_operand" "r")
                      (ashift:V128K (match_operand:V128K 2 "register_operand" "r")
                                    (const_int 1))))]
-  "HAVE_LVX_MUL02_SUB_<MODE>"
-  "sbfx2<chunkx> %x0 = %x2, %x1\n\tsbfx2<chunkx> %y0 = %y2, %y1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MUL02_SUB_<MODE>)"
+  "sbfx2<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*sbfx4<suffix>"
@@ -1930,10 +1921,10 @@
         (minus:V128K (match_operand:V128K 1 "register_operand" "r")
                      (ashift:V128K (match_operand:V128K 2 "register_operand" "r")
                                    (const_int 2))))]
-  "HAVE_LVX_MUL04_SUB_<MODE>"
-  "sbfx4<chunkx> %x0 = %x2, %x1\n\tsbfx4<chunkx> %y0 = %y2, %y1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MUL04_SUB_<MODE>)"
+  "sbfx4<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*sbfx8<suffix>"
@@ -1941,10 +1932,10 @@
         (minus:V128K (match_operand:V128K 1 "register_operand" "r")
                      (ashift:V128K (match_operand:V128K 2 "register_operand" "r")
                                    (const_int 3))))]
-  "HAVE_LVX_MUL08_SUB_<MODE>"
-  "sbfx8<chunkx> %x0 = %x2, %x1\n\tsbfx8<chunkx> %y0 = %y2, %y1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MUL08_SUB_<MODE>)"
+  "sbfx8<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*sbfx16<suffix>"
@@ -1952,10 +1943,10 @@
         (minus:V128K (match_operand:V128K 1 "register_operand" "r")
                      (ashift:V128K (match_operand:V128K 2 "register_operand" "r")
                                    (const_int 4))))]
-  "HAVE_LVX_MUL16_SUB_<MODE>"
-  "sbfx16<chunkx> %x0 = %x2, %x1\n\tsbfx16<chunkx> %y0 = %y2, %y1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MUL16_SUB_<MODE>)"
+  "sbfx16<suffix> %0 = %2, %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_expand "div<mode>3"
@@ -2022,120 +2013,120 @@
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (smin:V128J (match_operand:V128J 1 "register_operand" "r")
                     (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "min<chunkx> %x0 = %x1, %x2\n\tmin<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "min<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*smin<mode>3_s1"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (smin:V128J (vec_duplicate:V128J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "min<chunkx> %x0 = %1, %x2\n\tmin<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "min<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*smin<mode>3_s2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (smin:V128J (match_operand:V128J 1 "register_operand" "r")
                     (vec_duplicate:V128J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
-  "min<chunkx> %x0 = %x1, %2\n\tmin<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "min<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "smax<mode>3"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (smax:V128J (match_operand:V128J 1 "register_operand" "r")
                     (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "max<chunkx> %x0 = %x1, %x2\n\tmax<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "max<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*smax<mode>3_s1"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (smax:V128J (vec_duplicate:V128J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "max<chunkx> %x0 = %1, %x2\n\tmax<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "max<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*smax<mode>3_s2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (smax:V128J (match_operand:V128J 1 "register_operand" "r")
                     (vec_duplicate:V128J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
-  "max<chunkx> %x0 = %x1, %2\n\tmax<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "max<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "umin<mode>3"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (umin:V128J (match_operand:V128J 1 "register_operand" "r")
                     (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "minu<chunkx> %x0 = %x1, %x2\n\tminu<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "minu<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*umin<mode>3_s1"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (umin:V128J (vec_duplicate:V128J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "minu<chunkx> %x0 = %1, %x2\n\tminu<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "minu<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*umin<mode>3_s2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (umin:V128J (match_operand:V128J 1 "register_operand" "r")
                     (vec_duplicate:V128J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
-  "minu<chunkx> %x0 = %x1, %2\n\tminu<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "minu<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "umax<mode>3"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (umax:V128J (match_operand:V128J 1 "register_operand" "r")
                     (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "maxu<chunkx> %x0 = %x1, %x2\n\tmaxu<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "maxu<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*umax<mode>3_s1"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (umax:V128J (vec_duplicate:V128J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V128J 2 "register_operand" "r")))]
-  ""
-  "maxu<chunkx> %x0 = %1, %x2\n\tmaxu<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "maxu<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*umax<mode>3_s2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (umax:V128J (match_operand:V128J 1 "register_operand" "r")
                     (vec_duplicate:V128J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
-  "maxu<chunkx> %x0 = %x1, %2\n\tmaxu<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "maxu<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn_and_split "madd<mode><mode>4"
@@ -2186,8 +2177,8 @@
 (define_insn "neg<mode>2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (neg:V128J (match_operand:V128J 1 "register_operand" "r")))]
-  ""
-  "neg<chunkx> %x0 = %x1\n\tneg<chunkx> %y0 = %y1"
+  "LVX_2"
+  "neg<suffix> %0 = %1"
   [(set_attr "type" "alu_tiny_x2_x")
    (set_attr "length"          "16")]
 )
@@ -2195,8 +2186,8 @@
 (define_insn "ssneg<mode>2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (ss_neg:V128J (match_operand:V128J 1 "register_operand" "r")))]
-  ""
-  "sbfs<chunkx> %x0 = %x1, 0\n\tsbfs<chunkx> %y0 = %y1, 0"
+  "LVX_2"
+  "sbfs<suffix> %0 = %1, 0"
   [(set_attr "type" "alu_thin_x2_x")
    (set_attr "length"          "16")]
 )
@@ -2204,8 +2195,8 @@
 (define_insn "abs<mode>2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (abs:V128J (match_operand:V128J 1 "register_operand" "r")))]
-  ""
-  "abs<chunkx> %x0 = %x1\n\tabs<chunkx> %y0 = %y1"
+  "LVX_2"
+  "abs<suffix> %0 = %1"
   [(set_attr "type" "alu_thin_x2_x")
    (set_attr "length"          "16")]
 )
@@ -2233,8 +2224,8 @@
 (define_insn "ssabs<mode>2_2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (ss_abs:V128J (match_operand:V128J 1 "register_operand" "r")))]
-  "HAVE_LVX_SS_ABS_<MODE>"
-  "abss<chunkx> %x0 = %x1\n\tabss<chunkx> %y0 = %y1"
+  "LVX_2 && (HAVE_LVX_SS_ABS_<MODE>)"
+  "abss<suffix> %0 = %1"
   [(set_attr "type" "alu_tiny_x2_x")
    (set_attr "length"          "16")]
 )
@@ -2242,37 +2233,37 @@
 (define_insn "clrsb<mode>2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (clrsb:V128J (match_operand:V128J 1 "register_operand" "r")))]
-  ""
-  "cls<chunkx> %x0 = %x1\n\tcls<chunkx> %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "cls<suffix> %0 = %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "clz<mode>2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (clz:V128J (match_operand:V128J 1 "register_operand" "r")))]
-  ""
-  "clz<chunkx> %x0 = %x1\n\tclz<chunkx> %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "clz<suffix> %0 = %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "ctz<mode>2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (ctz:V128J (match_operand:V128J 1 "register_operand" "r")))]
-  ""
-  "ctz<chunkx> %x0 = %x1\n\tctz<chunkx> %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "ctz<suffix> %0 = %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "popcount<mode>2"
   [(set (match_operand:V128J 0 "register_operand" "=r")
         (popcount:V128J (match_operand:V128J 1 "register_operand" "r")))]
-  ""
-  "cbs<chunkx> %x0 = %x1\n\tcbs<chunkx> %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "cbs<suffix> %0 = %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 
@@ -2283,9 +2274,9 @@
         (and:V128L (match_operand:V128L 1 "register_operand" "r")
                    (match_operand:V128L 2 "register_operand" "r")))]
   ""
-  "andd %x0 = %x1, %x2\n\tandd %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "andq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*nand<mode>3"
@@ -2293,9 +2284,9 @@
         (ior:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r"))
                    (not:V128L (match_operand:V128L 2 "register_operand" "r"))))]
   ""
-  "nandd %x0 = %x1, %x2\n\tnandd %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "nandq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*andn<mode>3"
@@ -2303,9 +2294,9 @@
         (and:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r"))
                    (match_operand:V128L 2 "register_operand" "r")))]
   ""
-  "andnd %x0 = %x1, %x2\n\tandnd %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "andnq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "ior<mode>3"
@@ -2313,9 +2304,9 @@
         (ior:V128L (match_operand:V128L 1 "register_operand" "r")
                    (match_operand:V128L 2 "register_operand" "r")))]
   ""
-  "iord %x0 = %x1, %x2\n\tiord %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "iorq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*nior<mode>3"
@@ -2323,9 +2314,9 @@
         (and:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r"))
                    (not:V128L (match_operand:V128L 2 "register_operand" "r"))))]
   ""
-  "niord %x0 = %x1, %x2\n\tniord %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "niorq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*iorn<mode>3"
@@ -2333,9 +2324,9 @@
         (ior:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r"))
                    (match_operand:V128L 2 "register_operand" "r")))]
   ""
-  "iornd %x0 = %x1, %x2\n\tiornd %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "iornq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "xor<mode>3"
@@ -2343,9 +2334,9 @@
         (xor:V128L (match_operand:V128L 1 "register_operand" "r")
                    (match_operand:V128L 2 "register_operand" "r")))]
   ""
-  "eord %x0 = %x1, %x2\n\teord %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "eorq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*nxor<mode>3"
@@ -2353,18 +2344,18 @@
         (not:V128L (xor:V128L (match_operand:V128L 1 "register_operand" "r")
                               (match_operand:V128L 2 "register_operand" "r"))))]
   ""
-  "neord %x0 = %x1, %x2\n\tneord %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "neorq %0 = %1, %2"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "one_cmpl<mode>2"
   [(set (match_operand:V128L 0 "register_operand" "=r")
         (not:V128L (match_operand:V128L 1 "register_operand" "r")))]
   ""
-  "notd %x0 = %x1\n\tnotd %y0 = %y1"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "notq %0 = %1"
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 ;; fixme: same, should not exist
@@ -2387,10 +2378,10 @@
         (minus:V128J (smax:V128J (match_operand:V128J 1 "register_operand" "r")
                                  (match_operand:V128J 2 "register_operand" "r"))
                      (smin:V128J (match_dup 1) (match_dup 2))))]
-  ""
-  "abd<chunkx> %x0 = %x1, %x2\n\tabd<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "abd<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "abd<mode>3_2"
@@ -2398,10 +2389,10 @@
         (minus:V128L (smax:V128L (match_operand:V128L 1 "register_operand" "r")
                                  (match_operand:V128L 2 "register_operand" "r"))
                      (smin:V128L (match_dup 1) (match_dup 2))))]
-  ""
-  "abd<chunkx> %x0 = %x1, %x2\n\tabd<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "abd<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*abd<suffix>_s1"
@@ -2409,10 +2400,10 @@
         (minus:V128L (smax:V128L (vec_duplicate:V128L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                                  (match_operand:V128L 2 "register_operand" "r"))
                      (smin:V128L (vec_duplicate:V128L (match_dup 1)) (match_dup 2))))]
-  ""
-  "abd<chunkx> %x0 = %1, %x2\n\tabd<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "abd<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*abd<suffix>_s2"
@@ -2420,10 +2411,10 @@
         (minus:V128L (smax:V128L (match_operand:V128L 1 "register_operand" "r")
                                  (vec_duplicate:V128L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
                      (smin:V128L (match_dup 1) (vec_duplicate:V128L (match_dup 2)))))]
-  ""
-  "abd<chunkx> %x0 = %x1, %2\n\tabd<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "abd<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_expand "abds<mode>3"
@@ -2469,10 +2460,10 @@
         (ss_minus:V128L (smax:V128L (match_operand:V128L 1 "register_operand" "r")
                                     (match_operand:V128L 2 "register_operand" "r"))
                         (smin:V128L (match_dup 1) (match_dup 2))))]
-  "HAVE_LVX_SS_ABD_<MODE>"
-  "abds<chunkx> %x0 = %x1, %x2\n\tabds<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_SS_ABD_<MODE>)"
+  "abds<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*abds<suffix>_s1"
@@ -2480,10 +2471,10 @@
         (ss_minus:V128L (smax:V128L (vec_duplicate:V128L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                                     (match_operand:V128L 2 "register_operand" "r"))
                         (smin:V128L (vec_duplicate:V128L (match_dup 1)) (match_dup 2))))]
-  "HAVE_LVX_SS_ABD_<MODE>"
-  "abds<chunkx> %x0 = %1, %x2\n\tabds<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_SS_ABD_<MODE>)"
+  "abds<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*abds<suffix>_s2"
@@ -2491,10 +2482,10 @@
         (ss_minus:V128L (smax:V128L (match_operand:V128L 1 "register_operand" "r")
                                     (vec_duplicate:V128L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
                         (smin:V128L (match_dup 1) (vec_duplicate:V128L (match_dup 2)))))]
-  "HAVE_LVX_SS_ABD_<MODE>"
-  "abds<chunkx> %x0 = %x1, %2\n\tabds<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_SS_ABD_<MODE>)"
+  "abds<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_expand "abdu<mode>3"
@@ -2540,10 +2531,10 @@
         (minus:V128L (umax:V128L (match_operand:V128L 1 "register_operand" "r")
                                  (match_operand:V128L 2 "register_operand" "r"))
                      (umin:V128L (match_dup 1) (match_dup 2))))]
-  "HAVE_LVX_UABD_<MODE>"
-  "abdu<chunkx> %x0 = %x1, %x2\n\tabdu<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_UABD_<MODE>)"
+  "abdu<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*abdu<suffix>_s1"
@@ -2551,10 +2542,10 @@
         (minus:V128L (umax:V128L (vec_duplicate:V128L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                                  (match_operand:V128L 2 "register_operand" "r"))
                      (umin:V128L (vec_duplicate:V128L (match_dup 1)) (match_dup 2))))]
-  "HAVE_LVX_UABD_<MODE>"
-  "abdu<chunkx> %x0 = %1, %x2\n\tabdu<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_UABD_<MODE>)"
+  "abdu<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*abdu<suffix>_s2"
@@ -2562,10 +2553,10 @@
         (minus:V128L (umax:V128L (match_operand:V128L 1 "register_operand" "r")
                                  (vec_duplicate:V128L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
                      (umin:V128L (match_dup 1) (vec_duplicate:V128L (match_dup 2)))))]
-  "HAVE_LVX_UABD_<MODE>"
-  "abdu<chunkx> %x0 = %x1, %2\n\tabdu<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_UABD_<MODE>)"
+  "abdu<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 
@@ -2607,20 +2598,20 @@
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (ashift:V2DI (match_operand:V2DI 1 "register_operand" "r")
                      (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "slld %x0 = %x1, %2\n\tslld %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length" "8")]
+  "LVX_2"
+  "slldp %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "ssashlv2di3"
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (ss_ashift:V2DI (match_operand:V2DI 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "slsd %x0 = %x1, %2\n\tslsd %y0 = %y1, %2"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length" "8")]
+  "LVX_2"
+  "slsdp %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_expand "usashlv2di3"
@@ -2669,40 +2660,40 @@
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (us_ashift:V2DI (match_operand:V2DI 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "HAVE_LVX_US_ASHIFT_V2DI"
-  "slusd %x0 = %x1, %2\n\tslusd %y0 = %y1, %2"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length" "8")]
+  "LVX_2 && (HAVE_LVX_US_ASHIFT_V2DI)"
+  "slusdp %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "ashrv2di3"
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (ashiftrt:V2DI (match_operand:V2DI 1 "register_operand" "r")
                        (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "srad %x0 = %x1, %2\n\tsrad %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length" "8")]
+  "LVX_2"
+  "sradp %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "lshrv2di3"
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (lshiftrt:V2DI (match_operand:V2DI 1 "register_operand" "r")
                        (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "srld %x0 = %x1, %2\n\tsrld %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length" "8")]
+  "LVX_2"
+  "srldp %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "sshrv2di3"
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (unspec:V2DI [(match_operand:V2DI 1 "register_operand" "r")
                       (match_operand:SI 2 "reg_shift_operand" "rU06")] UNSPEC_SRS))]
-  ""
-  "srsd %x0 = %x1, %2\n\tsrsd %y0 = %y1, %2"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length" "8")]
+  "LVX_2"
+  "srsdp %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 
@@ -2737,13 +2728,12 @@
   [(set (match_operand:S256I 0 "register_operand" "=r")
         (ashift:S256I (match_operand:S256I 1 "register_operand" "r")
                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "HAVE_LVX_ASHIFT_<MODE>"
+  "LVX_2 && (HAVE_LVX_ASHIFT_<MODE>)"
   {
-    return "sll<chunkx> %x0 = %x1, %2\n\tsll<chunkx> %y0 = %y1, %2\n\t"
-           "sll<chunkx> %z0 = %z1, %2\n\tsll<chunkx> %t0 = %t1, %2";
+    return "sll<hsuffix> %L0 = %L1, %2\n\tsll<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length" "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "ssashl<mode>3"
@@ -2851,13 +2841,12 @@
   [(set (match_operand:S256I 0 "register_operand" "=r")
         (ashiftrt:S256I (match_operand:S256I 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "HAVE_LVX_ASHIFTRT_<MODE>"
+  "LVX_2 && (HAVE_LVX_ASHIFTRT_<MODE>)"
   {
-    return "sra<chunkx> %x0 = %x1, %2\n\tsra<chunkx> %y0 = %y1, %2\n\t"
-           "sra<chunkx> %z0 = %z1, %2\n\tsra<chunkx> %t0 = %t1, %2";
+    return "sra<hsuffix> %L0 = %L1, %2\n\tsra<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length" "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "lshr<mode>3"
@@ -2889,13 +2878,12 @@
   [(set (match_operand:S256I 0 "register_operand" "=r")
         (lshiftrt:S256I (match_operand:S256I 1 "register_operand" "r")
                         (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "HAVE_LVX_LSHIFTRT_<MODE>"
+  "LVX_2 && (HAVE_LVX_LSHIFTRT_<MODE>)"
   {
-    return "srl<chunkx> %x0 = %x1, %2\n\tsrl<chunkx> %y0 = %y1, %2\n\t"
-           "srl<chunkx> %z0 = %z1, %2\n\tsrl<chunkx> %t0 = %t1, %2";
+    return "srl<hsuffix> %L0 = %L1, %2\n\tsrl<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length" "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "sshr<mode>3"
@@ -2944,13 +2932,12 @@
   [(set (match_operand:S256I 0 "register_operand" "=r")
         (unspec:S256I [(match_operand:S256I 1 "register_operand" "r")
                        (match_operand:S256I 2 "register_operand" "r")] UNSPEC_AVG))]
-  "HAVE_LVX_AVG_<MODE>"
+  "LVX_2 && (HAVE_LVX_AVG_<MODE>)"
   {
-    return "avg<chunkx> %x0 = %x1, %x2\n\tavg<chunkx> %y0 = %y1, %y2\n\t"
-           "avg<chunkx> %z0 = %z1, %z2\n\tavg<chunkx> %t0 = %t1, %t2";
+    return "avg<hsuffix> %L0 = %L1, %L2\n\tavg<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "avg<mode>3_ceil"
@@ -2982,13 +2969,12 @@
   [(set (match_operand:S256I 0 "register_operand" "=r")
         (unspec:S256I [(match_operand:S256I 1 "register_operand" "r")
                        (match_operand:S256I 2 "register_operand" "r")] UNSPEC_AVGR))]
-  "HAVE_LVX_CEIL_AVG_<MODE>"
+  "LVX_2 && (HAVE_LVX_CEIL_AVG_<MODE>)"
   {
-    return "avgr<chunkx> %x0 = %x1, %x2\n\tavgr<chunkx> %y0 = %y1, %y2\n\t"
-           "avgr<chunkx> %z0 = %z1, %z2\n\tavgr<chunkx> %t0 = %t1, %t2";
+    return "avgr<hsuffix> %L0 = %L1, %L2\n\tavgr<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "uavg<mode>3_floor"
@@ -3020,13 +3006,12 @@
   [(set (match_operand:S256I 0 "register_operand" "=r")
         (unspec:S256I [(match_operand:S256I 1 "register_operand" "r")
                        (match_operand:S256I 2 "register_operand" "r")] UNSPEC_AVGU))]
-  "HAVE_LVX_UAVG_<MODE>"
+  "LVX_2 && (HAVE_LVX_UAVG_<MODE>)"
   {
-    return "avgu<chunkx> %x0 = %x1, %x2\n\tavgu<chunkx> %y0 = %y1, %y2\n\t"
-           "avgu<chunkx> %z0 = %z1, %z2\n\tavgu<chunkx> %t0 = %t1, %t2";
+    return "avgu<hsuffix> %L0 = %L1, %L2\n\tavgu<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "uavg<mode>3_ceil"
@@ -3058,13 +3043,12 @@
   [(set (match_operand:S256I 0 "register_operand" "=r")
         (unspec:S256I [(match_operand:S256I 1 "register_operand" "r")
                        (match_operand:S256I 2 "register_operand" "r")] UNSPEC_AVGRU))]
-  "HAVE_LVX_CEIL_UAVG_<MODE>"
+  "LVX_2 && (HAVE_LVX_CEIL_UAVG_<MODE>)"
   {
-    return "avgru<chunkx> %x0 = %x1, %x2\n\tavgru<chunkx> %y0 = %y1, %y2\n\t"
-           "avgru<chunkx> %z0 = %z1, %z2\n\tavgru<chunkx> %t0 = %t1, %t2";
+    return "avgru<hsuffix> %L0 = %L1, %L2\n\tavgru<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "extend<mode><wide>2"
@@ -3166,39 +3150,36 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (plus:V256J (match_operand:V256J 1 "register_operand" "r")
                     (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "add<chunkx> %x0 = %x1, %x2\n\tadd<chunkx> %y0 = %y1, %y2\n\t"
-           "add<chunkx> %z0 = %z1, %z2\n\tadd<chunkx> %t0 = %t1, %t2";
+    return "add<hsuffix> %L0 = %L1, %L2\n\tadd<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*add<mode>3_s1"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (plus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "add<chunkx> %x0 = %1, %x2\n\tadd<chunkx> %y0 = %1, %y2\n\t"
-           "add<chunkx> %z0 = %1, %z2\n\tadd<chunkx> %t0 = %1, %t2";
+    return "add<hsuffix> %L0 = %1, %L2\n\tadd<hsuffix> %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*add<mode>3_s2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (plus:V256J (match_operand:V256J 1 "register_operand" "r")
                     (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
+  "LVX_2"
   {
-    return "add<chunkx> %x0 = %x1, %2\n\tadd<chunkx> %y0 = %y1, %2\n\t"
-           "add<chunkx> %z0 = %z1, %2\n\tadd<chunkx> %t0 = %t1, %2";
+    return "add<hsuffix> %L0 = %L1, %2\n\tadd<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "ssadd<mode>3"
@@ -3230,13 +3211,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (ss_plus:V256J (match_operand:V256J 1 "register_operand" "r")
                        (match_operand:V256J 2 "register_operand" "r")))]
-  "HAVE_LVX_SS_PLUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_SS_PLUS_<MODE>)"
   {
-    return "adds<chunkx> %x0 = %x1, %x2\n\tadds<chunkx> %y0 = %y1, %y2\n\t"
-           "adds<chunkx> %z0 = %z1, %z2\n\tadds<chunkx> %t0 = %t1, %t2";
+    return "adds<hsuffix> %L0 = %L1, %L2\n\tadds<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*ssadd<mode>3_s1"
@@ -3260,13 +3240,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (ss_plus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V256J 2 "register_operand" "r")))]
-  "HAVE_LVX_HAVE_SS_PLUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_HAVE_SS_PLUS_<MODE>)"
   {
-    return "adds<chunkx> %x0 = %1, %x2\n\tadds<chunkx> %y0 = %1, %y2\n\t"
-           "adds<chunkx> %z0 = %1, %z2\n\tadds<chunkx> %t0 = %1, %t2";
+    return "adds<hsuffix> %L0 = %1, %L2\n\tadds<hsuffix> %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*ssadd<mode>3_s2"
@@ -3290,13 +3269,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (ss_plus:V256J (match_operand:V256J 1 "register_operand" "r")
                     (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "HAVE_LVX_SS_PLUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_SS_PLUS_<MODE>)"
   {
-    return "adds<chunkx> %x0 = %x1, %2\n\tadds<chunkx> %y0 = %y1, %2\n\t"
-           "adds<chunkx> %z0 = %z1, %2\n\tadds<chunkx> %t0 = %t1, %2";
+    return "adds<hsuffix> %L0 = %L1, %2\n\tadds<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "usadd<mode>3"
@@ -3341,13 +3319,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (us_plus:V256J (match_operand:V256J 1 "register_operand" "r")
                        (match_operand:V256J 2 "register_operand" "r")))]
-  "HAVE_LVX_US_PLUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_US_PLUS_<MODE>)"
   {
-    return "addus<chunkx> %x0 = %x1, %x2\n\taddus<chunkx> %y0 = %y1, %y2\n\t"
-           "addus<chunkx> %z0 = %z1, %z2\n\taddus<chunkx> %t0 = %t1, %t2";
+    return "addus<hsuffix> %L0 = %L1, %L2\n\taddus<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*usadd<mode>3_s1"
@@ -3373,13 +3350,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (us_plus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                        (match_operand:V256J 2 "register_operand" "r")))]
-  "HAVE_LVX_US_PLUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_US_PLUS_<MODE>)"
   {
-    return "addus<chunkx> %x0 = %1, %x2\n\taddus<chunkx> %y0 = %1, %y2\n\t"
-           "addus<chunkx> %z0 = %1, %z2\n\taddus<chunkx> %t0 = %1, %t2";
+    return "addus<hsuffix> %L0 = %1, %L2\n\taddus<hsuffix> %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*usadd<mode>3_s2"
@@ -3405,13 +3381,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (us_plus:V256J (match_operand:V256J 1 "register_operand" "r")
                        (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "HAVE_LVX_US_PLUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_US_PLUS_<MODE>)"
   {
-    return "addus<chunkx> %x0 = %x1, %2\n\taddus<chunkx> %y0 = %y1, %2\n\t"
-           "addus<chunkx> %z0 = %z1, %2\n\taddus<chunkx> %t0 = %t1, %2";
+    return "addus<hsuffix> %L0 = %L1, %2\n\taddus<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*addx2<suffix>"
@@ -3439,13 +3414,12 @@
         (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
                                   (const_int 1))
                     (match_operand:V256K 2 "register_operand" "r")))]
-  "HAVE_LVX_MUL02_ADD_<MODE>"
+  "LVX_2 && (HAVE_LVX_MUL02_ADD_<MODE>)"
   {
-    return "addx2<chunkx> %x0 = %x1, %x2\n\taddx2<chunkx> %y0 = %y1, %y2\n\t"
-           "addx2<chunkx> %z0 = %z1, %z2\n\taddx2<chunkx> %t0 = %t1, %t2";
+    return "addx2<hsuffix> %L0 = %L1, %L2\n\taddx2<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*addx4<suffix>"
@@ -3473,13 +3447,12 @@
         (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
                                   (const_int 2))
                     (match_operand:V256K 2 "register_operand" "r")))]
-  "HAVE_LVX_MUL04_ADD_<MODE>"
+  "LVX_2 && (HAVE_LVX_MUL04_ADD_<MODE>)"
   {
-    return "addx4<chunkx> %x0 = %x1, %x2\n\taddx4<chunkx> %y0 = %y1, %y2\n\t"
-           "addx4<chunkx> %z0 = %z1, %z2\n\taddx4<chunkx> %t0 = %t1, %t2";
+    return "addx4<hsuffix> %L0 = %L1, %L2\n\taddx4<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*addx8<suffix>"
@@ -3507,13 +3480,12 @@
         (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
                                   (const_int 3))
                     (match_operand:V256K 2 "register_operand" "r")))]
-  "HAVE_LVX_MUL08_ADD_<MODE>"
+  "LVX_2 && (HAVE_LVX_MUL08_ADD_<MODE>)"
   {
-    return "addx8<chunkx> %x0 = %x1, %x2\n\taddx8<chunkx> %y0 = %y1, %y2\n\t"
-           "addx8<chunkx> %z0 = %z1, %z2\n\taddx8<chunkx> %t0 = %t1, %t2";
+    return "addx8<hsuffix> %L0 = %L1, %L2\n\taddx8<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*addx16<suffix>"
@@ -3541,52 +3513,48 @@
         (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
                                   (const_int 4))
                     (match_operand:V256K 2 "register_operand" "r")))]
-  "HAVE_LVX_MUL16_ADD_<MODE>"
+  "LVX_2 && (HAVE_LVX_MUL16_ADD_<MODE>)"
   {
-    return "addx16<chunkx> %x0 = %x1, %x2\n\taddx16<chunkx> %y0 = %y1, %y2\n\t"
-           "addx16<chunkx> %z0 = %z1, %z2\n\taddx16<chunkx> %t0 = %t1, %t2";
+    return "addx16<hsuffix> %L0 = %L1, %L2\n\taddx16<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "sub<mode>3"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (minus:V256J (match_operand:V256J 1 "register_operand" "r")
                      (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "sbf<chunkx> %x0 = %x2, %x1\n\tsbf<chunkx> %y0 = %y2, %y1\n\t"
-           "sbf<chunkx> %z0 = %z2, %z1\n\tsbf<chunkx> %t0 = %t2, %t1";
+    return "sbf<hsuffix> %L0 = %L2, %L1\n\tsbf<hsuffix> %M0 = %M2, %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*sub<mode>3_s1"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (minus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                      (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "sbf<chunkx> %x0 = %x2, %1\n\tsbf<chunkx> %y0 = %y2, %1\n\t"
-           "sbf<chunkx> %z0 = %z2, %1\n\tsbf<chunkx> %t0 = %t2, %1";
+    return "sbf<hsuffix> %L0 = %L2, %1\n\tsbf<hsuffix> %M0 = %M2, %1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*sub<mode>3_s2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (minus:V256J (match_operand:V256J 1 "register_operand" "r")
                      (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
+  "LVX_2"
   {
-    return "sbf<chunkx> %x0 = %2, %x1\n\tsbf<chunkx> %y0 = %2, %y1\n\t"
-           "sbf<chunkx> %z0 = %2, %z1\n\tsbf<chunkx> %t0 = %2, %t1";
+    return "sbf<hsuffix> %L0 = %2, %L1\n\tsbf<hsuffix> %M0 = %2, %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "sssub<mode>3"
@@ -3618,13 +3586,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (ss_minus:V256J (match_operand:V256J 1 "register_operand" "r")
                         (match_operand:V256J 2 "register_operand" "r")))]
-  "HAVE_LVX_SS_MINUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_SS_MINUS_<MODE>)"
   {
-    return "sbfs<chunkx> %x0 = %x2, %x1\n\tsbfs<chunkx> %y0 = %y2, %y1\n\t"
-           "sbfs<chunkx> %z0 = %z2, %z1\n\tsbfs<chunkx> %t0 = %t2, %t1";
+    return "sbfs<hsuffix> %L0 = %L2, %L1\n\tsbfs<hsuffix> %M0 = %M2, %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*sssub<mode>3_s1"
@@ -3648,13 +3615,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (ss_minus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                      (match_operand:V256J 2 "register_operand" "r")))]
-  "HAVE_LVX_SS_MINUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_SS_MINUS_<MODE>)"
   {
-    return "sbfs<chunkx> %x0 = %x2, %1\n\tsbfs<chunkx> %y0 = %y2, %1\n\t"
-           "sbfs<chunkx> %z0 = %z2, %1\n\tsbfs<chunkx> %t0 = %t2, %1";
+    return "sbfs<hsuffix> %L0 = %L2, %1\n\tsbfs<hsuffix> %M0 = %M2, %1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*sssub<mode>3_s2"
@@ -3678,13 +3644,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (ss_minus:V256J (match_operand:V256J 1 "register_operand" "r")
                      (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "HAVE_LVX_SS_MINUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_SS_MINUS_<MODE>)"
   {
-    return "sbfs<chunkx> %x0 = %2, %x1\n\tsbfs<chunkx> %y0 = %2, %y1\n\t"
-           "sbfs<chunkx> %z0 = %2, %z1\n\tsbfs<chunkx> %t0 = %2, %t1";
+    return "sbfs<hsuffix> %L0 = %2, %L1\n\tsbfs<hsuffix> %M0 = %2, %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "ussub<mode>3"
@@ -3724,13 +3689,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (us_minus:V256J (match_operand:V256J 1 "register_operand" "r")
                         (match_operand:V256J 2 "register_operand" "r")))]
-  "HAVE_LVX_US_MINUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_US_MINUS_<MODE>)"
   {
-    return "sbfus<chunkx> %x0 = %x2, %x1\n\tsbfus<chunkx> %y0 = %y2, %y1\n\t"
-           "sbfus<chunkx> %z0 = %z2, %z1\n\tsbfus<chunkx> %t0 = %t2, %t1";
+    return "sbfus<hsuffix> %L0 = %L2, %L1\n\tsbfus<hsuffix> %M0 = %M2, %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*ussub<mode>3_s1"
@@ -3756,13 +3720,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (us_minus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                         (match_operand:V256J 2 "register_operand" "r")))]
-  "HAVE_LVX_US_MINUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_US_MINUS_<MODE>)"
   {
-    return "sbfus<chunkx> %x0 = %x2, %1\n\tsbfus<chunkx> %y0 = %y2, %1\n\t"
-           "sbfus<chunkx> %z0 = %z2, %1\n\tsbfus<chunkx> %t0 = %t2, %1";
+    return "sbfus<hsuffix> %L0 = %L2, %1\n\tsbfus<hsuffix> %M0 = %M2, %1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*ussub<mode>3_s2"
@@ -3788,13 +3751,12 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (us_minus:V256J (match_operand:V256J 1 "register_operand" "r")
                         (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "HAVE_LVX_US_MINUS_<MODE>"
+  "LVX_2 && (HAVE_LVX_US_MINUS_<MODE>)"
   {
-    return "sbfus<chunkx> %x0 = %2, %x1\n\tsbfus<chunkx> %y0 = %2, %y1\n\t"
-           "sbfus<chunkx> %z0 = %2, %z1\n\tsbfus<chunkx> %t0 = %2, %t1";
+    return "sbfus<hsuffix> %L0 = %2, %L1\n\tsbfus<hsuffix> %M0 = %2, %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*sbfx2<suffix>"
@@ -3822,13 +3784,12 @@
         (minus:V256K (match_operand:V256K 1 "register_operand" "r")
                      (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
                                    (const_int 1))))]
-  "HAVE_LVX_MUL02_SUB_<MODE>"
+  "LVX_2 && (HAVE_LVX_MUL02_SUB_<MODE>)"
   {
-    return "sbfx2<chunkx> %x0 = %x2, %x1\n\tsbfx2<chunkx> %y0 = %y2, %y1\n\t"
-           "sbfx2<chunkx> %z0 = %z2, %z1\n\tsbfx2<chunkx> %t0 = %t2, %t1";
+    return "sbfx2<hsuffix> %L0 = %L2, %L1\n\tsbfx2<hsuffix> %M0 = %M2, %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*sbfx4<suffix>"
@@ -3856,13 +3817,12 @@
         (minus:V256K (match_operand:V256K 1 "register_operand" "r")
                      (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
                                    (const_int 2))))]
-  "HAVE_LVX_MUL04_SUB_<MODE>"
+  "LVX_2 && (HAVE_LVX_MUL04_SUB_<MODE>)"
   {
-    return "sbfx4<chunkx> %x0 = %x2, %x1\n\tsbfx4<chunkx> %y0 = %y2, %y1\n\t"
-           "sbfx4<chunkx> %z0 = %z2, %z1\n\tsbfx4<chunkx> %t0 = %t2, %t1";
+    return "sbfx4<hsuffix> %L0 = %L2, %L1\n\tsbfx4<hsuffix> %M0 = %M2, %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*sbfx8<suffix>"
@@ -3890,13 +3850,12 @@
         (minus:V256K (match_operand:V256K 1 "register_operand" "r")
                      (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
                                    (const_int 3))))]
-  "HAVE_LVX_MUL08_SUB_<MODE>"
+  "LVX_2 && (HAVE_LVX_MUL08_SUB_<MODE>)"
   {
-    return "sbfx8<chunkx> %x0 = %x2, %x1\n\tsbfx8<chunkx> %y0 = %y2, %y1\n\t"
-           "sbfx8<chunkx> %z0 = %z2, %z1\n\tsbfx8<chunkx> %t0 = %t2, %t1";
+    return "sbfx8<hsuffix> %L0 = %L2, %L1\n\tsbfx8<hsuffix> %M0 = %M2, %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*sbfx16<suffix>"
@@ -3924,13 +3883,12 @@
         (minus:V256K (match_operand:V256K 1 "register_operand" "r")
                      (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
                                    (const_int 4))))]
-  "HAVE_LVX_MUL16_SUB_<MODE>"
+  "LVX_2 && (HAVE_LVX_MUL16_SUB_<MODE>)"
   {
-    return "sbfx16<chunkx> %x0 = %x2, %x1\n\tsbfx16<chunkx> %y0 = %y2, %y1\n\t"
-           "sbfx16<chunkx> %z0 = %z2, %z1\n\tsbfx16<chunkx> %t0 = %t2, %t1";
+    return "sbfx16<hsuffix> %L0 = %L2, %L1\n\tsbfx16<hsuffix> %M0 = %M2, %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "div<mode>3"
@@ -3997,156 +3955,144 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (smin:V256J (match_operand:V256J 1 "register_operand" "r")
                     (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "min<chunkx> %x0 = %x1, %x2\n\tmin<chunkx> %y0 = %y1, %y2\n\t"
-           "min<chunkx> %z0 = %z1, %z2\n\tmin<chunkx> %t0 = %t1, %t2";
+    return "min<hsuffix> %L0 = %L1, %L2\n\tmin<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*smin<mode>3_s1"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (smin:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "min<chunkx> %x0 = %1, %x2\n\tmin<chunkx> %y0 = %1, %y2\n\t"
-           "min<chunkx> %z0 = %1, %z2\n\tmin<chunkx> %t0 = %1, %t2";
+    return "min<hsuffix> %L0 = %1, %L2\n\tmin<hsuffix> %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*smin<mode>3_s2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (smin:V256J (match_operand:V256J 1 "register_operand" "r")
                     (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
+  "LVX_2"
   {
-    return "min<chunkx> %x0 = %x1, %2\n\tmin<chunkx> %y0 = %y1, %2\n\t"
-           "min<chunkx> %z0 = %z1, %2\n\tmin<chunkx> %t0 = %t1, %2";
+    return "min<hsuffix> %L0 = %L1, %2\n\tmin<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "smax<mode>3"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (smax:V256J (match_operand:V256J 1 "register_operand" "r")
                     (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "max<chunkx> %x0 = %x1, %x2\n\tmax<chunkx> %y0 = %y1, %y2\n\t"
-           "max<chunkx> %z0 = %z1, %z2\n\tmax<chunkx> %t0 = %t1, %t2";
+    return "max<hsuffix> %L0 = %L1, %L2\n\tmax<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*smax<mode>3_s1"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (smax:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "max<chunkx> %x0 = %1, %x2\n\tmax<chunkx> %y0 = %1, %y2\n\t"
-           "max<chunkx> %z0 = %1, %z2\n\tmax<chunkx> %t0 = %1, %t2";
+    return "max<hsuffix> %L0 = %1, %L2\n\tmax<hsuffix> %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*smax<mode>3_s2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (smax:V256J (match_operand:V256J 1 "register_operand" "r")
                     (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
+  "LVX_2"
   {
-    return "max<chunkx> %x0 = %x1, %2\n\tmax<chunkx> %y0 = %y1, %2\n\t"
-           "max<chunkx> %z0 = %z1, %2\n\tmax<chunkx> %t0 = %t1, %2";
+    return "max<hsuffix> %L0 = %L1, %2\n\tmax<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "umin<mode>3"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (umin:V256J (match_operand:V256J 1 "register_operand" "r")
                     (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "minu<chunkx> %x0 = %x1, %x2\n\tminu<chunkx> %y0 = %y1, %y2\n\t"
-           "minu<chunkx> %z0 = %z1, %z2\n\tminu<chunkx> %t0 = %t1, %t2";
+    return "minu<hsuffix> %L0 = %L1, %L2\n\tminu<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*umin<mode>3_s1"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (umin:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "minu<chunkx> %x0 = %1, %x2\n\tminu<chunkx> %y0 = %1, %y2\n\t"
-           "minu<chunkx> %z0 = %1, %z2\n\tminu<chunkx> %t0 = %1, %t2";
+    return "minu<hsuffix> %L0 = %1, %L2\n\tminu<hsuffix> %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*umin<mode>3_s2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (umin:V256J (match_operand:V256J 1 "register_operand" "r")
                     (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
+  "LVX_2"
   {
-    return "minu<chunkx> %x0 = %x1, %2\n\tminu<chunkx> %y0 = %y1, %2\n\t"
-           "minu<chunkx> %z0 = %z1, %2\n\tminu<chunkx> %t0 = %t1, %2";
+    return "minu<hsuffix> %L0 = %L1, %2\n\tminu<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "umax<mode>3"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (umax:V256J (match_operand:V256J 1 "register_operand" "r")
                     (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "maxu<chunkx> %x0 = %x1, %x2\n\tmaxu<chunkx> %y0 = %y1, %y2\n\t"
-           "maxu<chunkx> %z0 = %z1, %z2\n\tmaxu<chunkx> %t0 = %t1, %t2";
+    return "maxu<hsuffix> %L0 = %L1, %L2\n\tmaxu<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*umax<mode>3_s1"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (umax:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V256J 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "maxu<chunkx> %x0 = %1, %x2\n\tmaxu<chunkx> %y0 = %1, %y2\n\t"
-           "maxu<chunkx> %z0 = %1, %z2\n\tmaxu<chunkx> %t0 = %1, %t2";
+    return "maxu<hsuffix> %L0 = %1, %L2\n\tmaxu<hsuffix> %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*umax<mode>3_s2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (umax:V256J (match_operand:V256J 1 "register_operand" "r")
                     (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
+  "LVX_2"
   {
-    return "maxu<chunkx> %x0 = %x1, %2\n\tmaxu<chunkx> %y0 = %y1, %2\n\t"
-           "maxu<chunkx> %z0 = %z1, %2\n\tmaxu<chunkx> %t0 = %t1, %2";
+    return "maxu<hsuffix> %L0 = %L1, %2\n\tmaxu<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 
@@ -4156,104 +4102,96 @@
   [(set (match_operand:V256L 0 "register_operand" "=r")
         (and:V256L (match_operand:V256L 1 "register_operand" "r")
                    (match_operand:V256L 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "andd %x0 = %x1, %x2\n\tandd %y0 = %y1, %y2\n\t"
-           "andd %z0 = %z1, %z2\n\tandd %t0 = %t1, %t2";
+    return "andq %L0 = %L1, %L2\n\tandq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*nand<mode>3"
   [(set (match_operand:V256L 0 "register_operand" "=r")
         (ior:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r"))
                    (not:V256L (match_operand:V256L 2 "register_operand" "r"))))]
-  ""
+  "LVX_2"
   {
-    return "nandd %x0 = %x1, %x2\n\tnandd %y0 = %y1, %y2\n\t"
-           "nandd %z0 = %z1, %z2\n\tnandd %t0 = %t1, %t2";
+    return "nandq %L0 = %L1, %L2\n\tnandq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*andn<mode>3"
   [(set (match_operand:V256L 0 "register_operand" "=r")
         (and:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r"))
                    (match_operand:V256L 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "andnd %x0 = %x1, %x2\n\tandnd %y0 = %y1, %y2\n\t"
-           "andnd %z0 = %z1, %z2\n\tandnd %t0 = %t1, %t2";
+    return "andnq %L0 = %L1, %L2\n\tandnq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "ior<mode>3"
   [(set (match_operand:V256L 0 "register_operand" "=r")
         (ior:V256L (match_operand:V256L 1 "register_operand" "r")
                    (match_operand:V256L 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "iord %x0 = %x1, %x2\n\tiord %y0 = %y1, %y2\n\t"
-           "iord %z0 = %z1, %z2\n\tiord %t0 = %t1, %t2";
+    return "iorq %L0 = %L1, %L2\n\tiorq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*nior<mode>3"
   [(set (match_operand:V256L 0 "register_operand" "=r")
         (and:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r"))
                    (not:V256L (match_operand:V256L 2 "register_operand" "r"))))]
-  ""
+  "LVX_2"
   {
-    return "niord %x0 = %x1, %x2\n\tniord %y0 = %y1, %y2\n\t"
-           "niord %z0 = %z1, %z2\n\tniord %t0 = %t1, %t2";
+    return "niorq %L0 = %L1, %L2\n\tniorq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*iorn<mode>3"
   [(set (match_operand:V256L 0 "register_operand" "=r")
         (ior:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r"))
                    (match_operand:V256L 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "iornd %x0 = %x1, %x2\n\tiornd %y0 = %y1, %y2\n\t"
-           "iornd %z0 = %z1, %z2\n\tiornd %t0 = %t1, %t2";
+    return "iornq %L0 = %L1, %L2\n\tiornq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "xor<mode>3"
   [(set (match_operand:V256L 0 "register_operand" "=r")
         (xor:V256L (match_operand:V256L 1 "register_operand" "r")
                    (match_operand:V256L 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "eord %x0 = %x1, %x2\n\teord %y0 = %y1, %y2\n\t"
-           "eord %z0 = %z1, %z2\n\teord %t0 = %t1, %t2";
+    return "eorq %L0 = %L1, %L2\n\teorq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*nxor<mode>3"
   [(set (match_operand:V256L 0 "register_operand" "=r")
         (not:V256L (xor:V256L (match_operand:V256L 1 "register_operand" "r")
                               (match_operand:V256L 2 "register_operand" "r"))))]
-  ""
+  "LVX_2"
   {
-    return "neord %x0 = %x1, %x2\n\tneord %y0 = %y1, %y2\n\t"
-           "neord %z0 = %z1, %z2\n\tneord %t0 = %t1, %t2";
+    return "neorq %L0 = %L1, %L2\n\tneorq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 
@@ -4370,12 +4308,11 @@
 (define_insn "neg<mode>2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (neg:V256J (match_operand:V256J 1 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "neg<chunkx> %x0 = %x1\n\tneg<chunkx> %y0 = %y1\n\t"
-           "neg<chunkx> %z0 = %z1\n\tneg<chunkx> %t0 = %t1";
+    return "neg<hsuffix> %L0 = %L1\n\tneg<hsuffix> %M0 = %M1";
   }
-  [(set_attr "type" "alu_tiny_x4_x")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"          "32")]
 )
 
@@ -4403,12 +4340,11 @@
 (define_insn "ssneg<mode>2_2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (ss_neg:V256J (match_operand:V256J 1 "register_operand" "r")))]
-  "HAVE_LVX_SS_NEG_<MODE>"
+  "LVX_2 && (HAVE_LVX_SS_NEG_<MODE>)"
   {
-    return "negs<chunkx> %x0 = %x1\n\tnegs<chunkx> %y0 = %y1\n\t"
-           "negs<chunkx> %z0 = %z1\n\tnegs<chunkx> %t0 = %t1";
+    return "negs<hsuffix> %L0 = %L1\n\tnegs<hsuffix> %M0 = %M1";
   }
-  [(set_attr "type" "alu_tiny_x4_x")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"          "32")]
 )
 
@@ -4436,12 +4372,11 @@
 (define_insn "abs<mode>2_2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (abs:V256J (match_operand:V256J 1 "register_operand" "r")))]
-  "HAVE_LVX_ABS_<MODE>"
+  "LVX_2 && (HAVE_LVX_ABS_<MODE>)"
   {
-    return "abs<chunkx> %x0 = %x1\n\tabs<chunkx> %y0 = %y1\n\t"
-           "abs<chunkx> %z0 = %z1\n\tabs<chunkx> %t0 = %t1";
+    return "abs<hsuffix> %L0 = %L1\n\tabs<hsuffix> %M0 = %M1";
   }
-  [(set_attr "type" "alu_tiny_x4_x")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"          "32")]
 )
 
@@ -4468,12 +4403,11 @@
 (define_insn "ssabs<mode>2_2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (ss_abs:V256J (match_operand:V256J 1 "register_operand" "r")))]
-  "HAVE_LVX_SS_ABS_<MODE>"
+  "LVX_2 && (HAVE_LVX_SS_ABS_<MODE>)"
   {
-    return "abss<chunkx> %x0 = %x1\n\tabss<chunkx> %y0 = %y1\n\t"
-           "abss<chunkx> %z0 = %z1\n\tabss<chunkx> %t0 = %t1";
+    return "abss<hsuffix> %L0 = %L1\n\tabss<hsuffix> %M0 = %M1";
   }
-  [(set_attr "type" "alu_tiny_x4_x")
+  [(set_attr "type" "alu_tiny_x2")
    (set_attr "length"          "32")]
 )
 
@@ -4536,13 +4470,12 @@
 (define_insn "one_cmpl<mode>2"
   [(set (match_operand:V256L 0 "register_operand" "=r")
         (not:V256L (match_operand:V256L 1 "register_operand" "r")))]
-  ""
+  "LVX_2"
   {
-    return "notd %x0 = %x1\n\tnotd %y0 = %y1\n\t"
-           "notd %z0 = %z1\n\tnotd %t0 = %t1";
+    return "notq %L0 = %L1\n\tnotq %M0 = %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "abd<mode>3"
@@ -4586,13 +4519,12 @@
         (minus:V256L (smax:V256L (match_operand:V256L 1 "register_operand" "r")
                                  (match_operand:V256L 2 "register_operand" "r"))
                      (smin:V256L (match_dup 1) (match_dup 2))))]
-  "HAVE_LVX_ABD_<MODE>"
+  "LVX_2 && (HAVE_LVX_ABD_<MODE>)"
   {
-    return "abd<chunkx> %x0 = %x1, %x2\n\tabd<chunkx> %y0 = %y1, %y2\n\t"
-           "abd<chunkx> %z0 = %z1, %z2\n\tabd<chunkx> %t0 = %t1, %t2";
+    return "abd<hsuffix> %L0 = %L1, %L2\n\tabd<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*abd<mode>_s1"
@@ -4622,13 +4554,12 @@
         (minus:V256L (smax:V256L (vec_duplicate:V256L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                                  (match_operand:V256L 2 "register_operand" "r"))
                      (smin:V256L (vec_duplicate:V256L (match_dup 1)) (match_dup 2))))]
-  "HAVE_LVX_ABD_<MODE>"
+  "LVX_2 && (HAVE_LVX_ABD_<MODE>)"
   {
-    return "abd<chunkx> %x0 = %1, %x2\n\tabd<chunkx> %y0 = %1, %y2\n\t"
-           "abd<chunkx> %z0 = %1, %z2\n\tabd<chunkx> %t0 = %1, %t2";
+    return "abd<hsuffix> %L0 = %1, %L2\n\tabd<hsuffix> %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "*abd<mode>_s2"
@@ -4658,13 +4589,12 @@
         (minus:V256L (smax:V256L (match_operand:V256L 1 "register_operand" "r")
                                  (vec_duplicate:V256L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
                      (smin:V256L (match_dup 1) (vec_duplicate:V256L (match_dup 2)))))]
-  "HAVE_LVX_ABD_<MODE>"
+  "LVX_2 && (HAVE_LVX_ABD_<MODE>)"
   {
-    return "abd<chunkx> %x0 = %x1, %2\n\tabd<chunkx> %y0 = %y1, %2\n\t"
-           "abd<chunkx> %z0 = %z1, %2\n\tabd<chunkx> %t0 = %t1, %2";
+    return "abd<hsuffix> %L0 = %L1, %2\n\tabd<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "abds<mode>3"
@@ -4710,13 +4640,12 @@
         (ss_minus:V256L (smax:V256L (match_operand:V256L 1 "register_operand" "r")
                                     (match_operand:V256L 2 "register_operand" "r"))
                         (smin:V256L (match_dup 1) (match_dup 2))))]
-  "HAVE_LVX_SS_ABD_<MODE>"
+  "LVX_2 && (HAVE_LVX_SS_ABD_<MODE>)"
   {
-    return "abds<chunkx> %x0 = %x1, %x2\n\tabds<chunkx> %y0 = %y1, %y2\n\t"
-           "abds<chunkx> %z0 = %z1, %z2\n\tabds<chunkx> %t0 = %t1, %t2";
+    return "abds<hsuffix> %L0 = %L1, %L2\n\tabds<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*abds<mode>_s1"
@@ -4724,13 +4653,12 @@
         (ss_minus:V256L (smax:V256L (vec_duplicate:V256L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                                     (match_operand:V256L 2 "register_operand" "r"))
                         (smin:V256L (vec_duplicate:V256L (match_dup 1)) (match_dup 2))))]
-  "HAVE_LVX_SS_ABD_<MODE>"
+  "LVX_2 && (HAVE_LVX_SS_ABD_<MODE>)"
   {
-    return "abds<chunkx> %x0 = %1, %x2\n\tabds<chunkx> %y0 = %1, %y2\n\t"
-           "abds<chunkx> %z0 = %1, %z2\n\tabds<chunkx> %t0 = %1, %t2";
+    return "abds<hsuffix> %L0 = %1, %L2\n\tabds<hsuffix> %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*abds<mode>_s2"
@@ -4738,13 +4666,12 @@
         (ss_minus:V256L (smax:V256L (match_operand:V256L 1 "register_operand" "r")
                                     (vec_duplicate:V256L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
                         (smin:V256L (match_dup 1) (vec_duplicate:V256L (match_dup 2)))))]
-  "HAVE_LVX_SS_ABD_<MODE>"
+  "LVX_2 && (HAVE_LVX_SS_ABD_<MODE>)"
   {
-    return "abds<chunkx> %x0 = %x1, %2\n\tabds<chunkx> %y0 = %y1, %2\n\t"
-           "abds<chunkx> %z0 = %z1, %2\n\tabds<chunkx> %t0 = %t1, %2";
+    return "abds<hsuffix> %L0 = %L1, %2\n\tabds<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_expand "abdu<mode>3"
@@ -4790,13 +4717,12 @@
         (minus:V256L (umax:V256L (match_operand:V256L 1 "register_operand" "r")
                                  (match_operand:V256L 2 "register_operand" "r"))
                      (umin:V256L (match_dup 1) (match_dup 2))))]
-  "HAVE_LVX_US_ABD_<MODE>"
+  "LVX_2 && (HAVE_LVX_US_ABD_<MODE>)"
   {
-    return "abdu<chunkx> %x0 = %x1, %x2\n\tabdu<chunkx> %y0 = %y1, %y2\n\t"
-           "abdu<chunkx> %z0 = %z1, %z2\n\tabdu<chunkx> %t0 = %t1, %t2";
+    return "abdu<hsuffix> %L0 = %L1, %L2\n\tabdu<hsuffix> %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*abdu<mode>_s1"
@@ -4804,13 +4730,12 @@
         (minus:V256L (umax:V256L (vec_duplicate:V256L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                                  (match_operand:V256L 2 "register_operand" "r"))
                      (umin:V256L (vec_duplicate:V256L (match_dup 1)) (match_dup 2))))]
-  "HAVE_LVX_US_ABD_<MODE>"
+  "LVX_2 && (HAVE_LVX_US_ABD_<MODE>)"
   {
-    return "abdu<chunkx> %x0 = %1, %x2\n\tabdu<chunkx> %y0 = %1, %y2\n\t"
-           "abdu<chunkx> %z0 = %1, %z2\n\tabdu<chunkx> %t0 = %1, %t2";
+    return "abdu<hsuffix> %L0 = %1, %L2\n\tabdu<hsuffix> %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*abdu<mode>_s2"
@@ -4818,13 +4743,12 @@
         (minus:V256L (umax:V256L (match_operand:V256L 1 "register_operand" "r")
                                  (vec_duplicate:V256L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
                      (umin:V256L (match_dup 1) (vec_duplicate:V256L (match_dup 2)))))]
-  "HAVE_LVX_US_ABD_<MODE>"
+  "LVX_2 && (HAVE_LVX_US_ABD_<MODE>)"
   {
-    return "abdu<chunkx> %x0 = %x1, %2\n\tabdu<chunkx> %y0 = %y1, %2\n\t"
-           "abdu<chunkx> %z0 = %z1, %2\n\tabdu<chunkx> %t0 = %t1, %2";
+    return "abdu<hsuffix> %L0 = %L1, %2\n\tabdu<hsuffix> %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 
@@ -4908,13 +4832,12 @@
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (ashift:V4DI (match_operand:V4DI 1 "register_operand" "r")
                      (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
+  "LVX_2"
   {
-    return "slld %x0 = %x1, %2\n\tslld %y0 = %y1, %2\n\t"
-           "slld %z0 = %z1, %2\n\tslld %t0 = %t1, %2";
+    return "slldp %L0 = %L1, %2\n\tslldp %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length" "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "ssashlv4di3"
@@ -4997,26 +4920,24 @@
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (ashiftrt:V4DI (match_operand:V4DI 1 "register_operand" "r")
                        (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
+  "LVX_2"
   {
-    return "srad %x0 = %x1, %2\n\tsrad %y0 = %y1, %2\n\t"
-           "srad %z0 = %z1, %2\n\tsrad %t0 = %t1, %2";
+    return "sradp %L0 = %L1, %2\n\tsradp %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length" "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "lshrv4di3"
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (lshiftrt:V4DI (match_operand:V4DI 1 "register_operand" "r")
                        (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
+  "LVX_2"
   {
-    return "srld %x0 = %x1, %2\n\tsrld %y0 = %y1, %2\n\t"
-           "srld %z0 = %z1, %2\n\tsrld %t0 = %t1, %2";
+    return "srldp %L0 = %L1, %2\n\tsrldp %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length" "16")]
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "sshrv4di3"
@@ -5368,78 +5289,78 @@
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smin:V128F (match_operand:V128F 1 "register_operand" "r")
                     (match_operand:V128F 2 "register_operand" "r")))]
-  "HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans)"
-  "fmin<chunkx> %x0 = %x1, %x2\n\tfmin<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans))"
+  "fmin<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*fmin<mode>3_s1"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smin:V128F (vec_duplicate:V128F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V128F 2 "register_operand" "r")))]
-  "HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans)"
-  "fmin<chunkx> %x0 = %1, %x2\n\tfmin<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans))"
+  "fmin<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*fmin<mode>3_s2"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smin:V128F (match_operand:V128F 1 "register_operand" "r")
                     (vec_duplicate:V128F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans)"
-  "fmin<chunkx> %x0 = %x1, %2\n\tfmin<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans))"
+  "fmin<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "fmax<mode>3"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smax:V128F (match_operand:V128F 1 "register_operand" "r")
                     (match_operand:V128F 2 "register_operand" "r")))]
-  "HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans)"
-  "fmax<chunkx> %x0 = %x1, %x2\n\tfmax<chunkx> %y0 = %y1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans))"
+  "fmax<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*fmax<mode>3_s1"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smax:V128F (vec_duplicate:V128F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V128F 2 "register_operand" "r")))]
-  "HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans)"
-  "fmax<chunkx> %x0 = %1, %x2\n\tfmax<chunkx> %y0 = %1, %y2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans))"
+  "fmax<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*fmax<mode>3_s2"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smax:V128F (match_operand:V128F 1 "register_operand" "r")
                     (vec_duplicate:V128F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans)"
-  "fmax<chunkx> %x0 = %x1, %2\n\tfmax<chunkx> %y0 = %y1, %2"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2 && (HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans))"
+  "fmax<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "neg<mode>2"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (neg:V128F (match_operand:V128F 1 "register_operand" "r")))]
-  ""
-  "fneg<chunkx> %x0 = %x1\n\tfneg<chunkx> %y0 = %y1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "fneg<suffix> %0 = %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "abs<mode>2"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (abs:V128F (match_operand:V128F 1 "register_operand" "r")))]
-  ""
-  "fabs<chunkx> %x0 = %x1\n\tfabs<chunkx> %y0 = %y1"
-  [(set_attr "type" "alu_thin_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "fabs<suffix> %0 = %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_expand "copysign<mode>3"

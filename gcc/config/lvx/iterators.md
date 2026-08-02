@@ -1558,6 +1558,27 @@
 ;; lane-extension instructions read a 128-bit vector, so the extend expanders
 ;; step their source in 128-bit pieces rather than the 64-bit pieces CHUNK
 ;; names.
+;; Attribute to get the suffix of a mode's 128-bit half.  A 256-bit operation
+;; is issued as two 128-bit instructions (%l then %m), so its templates need
+;; the half's name -- <suffix> would give the 256-bit spelling, which has no
+;; instruction behind it.
+(define_mode_attr hsuffix [
+  (V32QI   "bx")
+  (V16HI   "ho")
+  (V16HF   "ho")
+  (V8SI    "wq")
+  (V8SF    "wq")
+  (V4DI    "dp")
+  (V4DF    "dp")
+  (V64QI   "bv")
+  (V32HI   "hx")
+  (V32HF   "hx")
+  (V16SI   "wo")
+  (V16SF   "wo")
+  (V8DI    "dq")
+  (V8DF    "dq")
+])
+
 (define_mode_attr S128CHUNK [
   (V16QI   "V16QI")
   (V8HI    "V8HI")

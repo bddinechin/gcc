@@ -5437,6 +5437,15 @@ lvx_vector_mode_supported_p (enum machine_mode mode)
   if (lvx_extension_mode_p (mode))
     return true;
 
+  /* SIMD is lvx-2 only: every packed arithmetic instruction -- addho, addwq,
+     adddp, compdp and the rest -- is tagged Opcode-lvx_v2 in the ISA, and the
+     patterns that emit them are gated on LVX_2.  Claiming the modes anyway
+     would let the middle end form vector values there is no pattern to
+     operate on, so an explicit vector_size type ICEs with "unrecognizable
+     insn" instead of being lowered element-wise.  */
+  if (!LVX_2)
+    return false;
+
   // In core, support up to 64-byte vectors (8 registers).
   unsigned size = GET_MODE_SIZE (mode);
   return (size <= UNITS_PER_WORD * 8);
@@ -8230,6 +8239,8 @@ lvx_print_operand (FILE *file, rtx x, int code)
   bool force_breg = 0;
   bool force_qreg = 0;
   bool force_preg = 0;
+  bool force_mreg = 0;
+  bool force_lreg = 0;
   bool force_treg = 0;
   bool force_zreg = 0;
   bool force_yreg = 0;
@@ -8254,6 +8265,19 @@ lvx_print_operand (FILE *file, rtx x, int code)
 
     case 'o':
       force_qreg = true;
+      break;
+
+    /* %L / %M: the least- and most-significant 128-bit half of a 256-bit
+       operand, so a 256-bit operation can be issued as two 128-bit
+       instructions.  Uppercase deliberately: output_asm_insn in final.cc
+       intercepts %l (label), %a (address), %c and %n before they ever reach
+       a target's print_operand, so a lowercase 'l' case is unreachable.  */
+    case 'M':
+      force_mreg = true;
+      break;
+
+    case 'L':
+      force_lreg = true;
       break;
 
     case 'q':
@@ -8403,6 +8427,18 @@ lvx_print_operand (FILE *file, rtx x, int code)
 	fprintf (file, "$%s", lvx_qgr_reg_name (REGNO (operand)));
       else if (force_preg)
 	fprintf (file, "$%s", lvx_pgr_reg_name (REGNO (operand)));
+      else if (force_mreg)
+	{
+	  if (size < UNITS_PER_WORD * 4)
+	    error ("using %%M format with operand smaller than 4 registers");
+	  fprintf (file, "$%s", lvx_pgr_reg_name (REGNO (operand) + 2));
+	}
+      else if (force_lreg)
+	{
+	  if (size < UNITS_PER_WORD * 4)
+	    error ("using %%L format with operand smaller than 4 registers");
+	  fprintf (file, "$%s", lvx_pgr_reg_name (REGNO (operand)));
+	}
       else if (force_treg)
 	{
 	  if (size < UNITS_PER_WORD * 4)
