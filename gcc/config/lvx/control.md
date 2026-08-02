@@ -1425,10 +1425,10 @@
                                              (match_operand:<MASK> 5 "const_zero_operand" "")])
                             (match_operand:V128B 1 "register_operand" "r")
                             (match_operand:V128B 4 "register_operand" "0")))]
-  "GET_MODE_SIZE (GET_MODE_INNER (<MODE>mode)) == UNITS_PER_WORD"
-  "cmoved.d%2z %x3? %x0 = %x1\n\tcmoved.d%2z %y3? %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "cmove<suffix>.%2z %3? %0 = %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length"      "4")]
 )
 
 (define_insn "*select<suffix>_nez"
@@ -1439,10 +1439,10 @@
                                 (match_operand:<MASK> 6 "const_zero_operand" ""))
                             (match_operand:V128B 1 "register_operand" "r")
                             (match_operand:V128B 4 "register_operand" "0")))]
-  "GET_MODE_SIZE (GET_MODE_INNER (<MODE>mode)) == UNITS_PER_WORD"
-  "cmoved.d%2z %x3? %x0 = %x1\n\tcmoved.d%2z %y3? %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "cmove<suffix>.%2z %3? %0 = %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length"      "4")]
 )
 
 ;; fixme: not selectionable
@@ -1498,13 +1498,13 @@
                                              (match_operand:<MASK> 5 "const_zero_operand" "")])
                             (match_operand:V256B 1 "register_operand" "r")
                             (match_operand:V256B 4 "register_operand" "0")))]
-  "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>) && GET_MODE_SIZE (GET_MODE_INNER (<MODE>mode)) == UNITS_PER_WORD"
+  "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>)"
   {
-    return "cmoved.d%2z %x3? %x0 = %x1\n\tcmoved.d%2z %y3? %y0 = %y1\n\t"
-             "cmoved.d%2z %z3? %z0 = %z1\n\tcmoved.d%2z %t3? %t0 = %t1";
+    return "cmove<hsuffix>.%2z %L3? %L0 = %L1\n\t"
+           "cmove<hsuffix>.%2z %M3? %M0 = %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_lite_x2")
+   (set_attr "length"         "8")]
 )
 
 (define_insn_and_split "*select<suffix>_nez_1"
@@ -1542,13 +1542,13 @@
                                 (match_operand:<MASK> 6 "const_zero_operand" ""))
                             (match_operand:V256B 1 "register_operand" "r")
                             (match_operand:V256B 4 "register_operand" "0")))]
-  "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>) && GET_MODE_SIZE (GET_MODE_INNER (<MODE>mode)) == UNITS_PER_WORD"
+  "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>)"
   {
-    return "cmoved.d%2z %x3? %x0 = %x1\n\tcmoved.d%2z %y3? %y0 = %y1\n\t"
-             "cmoved.d%2z %z3? %z0 = %z1\n\tcmoved.d%2z %t3? %t0 = %t1";
+    return "cmove<hsuffix>.%2z %L3? %L0 = %L1\n\t"
+           "cmove<hsuffix>.%2z %M3? %M0 = %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_lite_x2")
+   (set_attr "length"         "8")]
 )
 
 (define_insn_and_split "*select<suffix>_nez_eqz_1"
@@ -1592,13 +1592,13 @@
                                 (match_operand:<MASK> 7 "const_zero_operand" ""))
                             (match_operand:V256B 1 "register_operand" "r")
                             (match_operand:V256B 4 "register_operand" "0")))]
-  "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>) && GET_MODE_SIZE (GET_MODE_INNER (<MODE>mode)) == UNITS_PER_WORD"
+  "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>)"
   {
-    return "cmoved.d%R2z %x3? %x0 = %x1\n\tcmoved.d%R2z %y3? %y0 = %y1\n\t"
-             "cmoved.d%R2z %z3? %z0 = %z1\n\tcmoved.d%R2z %t3? %t0 = %t1";
+    return "cmove<hsuffix>.%R2z %L3? %L0 = %L1\n\t"
+           "cmove<hsuffix>.%R2z %M3? %M0 = %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_lite_x2")
+   (set_attr "length"         "8")]
 )
 
 (define_insn_and_split "*select<suffix>"

@@ -1250,10 +1250,10 @@
   [(set (match_operand:S128I 0 "register_operand" "=r")
         (ss_ashift:S128I (match_operand:S128I 1 "register_operand" "r")
                          (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "sls<chunkxs> %x0 = %x1, %2\n\tsls<chunkxs> %y0 = %y1, %2"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length" "8")]
+  "LVX_2"
+  "sls<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_expand "usashl<mode>3"
@@ -1302,10 +1302,10 @@
   [(set (match_operand:S128I 0 "register_operand" "=r")
         (us_ashift:S128I (match_operand:S128I 1 "register_operand" "r")
                          (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "HAVE_LVX_US_ASHIFT_<MODE>"
-  "slus<chunkxs> %x0 = %x1, %2\n\tslus<chunkxs> %y0 = %y1, %2"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length" "8")]
+  "LVX_2 && (HAVE_LVX_US_ASHIFT_<MODE>)"
+  "slus<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "ashr<mode>3"
@@ -1332,10 +1332,22 @@
   [(set (match_operand:S128I 0 "register_operand" "=r")
         (unspec:S128I [(match_operand:S128I 1 "register_operand" "r")
                        (match_operand:SI 2 "reg_shift_operand" "rU06")] UNSPEC_SRS))]
-  ""
-  "srs<chunkxs> %x0 = %x1, %2\n\tsrs<chunkxs> %y0 = %y1, %2"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length" "8")]
+  "LVX_2"
+  "srs<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
+)
+
+;; S128I is the non-byte 128-bit integer modes, so V16QI needs its own -- SRSBX
+;; is a real instruction, it just falls outside that iterator.
+(define_insn "*sshrv16qi_2"
+  [(set (match_operand:V16QI 0 "register_operand" "=r")
+        (unspec:V16QI [(match_operand:V16QI 1 "register_operand" "r")
+                       (match_operand:SI 2 "reg_shift_operand" "rU06")] UNSPEC_SRS))]
+  "LVX_2 && (HAVE_LVX_SSHR_V16QI)"
+  "srsbx %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "avg<mode>3_floor"
@@ -2545,19 +2557,19 @@
         (rotate:V4SI (match_operand:V4SI 1 "register_operand" "r")
                      (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   "LVX_2"
-  "rolwps %x0 = %x1, %2\n\trolwps %y0 = %y1, %2"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length" "8")]
+  "rolwq %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "rotrv4si3"
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (rotatert:V4SI (match_operand:V4SI 1 "register_operand" "r")
                        (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  ""
-  "rorwps %x0 = %x1, %2\n\trorwps %y0 = %y1, %2"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length" "8")]
+  "LVX_2"
+  "rorwq %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length" "4")]
 )
 
 

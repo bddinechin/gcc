@@ -1627,10 +1627,10 @@
                        (match_operand:V128J 2 "register_operand" "0")
                        (match_operand:<MASK> 3 "register_operand" "r")
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
-  ""
-  "cmove<chunkx>%4 %x3? %x0 = %x1\n\tcmove<chunkx>%4 %y3? %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "cmove<suffix>%4 %3? %0 = %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length"      "4")]
 )
 
 (define_expand "lvx_select<suffix>"
@@ -1674,11 +1674,11 @@
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
   "LVX_2 && (HAVE_LVX_SELECT_<MODE>)"
   {
-    return "cmove<chunkx>%4 %x3? %x0 = %x1\n\tcmove<chunkx>%4 %y3? %y0 = %y1\n\t"
-           "cmove<chunkx>%4 %z3? %z0 = %z1\n\tcmove<chunkx>%4 %t3? %t0 = %t1";
+    return "cmove<hsuffix>%4 %L3? %L0 = %L1\n\t"
+           "cmove<hsuffix>%4 %M3? %M0 = %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_lite_x2")
+   (set_attr "length"         "8")]
 )
 
 (define_expand "lvx_select<suffix>"
@@ -1778,10 +1778,10 @@
                        (match_operand:V128F 2 "register_operand" "0")
                        (match_operand:<MASK> 3 "register_operand" "r")
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
-  ""
-  "cmove<chunkx>%4 %x3? %x0 = %x1\n\tcmove<chunkx>%4 %y3? %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length"         "8")]
+  "LVX_2"
+  "cmove<suffix>%4 %3? %0 = %1"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length"      "4")]
 )
 
 (define_expand "lvx_selectf<suffix>"
@@ -1825,11 +1825,11 @@
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
   "LVX_2 && (HAVE_LVX_SELECT_<MODE>)"
   {
-    return "cmove<chunkx>%4 %x3? %x0 = %x1\n\tcmove<chunkx>%4 %y3? %y0 = %y1\n\t"
-           "cmove<chunkx>%4 %z3? %z0 = %z1\n\tcmove<chunkx>%4 %t3? %t0 = %t1";
+    return "cmove<hsuffix>%4 %L3? %L0 = %L1\n\t"
+           "cmove<hsuffix>%4 %M3? %M0 = %M1";
   }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu_lite_x2")
+   (set_attr "length"         "8")]
 )
 
 (define_insn "lvx_stsuho"
