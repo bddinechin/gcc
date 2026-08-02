@@ -4832,7 +4832,12 @@ lvx_analyze_branches (void)
 	/* This is a conditional branch.  */
 	if (GET_CODE (src) == IF_THEN_ELSE)
 	  {
-	    olabel_ref = (safe_as_a < rtx_insn * >(XEXP (src, 1)));
+	    /* The taken arm of the IF_THEN_ELSE, which is a LABEL_REF for a
+	       direct branch and something else for an indirect one -- never an
+	       insn, so it must not be run through safe_as_a<rtx_insn *>, whose
+	       checking assertion rejects a LABEL_REF outright.  The goto arm
+	       below takes the operand the same way, without a cast.  */
+	    olabel_ref = XEXP (src, 1);
 	    /* Skip indirect jumps.  */
 	    if (GET_CODE (olabel_ref) != LABEL_REF)
 	      continue;
@@ -4959,10 +4964,28 @@ void
 lvx_expand_divmod (rtx quo, rtx rem, rtx num, rtx den, machine_mode mode,
 		   bool unsignedp)
 {
+  /* Does the divisor need checking at all?  Ask before force_reg, which would
+     hide a constant behind a fresh pseudo.  */
+  bool den_maybe_zero = !(CONST_INT_P (den) && INTVAL (den) != 0);
+
   num = force_reg (mode, num);
   den = force_reg (mode, den);
 
-  if (TARGET_DIVMOD0_TRAP)
+  /* The check below is a compare-and-branch around a trap: new control flow,
+     which an expander may only create while the CFG is still being built.
+     This expander also runs later -- doloop_optimize expands a division here
+     to compute a loop's trip count -- and emitting a jump, barrier and label
+     mid-block there leaves a basic block that verify_flow_info rejects, and in
+     fact crashes on, since it reads BLOCK_FOR_INSN of the barrier, whose rtx
+     is too short to have that field.  That is why 'while (s > 0) s -= 7;' at
+     -Os used to ICE in loop2_doloop.
+
+     Those late divisions divide by the loop step, a nonzero constant, so
+     DEN_MAYBE_ZERO already turns the check off for them; the
+     currently_expanding_to_rtl test is the general guard, since dropping a
+     trap on a divisor that cannot be zero anyway is no loss, and dropping one
+     we cannot emit legally beats corrupting the CFG.  */
+  if (TARGET_DIVMOD0_TRAP && den_maybe_zero && currently_expanding_to_rtl)
     {
       rtx divnez = gen_label_rtx ();
       rtx pointer = gen_reg_rtx (Pmode);
