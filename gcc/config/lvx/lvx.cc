@@ -306,7 +306,7 @@ lvx_expand_load_multiple (rtx operands[])
   return lvx_expand_load_store_multiple (operands, true);
 }
 
-/* FIXME AUTO: This must be fixed for coolidge */
+/* FIXME AUTO: revisit for LVX.  */
 /* See T7749 */
 static int
 lvx_reassociation_width (unsigned int opc, machine_mode mode) ATTRIBUTE_UNUSED;
@@ -4540,9 +4540,6 @@ lvx_is_uncached_mem_op_p (rtx x)
   /* __convert[_no_sync] addr space should not come here. */
   gcc_assert (MEM_ADDR_SPACE (x) < LVX_ADDR_SPACE_CONVERT);
 
-  if (MEM_NON_TEMPORAL_P (x))
-    return true;
-
 #if 1
   int addr_space = MEM_ADDR_SPACE (x);
   return addr_space == LVX_ADDR_SPACE_BYPASS
@@ -7794,7 +7791,7 @@ lvx_sched_sms_res_mii (struct ddg *g)
 #undef TARGET_SCHED_EXPOSED_PIPELINE
 #define TARGET_SCHED_EXPOSED_PIPELINE true
 
-/* FIXME AUTO: This must be fixed for coolidge */
+/* FIXME AUTO: revisit for LVX.  */
 /* See T7749 */
 static int
 lvx_sched_reassociation_width (tree_code opc, enum machine_mode mode)
@@ -8373,10 +8370,9 @@ lvx_print_operand (FILE *file, rtx x, int code)
 
     case 'V': /* Print '.u' or '.us' or '.s' variant for memory load. */
       addr_space = MEM_ADDR_SPACE (x);
-      if ((addr_space == LVX_ADDR_SPACE_SPECULATE && MEM_NON_TEMPORAL_P (x))
-	  || addr_space == LVX_ADDR_SPACE_PRELOAD)
+      if (addr_space == LVX_ADDR_SPACE_PRELOAD)
 	fprintf (file, ".us");
-      else if (addr_space == LVX_ADDR_SPACE_BYPASS || MEM_NON_TEMPORAL_P (x))
+      else if (addr_space == LVX_ADDR_SPACE_BYPASS)
 	fprintf (file, ".u");
       else if (addr_space == LVX_ADDR_SPACE_SPECULATE)
 	fprintf (file, ".s");

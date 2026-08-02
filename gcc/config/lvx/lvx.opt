@@ -83,3 +83,8 @@ Warn if an __bypass pointer is converted to a general one or vice versa
 EnumValue
 Enum(lvx_abi) String(lp64) Value(LVX_ABI_LP64)
 
+; Only lvx.cc reads this, so it lives here rather than in common.opt where
+; every target would carry it.
+fmodulo-sched-bundle
+Target Var(flag_modulo_sched_bundle) Optimization
+Perform SMS based modulo scheduling with bundling of instructions.

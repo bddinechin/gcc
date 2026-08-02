@@ -2443,10 +2443,6 @@ fmodulo-sched-allow-regmoves
 Common Var(flag_modulo_sched_allow_regmoves) Optimization
 Perform SMS based modulo scheduling with register moves allowed.
 
-fmodulo-sched-bundle
-Common Var(flag_modulo_sched_bundle) Optimization
-Perform SMS based modulo scheduling with bundling of instructions.
-
 fmove-loop-invariants
 Common Var(flag_move_loop_invariants) Optimization
 Move loop invariant computations out of loops.
