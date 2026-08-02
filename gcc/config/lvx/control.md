@@ -296,33 +296,52 @@
 
 ;; *COMP*
 
-;; The 128-bit SIMD integer compares are native instructions on lvx-2:
-;; COMP{BX,HO,WQ,DP} for the 0/-1 mask and COMPN{BX,HO,WQ,DP} for 0/1.  These
-;; were inherited from KVX as a *pair* of 64-bit SIMD instructions over the two
-;; halves of the register -- the form the ISA no longer has -- so they issue as
-;; one instruction now.  Vector modes exist only on lvx-2
-;; (lvx_vector_mode_supported_p), so the LVX_2 gate costs nothing on lvx-1.
+;; COMP* and COMPN* do NOT produce the same shape of result, so only one of
+;; them replaces a pair.
+;;
+;;   COMPN{BX,HO,WQ,DP}  writes registerM, a 128-bit pair: the full 0/-1 mask,
+;;                       one lane-width element per lane.  That is what a
+;;                       vector comparison is in RTL, so the bare (cmp) pattern
+;;                       below emits it, one instruction where the KVX-inherited
+;;                       form used a pair of 64-bit COMPN* over the halves.
+;;   COMP{BX,HO,WQ,DP}   writes registerW, a *single* register: one **bit** per
+;;                       lane, packed.  It is not a vector value at all, so it
+;;                       cannot implement (neg (cmp)) -- the 0/1-per-lane vector
+;;                       -- and a pattern that tries emits "compdp $r0r1 = ..."
+;;                       which the assembler rejects.
+;;
+;; So (neg (cmp)) stays a pair of *scalar* COMPD/FCOMPD over the halves, each
+;; writing 0/1 into its own 64-bit lane.  That is not a missed optimisation:
+;; LVX has no single instruction producing a 0/1-per-lane vector.
+;;
+;; The packed form is the mask operand BLEND wants, and wiring that up needs the
+;; port to model vector masks as scalar bit-masks (TARGET_VECTORIZE_GET_MASK_MODE)
+;; rather than same-size vector modes.  Nothing does that yet, so COMP* has no
+;; pattern at all for now rather than a wrong one.
+;;
+;; Vector modes exist only on lvx-2 (lvx_vector_mode_supported_p), so the LVX_2
+;; gate on the COMPN* patterns costs nothing on lvx-1.
 
-(define_insn "*comp<suffix>"
-  [(set (match_operand:<MASK> 0 "register_operand" "=r,r")
-        (neg:<MASK> (match_operator:<MASK> 1 "comparison_operator"
-                     [(match_operand:V128N 2 "register_operand" "r,r")
-                      (match_operand:V128N 3 "reg_zero_mone_operand" "r,S01")])))]
-  "LVX_2"
-  "comp<suffix>.%1 %0 = %2, %3"
-  [(set_attr "type" "<compty>,<compty>_x")
-   (set_attr "length"      "4,         8")]
+(define_insn "*compdp"
+  [(set (match_operand:V2DI 0 "register_operand" "=r")
+        (neg:V2DI (match_operator:V2DI 1 "comparison_operator"
+                   [(match_operand:V2DI 2 "register_operand" "r")
+                    (match_operand:V2DI 3 "reg_zero_mone_operand" "rS01")])))]
+  ""
+  "compd.%1 %x0 = %x2, %x3\n\tcompd.%1 %y0 = %y2, %y3"
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length"         "8")]
 )
 
-(define_insn "*comp<suffix>_s2"
-  [(set (match_operand:<MASK> 0 "register_operand" "=r,r")
-        (neg:<MASK> (match_operator:<MASK> 1 "comparison_operator"
-                     [(vec_duplicate:V128N (match_operand:<CHUNK> 2 "nonmemory_operand" "r,r"))
-                      (match_operand:V128N 3 "reg_zero_mone_operand" "r,S01")])))]
-  "LVX_2"
-  "comp<suffix>.%1 %0 = %2, %3"
-  [(set_attr "type" "<compty>,<compty>_x")
-   (set_attr "length"      "4,         8")]
+(define_insn "*compdp_s2"
+  [(set (match_operand:V2DI 0 "register_operand" "=r")
+        (neg:V2DI (match_operator:V2DI 1 "comparison_operator"
+                   [(vec_duplicate:V2DI (match_operand:DI 2 "nonmemory_operand" "r"))
+                    (match_operand:V2DI 3 "reg_zero_mone_operand" "rS01")])))]
+  ""
+  "compd.%1 %x0 = %2, %x3\n\tcompd.%1 %y0 = %2, %y3"
+  [(set_attr "type" "alu_tiny_x2")
+   (set_attr "length"         "8")]
 )
 
 (define_insn "*compn<suffix>"
@@ -687,41 +706,42 @@
    (set_attr "length"      "4,         8")]
 )
 
-;; The 128-bit SIMD FP compares, same story as the integer ones above:
-;; FCOMP{HO,WQ,DP} and FCOMPN{HO,WQ,DP} are native on lvx-2, where this used to
-;; be a pair of 64-bit FCOMPD over the halves.  All six are LITE.
+;; The FP compares split exactly as the integer ones above: FCOMPN{HO,WQ,DP}
+;; writes the full 0/-1 mask into a pair and replaces a pair of scalar FCOMPD,
+;; while FCOMP{HO,WQ,DP} writes a packed bit per lane into a single register and
+;; therefore cannot implement (neg (cmp)), which stays a scalar FCOMPD pair.
 
-(define_insn "*fcomp<V128F:suffix>"
-  [(set (match_operand:<V128F:MASK> 0 "register_operand" "=r")
-        (neg:<V128F:MASK> (match_operator:<V128F:MASK> 1 "float_comparison_operator"
-                           [(match_operand:V128F 2 "register_operand" "r")
-                            (match_operand:V128F 3 "register_operand" "r")])))]
-  "LVX_2"
-  "fcomp<V128F:suffix>.%F1 %0 = %2, %3"
-  [(set_attr "type" "alu_lite")
-   (set_attr "length"      "4")]
+(define_insn "*fcompdp"
+  [(set (match_operand:V2DI 0 "register_operand" "=r")
+        (neg:V2DI (match_operator:V2DI 1 "float_comparison_operator"
+                   [(match_operand:V2DF 2 "register_operand" "r")
+                    (match_operand:V2DF 3 "register_operand" "r")])))]
+  ""
+  "fcompd.%F1 %x0 = %x2, %x3\n\tfcompd.%F1 %y0 = %y2, %y3"
+  [(set_attr "type" "alu_lite_x2")
+   (set_attr "length"         "8")]
 )
 
-(define_insn "*fcomp<V128F:suffix>_s2"
-  [(set (match_operand:<V128F:MASK> 0 "register_operand" "=r")
-        (neg:<V128F:MASK> (match_operator:<V128F:MASK> 1 "float_comparison_operator"
-                           [(vec_duplicate:V128F (match_operand:<V128F:CHUNK> 2 "nonmemory_operand" "r"))
-                            (match_operand:V128F 3 "register_operand" "r")])))]
-  "LVX_2"
-  "fcomp<V128F:suffix>.%F1 %0 = %2, %3"
-  [(set_attr "type" "alu_lite")
-   (set_attr "length"      "4")]
+(define_insn "*fcompdp_s2"
+  [(set (match_operand:V2DI 0 "register_operand" "=r")
+        (neg:V2DI (match_operator:V2DI 1 "float_comparison_operator"
+                   [(vec_duplicate:V2DF (match_operand:DF 2 "nonmemory_operand" "r"))
+                    (match_operand:V2DF 3 "register_operand" "r")])))]
+  ""
+  "fcompd.%F1 %x0 = %2, %x3\n\tfcompd.%F1 %y0 = %2, %y3"
+  [(set_attr "type" "alu_lite_x2")
+   (set_attr "length"         "8")]
 )
 
-(define_insn "*fcomp<V128F:suffix>_s3"
-  [(set (match_operand:<V128F:MASK> 0 "register_operand" "=r")
-        (neg:<V128F:MASK> (match_operator:<V128F:MASK> 1 "float_comparison_operator"
-                           [(match_operand:V128F 2 "register_operand" "r")
-                            (vec_duplicate:V128F (match_operand:<V128F:CHUNK> 3 "nonmemory_operand" "r"))])))]
-  "LVX_2"
-  "fcomp<V128F:suffix>.%F1 %0 = %2, %3"
-  [(set_attr "type" "alu_lite")
-   (set_attr "length"      "4")]
+(define_insn "*fcompdp_s3"
+  [(set (match_operand:V2DI 0 "register_operand" "=r")
+        (neg:V2DI (match_operator:V2DI 1 "float_comparison_operator"
+                   [(match_operand:V2DF 2 "register_operand" "r")
+                    (vec_duplicate:V2DF (match_operand:DF 3 "nonmemory_operand" "r"))])))]
+  ""
+  "fcompd.%F1 %x0 = %x2, %3\n\tfcompd.%F1 %y0 = %y2, %3"
+  [(set_attr "type" "alu_lite_x2")
+   (set_attr "length"         "8")]
 )
 
 (define_insn "*fcompn<V128F:suffix>"
