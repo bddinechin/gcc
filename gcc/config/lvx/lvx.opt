@@ -36,10 +36,6 @@ mdump-costs
 Target Var(DUMP_COSTS) Init(0)
 Dump calls to target-dependent cost functions
 
-mhal
-Target MASK(MPPA_HARDWARE_LAYER_MODE)
-Enable mppa hardware layer mode.
-
 fhwloop
 Target Mask(HWLOOP)
 Enable hardware loop code generation when optimizing (active by default)

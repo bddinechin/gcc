@@ -24,7 +24,7 @@
 
 #define DRIVER_SELF_SPECS DRIVER_SELF_SPECS_COMMON
 
-#define CPP_SPEC "%{!mhal: -D__machine_bare_runtime__}"
+#define CPP_SPEC "-D__machine_bare_runtime__"
 
 #undef LINK_SPEC
 #define LINK_SPEC LINK_SPEC_COMMON
@@ -49,9 +49,9 @@
    links with, and SE mode emulates the scall interface itself, so none of the
    boot/exception/MMU machinery a real bare runtime provides is reachable.
 
-   When that runtime does exist, add its library and script back here -- and
-   note that -mhal, whose only effect was selecting between the two scripts
-   above, currently does nothing but suppress -D__machine_bare_runtime__.  */
+   When that runtime does exist, add its library and script back here.  The
+   KVX spec picked between two scripts on -mhal; that option selected nothing
+   else, so it went with them.  */
 #undef LIB_SPEC
 #define LIB_SPEC                                                               \
   "-z max-page-size=4096 "                                                     \
