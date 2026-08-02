@@ -7840,7 +7840,7 @@ lvx_fix_debug_for_bundles (bool selective_scheduling2)
   basic_block bb;
   FOR_EACH_BB_FN (bb, cfun)
     {
-      rtx_insn *insn;
+      rtx_insn *insn, *last_insn = 0;
       if (selective_scheduling2)
 	{
 	  FOR_BB_INSNS (bb, insn)
@@ -7850,6 +7850,7 @@ lvx_fix_debug_for_bundles (bool selective_scheduling2)
 		  && GET_CODE (PATTERN (insn)) != CLOBBER)
 		{
 		  rtx_insn *next_insn = NEXT_INSN (insn);
+		  last_insn = insn;
 		  if (!start_insn
 		      || GET_MODE (insn) == TImode)
 		    start_insn = insn;
@@ -7876,6 +7877,7 @@ lvx_fix_debug_for_bundles (bool selective_scheduling2)
 		  && GET_CODE (PATTERN (insn)) != CLOBBER)
 		{
 		  int uid = INSN_UID (insn);
+		  last_insn = insn;
 		  if ((unsigned) uid >= (unsigned) lvx_sched2->max_uid
 		      || lvx_sched2->insn_cycle[uid] < 0)
 		    {
@@ -7888,6 +7890,12 @@ lvx_fix_debug_for_bundles (bool selective_scheduling2)
 		      if (flags & LVX_SCHED2_INSN_HEAD)
 			cur_cfa_reg = REGNO (stack_pointer_rtx);
 		      if (flags & LVX_SCHED2_INSN_START)
+			start_insn = insn;
+		      else if (!start_insn)
+			/* Tail of a bundle whose START flag sits in an
+			   earlier block, force closed there: reopen it on
+			   this block's first insn so that STOP_INSN can
+			   never precede START_INSN.  */
 			start_insn = insn;
 		      if (flags & LVX_SCHED2_INSN_STOP)
 			stop_insn = insn;
@@ -7902,6 +7910,24 @@ lvx_fix_debug_for_bundles (bool selective_scheduling2)
 		  start_insn = stop_insn = 0;
 		}
 	    }
+	}
+
+      /* A post-reload scheduling region spans a whole extended basic block,
+	 so a bundle still open at BB_END is only closed by the STOP flag of
+	 an insn in a *later* block.  Force it closed here: the CFA notes
+	 that lvx_fix_debug_for_bundle_1 relocates onto STOP_INSN must stay
+	 in the block whose CFI row they describe.  Letting one migrate into
+	 a successor makes that successor's predecessors disagree on the
+	 unwind row, which trips the cfi_row_equal_p assertion in dwarf2cfi's
+	 maybe_record_trace_start.  */
+      if (start_insn)
+	{
+	  if (!stop_insn)
+	    stop_insn = last_insn;
+	  lvx_fix_debug_for_bundle_1 (start_insn, stop_insn);
+	  cur_cfa_reg
+	    = lvx_fix_debug_for_bundle_2 (start_insn, stop_insn, cur_cfa_reg);
+	  start_insn = stop_insn = 0;
 	}
     }
   if (start_insn || stop_insn)
