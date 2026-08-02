@@ -3326,41 +3326,6 @@
   [(set_attr "type" "alu_lite")]
 )
 
-(define_insn_and_split "sqrtsf2"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (sqrt:SF (match_operand:SF 1 "register_operand" "r")))
-   (match_scratch:SF 2 "=r")]
-  "flag_reciprocal_math"
-  "#"
-  ""
-  [(set (match_dup 2) (unspec:SF [(match_dup 1) (const_int 0)] UNSPEC_FRSR))
-   (set (match_dup 0) (mult:SF (match_dup 1) (match_dup 2)))]
-  {
-    operands[2] = gen_reg_rtx (SFmode);
-  }
-  [(set_attr "length" "8")]
-  ;; type.
-)
-
-(define_insn_and_split "sqrthf2"
-  [(set (match_operand:HF 0 "register_operand" "=r")
-        (sqrt:HF (match_operand:HF 1 "register_operand" "r")))
-   (match_scratch:SF 2 "=r")
-   (match_scratch:SF 3 "=r")]
-  "flag_reciprocal_math" "#" ""
-  [(set (match_dup 2) (float_extend:SF (match_dup 1)))
-   (set (match_dup 3) (unspec:SF [(match_dup 2) (const_int 0)] UNSPEC_FRSR))
-   (set (match_dup 2) (mult:SF (match_dup 2) (match_dup 3)))
-   (set (match_dup 0) (float_truncate:HF (match_dup 2)))]
-  {
-    operands[1] = force_reg (GET_MODE (operands[1]), operands[1]);
-    operands[2] = gen_reg_rtx (SFmode);
-    operands[3] = gen_reg_rtx (SFmode);
-  }
-  [(set_attr "length" "16")]
-  ;; type
-)
-
 (define_expand "rsqrthf2"
   [(match_operand:HF 0 "register_operand" "")
    (match_operand:HF 1 "register_operand" "")]
@@ -3755,3 +3720,33 @@
   }
 )
 
+;; ---- FSQRT*: hardware square root ------------------------------------------
+;;
+;; fsqrth / fsqrtw / fsqrtd, all on lvx_v1, take a floatmode rounding modifier
+;; (".rn", ".rz", ... or "" for the mode in $cs).  These replace the previous
+;; sqrtsf2/sqrthf2, which were guarded by flag_reciprocal_math and computed
+;; x * rsqrt_seed(x) -- an approximation, and only with fast-math; without it
+;; the middle end fell back to a libm call, and there was no sqrtdf2 at all.
+;; The hardware gives the exact result in one instruction for all three modes.  These are the exact-result
+;; instructions; the reciprocal-square-root *seed* fsrsr* is a different thing
+;; and stays behind flag_reciprocal_math where it already was.
+
+(define_insn "lvx_fsqrt<fmode>"
+  [(set (match_operand:FLOATM 0 "register_operand" "=r")
+        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
+                        (match_operand 2 "" "")] UNSPEC_FSQRT))]
+  ""
+  "fsqrt<fmode>%2 %0 = %1"
+  [(set_attr "type" "alu_full_sfu")]
+)
+
+(define_expand "sqrt<mode>2"
+  [(set (match_operand:FLOATM 0 "register_operand" "")
+        (sqrt:FLOATM (match_operand:FLOATM 1 "register_operand" "")))]
+  ""
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
+    emit_insn (gen_lvx_fsqrt<fmode> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
