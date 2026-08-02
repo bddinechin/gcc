@@ -403,9 +403,12 @@ enum lvx_arch_type
 #define HAVE_LVX_NEG_CMP_V8HF (1)
 #define HAVE_LVX_NEG_CMP_V4HI (1)
 #define HAVE_LVX_NEG_CMP_V8QI (1)
-#define HAVE_LVX_NEG_CMP_V2DI (1)
+/* No COMPND/FCOMPND: the negated compare was a 64-bit SIMD instruction, and
+   that family is gone from LVX.  0 selects the compare-then-negate splits in
+   control.md, which is how these modes are covered now.  */
+#define HAVE_LVX_NEG_CMP_V2DI (0)
 #define HAVE_LVX_NEG_CMP_V4DI (1)
-#define HAVE_LVX_NEG_CMP_V2DF (1)
+#define HAVE_LVX_NEG_CMP_V2DF (0)
 
 #define HAVE_LVX_NEG_CMP_V16HF (0)
 #define HAVE_LVX_NEG_CMP_V4DF (0)

@@ -1599,31 +1599,6 @@
     DONE;
   }
 )
-(define_insn "*lvx_selectbx_2"
-  [(set (match_operand:V16QI 0 "register_operand" "=r")
-        (unspec:V16QI [(match_operand:V16QI 1 "register_operand" "r")
-                       (match_operand:V16QI 2 "register_operand" "0")
-                       (match_operand:V16QI 3 "register_operand" "r")
-                       (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "HAVE_LVX_SELECT_V16QI"
-  "cmovebo%4 %x3? %x0 = %x1\n\tcmovebo%4 %y3? %y0 = %y1"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
-)
-(define_insn "*lvx_selectbv_2"
-  [(set (match_operand:V32QI 0 "register_operand" "=r")
-        (unspec:V32QI [(match_operand:V32QI 1 "register_operand" "r")
-                       (match_operand:V32QI 2 "register_operand" "0")
-                       (match_operand:V32QI 3 "register_operand" "r")
-                       (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "LVX_2 && (HAVE_LVX_SELECT_V32QI)"
-  {
-    return "cmovebo%4 %x3? %x0 = %x1\n\tcmovebo%4 %y3? %y0 = %y1\n\t"
-           "cmovebo%4 %z3? %z0 = %z1\n\tcmovebo%4 %t3? %t0 = %t1";
-  }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
-)
 (define_insn_and_split "*lvx_selectbt_2"
   [(set (match_operand:V64QI 0 "register_operand" "=&r")
         (unspec:V64QI [(match_operand:V64QI 1 "register_operand" "r")

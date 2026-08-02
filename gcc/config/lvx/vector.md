@@ -953,28 +953,6 @@
       }
   }
 )
-(define_insn "*<avgpre>v16qi<avgpost>_2"
-  [(set (match_operand:V16QI 0 "register_operand" "=r")
-        (unspec:V16QI [(match_operand:V16QI 1 "register_operand" "r")
-                       (match_operand:V16QI 2 "register_operand" "r")] UNSPEC_AVGI))]
-  "HAVE_LVX_<AVGPRE>_V16QI"
-  "<avgm>bo %x0 = %x1, %x2\n\t<avgm>bo %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
-   (set_attr "length"         "8")]
-)
-(define_insn "*<avgpre>v32qi<avgpost>_2"
-  [(set (match_operand:V32QI 0 "register_operand" "=r")
-        (unspec:V32QI [(match_operand:V32QI 1 "register_operand" "r")
-                       (match_operand:V32QI 2 "register_operand" "r")] UNSPEC_AVGI))]
-  "LVX_2 && (HAVE_LVX_<AVGPRE>_V32QI)"
-  {
-    return "<avgm>bo %x0 = %x1, %x2\n\t<avgm>bo %y0 = %y1, %y2\n\t"
-           "<avgm>bo %z0 = %z1, %z2\n\t<avgm>bo %t0 = %t1, %t2";
-  }
-  [(set_attr "type" "alu_tiny_x4")
-   (set_attr "length"        "16")]
-)
-
 ;; ashl<m>3 ssashl<m>3 usashl<m>3
 (define_expand "<prefix><mode>3"
   [(set (match_operand:VXQI 0 "register_operand" "")
@@ -1132,15 +1110,6 @@
       }
     DONE;
   }
-)
-(define_insn "*sshrv16qi_2"
-  [(set (match_operand:V16QI 0 "register_operand" "=r")
-        (unspec:V16QI [(match_operand:V16QI 1 "register_operand" "r")
-                       (match_operand:SI 2 "reg_shift_operand" "rU06")] UNSPEC_SRS))]
-  "HAVE_LVX_SSHR_V16QI"
-  "srsbos %x0 = %x1, %2\n\tsrsbos %y0 = %y1, %2"
-  [(set_attr "type" "alu_lite_x2")
-   (set_attr "length" "8")]
 )
 (define_insn_and_split "*sshrv32qi_2"
   [(set (match_operand:V32QI 0 "register_operand" "=&r,r")
@@ -4955,26 +4924,6 @@
                       (match_dup 2)] UNSPEC_SRS))]
   ""
   [(set_attr "type" "alu_lite_x2,alu_lite_x2")]
-)
-
-(define_insn "lvx_fdot2wdp"
-  [(set (match_operand:V2DF 0 "register_operand" "=r")
-        (unspec:V2DF [(match_operand:V4SF 1 "register_operand" "r")
-                      (match_operand:V4SF 2 "register_operand" "r")
-                      (match_operand 3 "" "")] UNSPEC_FDOT2))]
-  "0"
-  "fdot2wdp%3 %0 = %1, %2"
-  [(set_attr "type" "mulwq_fp4")]
-)
-
-(define_insn "lvx_fdot2wzp"
-  [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")
-                      (match_operand:V4SF 2 "register_operand" "r")
-                      (match_operand 3 "" "")] UNSPEC_FDOT2))]
-  "0"
-  "fdot2wzp%3 %0 = %1, %2"
-  [(set_attr "type" "mulwq_fp4")]
 )
 
 
