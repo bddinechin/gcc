@@ -1,4 +1,4 @@
-/* Machine description for LVX MPPA architecture.
+/* Machine description for LVX Machine architecture.
    Copyright (C) 2018 Kalray Inc.
 
    This file is part of GCC.
@@ -24,21 +24,38 @@
 
 #define DRIVER_SELF_SPECS DRIVER_SELF_SPECS_COMMON
 
-#define CPP_SPEC "%{!mhal: -D__mppa_bare_runtime__}"
+#define CPP_SPEC "%{!mhal: -D__machine_bare_runtime__}"
 
 #undef LINK_SPEC
 #define LINK_SPEC LINK_SPEC_COMMON
 
-/* Link against Newlib libraries, because the bare (elf) backend assumes Newlib.
-   This part can be modified for OS porting and other libc.
-   Handle the circular dependence between libc and libgloss.
-   Link against MPPA Bare Runtime
- */
+/* Link against Newlib, because the bare (elf) backend assumes it: libc plus
+   libgloss, with the circular dependence between the two resolved by the
+   group.  libgcc is added by the driver.  This part can be modified for OS
+   porting and other libc.
+
+   There is deliberately no bare-runtime library and no linker script here.
+   The KVX-derived spec this replaces named -lmppahal, -lmppabareruntime and
+   mppabareruntime.ld; none of the three exists for LVX, so every default link
+   failed:
+
+     cannot find -lmppahal
+     cannot find -lmppabareruntime
+     unable to locate default linker script 'mppabareruntime.ld'
+
+   An LVX machine bare runtime needs a physical memory map and an exception
+   vector layout, neither of which is defined yet.  Until then ld's built-in
+   script is the right default: it is what the gem5 SE-mode harness already
+   links with, and SE mode emulates the scall interface itself, so none of the
+   boot/exception/MMU machinery a real bare runtime provides is reachable.
+
+   When that runtime does exist, add its library and script back here -- and
+   note that -mhal, whose only effect was selecting between the two scripts
+   above, currently does nothing but suppress -D__machine_bare_runtime__.  */
 #undef LIB_SPEC
 #define LIB_SPEC                                                               \
   "-z max-page-size=4096 "                                                     \
-  "%{!mhal: --defsym=exec_on_main=1 --defsym=mppa_bare_runtime=1} --start-group -lmppahal -lmppabareruntime -lc -lgloss --end-group "         \
-  "%{!nostartfiles:%{!nodefaultlibs:%{!nostdlib:%{!T*: %{!mhal: %Tmppabareruntime.ld;: %Tbare.ld}} }} }"
+  "--start-group -lc -lgloss --end-group "
 
 #define STARTFILE_SPEC " crti%O%s crtbegin%O%s crt0%O%s"
 

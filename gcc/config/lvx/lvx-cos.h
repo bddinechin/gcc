@@ -1,4 +1,4 @@
-/* Machine description for LVX MPPA architecture.
+/* Machine description for LVX Machine architecture.
    Copyright (C) 2009-2017 Free Software Foundation, Inc.
    Contributed by Kalray.
 

@@ -1,4 +1,4 @@
-/* Machine description for LVX MPPA architecture.
+/* Machine description for LVX Machine architecture.
    Copyright (C) 2018 Free Software Foundation, Inc.
 
    This file is part of GCC.

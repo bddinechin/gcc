@@ -74,7 +74,7 @@ Target RejectNegative Joined Enum(lvx_abi) Var(lvx_abi) Init(LVX_ABI_DEFAULT)
 
 Enum
 Name(lvx_abi) Type(int)
-Known LVX MPPA ABIs (for use with the -mabi= option):
+Known LVX Machine ABIs (for use with the -mabi= option):
 
 Waddress-space-conversion
 C Warning Var(LVX_WARN_ADDRESS_SPACE_CONVERSION) Init(0)
