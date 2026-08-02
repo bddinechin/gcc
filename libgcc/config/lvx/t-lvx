@@ -14,11 +14,23 @@ softfp_truncations := dfsf
 softfp_extras := fixhfti fixunshfti floattihf floatuntihf
 softfp_exclude_libgcc2 := n
 
+# divmodvxdi, divmodvxsi and divv2df3 are the vector divide/modulo helpers.
+# They are written against vector types and SIMD builtins, and SIMD on LVX is
+# lvx-2 only -- every packed arithmetic instruction is Opcode-lvx_v2, so
+# TARGET_VECTOR_MODE_SUPPORTED_P is false for lvx-1 and a vector type does not
+# exist there to call them with.  They also still reference builtins that went
+# with the KVX cleanup (__builtin_lvx_anydq, _frecw, _narrowd*).  Left out of
+# the default (lvx-1) libgcc; they need reinstating, and updating to the
+# current builtin names, alongside an lvx-2 multilib.
+# divmoddi.c and divmodsi.c are retired: they implemented 32- and 64-bit
+# divide/modulo in software, by Newton-Raphson refinement of a reciprocal
+# seed, and LVX has the operation in hardware -- divmodw, divmodd, divmoduw
+# and divmodud, all on lvx_v1.  They were also the last users of
+# __builtin_lvx_frec*, which no longer exists (LVX has only the seed form,
+# fsrec*).  The div/mod expanders no longer call out to them: their
+# optimize_size paths, the only ones that did, are gone.
 lvx-libgcc-funcs := \
-  $(softfp_func_exclude) \
-  divmoddi divmodsi \
-  divmodvxdi divmodvxsi \
-  divv2df3
+  $(softfp_func_exclude)
 
 lvx-libgcc-c := $(addsuffix .c,$(lvx-libgcc-funcs))
 lvx-libgcc-o := $(addsuffix .o,$(lvx-libgcc-funcs))
