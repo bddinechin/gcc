@@ -149,23 +149,13 @@
    (set (attr "length") (const_int 8))]
 )
 
-(define_insn "neghi2"
-  [(set (match_operand:HI 0 "register_operand" "=r")
-        (neg:HI (match_operand:HI 1 "register_operand" "r")))]
-  ""
-  "neghq %0 = %1"
-  [(set_attr "type" "alu_tiny_x")
-   (set_attr "length" "8")]
-)
-
-(define_insn "negqi2"
-  [(set (match_operand:QI 0 "register_operand" "=r")
-        (neg:QI (match_operand:QI 1 "register_operand" "r")))]
-  "HAVE_LVX_NEG_QI"
-  "negbo %0 = %1"
-  [(set_attr "type" "alu_tiny_x")
-   (set_attr "length" "8")]
-)
+;; No "neghi2"/"negqi2".  They emitted neghq and negbo, which are not scalar
+;; 16-/8-bit negates at all: hq is four halves and bo eight bytes packed in a
+;; 64-bit register, i.e. the 64-bit SIMD family that the LVX ISA dropped.  The
+;; surviving neg* opcodes are negd/negw (scalar) and negho/negbx (128-bit
+;; SIMD); LVX has no subword scalar negate.  Without these patterns the middle
+;; end widens a QI/HI negate to SImode and uses negw, which is what the
+;; hardware can actually do.
 
 (define_insn "ssneg<mode>2"
   [(set (match_operand:SIDI 0 "register_operand" "=r")
@@ -1133,7 +1123,7 @@
         (mult:DI (sign_extend:DI (match_operand:SI 1 "register_operand" "r"))
                  (sign_extend:DI (match_operand:SI 2 "register_operand" "r"))))]
   ""
-  "mulwd %0 = %1, %2"
+  "mulxwd %0 = %1, %2"
   [(set_attr "type" "mult_int")]
 )
 
@@ -1142,7 +1132,7 @@
         (mult:DI (zero_extend:DI (match_operand:SI 1 "register_operand" "r"))
                  (zero_extend:DI (match_operand:SI 2 "register_operand" "r"))))]
   ""
-  "muluwd %0 = %1, %2"
+  "mulxwd.u %0 = %1, %2"
   [(set_attr "type" "mult_int")]
 )
 
@@ -1151,7 +1141,7 @@
         (mult:DI (zero_extend:DI (match_operand:SI 1 "register_operand" "r"))
                  (sign_extend:DI (match_operand:SI 2 "register_operand" "r"))))]
   ""
-  "mulsuwd %0 = %2, %1"
+  "mulxwd.su %0 = %2, %1"
   [(set_attr "type" "mult_int")]
 )
 
@@ -1269,7 +1259,7 @@
         emit_insn (gen_lvx_floatuw (floatb, operands[2], const0_rtx, rns));
     // float floatrec =  __builtin_lvx_frecw(floatb, ".rn.s");
         rtx floatrec = gen_reg_rtx (SFmode);
-        emit_insn (gen_lvx_frecw (floatrec, floatb, rns));
+        emit_insn (gen_lvx_fsrecw (floatrec, floatb, rns));
     // if ((b & (long)lvx_divmod_zero) == 0) __builtin_trap();
         rtx divnez = gen_label_rtx ();
         rtx pointer = gen_reg_rtx (Pmode);
@@ -1352,7 +1342,7 @@
         emit_insn (gen_lvx_floatuw (floatb, operands[2], const0_rtx, rns));
     // float floatrec =  __builtin_lvx_frecw(floatb, ".rn.s");
         rtx floatrec = gen_reg_rtx (SFmode);
-        emit_insn (gen_lvx_frecw (floatrec, floatb, rns));
+        emit_insn (gen_lvx_fsrecw (floatrec, floatb, rns));
     // if ((b & (long)lvx_divmod_zero) == 0) __builtin_trap();
         rtx divnez = gen_label_rtx ();
         rtx pointer = gen_reg_rtx (Pmode);
@@ -1431,7 +1421,7 @@
                           (sign_extend:DI (match_operand:SI 2 "register_operand" "r")))
                  (match_operand:DI 3 "register_operand" "0")))]
   ""
-  "maddwd %0 = %1, %2"
+  "maddxwd %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
@@ -1441,7 +1431,7 @@
                           (zero_extend:DI (match_operand:SI 2 "register_operand" "r")))
                  (match_operand:DI 3 "register_operand" "0")))]
   ""
-  "madduwd %0 = %1, %2"
+  "maddxwd.u %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
@@ -1451,7 +1441,7 @@
                           (zero_extend:DI (match_operand:SI 2 "register_operand" "r")))
                  (match_operand:DI 3 "register_operand" "0")))]
   ""
-  "maddsuwd %0 = %1, %2"
+  "maddxwd.su %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
@@ -1461,7 +1451,7 @@
                           (sign_extend:DI (match_operand:SI 2 "register_operand" "r")))
                  (match_operand:DI 3 "register_operand" "0")))]
   ""
-  "maddsuwd %0 = %2, %1"
+  "maddxwd.su %0 = %2, %1"
   [(set_attr "type" "madd_int")]
 )
 
@@ -1491,7 +1481,7 @@
                   (mult:DI (sign_extend:DI (match_operand:SI 1 "register_operand" "r"))
                            (sign_extend:DI (match_operand:SI 2 "register_operand" "r")))))]
   ""
-  "msbfwd %0 = %1, %2"
+  "msbfxwd %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
@@ -1501,7 +1491,7 @@
                   (mult:DI (zero_extend:DI (match_operand:SI 1 "register_operand" "r"))
                            (zero_extend:DI (match_operand:SI 2 "register_operand" "r")))))]
   ""
-  "msbfuwd %0 = %1, %2"
+  "msbfxwd.u %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
@@ -1511,7 +1501,7 @@
                   (mult:DI (sign_extend:DI (match_operand:SI 1 "register_operand" "r"))
                            (zero_extend:DI (match_operand:SI 2 "register_operand" "r")))))]
   ""
-  "msbfsuwd %0 = %1, %2"
+  "msbfxwd.su %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
@@ -1521,7 +1511,7 @@
                   (mult:DI (zero_extend:DI (match_operand:SI 1 "register_operand" "r"))
                            (sign_extend:DI (match_operand:SI 2 "register_operand" "r")))))]
   ""
-  "msbfsuwd %0 = %2, %1"
+  "msbfxwd.su %0 = %2, %1"
   [(set_attr "type" "madd_int")]
 )
 
@@ -2467,7 +2457,7 @@
         emit_insn (gen_lvx_fnarrowdw (floatb, doubleb, rns));
     // float floatrec = __builtin_lvx_frecw(floatb, ".rn.s");
         rtx floatrec = gen_reg_rtx (SFmode);
-        emit_insn (gen_lvx_frecw (floatrec, floatb, rns));
+        emit_insn (gen_lvx_fsrecw (floatrec, floatb, rns));
     // if ((b & (long)lvx_divmod_zero) == 0) __builtin_trap();
         rtx divnez = gen_label_rtx ();
         rtx pointer = gen_reg_rtx (Pmode);
@@ -2591,7 +2581,7 @@
         emit_insn (gen_lvx_fnarrowdw (floatb, doubleb, rns));
     // float floatrec = __builtin_lvx_frecw(floatb, ".rn.s");
         rtx floatrec = gen_reg_rtx (SFmode);
-        emit_insn (gen_lvx_frecw (floatrec, floatb, rns));
+        emit_insn (gen_lvx_fsrecw (floatrec, floatb, rns));
     // if ((b & (long)lvx_divmod_zero) == 0) __builtin_trap();
         rtx divnez = gen_label_rtx ();
         rtx pointer = gen_reg_rtx (Pmode);
@@ -2658,7 +2648,7 @@
         (mult:TI (sign_extend:TI (match_operand:DI 1 "register_operand" "r"))
                  (sign_extend:TI (match_operand:DI 2 "register_operand" "r"))))]
   ""
-  "muldt %0 = %1, %2"
+  "mulxdq %0 = %1, %2"
   [(set_attr "type" "mult_int")]
 )
 
@@ -2667,7 +2657,7 @@
         (mult:TI (zero_extend:TI (match_operand:DI 1 "register_operand" "r"))
                  (zero_extend:TI (match_operand:DI 2 "register_operand" "r"))))]
   ""
-  "muludt %0 = %1, %2"
+  "mulxdq.u %0 = %1, %2"
   [(set_attr "type" "mult_int")]
 )
 
@@ -2676,7 +2666,7 @@
         (mult:TI (zero_extend:TI (match_operand:DI 1 "register_operand" "r"))
                  (sign_extend:TI (match_operand:DI 2 "register_operand" "r"))))]
   ""
-  "mulsudt %0 = %2, %1"
+  "mulxdq.su %0 = %2, %1"
   [(set_attr "type" "mult_int")]
 )
 
@@ -2744,7 +2734,7 @@
                           (sign_extend:TI (match_operand:DI 2 "register_operand" "r")))
                  (match_operand:TI 3 "register_operand" "0")))]
   ""
-  "madddt %0 = %1, %2"
+  "maddxdq %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
@@ -2754,19 +2744,15 @@
                           (zero_extend:TI (match_operand:DI 2 "register_operand" "r")))
                  (match_operand:TI 3 "register_operand" "0")))]
   ""
-  "maddudt %0 = %1, %2"
+  "maddxdq.u %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
-(define_insn "*madduzdt"
-  [(set (match_operand:TI 0 "register_operand" "=r")
-        (plus:TI (mult:TI (zero_extend:TI (match_operand:DI 1 "register_operand" "r"))
-                          (zero_extend:TI (match_operand:DI 2 "register_operand" "r")))
-                 (lshiftrt:TI (match_operand:TI 3 "register_operand" "0") (const_int 64))))]
-  ""
-  "madduzdt %0 = %1, %2"
-  [(set_attr "type" "madd_int")]
-)
+;; No "*madduzdt": the KVX .uz form accumulated into the high half of the
+;; 128-bit accumulator (note the lshiftrt by 64 above).  LVX expresses the
+;; widening multiply flavour through the widemult modifier, whose only
+;; members are "." , ".U" and ".SU" -- there is no ".UZ" -- so this shape has
+;; no LVX instruction and must be left to the generic expansion.
 
 (define_insn "*maddsudt"
   [(set (match_operand:TI 0 "register_operand" "=r")
@@ -2774,7 +2760,7 @@
                           (zero_extend:TI (match_operand:DI 2 "register_operand" "r")))
                  (match_operand:TI 3 "register_operand" "0")))]
   ""
-  "maddsudt %0 = %1, %2"
+  "maddxdq.su %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
@@ -2784,7 +2770,7 @@
                           (sign_extend:TI (match_operand:DI 2 "register_operand" "r")))
                  (match_operand:TI 3 "register_operand" "0")))]
   ""
-  "maddsudt %0 = %2, %1"
+  "maddxdq.su %0 = %2, %1"
   [(set_attr "type" "madd_int")]
 )
 
@@ -2804,7 +2790,7 @@
                   (mult:TI (sign_extend:TI (match_operand:DI 1 "register_operand" "r"))
                            (sign_extend:TI (match_operand:DI 2 "register_operand" "r")))))]
   ""
-  "msbfdt %0 = %1, %2"
+  "msbfxdq %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
@@ -2814,19 +2800,12 @@
                   (mult:TI (zero_extend:TI (match_operand:DI 1 "register_operand" "r"))
                            (zero_extend:TI (match_operand:DI 2 "register_operand" "r")))))]
   ""
-  "msbfudt %0 = %1, %2"
+  "msbfxdq.u %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
-(define_insn "*msbfuzdt"
-  [(set (match_operand:TI 0 "register_operand" "=r")
-        (minus:TI (lshiftrt:TI (match_operand:TI 3 "register_operand" "0") (const_int 64))
-                  (mult:TI (zero_extend:TI (match_operand:DI 1 "register_operand" "r"))
-                           (zero_extend:TI (match_operand:DI 2 "register_operand" "r")))))]
-  ""
-  "msbfuzdt %0 = %1, %2"
-  [(set_attr "type" "madd_int")]
-)
+;; No "*msbfuzdt", for the same reason as *madduzdt above: no .UZ member in
+;; the LVX widemult modifier.
 
 (define_insn "*msbfsudt"
   [(set (match_operand:TI 0 "register_operand" "=r")
@@ -2834,7 +2813,7 @@
                   (mult:TI (sign_extend:TI (match_operand:DI 1 "register_operand" "r"))
                            (zero_extend:TI (match_operand:DI 2 "register_operand" "r")))))]
   ""
-  "msbfsudt %0 = %1, %2"
+  "msbfxdq.su %0 = %1, %2"
   [(set_attr "type" "madd_int")]
 )
 
@@ -2844,7 +2823,7 @@
                   (mult:TI (zero_extend:TI (match_operand:DI 1 "register_operand" "r"))
                            (sign_extend:TI (match_operand:DI 2 "register_operand" "r")))))]
   ""
-  "msbfsudt %0 = %2, %1"
+  "msbfxdq.su %0 = %2, %1"
   [(set_attr "type" "madd_int")]
 )
 
@@ -3233,114 +3212,6 @@
     if (lvx_expand_memset_mul (operands, OImode))
       DONE;
     FAIL;
-  }
-)
-
-;; CPLX_I
-
-(define_insn "add<mode>3"
-  [(set (match_operand:CPLX_I 0 "register_operand" "=r,r")
-          (plus:CPLX_I
-           (match_operand:CPLX_I 1 "register_operand" "r,r")
-           (match_operand:CPLX_I 2 "register_s32_operand" "r,I32")))]
-  ""
-  "add<suffix> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_x")
-   (set_attr "length" "4,8")]
-)
-
-(define_insn "sub<mode>3"
-  [(set (match_operand:CPLX_I 0 "register_operand" "=r,r")
-          (minus:CPLX_I
-           (match_operand:CPLX_I 1 "register_s32_operand" "r,I32")
-           (match_operand:CPLX_I 2 "register_operand" "r,r")))]
-  ""
-  "sbf<suffix> %0 = %2, %1"
-  [(set_attr "type"   "alu_tiny,alu_tiny_x")
-   (set_attr "length" "4,8")]
-)
-
-(define_insn "neg<mode>2"
-  [(set (match_operand:CPLX_I 0 "register_operand" "=r")
-          (neg:CPLX_I (match_operand:CPLX_I 1 "register_operand" "r")))]
-  ""
-  "neg<suffix> %0 = %1"
-  [(set_attr "type" "alu_tiny_x")
-   (set_attr "length" "8")]
-)
-
-(define_insn "addconj<mode>3"
-  [(set (match_operand:CPLX_C 0 "register_operand" "=r,r")
-          (plus:CPLX_C
-           (unspec:CPLX_C [(match_operand:CPLX_C 1 "register_operand" "r,r")] UNSPEC_CONJ)
-           (match_operand:CPLX_C 2 "register_s32_operand" "r,I32")))]
-  "HAVE_LVX_CPLX_PLUS_<MODE>"
-  "add<suffixc> %0 = %1, %2"
-  [(set_attr "type" "alu_lite,alu_lite_x")
-   (set_attr "length" "4,8")]
-)
-
-(define_insn "subconj<mode>3"
-  [(set (match_operand:CPLX_C 0 "register_operand" "=r,r")
-          (minus:CPLX_C
-           (match_operand:CPLX_C 1 "register_s32_operand" "r,I32")
-           (unspec:CPLX_C [(match_operand:CPLX_C 2 "register_operand" "r,r")] UNSPEC_CONJ)))]
-  "HAVE_LVX_CPLX_MINUS_<MODE>"
-  "sbf<suffixc> %0 = %2, %1"
-  [(set_attr "type" "alu_lite,alu_lite_x")
-   (set_attr "length" "4,8")]
-)
-
-(define_insn "subconj<mode>3_s"
-  [(set (match_operand:CPLX_C 0 "register_operand" "=r,r")
-          (minus:CPLX_C
-           (unspec:CPLX_C [(match_operand:CPLX_C 1 "register_operand" "r,r")] UNSPEC_CONJ)
-           (match_operand:CPLX_C 2 "register_s32_operand" "r,I32")))]
-  "HAVE_LVX_CPLX_MINUS_<MODE>"
-  "sbf<suffixc> %0 = %1, %2"
-  [(set_attr "type" "alu_lite,alu_lite_x")
-   (set_attr "length" "4,8")]
-)
-
-(define_expand "conj<mode>2"
-  [(set (match_operand:CPLX_C 0 "register_operand" "=r")
-        (unspec:CPLX_C [(match_operand:CPLX_C 1 "register_operand" "r")] UNSPEC_CONJ))]
-  ""
-  {
-    if (HAVE_LVX_CPLX_PLUS_<MODE>)
-      emit_insn (gen_conj<mode>2_1 (operands[0], operands[1]));
-    else
-      emit_insn (gen_conj<mode>2_2 (operands[0], operands[1]));
-    DONE;
-  }
-)
-
-(define_insn "conj<mode>2_1"
-  [(set (match_operand:CPLX_C 0 "register_operand" "=r")
-        (unspec:CPLX_C [(match_operand:CPLX_C 1 "register_operand" "r")] UNSPEC_CONJ))]
-  "HAVE_LVX_CPLX_PLUS_<MODE>"
-  "add<suffixc> %0 = %1, 0"
-  [(set_attr "type" "alu_lite_x")
-   (set_attr "length" "8")]
-)
-
-(define_insn_and_split "conj<mode>2_2"
-  [(set (match_operand:CPLX_C 0 "register_operand" "=r")
-        (unspec:CPLX_C [(match_operand:CPLX_C 1 "register_operand" "r")] UNSPEC_CONJ))
-   (clobber (match_scratch:CPLX_C 2 "=&r"))]
-  "!HAVE_LVX_CPLX_PLUS_<MODE>"
-  "#"
-  "!HAVE_LVX_CPLX_PLUS_<MODE> && reload_completed"
-  [(set (match_dup 2) (match_dup 1))
-   (set (match_dup 0)
-        (neg:<MODE> (match_dup 1)))
-   (set (zero_extract:<HWIDE> (subreg:<HWIDE> (match_dup 0) 0)
-                        (const_int <innersize>)
-                        (const_int 0))
-        (subreg:<HWIDE> (match_dup 2) 0))]
-  {
-    if (GET_CODE (operands[2]) == SCRATCH)
-      operands[2] = gen_reg_rtx (<MODE>mode);
   }
 )
 
@@ -3958,7 +3829,7 @@
     rtx r = gen_reg_rtx (SFmode);
     operands[1] = force_reg (GET_MODE (operands[1]), operands[1]);
     emit_insn (gen_extendhfsf2 (a, operands[1]));
-    emit_insn (gen_lvx_frsrw (r, a, rm));
+    emit_insn (gen_lvx_fsrsrw (r, a));
     emit_insn (gen_truncsfhf2 (operands[0], r));
     DONE;
   }
@@ -3969,7 +3840,7 @@
         (unspec:SF [(match_operand:SF 1 "register_operand" "r")]
                    UNSPEC_FRSR))]
   ""
-  "frsrw %0 = %1"
+  "fsrsrw %0 = %1"
   [(set_attr "type" "alu_full_sfu")]
 )
 

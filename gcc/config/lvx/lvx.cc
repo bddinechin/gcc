@@ -3283,30 +3283,33 @@ lvx_expand_unpack (rtx op0, rtx op1, bool signed_p, bool hi_p)
   gcc_assert (op0_mode_size == op1_mode_size
 	      && op0_inner_size == 2 * op1_inner_size);
 
-  int V4HI = 0;
-  int V2SI = 1;
-  rtx (*fns[2][2][2]) (rtx, rtx) =
-  {
-    /* [V4HI][Z][LO] = */ gen_lvx_zxlbhq, /* [V4HI][Z][HI] = */ gen_lvx_zxmbhq,
-    /* [V4HI][S][LO] = */ gen_lvx_sxlbhq, /* [V4HI][S][HI] = */ gen_lvx_sxmbhq,
-    /* [V2SI][Z][LO] = */ gen_lvx_zxlhwp, /* [V2SI][Z][HI] = */ gen_lvx_zxmhwp,
-    /* [V2SI][S][LO] = */ gen_lvx_sxlhwp, /* [V2SI][S][HI] = */ gen_lvx_sxmhwp,
-  };
+  /* The recursion bottoms out at 128 bits, where LVX's WIDEN* lane-extension
+     instructions apply directly: they read a 128-bit vector, select its least
+     or most significant half via the mostsig modifier -- exactly HI_P -- widen
+     those lanes and write a 128-bit result.  This used to bottom out at 64
+     bits on the KVX sxl/sxm and zxl/zxm pairs, which LVX does not have.  */
+  rtx mostsig = gen_rtx_CONST_STRING (VOIDmode, hi_p ? ".m" : "");
 
   switch (op0_mode)
     {
-    case E_V4HImode:
-      emit_insn ((fns[V4HI][signed_p][hi_p]) (op0, op1));
-      break;
-    case E_V2SImode:
-      emit_insn ((fns[V2SI][signed_p][hi_p]) (op0, op1));
+    case E_V8HImode:
+      emit_insn (signed_p ? gen_lvx_widensbho (op0, op1, mostsig)
+			  : gen_lvx_widenzbho (op0, op1, mostsig));
       break;
     case E_V4SImode:
+      emit_insn (signed_p ? gen_lvx_widenshwq (op0, op1, mostsig)
+			  : gen_lvx_widenzhwq (op0, op1, mostsig));
+      break;
+    case E_V2DImode:
+      emit_insn (signed_p ? gen_lvx_widenswdp (op0, op1, mostsig)
+			  : gen_lvx_widenzwdp (op0, op1, mostsig));
+      break;
     case E_V8SImode:
     case E_V16SImode:
-    case E_V8HImode:
     case E_V16HImode:
     case E_V32HImode:
+    case E_V4DImode:
+    case E_V8DImode:
       {
 	rtx op0_half_lo =
 	  simplify_gen_subreg (op0_half_mode, op0, op0_mode, 0);
@@ -6374,6 +6377,8 @@ lvx_omp_device_kind_arch_isa (enum omp_device_kind_arch_isa trait,
     case omp_device_isa:
       if (!strcmp (name, "lvx-1"))
 	return LVX_ARCH_LVX_1;
+      if (!strcmp (name, "lvx-2"))
+	return LVX_ARCH_LVX_2;
       return 0;
     default:
       gcc_unreachable ();
@@ -8740,7 +8745,7 @@ lvx_option_override (void)
 		       param_l1_cache_size, 16);
 #endif
 
-  lvx_arch_schedule = ARCH_LVX_1;
+  lvx_arch_schedule = LVX_2 ? ARCH_LVX_2 : ARCH_LVX_1;
 
 #ifndef __OPTIMIZE__
   const char *LVX_COST_FACTOR = getenv ("LVX_COST_FACTOR");

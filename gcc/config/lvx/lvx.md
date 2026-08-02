@@ -3,7 +3,7 @@
 (define_attr "predicable" "no,yes"
   (const_string "no"))
 
-(define_attr "arch" "lvx_1" (const (symbol_ref "lvx_arch_schedule")))
+(define_attr "arch" "lvx_1,lvx_2" (const (symbol_ref "lvx_arch_schedule")))
 
 ;; Unspec numbers
 (include "unspec.md")
@@ -1129,7 +1129,6 @@
 
 (include "vector.md")
 
-(include "complex.md")
 
 (include "control.md")
 

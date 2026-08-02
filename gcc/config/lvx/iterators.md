@@ -433,15 +433,15 @@
 ])
 
 ;; Iterator for SI, QI and HI modes
-(define_mode_iterator SHORT [QI HI SI])
+(define_mode_iterator SHORT [  QI HI SI])
 
 ;; Iterator for floating-point compare modes (up to 64-bit)
-(define_mode_iterator ALLF [SF DF])
+(define_mode_iterator ALLF [  SF DF])
 
 ;; Scalar modes used by the mov pattern that fit in a register.
 ;; TI and OI and to be handled elsewhere.
-;; (define_mode_iterator ALLIF [QI HI HF SI SF DI DF])
-(define_mode_iterator ALLIF [QI HI HF SI SF DI DF])
+;; (define_mode_iterator ALLIF [  QI HI HF SI SF DI DF])
+(define_mode_iterator ALLIF [  QI HI HF SI SF DI DF])
 
 ;; Attribute for ALLIF copies (COPYW, COPYD, COPYQ, COPYO).
 (define_mode_attr copyx [
@@ -459,13 +459,13 @@
   (OI "o")
 ])
 
-(define_mode_iterator ALLP [SI DI])
+(define_mode_iterator ALLP [  SI DI])
 
 (define_mode_iterator P [(SI "Pmode == SImode") (DI "Pmode == DImode")])
 
-(define_mode_iterator SIDI [SI DI])
+(define_mode_iterator SIDI [  SI DI])
 
-(define_mode_iterator DISI [DI SI])
+(define_mode_iterator DISI [  DI SI])
 
 ;; Type suffix and length for materializing a symbol depending on pointer
 ;; size.  Alternatives using these should only be enabled for valid
@@ -477,12 +477,12 @@
   (SI "8") (DI "12") (QI "999") (HI "999") (HF "999") (SF "999") (DF "999")])
 
 ;; Iterator for Atomic Integer modes
-(define_mode_iterator AI [QI HI SI DI TI])
+(define_mode_iterator AI [  QI HI SI DI TI])
 
 ;; Iterator for Atomic Integer modes supported by Compare And Swap
 ;; Disable TI for now because it is not supported by QEMU.
 ;; (define_mode_iterator ACSI [QI HI SI DI (TI "1")])
-(define_mode_iterator ACSI [QI HI SI DI])
+(define_mode_iterator ACSI [  QI HI SI DI])
 
 ;; Iterator for atomic binary operations
 ;; (mult op stands for nand)
@@ -503,13 +503,11 @@
 ;; Iterator for the integer modes that fit in a GPR.
 (define_mode_iterator WI [
   QI HI SI DI
-  V8QI V4HI V2SI
 ])
 
 ;; Iterator for the floating-point modes that fit in a GPR.
 (define_mode_iterator WF [
   HF SF DF
-  V4HF V2SF
 ])
 
 ;; Iterator for the scalar modes that fit in a GPR.
@@ -520,54 +518,6 @@
 ;; Iterator for the modes that fit in a GPR.
 (define_mode_iterator FITGPR [
   QI HI HF SI SF DI DF
-  V8QI V4HI V4HF V2SI V2SF
-])
-
-;; Iterator for the complex modes seen as vectors that fit in a GPR.
-(define_mode_iterator CPLX_I [
-  (V2QI "1") V2HI
-])
-
-;; Iterator for the integer complex modes see as vector that fit in a GPR
-;; and have a fused conjugate operations.
-(define_mode_iterator CPLX_C [
-  V2HI V2SI
-])
-
-;; Iterator for all 64-bit modes.
-(define_mode_iterator ALL64 [
-  DI DF
-  V8QI V4HI V4HF V2SI V2SF V1DI
-])
-
-;; Iterator for the 8-bit x8 vector modes.
-(define_mode_iterator SIMD8X8 [
-  V8QI
-])
-
-;; Iterator for the 16-bit x4 vector modes.
-(define_mode_iterator SIMD16X4 [
-  V4HI V4HF
-])
-
-;; Iterator for the 32-bit x2 vector modes.
-(define_mode_iterator SIMD32X2 [
-  V2SI V2SF
-])
-
-;; Iterator for the 16-bit vector modes.
-(define_mode_iterator SIMD16 [
-  V2QI
-])
-
-;; Iterator for the 32-bit vector modes.
-(define_mode_iterator SIMD32 [
-  V2HI
-])
-
-;; Iterator for the 64-bit vector modes.
-(define_mode_iterator SIMD64 [
-  V8QI V4HI V4HF V2SI V2SF V1DI
 ])
 
 ;; Iterator for all 128-bit real modes.
@@ -609,7 +559,6 @@
 
 ;; Iterator for all SIMD modes that have a compare.
 (define_mode_iterator SIMDCMP [
-  V8QI V4HI V4HF V2SI V2SF
   V16QI V8HI V8HF V4SI V2DI V4SF V2DF
   V32QI V16HI V16HF V8SI V4DI V8SF V4DF
   V64QI V32HI V32HF V16SI V8DI V16SF V8DF
@@ -617,7 +566,6 @@
 
 ;; Iterator for all the SIMD modes.
 (define_mode_iterator SIMDALL [
-  V8QI V4HI V4HF V2SI V2SF
   V16QI V8HI V8HF V4SI V2DI V4SF V2DF
   V32QI V16HI V16HF V8SI V4DI V8SF V4DF
   V64QI V32HI V32HF V16SI V8DI V16SF V8DF
@@ -626,7 +574,6 @@
 ;; Iterator for all scalar and vector integer modes (up to 256-bit)
 (define_mode_iterator ALLIV [
   QI HI SI DI TI OI
-  V8QI V4HI V2SI
   V16QI V8HI V4SI V2DI
   V32QI V16HI V8SI V4DI
   V64QI V32HI V16SI V8DI
@@ -635,7 +582,6 @@
 ;; Iterator for all modes (integer, float, vector) for MOV*CC.
 (define_mode_iterator ALLIFV [
   QI HI HF SI SF DI DF TI OI
-  V8QI V4HI V4HF V2SI V2SF
   V16QI V8HI V8HF V4SI V2DI V4SF V2DF
   V32QI V16HI V16HF V8SI V4DI V8SF V4DF
   V64QI V32HI V32HF V16SI V8DI V16SF V8DF
@@ -684,19 +630,6 @@
   (V8DI    "do")
   (V8DF    "do")
 ])
-
-;; Attribute to get the suffix of a complex instruction with conj.
-(define_mode_attr suffixc [
-  (V2HI   "hcp.c")
-  (V2SI   "wc.c")
-])
-
-;; Attribute to get the bit size of inner elements.
-(define_mode_attr innersize [
-  (V2HI    "16")
-  (V2SI    "32")
-])
-
 
 ;; Attribute for LSU and EXT builtin vector suffixes.
 (define_mode_attr lsvs [
@@ -1180,8 +1113,8 @@
 
 ;; Iterator for all the Integral SIMD modes to which a vector can be unpacked.
 (define_mode_iterator UNPACKI [
-    V2SI V4SI V8SI V16SI
-    V4HI V8HI V16HI V32HI
+  V4SI V8SI V16SI
+  V8HI V16HI V32HI
 ])
 
 ;; Attribute to get the packed mode of a vector
@@ -1231,12 +1164,6 @@
   (V16HF   "whx")
   (V8SI    "dwo")
   (V8SF    "dwo")
-])
-
-;; Attribute to get the trunc(ate) attribute type of fnarrow<truncx>
-(define_mode_attr fnarrowt [
-  (V4HF    "alu_lite")
-  (V2SF    "alu_full")
 ])
 
 ;; Attribute to get the half trunc(ate) suffix of a vector mode.
@@ -1393,44 +1320,6 @@
 (define_mode_attr chunkxc [
   (V8HI   "hcp.c")
   (V4SI   "wc.c")
-])
-
-;; Iterator for the non-byte small element 64-bit vector modes.
-(define_mode_iterator S64B [
-  (V8QI "1") V4HI V2SI
-  V4HF V2SF
-])
-
-;; Iterator for the small element 64-bit vector FP modes.
-;; LVX supports 128-bit+ SIMD only; 64-bit SIMD is disabled.
-;; V2SF and V2SI are kept exclusively for _Complex float/_Complex int support.
-(define_mode_iterator S64F [
-  (V4HF "0") (V2SF "")
-])
-
-;; Iterator for the non-byte small element 64-bit vector integer modes.
-(define_mode_iterator S64I [
-  (V4HI "0") (V2SI "")
-])
-
-;; Iterator S64L.
-(define_mode_iterator S64K [
-  (V8QI "0") (V4HI "0") (V2SI "0")
-])
-
-;; Iterator for all the small element 64-bit vector integer modes.
-(define_mode_iterator S64L [
-  (V8QI "0") (V4HI "0") (V2SI "0")
-])
-
-;; Iterator for the non-standard 64-bit vector integer modes.
-(define_mode_iterator S64M [
-  (V8QI "0") (V4HI "0")
-])
-
-;; Iterator for the 64-bit vector complex integer modes.
-(define_mode_iterator V64CI [
-  (V8QI "0") (V4HI "0")
 ])
 
 ;; Iterator for the small element 128-bit vector FP modes.
@@ -1617,7 +1506,6 @@
 
 ;; Iterator for the vector HF modes.
 (define_mode_iterator VXHF [
-  (V4HF "0")
   V8HF
   V16HF
   V32HF
@@ -1625,7 +1513,6 @@
 
 ;; Iterator for the vector SF modes.
 (define_mode_iterator VXSF [
-  (V2SF "0")
   V4SF
   V8SF
 ])
@@ -1638,14 +1525,12 @@
 
 ;; Iterator for the vector QI modes.
 (define_mode_iterator VXQI [
-  (V8QI "0")
   V16QI
   V32QI
 ])
 
 ;; Iterator for the VXQI and V64QI modes.
 (define_mode_iterator VYQI [
-  V8QI
   V16QI
   V32QI
   V64QI
@@ -1653,25 +1538,44 @@
 
 ;; Iterator for the non-byte integer vector modes.
 (define_mode_iterator VWXI [
-  (V4HI "0") (V2SI "0")
   V8HI V4SI
 ])
 
 ;; Iterator for LVX integer vector builtins
 (define_mode_iterator LVXI [
-  V8QI V4HI V2SI
   V16QI V8HI V4SI V2DI
   V32QI V16HI V8SI V4DI
 ])
 
 ;; Iterator for the all the widening integer vector modes.
 (define_mode_iterator WIDENI [
-  V8QI V4HI V2SI
   V16QI V8HI V4SI
   V32QI V16HI V8SI
 ])
 
 ;; Attribute to get the widened chunk of a vector mode.
+;; Attribute to get the 128-bit sub-chunk mode of a vector mode.  The WIDEN*
+;; lane-extension instructions read a 128-bit vector, so the extend expanders
+;; step their source in 128-bit pieces rather than the 64-bit pieces CHUNK
+;; names.
+(define_mode_attr S128CHUNK [
+  (V16QI   "V16QI")
+  (V8HI    "V8HI")
+  (V8HF    "V8HF")
+  (V4SI    "V4SI")
+  (V4SF    "V4SF")
+  (V32QI   "V16QI")
+  (V16HI   "V8HI")
+  (V16HF   "V8HF")
+  (V8SI    "V4SI")
+  (V8SF    "V4SF")
+  (V64QI   "V16QI")
+  (V32HI   "V8HI")
+  (V32HF   "V8HF")
+  (V16SI   "V4SI")
+  (V16SF   "V4SF")
+])
+
 (define_mode_attr WCHUNK [
   (V8QI    "V8HI")
   (V4HI    "V4SI")
@@ -1761,25 +1665,23 @@
 ])
 
 
-;; Modes for core and extension data move builtins
-(define_mode_iterator V64 [ V1DI ])
-(define_mode_iterator V128 [ V2DI ])
-(define_mode_iterator V256 [ V4DI ])
-(define_mode_iterator V512 [ V8DI ])
+(define_mode_iterator V128 [  V2DI])
+(define_mode_iterator V256 [  V4DI])
+(define_mode_iterator V512 [  V8DI])
 
-(define_mode_iterator X256 [ V1OI ])
-(define_mode_iterator X512 [ V2OI ])
-(define_mode_iterator X1024 [ V4OI ])
-(define_mode_iterator X2048 [ V8OI ])
-(define_mode_iterator X4096 [ V16OI ])
-(define_mode_iterator X8192 [ V32OI ])
+(define_mode_iterator X256 [  V1OI])
+(define_mode_iterator X512 [  V2OI])
+(define_mode_iterator X1024 [  V4OI])
+(define_mode_iterator X2048 [  V8OI])
+(define_mode_iterator X4096 [  V16OI])
+(define_mode_iterator X8192 [  V32OI])
 (define_mode_iterator XBUFF [
   V2OI V4OI V8OI V16OI V32OI
 ])
 
 ;; Modes for XCOPY
 (define_mode_iterator XCOPYM [
-    V1OI V2OI V4OI
+  V1OI V2OI V4OI
 ])
 
 ;; Modes for XCAT
@@ -1795,11 +1697,11 @@
 
 ;; Modes for XSPLAT
 (define_mode_iterator XSPLATOM [
-    V2OI V4OI
+  V2OI V4OI
 ])
 
 (define_mode_iterator XSPLATDM [
-    V2OI V4OI V8OI V16OI V32OI
+  V2OI V4OI V8OI V16OI V32OI
 ])
 
 ;; Attribute to map data move mode to bit size.
