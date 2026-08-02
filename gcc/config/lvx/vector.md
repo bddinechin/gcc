@@ -953,6 +953,34 @@
       }
   }
 )
+
+;; The byte averages the expander above falls through to.  S128I is the
+;; non-byte 128-bit integer modes, so the AVG*BX forms need their own patterns;
+;; <avgm>bx covers all four variants (avgbx, avgubx, avgrbx, avgrubx).  These
+;; used to be a pair -- and at V32QI a quad -- of 64-bit AVG*BO over the
+;; register halves, which the ISA no longer has.
+(define_insn "*<avgpre>v16qi<avgpost>_2"
+  [(set (match_operand:V16QI 0 "register_operand" "=r")
+        (unspec:V16QI [(match_operand:V16QI 1 "register_operand" "r")
+                       (match_operand:V16QI 2 "register_operand" "r")] UNSPEC_AVGI))]
+  "LVX_2 && (HAVE_LVX_<AVGPRE>_V16QI)"
+  "<avgm>bx %0 = %1, %2"
+  [(set_attr "type" "alu_lite")
+   (set_attr "length"      "4")]
+)
+
+(define_insn "*<avgpre>v32qi<avgpost>_2"
+  [(set (match_operand:V32QI 0 "register_operand" "=r")
+        (unspec:V32QI [(match_operand:V32QI 1 "register_operand" "r")
+                       (match_operand:V32QI 2 "register_operand" "r")] UNSPEC_AVGI))]
+  "LVX_2 && (HAVE_LVX_<AVGPRE>_V32QI)"
+  {
+    return "<avgm>bx %L0 = %L1, %L2\n\t<avgm>bx %M0 = %M1, %M2";
+  }
+  [(set_attr "type" "alu_lite_x2")
+   (set_attr "length"         "8")]
+)
+
 ;; ashl<m>3 ssashl<m>3 usashl<m>3
 (define_expand "<prefix><mode>3"
   [(set (match_operand:VXQI 0 "register_operand" "")
