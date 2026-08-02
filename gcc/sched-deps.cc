@@ -1538,7 +1538,15 @@ add_dependence (rtx_insn *con, rtx_insn *pro, enum reg_note dep_type)
 	  HARD_REG_SET uses;
 	  CLEAR_HARD_REG_SET (uses);
 	  note_uses (&PATTERN (con), record_hard_reg_uses, &uses);
-	  if (TEST_HARD_REG_BIT (uses, REGNO (XEXP (cond, 0))))
+	  /* The tested value need not be a bare register.  A target without
+	     condition codes can branch on a computed condition -- lvx has
+	     "cb.even/odd", whose condition is (eq (zero_extract r 1 0) 0) --
+	     and REGNO on a non-REG is undefined.  When we cannot say which
+	     register the condition reads, take the conservative side and use
+	     an anti dependence.  */
+	  rtx cond_val = XEXP (cond, 0);
+	  if (!REG_P (cond_val)
+	      || TEST_HARD_REG_BIT (uses, REGNO (cond_val)))
 	    dep_type = REG_DEP_ANTI;
 	}
       if (dep_type == REG_DEP_CONTROL)

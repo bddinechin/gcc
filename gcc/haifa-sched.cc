@@ -1305,6 +1305,13 @@ recompute_todo_spec (rtx_insn *next, bool for_backtrack)
 	pro = other;
 
       cond = sched_get_reverse_condition_uncached (pro);
+      /* Predication needs to name the register the condition reads.  A target
+	 without condition codes can branch on a computed value -- lvx has
+	 "cb.even/odd", whose condition is (eq (zero_extract r 1 0) 0) -- and
+	 REGNO on a non-REG is undefined.  Give up on breaking the dependence
+	 rather than guess.  */
+      if (cond == NULL_RTX || !REG_P (XEXP (cond, 0)))
+	return HARD_DEP;
       regno = REGNO (XEXP (cond, 0));
 
       /* Find the last scheduled insn that modifies the condition register.
