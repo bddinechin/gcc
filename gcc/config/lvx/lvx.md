@@ -309,6 +309,56 @@
   [(set_attr "type" "bcu_xfer")]
 )
 
+;; Restore the frame and jump, for __builtin_longjmp and nonlocal goto.
+;;
+;; This is expand_builtin_longjmp's generic fallback (builtins.cc), with the
+;; clobber of FRAME_POINTER_RTX left out.  We must define it, rather than let
+;; that fallback run, because LVX makes ARG_POINTER_REGNUM an alias of
+;; FRAME_POINTER_REGNUM: var-tracking picks arg_pointer_rtx as its CFA base
+;; anchor (it only prefers frame_pointer_rtx under FRAME_POINTER_CFA_OFFSET,
+;; which LVX does not define), so on LVX that clobber writes cfa_base_rtx and
+;; trips the "loc != cfa_base_rtx" assertion in var-tracking's add_stores.
+;; Targets with a distinct arg pointer never notice; sparc, the other target
+;; that aliases the two, defines nonlocal_goto for the same reason.
+;;
+;; The clobber only exists to keep the hard-frame-pointer move below from
+;; being optimized away, and the clobber of HARD_FRAME_POINTER_RTX that we do
+;; keep already does that.  Dropping it costs nothing: the virtual frame
+;; pointer is eliminated long before this point and never names a real
+;; machine register.
+(define_expand "nonlocal_goto"
+  [(use (match_operand 0 "general_operand"))
+   (use (match_operand 1 "general_operand"))
+   (use (match_operand 2 "general_operand"))
+   (use (match_operand 3 "general_operand"))]
+  ""
+{
+  rtx lab = operands[1];
+  rtx stack = operands[2];
+  rtx fp = operands[3];
+
+  emit_clobber (gen_rtx_MEM (BLKmode, gen_rtx_SCRATCH (VOIDmode)));
+  emit_clobber (gen_rtx_MEM (BLKmode, hard_frame_pointer_rtx));
+
+  /* Both must be copied out before the stack is restored, since the setjmp
+     buffer may itself live in the frame we are about to abandon.  */
+  lab = copy_to_reg (lab);
+  fp = copy_to_reg (fp);
+
+  emit_stack_restore (SAVE_NONLOCAL, stack);
+
+  /* Ensure the frame pointer move is not optimized.  */
+  emit_insn (gen_blockage ());
+  emit_clobber (hard_frame_pointer_rtx);
+  emit_move_insn (hard_frame_pointer_rtx, fp);
+
+  emit_use (hard_frame_pointer_rtx);
+  emit_use (stack_pointer_rtx);
+
+  emit_indirect_jump (lab);
+  DONE;
+})
+
 (define_expand "tablejump"
   [(set (pc)
         (match_operand:SI 0 "register_operand"))
