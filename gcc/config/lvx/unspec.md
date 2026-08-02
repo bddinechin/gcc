@@ -251,6 +251,8 @@
         ;; unsigned need distinct unspecs: with the same one their patterns
         ;; have identical RTL, recog matches whichever comes first, and both
         ;; emit the signed instruction.
+        UNSPEC_FSQRT      ;; fsqrth / fsqrtw / fsqrtd
+
         UNSPEC_DIVMOD     ;; divmodw  / divmodd
         UNSPEC_DIVMODU    ;; divmoduw / divmodud
 

@@ -1,6 +1,11 @@
 HOST_LIBGCC2_CFLAGS += -ffunction-sections -fdata-sections
 
-softfp_func_exclude := divsf3 divdf3
+# Nothing to exclude from soft-fp any more.  divsf3.c and divdf3.c used to
+# replace the soft-fp versions with a Newton-Raphson sequence, but the backend
+# expands divsf3/divdf3/divhf3 straight to fdivw/fdivd/fdivh (all lvx_v1), so
+# no library routine is reached at all.  Same for square root now that
+# sqrt<mode>2 emits fsqrth/fsqrtw/fsqrtd.
+softfp_func_exclude :=
 softfp_file_list := \
   $(filter-out $(addsuffix .c, \
                            $(addprefix $(srcdir)/soft-fp/, \

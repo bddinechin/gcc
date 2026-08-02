@@ -1562,6 +1562,10 @@
 ;; is issued as two 128-bit instructions (%l then %m), so its templates need
 ;; the half's name -- <suffix> would give the 256-bit spelling, which has no
 ;; instruction behind it.
+;; Scalar floating-point modes, with the mnemonic suffix LVX uses for each.
+(define_mode_iterator FLOATM [HF SF DF])
+(define_mode_attr fmode [(HF "h") (SF "w") (DF "d")])
+
 (define_mode_attr hsuffix [
   (V32QI   "bx")
   (V16HI   "ho")
