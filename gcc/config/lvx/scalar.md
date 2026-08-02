@@ -30,7 +30,14 @@
     if (!HAVE_LVX_US_PLUS_<MODE>)
       emit_insn (gen_usadd<mode>3_1 (operands[0], operands[1], operands[2]));
     else
-      emit_insn (gen_usadd<mode>3_2 (operands[0], operands[1], operands[2]));
+      {
+	/* The hardware saturating forms take registery only -- no immediate
+	   operand, unlike plain addd/sbfd.  gen_* does not check predicates,
+	   so the constant has to be forced here or it reaches the insn as
+	   unmatched RTL.  */
+	rtx op2 = force_reg (<MODE>mode, operands[2]);
+	emit_insn (gen_usadd<mode>3_2 (operands[0], operands[1], op2));
+      }
     DONE;
   }
 )
@@ -67,7 +74,14 @@
     if (!HAVE_LVX_US_MINUS_<MODE>)
       emit_insn (gen_ussub<mode>3_1 (operands[0], operands[1], operands[2]));
     else
-      emit_insn (gen_ussub<mode>3_2 (operands[0], operands[1], operands[2]));
+      {
+	/* The hardware saturating forms take registery only -- no immediate
+	   operand, unlike plain addd/sbfd.  gen_* does not check predicates,
+	   so the constant has to be forced here or it reaches the insn as
+	   unmatched RTL.  */
+	rtx op2 = force_reg (<MODE>mode, operands[2]);
+	emit_insn (gen_ussub<mode>3_2 (operands[0], operands[1], op2));
+      }
     DONE;
   }
 )
@@ -1905,23 +1919,27 @@
 )
 
 (define_insn "ssadddi3"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
-        (ss_plus:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                    (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (ss_plus:DI (match_operand:DI 1 "register_operand" "r")
+                    (match_operand:DI 2 "register_operand" "r")))]
   ""
+  ;; register-only: the saturating forms take registery in the ISA, with no
+  ;; immediate operand, unlike plain addd/sbfd which also have signed10.
   "addsd %0 = %1, %2"
-  [(set_attr "type" "alu_thin,alu_thin,alu_thin_x,alu_thin_y")
-   (set_attr "length" "4,4,8,12")]
+  [(set_attr "type" "alu_thin")
+   (set_attr "length" "4")]
 )
 
 (define_insn "usadddi3_2"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (us_plus:DI (match_operand:DI 1 "register_operand" "r,r")
-                    (match_operand:DI 2 "register_s32_operand" "r,I32")))]
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (us_plus:DI (match_operand:DI 1 "register_operand" "r")
+                    (match_operand:DI 2 "register_operand" "r")))]
   "HAVE_LVX_US_PLUS_DI"
+  ;; register-only: the saturating forms take registery in the ISA, with no
+  ;; immediate operand, unlike plain addd/sbfd which also have signed10.
   "addusd %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length"      "4,         8")]
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_insn "subdi3"
@@ -2086,13 +2104,15 @@
 )
 
 (define_insn "ussubdi3_2"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (us_minus:DI (match_operand:DI 1 "register_operand" "r,r")
-                     (match_operand:DI 2 "register_s32_operand" "r,I32")))]
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (us_minus:DI (match_operand:DI 1 "register_operand" "r")
+                     (match_operand:DI 2 "register_operand" "r")))]
   "HAVE_LVX_US_MINUS_DI"
+  ;; register-only: the saturating forms take registery in the ISA, with no
+  ;; immediate operand, unlike plain addd/sbfd which also have signed10.
   "sbfusd %0 = %2, %1"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length"      "4,         8")]
+  [(set_attr "type" "alu_tiny")
+   (set_attr "length" "4")]
 )
 
 (define_expand "muldi3"
