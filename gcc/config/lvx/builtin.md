@@ -4407,7 +4407,8 @@
   [(set (match_operand:DF 0 "register_operand" "=r")
         (unspec:DF [(match_operand:SF 1 "register_operand" "r")
                     (match_operand 2 "" "")] UNSPEC_FWIDEN))]
-  "LVX_2"
+  ;; not LVX_2: fwidenwd is a scalar SF->DF widen and is on lvx_v1 too.
+  ""
   "fwidenwd%2 %0 = %1"
   [(set_attr "type" "alu_lite")]
 )

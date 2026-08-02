@@ -4949,6 +4949,51 @@ lvx_init_machine_status (void)
 /* Do anything needed before RTL is emitted for each function.
    Implements INIT_EXPANDERS.  */
 
+/* Expand a hardware divide/modulo.  divmodw/divmoduw/divmodd/divmodud write
+   the quotient into the low 64 bits of a 128-bit register pair and the
+   remainder into the high 64, so both results come out of one FULL-slot
+   instruction.  QUO and/or REM may be NULL when only one is wanted.
+
+   The hardware returns zero for a division by zero instead of trapping, so
+   -mdivmod0-trap still needs the explicit check; lvx_divmod_zero is const0_rtx
+   when that option is on, which makes the OR below leave the divisor alone.  */
+
+void
+lvx_expand_divmod (rtx quo, rtx rem, rtx num, rtx den, machine_mode mode,
+		   bool unsignedp)
+{
+  num = force_reg (mode, num);
+  den = force_reg (mode, den);
+
+  if (TARGET_DIVMOD0_TRAP)
+    {
+      rtx divnez = gen_label_rtx ();
+      rtx pointer = gen_reg_rtx (Pmode);
+      rtx notrap = gen_reg_rtx (mode);
+      emit_insn (gen_rtx_SET (pointer, lvx_divmod_zero));
+      emit_insn (gen_rtx_SET (notrap, gen_rtx_SUBREG (mode, pointer, 0)));
+      emit_insn (gen_rtx_SET (notrap, gen_rtx_IOR (mode, den, notrap)));
+      emit_cmp_and_jump_insns (notrap, const0_rtx, NE, NULL, mode, 0, divnez,
+			       profile_probability::guessed_always ());
+      expand_builtin_trap ();
+      emit_label (divnez);
+    }
+
+  rtx pair = gen_reg_rtx (TImode);
+  if (mode == SImode)
+    emit_insn (unsignedp ? gen_lvx_udivmodsi (pair, num, den)
+			 : gen_lvx_divmodsi (pair, num, den));
+  else
+    emit_insn (unsignedp ? gen_lvx_udivmoddi (pair, num, den)
+			 : gen_lvx_divmoddi (pair, num, den));
+
+  /* Little-endian: offset 0 is the quotient, offset 8 the remainder.  */
+  if (quo)
+    emit_move_insn (quo, simplify_gen_subreg (mode, pair, TImode, 0));
+  if (rem)
+    emit_move_insn (rem, simplify_gen_subreg (mode, pair, TImode, 8));
+}
+
 void
 lvx_init_expanders (void)
 {

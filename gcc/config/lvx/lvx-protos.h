@@ -206,6 +206,7 @@ enum lvx_symbol_type
 extern GTY (()) rtx lvx_link_reg_rtx;
 
 extern GTY (()) rtx lvx_divmod_zero;
+extern void lvx_expand_divmod (rtx, rtx, rtx, rtx, machine_mode, bool);
 
 extern GTY (()) unsigned long lvx_builtin_undef_counter;
 

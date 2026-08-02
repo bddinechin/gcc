@@ -246,6 +246,14 @@
         ;; WIDEN* -- LVX's SIMD lane extension.  Each takes a 128-bit source
         ;; and the mostsig modifier selecting its least ("") or most (".m")
         ;; significant half, widening those lanes into a 128-bit result.
+        ;; DIVMOD*: the quotient and remainder packed into a 128-bit pair,
+        ;; quotient in the low 64 bits, remainder in the high 64.  Signed and
+        ;; unsigned need distinct unspecs: with the same one their patterns
+        ;; have identical RTL, recog matches whichever comes first, and both
+        ;; emit the signed instruction.
+        UNSPEC_DIVMOD     ;; divmodw  / divmodd
+        UNSPEC_DIVMODU    ;; divmoduw / divmodud
+
         UNSPEC_WIDENS
         UNSPEC_WIDENZ
         UNSPEC_WIDENQ
