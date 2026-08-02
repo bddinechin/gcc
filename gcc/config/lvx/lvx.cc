@@ -9718,7 +9718,10 @@ lvx_ifcvt_machdep_init (struct ce_if_block *ce_info, bool after_combine)
 	    last_insn = PREV_INSN (last_insn);
 
 	  // Insert a use of the tested register in else_bb to pull its live range.
-	  rtx tested_reg = XEXP (reg_cond, 0);
+	  // Use TESTED_REG as extracted by lvx_ifcvt_get_reg_cond, not
+	  // XEXP (reg_cond, 0): on a bit-test branch the latter is the
+	  // ZERO_EXTRACT owned by the jump pattern, and re-emitting it here
+	  // shares rtl, which verify_rtl_sharing rejects after ce2.
 	  emit_insn_after (gen_rtx_USE (VOIDmode, tested_reg), last_insn);
 	  df_set_bb_dirty (else_bb);
 	}
