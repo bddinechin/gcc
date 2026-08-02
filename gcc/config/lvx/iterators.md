@@ -735,6 +735,17 @@
 ])
 
 ;; Attribute to get the mask MODE of a vector mode.
+;; Bundling class of the native 128-bit SIMD integer compare.  COMPWQ is TINY
+;; and the other three are LITE -- see .bundling in lvx-binutils' lvx-opc.c,
+;; which is generated from the same ISA description.  The negated forms
+;; (COMPN*) and every FP compare are LITE throughout, so they do not need this.
+(define_mode_attr compty [
+  (V16QI   "alu_lite")
+  (V8HI    "alu_lite")
+  (V4SI    "alu_tiny")
+  (V2DI    "alu_lite")
+])
+
 (define_mode_attr MASK [
   (V8QI    "V8QI")
   (V4HI    "V4HI")
