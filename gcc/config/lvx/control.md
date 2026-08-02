@@ -58,29 +58,6 @@
   [(set_attr "type" "alu_tiny,alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
-;; any-extend versions of cstoredi4
-(define_insn "*ext2_cstoredi4"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (match_operator:DI 1 "comparison_operator"
-         [(ANY_EXTEND:DI (match_operand:SI 2 "register_operand" "r,r"))
-          (match_operand:DI 3 "register_s32_operand" "r,I32")]))]
-  "HAVE_LVX_<UNSX>COMP_SI_DI"
-  "comp<unsx>wd.%1 %0 = %2, %3"
-  [(set_attr "type" "alu_thin,alu_thin_x")
-   (set_attr "length"      "4,         8")]
-)
-
-(define_insn "*ext3_cstoredi4"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (match_operator:DI 1 "comparison_operator"
-          [(match_operand:DI 2 "register_operand" "r")]))
-           (ANY_EXTEND:DI (match_operand:SI 3 "register_operand" "r"))]
-  "HAVE_LVX_<UNSX>COMP_SI_DI"
-  "comp<unsx>wd.%S1 %0 = %3, %2"
-  [(set_attr "type" "alu_thin")
-   (set_attr "length"      "4")]
-)
-
 (define_expand "cstoreti4"
   [(set (match_operand:DI 0 "register_operand" "")
         (match_operator:DI 1 "comparison_operator"

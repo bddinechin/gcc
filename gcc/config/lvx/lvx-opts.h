@@ -165,8 +165,6 @@ enum lvx_arch_type
 #define HAVE_LVX_COND_MOV_V4DI (1)
 #define HAVE_LVX_COND_MOV_V4DF (1)
 
-#define HAVE_LVX_COMP_SI_DI (0)
-#define HAVE_LVX_UCOMP_SI_DI (0)
 
 #define HAVE_LVX_CPLX_FMA_V2SF (1)
 #define HAVE_LVX_CPLX_FMA_V4SF (0)
@@ -491,26 +489,8 @@ enum lvx_arch_type
 #define HAVE_LVX_SELECT_V8SF (1)
 #define HAVE_LVX_SELECT_V8SI (1)
 
-#define HAVE_LVX_ADD_SI_DI (0)
-#define HAVE_LVX_SUB_SI_DI (0)
-
-#define HAVE_LVX_UADD_SI_DI (0)
-#define HAVE_LVX_USUB_SI_DI (0)
-#define HAVE_LVX_MUL02_UADD_SI_DI (0)
-#define HAVE_LVX_MUL02_USUB_SI_DI (0)
-#define HAVE_LVX_MUL04_UADD_SI_DI (0)
-#define HAVE_LVX_MUL04_USUB_SI_DI (0)
-#define HAVE_LVX_MUL08_UADD_SI_DI (0)
-#define HAVE_LVX_MUL08_USUB_SI_DI (0)
-#define HAVE_LVX_MUL16_UADD_SI_DI (0)
-#define HAVE_LVX_MUL16_USUB_SI_DI (0)
-#define HAVE_LVX_MUL32_UADD_SI_DI (0)
-#define HAVE_LVX_MUL32_USUB_SI_DI (0)
-#define HAVE_LVX_MUL64_UADD_SI_DI (0)
-#define HAVE_LVX_MUL64_USUB_SI_DI (0)
 
 #define HAVE_LVX_MUL02_ADD_SI (1)
-#define HAVE_LVX_MUL02_ADD_SI_DI (0)
 #define HAVE_LVX_MUL02_ADD_DI (1)
 #define HAVE_LVX_MUL02_ADD_V2SI (1)
 #define HAVE_LVX_MUL02_ADD_V4HI (1)
@@ -525,7 +505,6 @@ enum lvx_arch_type
 #define HAVE_LVX_MUL02_ADD_V32QI (1)
 
 #define HAVE_LVX_MUL02_SUB_SI (0)
-#define HAVE_LVX_MUL02_SUB_SI_DI (0)
 #define HAVE_LVX_MUL02_SUB_DI (0)
 #define HAVE_LVX_MUL02_SUB_V2SI (0)
 #define HAVE_LVX_MUL02_SUB_V4HI (0)
@@ -540,7 +519,6 @@ enum lvx_arch_type
 #define HAVE_LVX_MUL02_SUB_V32QI (0)
 
 #define HAVE_LVX_MUL04_ADD_SI (1)
-#define HAVE_LVX_MUL04_ADD_SI_DI (0)
 #define HAVE_LVX_MUL04_ADD_DI (1)
 #define HAVE_LVX_MUL04_ADD_V2SI (1)
 #define HAVE_LVX_MUL04_ADD_V4HI (1)
@@ -555,7 +533,6 @@ enum lvx_arch_type
 #define HAVE_LVX_MUL04_ADD_V32QI (1)
 
 #define HAVE_LVX_MUL04_SUB_SI (0)
-#define HAVE_LVX_MUL04_SUB_SI_DI (0)
 #define HAVE_LVX_MUL04_SUB_DI (0)
 #define HAVE_LVX_MUL04_SUB_V2SI (0)
 #define HAVE_LVX_MUL04_SUB_V4HI (0)
@@ -570,7 +547,6 @@ enum lvx_arch_type
 #define HAVE_LVX_MUL04_SUB_V32QI (0)
 
 #define HAVE_LVX_MUL08_ADD_SI (1)
-#define HAVE_LVX_MUL08_ADD_SI_DI (0)
 #define HAVE_LVX_MUL08_ADD_DI (1)
 #define HAVE_LVX_MUL08_ADD_V2SI (1)
 #define HAVE_LVX_MUL08_ADD_V4HI (1)
@@ -585,7 +561,6 @@ enum lvx_arch_type
 #define HAVE_LVX_MUL08_ADD_V32QI (1)
 
 #define HAVE_LVX_MUL08_SUB_SI (0)
-#define HAVE_LVX_MUL08_SUB_SI_DI (0)
 #define HAVE_LVX_MUL08_SUB_DI (0)
 #define HAVE_LVX_MUL08_SUB_V2SI (0)
 #define HAVE_LVX_MUL08_SUB_V4HI (0)
@@ -600,7 +575,6 @@ enum lvx_arch_type
 #define HAVE_LVX_MUL08_SUB_V32QI (0)
 
 #define HAVE_LVX_MUL16_ADD_SI (1)
-#define HAVE_LVX_MUL16_ADD_SI_DI (0)
 #define HAVE_LVX_MUL16_ADD_DI (1)
 #define HAVE_LVX_MUL16_ADD_V2SI (1)
 #define HAVE_LVX_MUL16_ADD_V4HI (1)
@@ -615,7 +589,6 @@ enum lvx_arch_type
 #define HAVE_LVX_MUL16_ADD_V32QI (1)
 
 #define HAVE_LVX_MUL16_SUB_SI (0)
-#define HAVE_LVX_MUL16_SUB_SI_DI (0)
 #define HAVE_LVX_MUL16_SUB_DI (0)
 #define HAVE_LVX_MUL16_SUB_V2SI (0)
 #define HAVE_LVX_MUL16_SUB_V4HI (0)
@@ -629,17 +602,13 @@ enum lvx_arch_type
 #define HAVE_LVX_MUL16_SUB_V16HI (0)
 #define HAVE_LVX_MUL16_SUB_V32QI (0)
 
-#define HAVE_LVX_MUL32_ADD_SI_DI (0)
 #define HAVE_LVX_MUL32_ADD_SI (1)
 #define HAVE_LVX_MUL32_ADD_DI (1)
-#define HAVE_LVX_MUL32_SUB_SI_DI (0)
 #define HAVE_LVX_MUL32_SUB_SI (0)
 #define HAVE_LVX_MUL32_SUB_DI (0)
 
-#define HAVE_LVX_MUL64_ADD_SI_DI (0)
 #define HAVE_LVX_MUL64_ADD_SI (1)
 #define HAVE_LVX_MUL64_ADD_DI (1)
-#define HAVE_LVX_MUL64_SUB_SI_DI (0)
 #define HAVE_LVX_MUL64_SUB_SI (0)
 #define HAVE_LVX_MUL64_SUB_DI (0)
 

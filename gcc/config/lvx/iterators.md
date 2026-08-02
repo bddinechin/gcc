@@ -77,17 +77,6 @@
   (zero_extend "z")
 ])
 
-;; Sign-extending or zero-extending in integer instructions.
-(define_code_attr unsx [
-  (sign_extend "")
-  (zero_extend "u")
-])
-
-(define_code_attr UNSX [
-  (sign_extend "")
-  (zero_extend "U")
-])
-
 ;; Code iterator for the even/odd conditional patterns.
 (define_code_iterator EQNE [eq ne])
 
