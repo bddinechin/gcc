@@ -2421,12 +2421,24 @@
   [(set_attr "type" "madd_fp3")]
 )
 
+; NOTE: `fmin<mode>3`/`fmax<mode>3` are GCC's standard names for C's
+; fmin/fmax, which are IEEE 754-2008 minNum/maxNum: they return the
+; *other* operand when one is a NaN.  LVX has both families, and the
+; only inputs that tell them apart are NaN and signed zero:
+;
+;   fminn{h,w,d}  f{16,32,64}_minNum  -- IEEE-2008, returns the non-NaN
+;   fmin{h,w,d}   f{16,32,64}_min     -- IEEE-2019, propagates the NaN
+;
+; These patterns emitted the -2019 form until 2026-08-04, so
+; __builtin_fmin(NaN, x) returned NaN instead of x.  Every non-NaN case
+; agreed, which is why it went unnoticed; validation/tests/micro/minmax.c
+; is the regression test.  Do not "simplify" these back to fmin/fmax.
 (define_insn "fminhf3"
   [(set (match_operand:HF 0 "register_operand" "=r")
         (smin:HF (match_operand:HF 1 "register_operand" "r")
                  (match_operand:HF 2 "register_operand" "r")))]
   "HAVE_LVX_MIN_HF && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans)"
-  "fminh %0 = %1, %2"
+  "fminnh %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
 
@@ -2435,7 +2447,7 @@
         (smax:HF (match_operand:HF 1 "register_operand" "r")
                  (match_operand:HF 2 "register_operand" "r")))]
   "HAVE_LVX_MAX_HF && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans)"
-  "fmaxh %0 = %1, %2"
+  "fmaxnh %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
 
@@ -2677,7 +2689,7 @@
         (smin:SF (match_operand:SF 1 "register_operand" "r")
                  (match_operand:SF 2 "register_operand" "r")))]
   "HAVE_LVX_MIN_SF && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans)"
-  "fminw %0 = %1, %2"
+  "fminnw %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
 
@@ -2686,7 +2698,7 @@
         (smax:SF (match_operand:SF 1 "register_operand" "r")
                  (match_operand:SF 2 "register_operand" "r")))]
   "HAVE_LVX_MAX_SF && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans)"
-  "fmaxw %0 = %1, %2"
+  "fmaxnw %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
 
@@ -3002,7 +3014,7 @@
         (smin:DF (match_operand:DF 1 "register_operand" "r")
                  (match_operand:DF 2 "register_operand" "r")))]
   "HAVE_LVX_MIN_DF && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans)"
-  "fmind %0 = %1, %2"
+  "fminnd %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
 
@@ -3011,7 +3023,7 @@
         (smax:DF (match_operand:DF 1 "register_operand" "r")
                  (match_operand:DF 2 "register_operand" "r")))]
   "HAVE_LVX_MAX_DF && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans)"
-  "fmaxd %0 = %1, %2"
+  "fmaxnd %0 = %1, %2"
   [(set_attr "type" "alu_lite")]
 )
 
