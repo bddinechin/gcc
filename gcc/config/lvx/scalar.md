@@ -3310,6 +3310,39 @@
   [(set_attr "type" "alu_full_sfu")]
 )
 
+; `frint` rounds a float to an integral float using the rounding mode named
+; by its modifier; the empty modifier means "use the rounding mode currently
+; in CS", which is exactly C's rint().  Without these patterns GCC emitted a
+; call to the library rint() even though the instruction exists -- found by
+; auditing which ISA mnemonics the back end never emits (2026-08-04).
+;
+; Only rint() is provided, deliberately.  nearbyint() must not raise the
+; inexact exception, and this instruction "may raise exception bits in the CS
+; register" (Description.yml), so it cannot implement nearbyint.  The
+; directed-rounding modifiers (.rz/.rd/.ru/.rm) would likewise give
+; btrunc/floor/ceil/round, which are worth adding but are a separate change.
+
+(define_insn "lvx_frint<fmode>"
+  [(set (match_operand:FLOATM 0 "register_operand" "=r")
+        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
+                        (match_operand 2 "" "")] UNSPEC_FRINT))]
+  ""
+  "frint<fmode>%2 %0 = %1"
+  [(set_attr "type" "alu_lite")]
+)
+
+(define_expand "rint<mode>2"
+  [(set (match_operand:FLOATM 0 "register_operand" "")
+        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "")]
+                       UNSPEC_FRINT))]
+  ""
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
+    emit_insn (gen_lvx_frint<fmode> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
 (define_expand "sqrt<mode>2"
   [(set (match_operand:FLOATM 0 "register_operand" "")
         (sqrt:FLOATM (match_operand:FLOATM 1 "register_operand" "")))]
