@@ -136,7 +136,7 @@
                       (match_operand 3 "" "")]
                      UNSPEC_XMOVET))]
   "HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V2DI"
-  "xmovetq %0%3 = %x2, %y2"
+  "xputdq %0%3 = %x2, %y2"
   [(set_attr "type" "alu_tiny_recv")
    (set_attr "length" "4")]
 )
@@ -239,7 +239,7 @@
         (unspec:ALL128 [(match_operand:ALL128 1 "register_operand" "r")]
                        UNSPEC_XMOVET_LO))]
   ""
-  "xmovetq %0.lo = %x1, %y1"
+  "xputdq %0.lo = %x1, %y1"
   [(set_attr "type" "movet_ext_hi")
    (set_attr "length" "4")]
 )
@@ -249,7 +249,7 @@
         (unspec:ALL128 [(match_operand:ALL128 1 "register_operand" "r")]
                        UNSPEC_XMOVET_HI))]
   ""
-  "xmovetq %0.hi = %x1, %y1"
+  "xputdq %0.hi = %x1, %y1"
   [(set_attr "type" "movet_ext_lo")
    (set_attr "length" "4")]
 )
@@ -619,7 +619,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (unspec:X256 [(match_operand:DI 1 "register_operand" "r")] UNSPEC_XSPLATD))]
   ""
-  "xmovetq %0.lo = %1, %1\n\txmovetq %0.hi = %1, %1";
+  "xputdq %0.lo = %1, %1\n\txputdq %0.hi = %1, %1";
   [(set_attr "type" "movet_ext")
    (set_attr "length"                   "8")]
 )
@@ -1654,7 +1654,7 @@
    (set (match_dup 1)
         (unspec:X256 [(match_operand:ALL256 2 "register_operand" "0")] UNSPEC_XSWAP256))]
   "LVX_2"
-  "xmovefo %0 = %1\n\txmovetq %1.lo = %x2, %y2\n\txmovetq %1.hi = %z2, %t2"
+  "xmovefo %0 = %1\n\txputdq %1.lo = %x2, %y2\n\txputdq %1.hi = %z2, %t2"
   [(set_attr "type" "all")
    (set_attr "length" "12")]
 )
@@ -1666,7 +1666,7 @@
         (unspec:X256 [(match_operand:ALL128 2 "register_operand" "0")
                       (match_operand 3 "" "")] UNSPEC_XSWAP256))]
   "LVX_2 && (HAVE_LVX_MOV_FROM_CORE_V2DI_TO_EXT_V1OI)"
-  "xmovefq %0 = %1%3\n\txmovetq %1%3 = %x2, %y2"
+  "xmovefq %0 = %1%3\n\txputdq %1%3 = %x2, %y2"
   [(set_attr "type" "all")
    (set_attr "length" "8")]
 )
