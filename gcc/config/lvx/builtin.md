@@ -2648,7 +2648,7 @@
         (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")
                       (match_operand:V4SF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
-  ""
+  "HAVE_LVX_CPLX_MINUS_V4SF"
   "fsbfwcp%3 %0 = %1, %2"
   [(set_attr "type" "madd_fp4")]
 )
@@ -2658,7 +2658,7 @@
         (unspec:V2DF [(match_operand:V2DF 1 "register_operand" "r")
                       (match_operand:V2DF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
-  ""
+  "HAVE_LVX_CPLX_MINUS_V2DF"
   "fsbfdc%3 %0 = %1, %2"
   [(set_attr "type" "madd_fp4")]
 )

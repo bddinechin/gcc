@@ -176,9 +176,11 @@ enum lvx_arch_type
 #define HAVE_LVX_CPLX_CONJ_V8HI (0)
 #define HAVE_LVX_CPLX_CONJ_V8QI (1)
 #define HAVE_LVX_CPLX_FMA_V2SF_V2SF_V2SF (1)
-#define HAVE_LVX_CPLX_FMA_V4SF_V4SF_V4SF (1)
+#define HAVE_LVX_CPLX_FMA_V4SF_V4SF_V4SF (0) // ffmawcp -- removed from the ISA
 #define HAVE_LVX_CPLX_FMS_V2SF_V2SF_V2SF (1)
 #define HAVE_LVX_CPLX_FMS_V4SF_V4SF_V4SF (0)
+#define HAVE_LVX_CPLX_MINUS_V2DF (0) // fsbfdc -- removed from the ISA
+#define HAVE_LVX_CPLX_MINUS_V4SF (0) // fsbfwcp -- removed from the ISA
 #define HAVE_LVX_CPLX_MINUS_V2HI (0)
 #define HAVE_LVX_CPLX_MINUS_V2SI (0)
 #define HAVE_LVX_CPLX_MINUS_CONJ_V4HI (0)
@@ -204,29 +206,29 @@ enum lvx_arch_type
 #define HAVE_LVX_DIV_V4HI (1)
 #define HAVE_LVX_DIV_V8QI (1)
 
-#define HAVE_LVX_FCDIV_DF (1)
-#define HAVE_LVX_FCDIV_SF (1)
+#define HAVE_LVX_FCDIV_DF (0) // fcdivd -- removed from the ISA
+#define HAVE_LVX_FCDIV_SF (0) // fcdivw -- removed from the ISA
 #define HAVE_LVX_FCDIV_V2SF (1)
 
 #define HAVE_LVX_FDMAS_SF_V2SF_V2SF (1)
 #define HAVE_LVX_FDMAS_V2SF_V4SF_V4SF (1)
-#define HAVE_LVX_FDMAS_V4SF_V8SF_V8SF (1)
+#define HAVE_LVX_FDMAS_V4SF_V8SF_V8SF (0) // ffdmaswq -- removed from the ISA
 
 #define HAVE_LVX_FDMDA_SF_V2SF_V2SF (1)
 #define HAVE_LVX_FDMDA_V2SF_V4SF_V4SF (1)
-#define HAVE_LVX_FDMDA_V4SF_V8SF_V8SF (1)
+#define HAVE_LVX_FDMDA_V4SF_V8SF_V8SF (0) // ffdmdawq -- removed from the ISA
 
 #define HAVE_LVX_FDMDS_SF_V2SF_V2SF (1)
 #define HAVE_LVX_FDMDS_V2SF_V4SF_V4SF (1)
-#define HAVE_LVX_FDMDS_V4SF_V8SF_V8SF (1)
+#define HAVE_LVX_FDMDS_V4SF_V8SF_V8SF (0) // ffdmdswq -- removed from the ISA
 
 #define HAVE_LVX_FDMSA_SF_V2SF_V2SF (1)
 #define HAVE_LVX_FDMSA_V2SF_V4SF_V4SF (1)
-#define HAVE_LVX_FDMSA_V4SF_V8SF_V8SF (1)
+#define HAVE_LVX_FDMSA_V4SF_V8SF_V8SF (0) // ffdmsawq -- removed from the ISA
 
 #define HAVE_LVX_FDMS_SF_V2SF_V2SF (1)
 #define HAVE_LVX_FDMS_V2SF_V4SF_V4SF (1)
-#define HAVE_LVX_FDMS_V4SF_V8SF_V8SF (1)
+#define HAVE_LVX_FDMS_V4SF_V8SF_V8SF (0) // ffdmswq -- removed from the ISA
 
 #define HAVE_LVX_FDOT_DF_V2SF_V2SF (0)
 #define HAVE_LVX_FDOT_SF_V2SF_V2SF (0)
@@ -259,8 +261,8 @@ enum lvx_arch_type
 #define HAVE_LVX_FMS_V4SI (0)
 #define HAVE_LVX_FMS_V8HF_V8HF_V8HF (0) // ffmsho
 
-#define HAVE_LVX_FSDIV_DF (1)
-#define HAVE_LVX_FSDIV_SF (1)
+#define HAVE_LVX_FSDIV_DF (0) // fsdivd -- removed from the ISA
+#define HAVE_LVX_FSDIV_SF (0) // fsdivw -- removed from the ISA
 #define HAVE_LVX_FSDIV_V2SF (1)
 
 #define HAVE_LVX_HAVE_SS_PLUS_V16HI (1)
@@ -296,7 +298,7 @@ enum lvx_arch_type
 #define HAVE_LVX_LSHIFTRT_V16HI (1)
 #define HAVE_LVX_LSHIFTRT_V32QI (1)
 
-#define HAVE_LVX_MA_M2x2_SF_M2x2_SF_M2x2_SF (1)
+#define HAVE_LVX_MA_M2x2_SF_M2x2_SF_M2x2_SF (0) // fmma222w -- removed from the ISA
 
 #define HAVE_LVX_MIN_V8QI (1)
 #define HAVE_LVX_MIN_V16QI (1)
@@ -368,10 +370,10 @@ enum lvx_arch_type
 #define HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V2DI (1)
 #define HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V4DI (1)
 
-#define HAVE_LVX_MS_M2x2_SF_M2x2_SF_M2x2_SF (1)
+#define HAVE_LVX_MS_M2x2_SF_M2x2_SF_M2x2_SF (0) // fmms222w -- removed from the ISA
 
 #define HAVE_LVX_MULT_DF_SF_SF (0)
-#define HAVE_LVX_MULT_M2x2_SF_M2x2_SF_M2x2_SF (1)
+#define HAVE_LVX_MULT_M2x2_SF_M2x2_SF_M2x2_SF (0) // fmm222w -- removed from the ISA
 #define HAVE_LVX_MULT_SF_HF_HF (0)
 #define HAVE_LVX_MULT_V16QI (1)
 #define HAVE_LVX_MULT_V2DF (0)
@@ -727,17 +729,17 @@ enum lvx_arch_type
 #define HAVE_LVX_EXT_CACHED_LOAD (1)
 
 #define HAVE_LVX_EXT_CLAMP_V8SI_V8SI_V8SI (0) // xclampwo -- removed from the ISA
-#define HAVE_LVX_EXT_CONVERT_M4x4_HF_M4x4_SF (1)
+#define HAVE_LVX_EXT_CONVERT_M4x4_HF_M4x4_SF (0) // xfnarrow44wh -- removed from the ISA
 #define HAVE_LVX_EXT_COPY_V1OI (1)
-#define HAVE_LVX_EXT_COPY_V2OI (1)
-#define HAVE_LVX_EXT_COPY_V4OI (1)
+#define HAVE_LVX_EXT_COPY_V2OI (0) // xcopyx -- removed from the ISA
+#define HAVE_LVX_EXT_COPY_V4OI (0) // xcopyv -- removed from the ISA
 #define HAVE_LVX_EXT_EOR_V1OI (0) // xeoro -- removed from the ISA
-#define HAVE_LVX_EXT_FMA_M4x4_DI_M4x8_HI_TM4x8_HI (1)
-#define HAVE_LVX_EXT_HPA_LO_M4x4_SF_M4x4_QF_M4x4_QF (1)
+#define HAVE_LVX_EXT_FMA_M4x4_DI_M4x8_HI_TM4x8_HI (0) // xfmma484hw -- removed from the ISA
+#define HAVE_LVX_EXT_HPA_LO_M4x4_SF_M4x4_QF_M4x4_QF (0) // xffma44hw -- removed from the ISA
 #define HAVE_LVX_EXT_IORN_V1OI (0) // xiorno -- removed from the ISA
 #define HAVE_LVX_EXT_IOR_V1OI (0) // xioro -- removed from the ISA
-#define HAVE_LVX_EXT_MATRIX424_FMA_V2OI (LVX_1)
-#define HAVE_LVX_EXT_MATRIX444_FMA_V2OI (LVX_1)
+#define HAVE_LVX_EXT_MATRIX424_FMA_V2OI (0) // xfmma424d -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX444_FMA_V2OI (0) // xfmma444w -- removed from the ISA
 
 #define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x16_QI_TM16x4_QI (0) // xmma4164bw -- removed from the ISA
 #define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x16_QI_TM16x4_UQI (0) // xmmasu4164bw -- removed from the ISA
@@ -759,18 +761,18 @@ enum lvx_arch_type
 #define HAVE_LVX_EXT_NAND_V1OI (0) // xnando -- removed from the ISA
 #define HAVE_LVX_EXT_NEOR_V1OI (0) // xneoro -- removed from the ISA
 #define HAVE_LVX_EXT_NIOR_V1OI (0) // xnioro -- removed from the ISA
-#define HAVE_LVX_EXT_RECV_V1OI (1)
-#define HAVE_LVX_EXT_SATURATED_FMA_V8SI_V8SI_V8SF (1)
-#define HAVE_LVX_EXT_SATURATED_FMS_V8SI_V8SI_V8SF (1)
+#define HAVE_LVX_EXT_RECV_V1OI (0) // xrecvo -- removed from the ISA
+#define HAVE_LVX_EXT_SATURATED_FMA_V8SI_V8SI_V8SF (0) // xmaddifwo -- removed from the ISA
+#define HAVE_LVX_EXT_SATURATED_FMS_V8SI_V8SI_V8SF (0) // xmsbfifwo -- removed from the ISA
 #define HAVE_LVX_EXT_SBMM8_V1OI (0) // xsbmm8dq -- removed from the ISA
 #define HAVE_LVX_EXT_SBMMT8_V1OI (0) // xsbmmt8dq -- removed from the ISA
-#define HAVE_LVX_EXT_SCALE_V1OI (1)
-#define HAVE_LVX_EXT_SEND_RECV_V1OI (1)
-#define HAVE_LVX_EXT_SEND_V1OI (1)
+#define HAVE_LVX_EXT_SCALE_V1OI (0) // xfscalewo -- removed from the ISA
+#define HAVE_LVX_EXT_SEND_RECV_V1OI (0) // xsendrecvo -- removed from the ISA
+#define HAVE_LVX_EXT_SEND_V1OI (0) // xsendo -- removed from the ISA
 #define HAVE_LVX_EXT_SPLAT_V16OI (1)
-#define HAVE_LVX_EXT_SPLAT_V2OI (1)
+#define HAVE_LVX_EXT_SPLAT_V2OI (0) // xsplatox -- removed from the ISA
 #define HAVE_LVX_EXT_SPLAT_V32OI (1)
-#define HAVE_LVX_EXT_SPLAT_V4OI (1)
+#define HAVE_LVX_EXT_SPLAT_V4OI (0) // xsplatov -- removed from the ISA
 #define HAVE_LVX_EXT_SPLAT_V8OI (1)
 
 #define HAVE_LVX_EXT_MIN_X256 (0) // xfminhx -- removed from the ISA
