@@ -705,8 +705,8 @@ enum lvx_arch_type
 #define HAVE_LVX_STSU_V4HI (1)
 #define HAVE_LVX_STSU_V4DI (1)
 
-#define HAVE_LVX_EXT_ANDN_V1OI (1)
-#define HAVE_LVX_EXT_AND_V1OI (1)
+#define HAVE_LVX_EXT_ANDN_V1OI (0) // xandno -- removed from the ISA
+#define HAVE_LVX_EXT_AND_V1OI (0) // xando -- removed from the ISA
 
 #define HAVE_LVX_EXT_BUFFER_MOV_CORE_V4DI_V16OI (1)
 #define HAVE_LVX_EXT_BUFFER_MOV_CORE_V4DI_V2OI (1)
@@ -726,44 +726,44 @@ enum lvx_arch_type
 
 #define HAVE_LVX_EXT_CACHED_LOAD (1)
 
-#define HAVE_LVX_EXT_CLAMP_V8SI_V8SI_V8SI (1)
+#define HAVE_LVX_EXT_CLAMP_V8SI_V8SI_V8SI (0) // xclampwo -- removed from the ISA
 #define HAVE_LVX_EXT_CONVERT_M4x4_HF_M4x4_SF (1)
 #define HAVE_LVX_EXT_COPY_V1OI (1)
 #define HAVE_LVX_EXT_COPY_V2OI (1)
 #define HAVE_LVX_EXT_COPY_V4OI (1)
-#define HAVE_LVX_EXT_EOR_V1OI (1)
+#define HAVE_LVX_EXT_EOR_V1OI (0) // xeoro -- removed from the ISA
 #define HAVE_LVX_EXT_FMA_M4x4_DI_M4x8_HI_TM4x8_HI (1)
 #define HAVE_LVX_EXT_HPA_LO_M4x4_SF_M4x4_QF_M4x4_QF (1)
-#define HAVE_LVX_EXT_IORN_V1OI (1)
-#define HAVE_LVX_EXT_IOR_V1OI (1)
+#define HAVE_LVX_EXT_IORN_V1OI (0) // xiorno -- removed from the ISA
+#define HAVE_LVX_EXT_IOR_V1OI (0) // xioro -- removed from the ISA
 #define HAVE_LVX_EXT_MATRIX424_FMA_V2OI (LVX_1)
 #define HAVE_LVX_EXT_MATRIX444_FMA_V2OI (LVX_1)
 
-#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x16_QI_TM16x4_QI (1)
-#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x16_QI_TM16x4_UQI (1)
-#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x16_UQI_TM16x4_QI (1)
-#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x16_UQI_TM16x4_UQI (1)
+#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x16_QI_TM16x4_QI (0) // xmma4164bw -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x16_QI_TM16x4_UQI (0) // xmmasu4164bw -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x16_UQI_TM16x4_QI (0) // xmmaus4164bw -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x16_UQI_TM16x4_UQI (0) // xmmau4164bw -- removed from the ISA
 #define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x4_DI_M4x8_QI_TM8x4_QI (0)
 #define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x4_DI_M4x8_QI_TM8x4_UQI (0)
 #define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x4_DI_M4x8_UQI_TM8x4_QI (0)
 #define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x4_DI_M4x8_UQI_TM8x4_UQI (0)
-#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x8_QI_TM8x4_QI (1)
-#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x8_QI_TM8x4_UQI (1)
-#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x8_UQI_TM8x4_QI (1)
-#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x8_UQI_TM8x4_UQI (1)
+#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x8_QI_TM8x4_QI (0) // xmma484bw -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x8_QI_TM8x4_UQI (0) // xmmasu484bw -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x8_UQI_TM8x4_QI (0) // xmmaus484bw -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_FMA_M4x4_DI_M4x8_UQI_TM8x4_UQI (0) // xmmau484bw -- removed from the ISA
 
-#define HAVE_LVX_EXT_MATRIX_SIGN_EXTEND_M4x8_DI_M4x8_QI (1)
-#define HAVE_LVX_EXT_MATRIX_TRANSPOSE_M4x4_DI_M4x4_DI (1)
-#define HAVE_LVX_EXT_MATRIX_TRUNC_M4x8_QI_M4x8_DI (1)
-#define HAVE_LVX_EXT_MATRIX_ZERO_EXTEND_M4x8_DI_M4x8_QI (1)
-#define HAVE_LVX_EXT_NAND_V1OI (1)
-#define HAVE_LVX_EXT_NEOR_V1OI (1)
-#define HAVE_LVX_EXT_NIOR_V1OI (1)
+#define HAVE_LVX_EXT_MATRIX_SIGN_EXTEND_M4x8_DI_M4x8_QI (0) // xsx48bw -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_TRANSPOSE_M4x4_DI_M4x4_DI (0) // xmt44d -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_TRUNC_M4x8_QI_M4x8_DI (0) // xtrunc48wb -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_ZERO_EXTEND_M4x8_DI_M4x8_QI (0) // xzx48bw -- removed from the ISA
+#define HAVE_LVX_EXT_NAND_V1OI (0) // xnando -- removed from the ISA
+#define HAVE_LVX_EXT_NEOR_V1OI (0) // xneoro -- removed from the ISA
+#define HAVE_LVX_EXT_NIOR_V1OI (0) // xnioro -- removed from the ISA
 #define HAVE_LVX_EXT_RECV_V1OI (1)
 #define HAVE_LVX_EXT_SATURATED_FMA_V8SI_V8SI_V8SF (1)
 #define HAVE_LVX_EXT_SATURATED_FMS_V8SI_V8SI_V8SF (1)
-#define HAVE_LVX_EXT_SBMM8_V1OI (1)
-#define HAVE_LVX_EXT_SBMMT8_V1OI (1)
+#define HAVE_LVX_EXT_SBMM8_V1OI (0) // xsbmm8dq -- removed from the ISA
+#define HAVE_LVX_EXT_SBMMT8_V1OI (0) // xsbmmt8dq -- removed from the ISA
 #define HAVE_LVX_EXT_SCALE_V1OI (1)
 #define HAVE_LVX_EXT_SEND_RECV_V1OI (1)
 #define HAVE_LVX_EXT_SEND_V1OI (1)
@@ -773,8 +773,8 @@ enum lvx_arch_type
 #define HAVE_LVX_EXT_SPLAT_V4OI (1)
 #define HAVE_LVX_EXT_SPLAT_V8OI (1)
 
-#define HAVE_LVX_EXT_MIN_X256 (1)
-#define HAVE_LVX_EXT_MAX_X256 (1)
+#define HAVE_LVX_EXT_MIN_X256 (0) // xfminhx -- removed from the ISA
+#define HAVE_LVX_EXT_MAX_X256 (0) // xfmaxhx -- removed from the ISA
 
 #define HAVE_LVX_UABD_DI (1)
 #define HAVE_LVX_UABD_SI (1)
@@ -875,22 +875,22 @@ enum lvx_arch_type
     (HAVE_LVX_EXT_MATRIX_LO_HPA_M4x4_DI_M4x8_QI_M4x8_QI  \
   && HAVE_LVX_EXT_MATRIX_HI_HPA_M4x4_DI_M4x8_QI_M4x8_QI)
 
-#define HAVE_LVX_EXT_MATRIX_LO_HPA_M4x4_DI_M4x8_QI_M4x8_QI (1)
-#define HAVE_LVX_EXT_MATRIX_HI_HPA_M4x4_DI_M4x8_QI_M4x8_QI (1)
+#define HAVE_LVX_EXT_MATRIX_LO_HPA_M4x4_DI_M4x8_QI_M4x8_QI (0) // xmadd44bw0 -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_HI_HPA_M4x4_DI_M4x8_QI_M4x8_QI (0) // xmadd44bw1 -- removed from the ISA
 
 #define HAVE_LVX_EXT_MATRIX_HPA_M4x4_DI_M4x8_QI_M4x8_UQI \
     (HAVE_LVX_EXT_MATRIX_LO_HPA_M4x4_DI_M4x8_QI_M4x8_UQI  \
   && HAVE_LVX_EXT_MATRIX_HI_HPA_M4x4_DI_M4x8_QI_M4x8_UQI)
 
-#define HAVE_LVX_EXT_MATRIX_LO_HPA_M4x4_DI_M4x8_QI_M4x8_UQI (1)
-#define HAVE_LVX_EXT_MATRIX_HI_HPA_M4x4_DI_M4x8_QI_M4x8_UQI (1)
+#define HAVE_LVX_EXT_MATRIX_LO_HPA_M4x4_DI_M4x8_QI_M4x8_UQI (0) // xmaddsu44bw0 -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_HI_HPA_M4x4_DI_M4x8_QI_M4x8_UQI (0) // xmaddsu44bw1 -- removed from the ISA
 
 #define HAVE_LVX_EXT_MATRIX_HPA_M4x4_DI_M4x8_UQI_M4x8_UQI \
     (HAVE_LVX_EXT_MATRIX_LO_HPA_M4x4_DI_M4x8_UQI_M4x8_UQI  \
   && HAVE_LVX_EXT_MATRIX_HI_HPA_M4x4_DI_M4x8_UQI_M4x8_UQI)
 
-#define HAVE_LVX_EXT_MATRIX_LO_HPA_M4x4_DI_M4x8_UQI_M4x8_UQI (1)
-#define HAVE_LVX_EXT_MATRIX_HI_HPA_M4x4_DI_M4x8_UQI_M4x8_UQI (1)
+#define HAVE_LVX_EXT_MATRIX_LO_HPA_M4x4_DI_M4x8_UQI_M4x8_UQI (0) // xmaddu44bw0 -- removed from the ISA
+#define HAVE_LVX_EXT_MATRIX_HI_HPA_M4x4_DI_M4x8_UQI_M4x8_UQI (0) // xmaddu44bw1 -- removed from the ISA
 
 
 #define HAVE_LVX_EXT_MATRIX_M2x2_DI_M2x2_DI_M2x4_HI_TM2x4_HI \
