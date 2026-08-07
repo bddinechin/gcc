@@ -1920,7 +1920,7 @@ lvx_split_tca_xsplatd (rtx dst, rtx src)
   machine_mode mode = GET_MODE (dst);
 
   /* The only available machine_mode to move data from the core to the tca is
-     V1OImode, through the xmovetq instruction.  */
+     V1OImode, through the xputdq instruction.  */
   machine_mode splat_mode = V1OImode;
   int mode_size = GET_MODE_SIZE (mode);
   int splat_size = GET_MODE_SIZE (splat_mode);
@@ -5681,7 +5681,7 @@ lvx_output_function_profiler (FILE *file)
   fprintf (file, "\n\tget $r%d = $ra", PROFILE_REGNO);
   if (LVX_FARCALL)
     {
-      fprintf (file, "\n\tmake $r%d = __mcount\n\t;;\n\t", temp_reg);
+      fprintf (file, "\n\tmaked $r%d = __mcount\n\t;;\n\t", temp_reg);
       fprintf (file, "\n\ticall $r%d\n\t;;\n\t", temp_reg);
     }
   else

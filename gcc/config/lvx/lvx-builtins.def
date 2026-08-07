@@ -713,8 +713,8 @@ LVX_BUILTIN_DIRECT   (xaccesso8192, V256_FTYPE_X8192_UINT64,, lvx_1) // Extensio
 LVX_BUILTIN_DIRECT   (xmovefo256, lvx_xmovefo, V256_FTYPE_X256,, true) // Extension
 LVX_BUILTIN_DIRECT   (xmovefq256, lvx_xmovefq, V2DI_FTYPE_X256_XHALF,, lvx_1) // Extension lvx-1
 LVX_BUILTIN_DIRECT   (xmovefd256, lvx_xmovefd, DI_FTYPE_X256_XQUARTER,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xmoveto256, lvx_xmoveto, X256_FTYPE_V4DI,, true) // Extension
-LVX_BUILTIN_DIRECT   (xmovetq256, lvx_xmovetq, X256_FTYPE_X256_V2DI_XHALF,, true) // Extension
+LVX_BUILTIN_DIRECT   (xputqo256, lvx_xputqo, X256_FTYPE_V4DI,, true) // Extension
+LVX_BUILTIN_DIRECT   (xputdq256, lvx_xputdq, X256_FTYPE_X256_V2DI_XHALF,, true) // Extension
 LVX_BUILTIN_DIRECT   (xmovetd256, lvx_xmovetd, X256_FTYPE_X256_DI_XQUARTER,, lvx_1) // Extension lvx-1
 
 LVX_BUILTIN_DIRECT   (xfscalewo, X256_FTYPE_X256_UINT64_FLOATINGS,, lvx_1) // Extension lvx-1

@@ -107,7 +107,7 @@
    [(set_attr "type" "movef_ext")]
 )
 
-(define_insn_and_split "lvx_xmoveto"
+(define_insn_and_split "lvx_xputqo"
   [(set (match_operand:X256 0 "register_operand" "=x")
         (unspec:X256 [(match_operand:V256 1 "register_operand" "r")]
                      UNSPEC_XMOVET))]
@@ -129,7 +129,7 @@
    (set_attr "length" "8")]
 )
 
-(define_insn "lvx_xmovetq"
+(define_insn "lvx_xputdq"
   [(set (match_operand:X256 0 "register_operand" "=x")
         (unspec:X256 [(match_operand:X256 1 "register_operand" "0")
                       (match_operand:V2DI 2 "register_operand" "r")

@@ -2288,7 +2288,7 @@
   ""
   "#"
   "reload_completed"
-  ;; "srld %x0 = %y1, (%2 & 63)\n\tmake %y0 = 0"
+  ;; "srld %x0 = %y1, (%2 & 63)\n\tmaked %y0 = 0"
   [(set (subreg:DI (match_dup 0) 0)
         (lshiftrt:DI (subreg:DI (match_dup 1) 8) (match_dup 2)))
    (set (subreg:DI (match_dup 0) 8) (const_int 0))]
