@@ -41,7 +41,10 @@ enum lvx_arch_type
 #define HAVE_LVX_MODIFIER_SX (1)
 #define HAVE_LVX_PREDICATION (1)
 
-#define HAVE_LVX_ABD_ONLY_I32_IMMEDIATE (LVX_1)
+/* ABDD/ABDW take registerY or upper27_lower5 and nothing wider, on both
+   cores, so this is unconditional like MULD below.  It used to be (LVX_1),
+   which is how -march=lvx-2 reached the s10/s37/s64 abd patterns.  */
+#define HAVE_LVX_ABD_ONLY_I32_IMMEDIATE (1)
 #define HAVE_LVX_MULD_ONLY_I32_IMMEDIATE (1)
 /* COMPD and CMOVED take one immediate form, upper27_lower5, and they take it
    on both cores -- Opcode.table has COMPD/CMOVED _registerY_ and

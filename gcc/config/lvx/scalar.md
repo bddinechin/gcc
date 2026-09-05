@@ -172,34 +172,15 @@
    (set_attr "length"        "8")]
 )
 
-(define_expand "abs<mode>2"
-  [(match_operand:SIDI 0 "register_operand" "")
-   (match_operand:SIDI 1 "register_operand" "")]
-  ""
-  {
-    if (!HAVE_LVX_ABD_ONLY_I32_IMMEDIATE)
-      emit_insn (gen_abs<mode>2_3 (operands[0], operands[1]));
-    else
-      emit_insn (gen_abs<mode>2_4 (operands[0], operands[1]));
-    DONE;
-  }
-)
-
-(define_insn "abs<mode>2_3"
+;; ABSD_registerW_registerZ_simple and ABSW_signextw_registerW_registerZ_simple
+;; are the only forms, on both cores, and "simple" is one syllable.  There is
+;; no two-syllable abs to choose between, so there is nothing to gate.
+(define_insn "abs<mode>2"
   [(set (match_operand:SIDI 0 "register_operand" "=r")
         (abs:SIDI (match_operand:SIDI 1 "register_operand" "r")))]
-  "!HAVE_LVX_ABD_ONLY_I32_IMMEDIATE"
+  ""
   "abs<suffix> %0 = %1"
   [(set_attr "type" "alu_tiny")]
-)
-
-(define_insn "abs<mode>2_4"
-  [(set (match_operand:SIDI 0 "register_operand" "=r")
-        (abs:SIDI (match_operand:SIDI 1 "register_operand" "r")))]
-  "HAVE_LVX_ABD_ONLY_I32_IMMEDIATE"
-  "abs<suffix> %0 = %1"
-  [(set_attr "type" "alu_tiny_x")
-   (set_attr "length" "8")]
 )
 
 (define_expand "ssabs<mode>2"
@@ -243,36 +224,9 @@
    (match_operand:SIDI 2 "register_s32_operand" "")]
   ""
   {
-    if (!HAVE_LVX_ABD_ONLY_I32_IMMEDIATE)
-      emit_insn (gen_abd<mode>3_3 (operands[0], operands[1], operands[2]));
-    else if (HAVE_LVX_ABD_ONLY_I32_IMMEDIATE)
-      emit_insn (gen_abd<mode>3_4 (operands[0], operands[1], operands[2]));
-    else
-      gcc_unreachable ();
+    emit_insn (gen_abd<mode>3_4 (operands[0], operands[1], operands[2]));
     DONE;
   }
-)
-
-(define_insn "abd<mode>3_3"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r,r,r")
-        (minus:SIDI (smax:SIDI (match_operand:SIDI 1 "register_operand" "r,r,r,r")
-                               (match_operand:SIDI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))
-                    (smin:SIDI (match_dup 1) (match_dup 2))))]
-  "!HAVE_LVX_ABD_ONLY_I32_IMMEDIATE"
-  "abd<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
-   (set_attr "length" "4,4,8,12")]
-)
-
-(define_insn "abd<mode>3_3s"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r,r,r")
-        (minus:SIDI (smax:SIDI (match_operand:SIDI 1 "register_operand" "r,r,r,r")
-                               (match_operand:SIDI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))
-                    (smin:SIDI (match_dup 2) (match_dup 1))))]
-  "!HAVE_LVX_ABD_ONLY_I32_IMMEDIATE"
-  "abd<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
-   (set_attr "length" "4,4,8,12")]
 )
 
 (define_insn "abd<mode>3_4"
@@ -1464,20 +1418,12 @@
 )
 
 ;; zero-extend version of abssi2
-(define_insn "*abssi2_zext_3"
+(define_insn "*abssi2_zext"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (zero_extend:DI (abs:SI (match_operand:SI 1 "register_operand" "r"))))]
-  "!HAVE_LVX_ABD_ONLY_I32_IMMEDIATE"
+  ""
   "absw %0 = %1"
   [(set_attr "type" "alu_tiny")]
-)
-(define_insn "*abssi2_zext_4"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (abs:SI (match_operand:SI 1 "register_operand" "r"))))]
-  "HAVE_LVX_ABD_ONLY_I32_IMMEDIATE"
-  "absw %0 = %1"
-  [(set_attr "type" "alu_tiny_x")
-   (set_attr "length" "8")]
 )
 
 ;; zero-extend version of ssabssi2
