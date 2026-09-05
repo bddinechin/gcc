@@ -449,11 +449,12 @@ const struct lvx_modmap lvx_modmap_simdcondd_all = {
 const struct lvx_modmap *lvx_modmap_simdcondd = &lvx_modmap_simdcondd_all;
 
 const char *lvx_mod_storecond_lvx_1[] = {
-  /* SD, SQ, SO */
+  /* Exactly the members of the MDS Modifier-lvx-bcucond, which is what the
+     GUARD that carries the condition takes.  There used to be a second "SO and
+     XSO" group here repeating four of these and adding ".mt" and ".mf"; the
+     repeats were unreachable and no modifier in the description has mt/mf.  */
   ".dnez", ".deqz", ".dltz", ".dgez", ".dlez", ".dgtz", ".odd",
   ".even", ".wnez", ".weqz", ".wltz", ".wgez", ".wlez", ".wgtz",
-  /* SO and XSO */
-  ".dnez", ".deqz", ".wnez", ".weqz", ".mt", ".mf",
   NULL
 };
 const struct lvx_modmap lvx_modmap_storecond_lvx_1 = {

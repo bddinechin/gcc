@@ -5170,11 +5170,7 @@
                                     (match_operand 4 "" "")
                                     (match_operand 5 "" "")] UNSPEC_LOADC)))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2 %3? lbz%4 %0 = %2"
-      : "lbz%4%5%X2 %3? %0 = %O2";
-  }
+  "guard%5%X2 %3? lbz%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
@@ -5190,11 +5186,7 @@
                                     (match_operand 4 "" "")
                                     (match_operand 5 "" "")] UNSPEC_LOADC)))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2 %3? lhz%4 %0 = %2"
-      : "lhz%4%5%X2 %3? %0 = %O2";
-  }
+  "guard%5%X2 %3? lhz%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
@@ -5210,11 +5202,7 @@
                                     (match_operand 4 "" "")
                                     (match_operand 5 "" "")] UNSPEC_LOADC)))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2 %3? lwz%4 %0 = %2"
-      : "lwz%4%5%X2 %3? %0 = %O2";
-  }
+  "guard%5%X2 %3? lwz%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
@@ -5230,11 +5218,7 @@
                     (match_operand 4 "" "")
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2 %3? ld%4 %0 = %2"
-      : "ld%4%5%X2 %3? %0 = %O2";
-  }
+  "guard%5%X2 %3? ld%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
@@ -5250,11 +5234,7 @@
                     (match_operand 4 "" "")
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2 %3? lq%4 %0 = %2"
-      : "lq%4%5%X2 %3? %0 = %O2";
-  }
+  "guard%5%X2 %3? lq%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
@@ -5270,11 +5250,7 @@
                     (match_operand 4 "" "")
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2 %3? lhz%4 %0 = %2"
-      : "lhz%4%5%X2 %3? %0 = %O2";
-  }
+  "guard%5%X2 %3? lhz%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
@@ -5290,11 +5266,7 @@
                     (match_operand 4 "" "")
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2 %3? lwz%4 %0 = %2"
-      : "lwz%4%5%X2 %3? %0 = %O2";
-  }
+  "guard%5%X2 %3? lwz%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
@@ -5310,11 +5282,7 @@
                     (match_operand 4 "" "")
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2 %3? ld%4 %0 = %2"
-      : "ld%4%5%X2 %3? %0 = %O2";
-  }
+  "guard%5%X2 %3? ld%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
@@ -5360,11 +5328,7 @@
                       (match_operand 4 "" "")
                       (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2 %3? lq%4 %0 = %2"
-      : "lq%4%5%X2 %3? %0 = %O2";
-  }
+  "guard%5%X2 %3? lq%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
@@ -5397,11 +5361,7 @@
                       (match_operand 4 "" "")
                       (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2 %3? lo%4 %0 = %2"
-      : "lo%4%5%X2 %3? %0 = %O2";
-  }
+  "guard%5%X2 %3? lo%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
@@ -5416,11 +5376,7 @@
                       (match_operand 3 "" "")
                       (match_operand 4 "" "")] UNSPEC_LOADC))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%4%X1 %2? lo%3 %0 = %1"
-      : "lo%3%4%X1 %2? %0 = %O1";
-  }
+  "guard%4%X1 %2? lo%3 %0 = %1"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 3 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
      (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
@@ -5587,11 +5543,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-      return HAVE_LVX_PREDICATION
-        ? "guard%3%X1 %2? sb %1 = %0"
-        : "sb%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? sb %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5603,11 +5555,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%3%X1 %2? sb %1 = %0"
-      : "sb%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? sb %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5620,11 +5568,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%3%X1 %2? sh %1 = %0"
-      : "sh%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? sh %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5636,11 +5580,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%3%X1 %2? sh %1 = %0"
-      : "sh%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? sh %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5653,11 +5593,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%3%X1 %2? sw %1 = %0"
-      : "sw%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? sw %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5669,11 +5605,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%3%X1 %2? sw %1 = %0"
-      : "sw%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? sw %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5686,11 +5618,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%3%X1 %2? sd %1 = %0"
-      : "sd%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? sd %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5703,11 +5631,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-     ? "guard%3%X1 %2? sq %1 = %0"
-     : "sq%3%X1 %2? %O1 = %0";
-  }
+ "guard%3%X1 %2? sq %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5720,11 +5644,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-     ? "guard%3%X1 %2? sh %1 = %0"
-     : "sh%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? sh %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5737,11 +5657,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%3%X1 %2? sw %1 = %0"
-      : "sw%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? sw %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5754,11 +5670,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%3%X1 %2? sd %1 = %0"
-      : "sd%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? sd %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5804,11 +5716,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%3%X1 %2? sq %1 = %0"
-      : "sq%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? sq %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5821,11 +5729,7 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%3%X1 %2? so %1 = %0"
-      : "so%3%X1 %2? %O1 = %0";
-  }
+  "guard%3%X1 %2? so %1 = %0"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
    (set_attr "length"            "4,               8,              12")]
 )

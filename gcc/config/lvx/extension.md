@@ -364,11 +364,7 @@
                        (match_operand 4 "" "")
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ0))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2.q0 %3? xlo%4 %0 = %2"
-      : "xlo%4%5%X2.q0 %3? %0 = %O2";
-  }
+  "guard%5%X2.q0 %3? xlo%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached_x") (const_string "load_ext_x"))
@@ -384,11 +380,7 @@
                        (match_operand 4 "" "")
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ1))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2.q1 %3? xlo%4 %0 = %2"
-      : "xlo%4%5%X2.q1 %3? %0 = %O2";
-  }
+  "guard%5%X2.q1 %3? xlo%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached_x") (const_string "load_ext_x"))
@@ -404,11 +396,7 @@
                        (match_operand 4 "" "")
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ2))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2.q2 %3? xlo%4 %0 = %2"
-      : "xlo%4%5%X2.q2 %3? %0 = %O2";
-  }
+  "guard%5%X2.q2 %3? xlo%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached_x") (const_string "load_ext_x"))
@@ -424,11 +412,7 @@
                        (match_operand 4 "" "")
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ3))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2.q3 %3? xlo%4 %0 = %2"
-      : "xlo%4%5%X2.q3 %3? %0 = %O2";
-  }
+  "guard%5%X2.q3 %3? xlo%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached_x") (const_string "load_ext_x"))
@@ -487,9 +471,10 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  "xso.q0%3%X1 %2? %O1 = %0"
+  "guard%3 %2? xso.q0%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
-   (set_attr "length"       "4,          8,         12")]
+   (set_attr "bcu_used" "yes")
+   (set_attr "length"       "8,         12,         16")]
 )
 
 (define_insn "lvx_xstorec1024q1"
@@ -500,9 +485,10 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  "xso.q1%3%X1 %2? %O1 = %0"
+  "guard%3 %2? xso.q1%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
-   (set_attr "length"       "4,          8,         12")]
+   (set_attr "bcu_used" "yes")
+   (set_attr "length"       "8,         12,         16")]
 )
 
 (define_insn "lvx_xstorec1024q2"
@@ -513,9 +499,10 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  "xso.q2%3%X1 %2? %O1 = %0"
+  "guard%3 %2? xso.q2%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
-   (set_attr "length"       "4,          8,         12")]
+   (set_attr "bcu_used" "yes")
+   (set_attr "length"       "8,         12,         16")]
 )
 
 (define_insn "lvx_xstorec1024q3"
@@ -526,9 +513,10 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  "xso.q3%3%X1 %2? %O1 = %0"
+  "guard%3 %2? xso.q3%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
-   (set_attr "length"       "4,          8,         12")]
+   (set_attr "bcu_used" "yes")
+   (set_attr "length"       "8,         12,         16")]
 )
 
 ;; XLOADC256, XLOADC512, XLOADC1024
@@ -558,11 +546,7 @@
                       (match_operand 4 "" "")
                       (match_operand 5 "" "")] UNSPEC_XLOADC))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%5%X2 %3? xlo%4 %0 = %2"
-      : "xlo%4%5%X2 %3? %0 = %O2";
-  }
+  "guard%5%X2 %3? xlo%4 %0 = %2"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
      (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached_x") (const_string "load_ext_x"))
@@ -577,11 +561,7 @@
                       (match_operand 3 "" "")
                       (match_operand 4 "" "")] UNSPEC_XLOADC))]
   ""
-  {
-    return HAVE_LVX_PREDICATION
-      ? "guard%4%X1 %2? xlo%3 %0 = %1"
-      : "xlo%3%5%X1 %2? %0 = %O1";
-  }
+  "guard%4%X1 %2? xlo%3 %0 = %1"
   [(set_attr_alternative "type"
     [(if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
      (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached_x") (const_string "load_ext_x"))
@@ -731,9 +711,10 @@
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
-  "xso%3%X1 %2? %O1 = %0"
+  "guard%3 %2? xso%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
-   (set_attr "length"       "4,          8,         12")]
+   (set_attr "bcu_used" "yes")
+   (set_attr "length"       "8,         12,         16")]
 )
 
 (define_expand "lvx_xstorec512"

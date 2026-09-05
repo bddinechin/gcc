@@ -2033,7 +2033,7 @@
   [(match_operator 1 "zero_comparison_operator"
     [(match_operand:SIDI 0 "register_operand" "r")
      (const_int 0)])]
-  "HAVE_LVX_PREDICATION"
+  ""
   "guard.<SIDI:suffix>%1z %0?"
   [(set_attr "bcu_used" "yes")]
 )
@@ -2042,7 +2042,7 @@
   [(EQNE (zero_extract:SIDI (match_operand:SIDI 0 "register_operand" "r")
                             (const_int 1) (const_int 0))
          (const_int 0))]
-  "HAVE_LVX_PREDICATION"
+  ""
   "guard.<EQNE:evenodd> %0?"
   [(set_attr "bcu_used" "yes")]
 )
@@ -2080,19 +2080,6 @@
 
 ;; COND_EXEC STORE
 
-(define_insn "*cond_exec_store<ALLIFV:mode>"
-  [(cond_exec
-     (match_operator 2 "zero_comparison_operator"
-      [(match_operand:SIDI 3 "register_operand" "r,r,r")
-       (const_int 0)])
-     (set (match_operand:ALLIFV 0 "memsimple_operand" "=c,d,e")
-          (match_operand:ALLIFV 1 "register_operand" "r,r,r")))]
-  "!HAVE_LVX_PREDICATION"
-  "s<ALLIFV:lsusize>%X0.<SIDI:suffix>%2z %3? %O0 = %1"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
-   (set_attr "length"        "4,           8,          12")]
-)
-
 (define_insn_and_split "*cond_exec_store<ALLIFV:mode>"
   [(cond_exec
      (match_operator 2 "zero_comparison_operator"
@@ -2120,19 +2107,6 @@
         set_mem_addr_space (operands[0], as);
       }
   }
-)
-
-(define_insn "*cond_exec_store<ALLIFV:mode>.<EQNE:evenodd>"
-  [(cond_exec
-     (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r,r")
-                              (const_int 1) (const_int 0))
-           (const_int 0))
-     (set (match_operand:ALLIFV 0 "memsimple_operand" "=c,d,e")
-          (match_operand:ALLIFV 1 "register_operand" "r,r,r")))]
-  "!HAVE_LVX_PREDICATION"
-  "s<ALLIFV:lsusize>%X0.<EQNE:evenodd> %2? %O0 = %1"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
-   (set_attr "length"            "4,               8,              12")]
 )
 
 (define_insn_and_split "*cond_exec_store<ALLIFV:mode>.<EQNE:evenodd>"
@@ -2177,19 +2151,6 @@
 
 ;; COND_EXEC LOAD
 
-(define_insn "*cond_exec_load<ALLIFV:mode>"
-  [(cond_exec
-     (match_operator 2 "zero_comparison_operator"
-      [(match_operand:SIDI 3 "register_operand" "r,r,r,r,r,r")
-       (const_int 0)])
-     (set (match_operand:ALLIFV 0 "register_operand" "=r,r,r,r,r,r")
-          (match_operand:ALLIFV 1 "memsimple_operand" "Cc,Cd,Ce,Zc,Zd,Ze")))]
-  "!HAVE_LVX_PREDICATION"
-  "l<ALLIFV:lsusizezx>%V1.<SIDI:suffix>%2z %3? %0 = %O1"
-  [(set_attr "type" "load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
-   (set_attr "length"       "4,           8,           12,                 4,                    8,                   12")]
-)
-
 (define_insn_and_split "*cond_exec_load<ALLIFV:mode>"
   [(cond_exec
      (match_operator 2 "zero_comparison_operator"
@@ -2217,19 +2178,6 @@
         set_mem_addr_space (operands[1], as);
       }
   }
-)
-
-(define_insn "*cond_exec_load<ALLIFV:mode>.<EQNE:evenodd>"
-  [(cond_exec
-     (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r,r,r,r,r")
-                              (const_int 1) (const_int 0))
-           (const_int 0))
-     (set (match_operand:ALLIFV 0 "register_operand" "=r,r,r,r,r,r")
-          (match_operand:ALLIFV 1 "memsimple_operand" "Cc,Cd,Ce,Zc,Zd,Ze")))]
-  "!HAVE_LVX_PREDICATION"
-  "l<ALLIFV:lsusizezx>%V1.<EQNE:evenodd> %2? %0 = %O1"
-  [(set_attr "type" "load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
-   (set_attr "length"           "4,               8,              12,                      4,                        8,                       12")]
 )
 
 (define_insn_and_split "*cond_exec_load<ALLIFV:mode>.<EQNE:evenodd>"
@@ -2275,19 +2223,6 @@
 
 ;; COND_EXEC LOAD EXTEND
 
-(define_insn "*cond_exec_load<SHORT:mode><ANY_EXTEND:lsux>"
-  [(cond_exec
-     (match_operator 2 "zero_comparison_operator"
-      [(match_operand:SIDI 3 "register_operand" "r,r,r,r,r,r")
-       (const_int 0)])
-     (set (match_operand:DI 0 "register_operand" "=r,r,r,r,r,r")
-          (ANY_EXTEND:DI (match_operand:SHORT 1 "memsimple_operand" "Cc,Cd,Ce,Zc,Zd,Ze"))))]
-  "!HAVE_LVX_PREDICATION"
-  "l<SHORT:lsusize><ANY_EXTEND:lsux>%V1.<SIDI:suffix>%2z %3? %0 = %O1"
-  [(set_attr "type" "load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
-   (set_attr "length"       "4,           8,          12,                  4,                    8,                   12")]
-)
-
 (define_insn_and_split "*cond_exec_load<SHORT:mode>_ext<ANY_EXTEND:lsux>"
   [(cond_exec
      (match_operator 2 "zero_comparison_operator"
@@ -2315,19 +2250,6 @@
         set_mem_addr_space (operands[1], as);
       }
   }
-)
-
-(define_insn "*cond_exec_load<SHORT:mode><ANY_EXTEND:lsux>.<EQNE:evenodd>"
-  [(cond_exec
-     (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r,r,r,r,r")
-                              (const_int 1) (const_int 0))
-           (const_int 0))
-     (set (match_operand:DI 0 "register_operand" "=r,r,r,r,r,r")
-          (ANY_EXTEND:DI (match_operand:SHORT 1 "memsimple_operand" "Cc,Cd,Ce,Zc,Zd,Ze"))))]
-  "!HAVE_LVX_PREDICATION"
-  "l<SHORT:lsusize><ANY_EXTEND:lsux>%V1.<EQNE:evenodd> %2? %0 = %O1"
-  [(set_attr "type" "load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
-   (set_attr "length"           "4,               8,              12,                      4,                        8,                       12")]
 )
 
 (define_insn_and_split "*cond_exec_load<SHORT:mode>_ext<ANY_EXTEND:lsux>.<EQNE:evenodd>"
