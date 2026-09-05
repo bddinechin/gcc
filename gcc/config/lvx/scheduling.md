@@ -187,7 +187,7 @@
 (define_reservation "lvx_v1_lsu_memw_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_issue_u")
 (define_reservation "lvx_v1_lsu_memw_x_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_issue_x2_u")
 (define_reservation "lvx_v1_lsu_memw_y_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_issue_x3_u")
-(define_reservation "lvx_v1_alu_auxr_r" "lvx_tiny_u + lvx_auxr_u + lvx_issue_u")
+(define_reservation "lvx_v1_alu_tiny_lite_x2_r" "lvx_tiny_u + lvx_lite_u + lvx_issue_x2_u")
 (define_reservation "lvx_v1_ext_r" "(lvx_ext0_u | lvx_ext1_u) + lvx_issue_u")
 (define_reservation "lvx_v1_ext_auxw_r" "(lvx_ext0_u | lvx_ext1_u) + lvx_auxw_u + lvx_issue_u")
 (define_reservation "lvx_v1_nop_r" "lvx_tiny_u + lvx_issue_u")
@@ -232,10 +232,24 @@
 (define_insn_reservation "lvx_v1_alu_tiny_x4" 1 (eq_attr "type" "alu_tiny_x4") "lvx_v1_alu_tiny_x4_r")
 (define_insn_reservation "lvx_v1_alu_tiny_x4_x" 1 (eq_attr "type" "alu_tiny_x4_x") "lvx_v1_alu_tiny_x4_x_r")
 (define_insn_reservation "lvx_v1_alu_tiny_w" 1 (eq_attr "type" "alu_tiny_w") "lvx_v1_alu_tiny_x_r")
-(define_insn_reservation "lvx_v1_movet_ext_v2" 2 (eq_attr "type" "movet_ext") "lvx_v1_alu_auxr_r")
-(define_insn_reservation "lvx_v1_movet_ext_lo_v2" 2 (eq_attr "type" "movet_ext_lo") "lvx_v1_alu_auxr_r")
-(define_insn_reservation "lvx_v1_movet_ext_hi_v2" 2 (eq_attr "type" "movet_ext_hi") "lvx_v1_alu_auxr_r")
-;; "lvx_v1_movet_ext_v2"
+;; movet_ext* emit xputdq, which the MDS schedules as ALU_LITE_MISC at
+;; latency 1 -- one LITE unit, and no auxiliary read port.  movet_ext is the
+;; pair (the "#" alternative of *mov<mode>, lvx_xputqo and lvx_xsplatd256 all
+;; expand to two xputdq), movet_ext_lo/_hi are one each.
+(define_insn_reservation "lvx_v1_movet_ext_v2" 1 (eq_attr "type" "movet_ext") "lvx_v1_alu_lite_x2_r")
+(define_insn_reservation "lvx_v1_movet_ext_lo_v2" 1 (eq_attr "type" "movet_ext_lo") "lvx_v1_alu_lite_r")
+(define_insn_reservation "lvx_v1_movet_ext_hi_v2" 1 (eq_attr "type" "movet_ext_hi") "lvx_v1_alu_lite_r")
+;; A template mixing a TINY and a LITE mnemonic (copyd + fnegd, for the complex
+;; conjugate) needs the SUM of the two, and alu_tiny_x2 is not it: that reserves
+;; any two TINY units, which may be tiny2+tiny3, leaving both LITE units free
+;; for another insn -- three LITE-needing instructions on two LITE units, which
+;; gas rejects.  Naming a LITE unit explicitly is what makes the pair sound.
+;;
+;; The four-mnemonic form (copyd + fnegd + copyd + fnegd) needs no type of its
+;; own: it fills all four ALU slots, and lvx_tiny_x4_u reserving tiny0..tiny3
+;; already excludes lite0 and lite1 through the absence_sets above, so
+;; alu_tiny_x4 states exactly that.
+(define_insn_reservation "lvx_v1_alu_tiny_lite_x2" 1 (eq_attr "type" "alu_tiny_lite_x2") "lvx_v1_alu_tiny_lite_x2_r")
 (define_insn_reservation "lvx_v1_cache" 1 (eq_attr "type" "cache") "lvx_v1_lsu_r")
 (define_insn_reservation "lvx_v1_cache_x" 1 (eq_attr "type" "cache_x") "lvx_v1_lsu_x_r")
 (define_insn_reservation "lvx_v1_cache_y" 1 (eq_attr "type" "cache_y") "lvx_v1_lsu_y_r")

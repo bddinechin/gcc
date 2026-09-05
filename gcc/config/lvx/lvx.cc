@@ -7230,12 +7230,14 @@ lvx_sched_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
 	    resources->tiny_count++;
 	  else if (type >= TYPE_ALU_TINY_X2 && type < TYPE_ALU_TINY_X4)
 	    resources->tiny_count += 2;
-	  else if (type >= TYPE_ALU_TINY_X4 && type < TYPE_MOVET_EXT)
+	  else if (type >= TYPE_ALU_TINY_X4 && type < TYPE_ALU_LITE)
 	    resources->tiny_count += 4;
-	  else if (type >= TYPE_MOVET_EXT && type < TYPE_ALU_LITE)
-	    /* movet_ext* reserve lvx_v1_alu_auxr_r, i.e. a TINY slot plus an
-	       AUXR port; the port is accounted separately below.  */
-	    resources->tiny_count++;
+	  /* Templates mixing a TINY and a LITE mnemonic: the resources are the
+	     SUM of the two, so neither range below can account them.  */
+	  else if (type == TYPE_ALU_TINY_LITE_X2)
+	    resources->tiny_count++, resources->lite_count++;
+	  /* movet_ext* emit xputdq, which is ALU_LITE_MISC: they sit in the
+	     LITE range, movet_ext being the two-xputdq pair.  */
 	  else if (type >= TYPE_ALU_LITE && type < TYPE_ALU_LITE_X2)
 	    resources->lite_count++;
 	  else if (type >= TYPE_ALU_LITE_X2 && type < TYPE_ALU_FULL)

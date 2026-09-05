@@ -447,13 +447,12 @@ LVX_BUILTIN_DIRECT   (fwidenwdq, V4DF_FTYPE_V4SF_SILENT,, true) // Vector
 LVX_BUILTIN_DIRECT   (fnarrowwh, FLOAT16_FTYPE_FLOAT32_FLOATINGS,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fnarrowdw, FLOAT32_FTYPE_FLOAT64_FLOATINGS,, true) // Scalar
 
+LVX_BUILTIN_DIRECT   (fconjwc, V2SF_FTYPE_V2SF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fconjwcp, V4SF_FTYPE_V4SF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fconjwcq, V8SF_FTYPE_V8SF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fconjdc, V2DF_FTYPE_V2DF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fconjdcp, V4DF_FTYPE_V4DF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fconjdcq, V8DF_FTYPE_V8DF,, true) // Vector
-
-
 
 LVX_BUILTIN_DIRECT   (fsrecw, FLOAT32_FTYPE_FLOAT32_SILENT,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fsrecwq, V4SF_FTYPE_V4SF_SILENT,, true) // Vector

@@ -4425,6 +4425,14 @@
   [(set_attr "type" "alu_lite")]
 )
 
+(define_insn "lvx_fconjwc"
+  [(set (match_operand:V2SF 0 "register_operand" "=r")
+        (unspec:V2SF [(match_operand:V2SF 1 "register_operand" "r")] UNSPEC_FCONJ))]
+  ""
+  "fnegd %0 = %1"
+  [(set_attr "type" "alu_lite")]
+)
+
 (define_insn "lvx_fconjwcp"
   [(set (match_operand:V4SF 0 "register_operand" "=r")
         (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")] UNSPEC_FCONJ))]
@@ -4434,27 +4442,22 @@
    (set_attr "length" "4")]
 )
 
+(define_insn "lvx_fconjwcq"
+  [(set (match_operand:V8SF 0 "register_operand" "=r")
+        (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "r")] UNSPEC_FCONJ))]
+  "LVX_2"
+  "fnegdp %x0 = %x1\n\tfnegdp %y0 = %y1"
+  [(set_attr "type" "alu_lite_x2")
+   (set_attr "length" "8")]
+)
+
 (define_insn "lvx_fconjdc"
   [(set (match_operand:V2DF 0 "register_operand" "=r")
         (unspec:V2DF [(match_operand:V2DF 1 "register_operand" "r")] UNSPEC_FCONJ))]
   ""
   "copyd %x0 = %x1\n\tfnegd %y0 = %y1"
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu_tiny_lite_x2")
    (set_attr "length"         "8")]
-)
-
-(define_insn_and_split "lvx_fconjwcq"
-  [(set (match_operand:V8SF 0 "register_operand" "=r")
-        (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "r")] UNSPEC_FCONJ))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:V4SF (match_dup 0) 0)
-        (unspec:V4SF [(subreg:V4SF (match_dup 1) 0)] UNSPEC_FCONJ))
-   (set (subreg:V4SF (match_dup 0) 16)
-        (unspec:V4SF [(subreg:V4SF (match_dup 1) 16)] UNSPEC_FCONJ))]
-  ""
-  [(set_attr "type" "alu_lite_x2")]
 )
 
 (define_insn "lvx_fconjdcp"

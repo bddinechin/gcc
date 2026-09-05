@@ -137,7 +137,7 @@
                      UNSPEC_XMOVET))]
   "HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V2DI"
   "xputdq %0%3 = %x2, %y2"
-  [(set_attr "type" "alu_tiny_recv")
+  [(set_attr "type" "alu_lite_recv")
    (set_attr "length" "4")]
 )
 
