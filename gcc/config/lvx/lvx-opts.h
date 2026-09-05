@@ -250,7 +250,10 @@ enum lvx_arch_type
 #define HAVE_LVX_FMA_SF_SF_SF (1) // ffmaw
 #define HAVE_LVX_FMA_V2DF_V2DF_V2DF (0) // ffmadp
 #define HAVE_LVX_FMA_V2DF_V2SF_V2SF (1) // ffmawp
-#define HAVE_LVX_FMA_V2SI (LVX_1)
+/* maddwp/msbfwp are gone -- replaced by maddwq/msbfwq, so the V2SI form
+   exists on neither core.  The V4SI macro below stays 0 until the
+   description carries maddwq/msbfwq; it has neither today.  */
+#define HAVE_LVX_FMA_V2SI (0)
 #define HAVE_LVX_FMA_V4HF_V4HF_V4HF (1) // ffmahq
 #define HAVE_LVX_FMA_V4SF_V4HF_V4HF (0) // ffmahwq
 #define HAVE_LVX_FMA_V4SF_V4SF_V4SF (0) // ffmawp
@@ -263,7 +266,7 @@ enum lvx_arch_type
 #define HAVE_LVX_FMS_SF_SF_SF (1) // ffmsw
 #define HAVE_LVX_FMS_V2DF_V2DF_V2DF (0) // ffmsdp
 #define HAVE_LVX_FMS_V2DF_V2SF_V2SF (1) // ffmswp
-#define HAVE_LVX_FMS_V2SI (LVX_1)
+#define HAVE_LVX_FMS_V2SI (0)
 #define HAVE_LVX_FMS_V4HF_V4HF_V4HF (1) // ffmshq
 #define HAVE_LVX_FMS_V4SF_V4HF_V4HF (0) // ffmshwq
 #define HAVE_LVX_FMS_V4SF_V4SF_V4SF (0) // ffmswp
