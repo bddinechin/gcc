@@ -1,8 +1,27 @@
 (automata_option "ndfa")
 (automata_option "v")
 
-(define_automaton "lvx_exu")
+;; One automaton per resource, which is what the reservations allow: every
+;; alternation below is confined to a single resource's unit bank, so no
+;; alternative of an insn reservation touches an automaton that another
+;; alternative of the same reservation does not (md.texi's constraint on
+;; binding units to automata).  Splitting turns the automaton size from a
+;; product into a sum -- a single-resource automaton has 2^N NDFA states over
+;; its own N units and minimises to the counter 0..N.
+;;
+;; lvx_alu is the one group that cannot be split further: the absence_sets
+;; below relate tiny0/tiny1 to lite0/lite1 and full, and "all functional units
+;; mentioned in a set should belong to the same automaton".  tiny2 and tiny3
+;; join them because lvx_tiny_u alternates over all four.
 (define_automaton "lvx_issue")
+(define_automaton "lvx_alu")
+(define_automaton "lvx_lsu")
+(define_automaton "lvx_ext")
+(define_automaton "lvx_bcu")
+(define_automaton "lvx_xfer")
+(define_automaton "lvx_memw")
+(define_automaton "lvx_auxr")
+(define_automaton "lvx_auxw")
 
 (define_cpu_unit
   "lvx_issue0_u,
@@ -23,21 +42,17 @@
    lvx_tiny3_u,
    lvx_lite0_u,
    lvx_lite1_u,
-   lvx_full_u,
-   lvx_lsu0_u,
-   lvx_lsu1_u,
-   lvx_ext0_u,
-   lvx_ext1_u,
-   lvx_bcu0_u,
-   lvx_bcu1_u,
-   lvx_xfer_u,
-   lvx_memw_u,
-   lvx_auxr0_u,
-   lvx_auxr1_u,
-   lvx_auxw0_u,
-   lvx_auxw1_u"
-  "lvx_exu"
+   lvx_full_u"
+  "lvx_alu"
 )
+
+(define_cpu_unit "lvx_lsu0_u, lvx_lsu1_u"     "lvx_lsu")
+(define_cpu_unit "lvx_ext0_u, lvx_ext1_u"     "lvx_ext")
+(define_cpu_unit "lvx_bcu0_u, lvx_bcu1_u"     "lvx_bcu")
+(define_cpu_unit "lvx_xfer_u"                 "lvx_xfer")
+(define_cpu_unit "lvx_memw_u"                 "lvx_memw")
+(define_cpu_unit "lvx_auxr0_u, lvx_auxr1_u"   "lvx_auxr")
+(define_cpu_unit "lvx_auxw0_u, lvx_auxw1_u"   "lvx_auxw")
 
 (absence_set "lvx_tiny0_u" "lvx_lite0_u,lvx_full_u")
 (absence_set "lvx_tiny1_u" "lvx_lite1_u")
