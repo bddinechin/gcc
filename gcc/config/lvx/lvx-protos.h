@@ -99,10 +99,6 @@ extern bool lvx_legitimate_pic_operand_p (rtx x);
 extern bool lvx_legitimate_pic_symbolic_ref_p (rtx op);
 
 extern bool lvx_split_mem (rtx x, rtx *base_out, rtx *offset_out, bool strict);
-extern void lvx_split_tca_moves (rtx dst, rtx src);
-extern void lvx_split_tca_vec_concat (rtx dst, rtx src);
-extern void lvx_split_tca_xsplato (rtx dst, rtx src);
-extern void lvx_split_tca_xsplatd (rtx dst, rtx src);
 
 extern bool lvx_pack_load_store (rtx operands[], int nops);
 

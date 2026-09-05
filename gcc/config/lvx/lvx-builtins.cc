@@ -1827,64 +1827,6 @@ lvx_split_loadcond (const char *_mod, rtx *variant, rtx *cond)
   }
 
 
-static rtx
-lvx_expand_builtin_xswapo256 (rtx target, tree args)
-{
-  machine_mode bmode = X256mode;
-  machine_mode tmode = V256mode;
-  rtx arg1 = expand_normal (CALL_EXPR_ARG (args, 0));
-  rtx arg2 = expand_normal (CALL_EXPR_ARG (args, 1));
-  arg1 = gen_rtx_MEM (bmode, force_reg (Pmode, arg1));
-  arg2 = force_reg (tmode, arg2);
-  if (!target)
-    target = gen_reg_rtx (tmode);
-  else
-    target = force_reg (tmode, target);
-  emit_insn (gen_lvx_xswapo256 (target, arg1, arg2));
-  return target;
-}
-
-static inline rtx
-lvx_expand_builtin_xswap256 (rtx target, tree args)
-{
-  return lvx_expand_builtin_xswapo256 (target, args);
-}
-
-static rtx
-lvx_expand_builtin_xswapq256 (rtx target, tree args)
-{
-  machine_mode bmode = X256mode;
-  machine_mode tmode = V2DImode;
-  rtx arg1 = expand_normal (CALL_EXPR_ARG (args, 0));
-  rtx arg2 = expand_normal (CALL_EXPR_ARG (args, 1));
-  rtx arg3 = build_arg (CALL_EXPR_ARG (args, 2), "xswapq256", lvx_modmap_xhalf);
-  arg1 = gen_rtx_MEM (bmode, force_reg (Pmode, arg1));
-  arg2 = force_reg (tmode, arg2);
-  if (!target)
-    target = gen_reg_rtx (tmode);
-  else
-    target = force_reg (tmode, target);
-  emit_insn (gen_lvx_xswapq256 (target, arg1, arg2, arg3));
-  return target;
-}
-
-static rtx
-lvx_expand_builtin_xswapd256 (rtx target, tree args)
-{
-  machine_mode bmode = X256mode;
-  machine_mode tmode = DImode;
-  rtx arg1 = expand_normal (CALL_EXPR_ARG (args, 0));
-  rtx arg2 = expand_normal (CALL_EXPR_ARG (args, 1));
-  rtx arg3 = build_arg (CALL_EXPR_ARG (args, 2), "xswapd256", lvx_modmap_xquarter);
-  arg1 = gen_rtx_MEM (bmode, force_reg (Pmode, arg1));
-  arg2 = force_reg (tmode, arg2);
-  if (!target)
-    target = gen_reg_rtx (tmode);
-  else
-    target = force_reg (tmode, target);
-  return target;
-}
-
 #define LVX_BUILTIN_DIRECT_(NAME, FTYPE, OPTIONALS, AVAIL)
 #define LVX_BUILTIN_DIRECT_INSN_(NAME, INSN, FTYPE, OPTIONALS, AVAIL)
 #define LVX_BUILTIN_INDIRECT_(NAME, FTYPE, OPTIONALS, AVAIL)

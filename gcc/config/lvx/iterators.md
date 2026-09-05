@@ -1720,15 +1720,6 @@
   V2OI V4OI V8OI V16OI V32OI
 ])
 
-;; Modes for XSPLAT
-(define_mode_iterator XSPLATOM [
-  V2OI V4OI
-])
-
-(define_mode_iterator XSPLATDM [
-  V2OI V4OI V8OI V16OI V32OI
-])
-
 ;; Attribute to map data move mode to bit size.
 (define_mode_attr bitsize [
   (V1DI    "64")

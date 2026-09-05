@@ -233,9 +233,7 @@
 (define_insn_reservation "lvx_v1_alu_tiny_x4_x" 1 (eq_attr "type" "alu_tiny_x4_x") "lvx_v1_alu_tiny_x4_x_r")
 (define_insn_reservation "lvx_v1_alu_tiny_w" 1 (eq_attr "type" "alu_tiny_w") "lvx_v1_alu_tiny_x_r")
 ;; movet_ext* emit xputdq, which the MDS schedules as ALU_LITE_MISC at
-;; latency 1 -- one LITE unit, and no auxiliary read port.  movet_ext is the
-;; pair (the "#" alternative of *mov<mode>, lvx_xputqo and lvx_xsplatd256 all
-;; expand to two xputdq), movet_ext_lo/_hi are one each.
+;; latency 1 -- one LITE unit, and no auxiliary read port.
 (define_insn_reservation "lvx_v1_movet_ext_v2" 1 (eq_attr "type" "movet_ext") "lvx_v1_alu_lite_x2_r")
 (define_insn_reservation "lvx_v1_movet_ext_lo_v2" 1 (eq_attr "type" "movet_ext_lo") "lvx_v1_alu_lite_r")
 (define_insn_reservation "lvx_v1_movet_ext_hi_v2" 1 (eq_attr "type" "movet_ext_hi") "lvx_v1_alu_lite_r")

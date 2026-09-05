@@ -212,11 +212,6 @@ LVX_BUILTIN_INDIRECT (shiftfdo, V8DF_FTYPE_V8DF_INT32_FLOAT64,, true, (SHIFT, E_
 
 LVX_BUILTIN_DIRECT   (cat256, V256_FTYPE_V128_V128,, true) // Vector
 LVX_BUILTIN_DIRECT   (cat512, V512_FTYPE_V256_V256,, true) // Vector
-LVX_BUILTIN_DIRECT   (xcat512, X512_FTYPE_X256_X256,, true) // Extension
-LVX_BUILTIN_DIRECT   (xcat1024, X1024_FTYPE_X512_X512,, true) // Extension
-LVX_BUILTIN_DIRECT   (xcat2048, X2048_FTYPE_X1024_X1024,, true) // Extension
-LVX_BUILTIN_DIRECT   (xcat4096, X4096_FTYPE_X2048_X2048,, true) // Extension
-LVX_BUILTIN_DIRECT   (xcat8192, X8192_FTYPE_X4096_X4096,, lvx_1) // Extension lvx-1
 
 LVX_BUILTIN_DIRECT   (low128, V128_FTYPE_V256,, true) // Vector
 LVX_BUILTIN_DIRECT   (low256, V256_FTYPE_V512,, true) // Vector
@@ -235,7 +230,6 @@ LVX_BUILTIN_DIRECT   (xhigh2048, X2048_FTYPE_X4096,, true) // Extension
 LVX_BUILTIN_DIRECT   (xhigh4096, X4096_FTYPE_X8192,, true) // Extension
 
 LVX_BUILTIN_DIRECT   (splatq256, V256_FTYPE_V128,, true) // Vector
-
 
 LVX_BUILTIN_DIRECT   (selectbx, V16QI_FTYPE_V16QI_V16QI_V16QI_SIMDCOND,, true) // Vector
 LVX_BUILTIN_DIRECT   (selectbv, V32QI_FTYPE_V32QI_V32QI_V32QI_SIMDCOND,, true) // Vector
@@ -288,7 +282,6 @@ LVX_BUILTIN_DIRECT   (fminwo, fminv8sf3, V8SF_FTYPE_V8SF_V8SF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fmind, fmindf3, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fmindp, fminv2df3, V2DF_FTYPE_V2DF_V2DF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fmindq, fminv4df3, V4DF_FTYPE_V4DF_V4DF,, true) // Vector
-LVX_BUILTIN_DIRECT   (xfminhx, X256_FTYPE_X256_X256,, lvx_1) // Extension lvx-1
 
 LVX_BUILTIN_DIRECT   (fmaxh, fmaxhf3, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fmaxho, fmaxv8hf3, V8HF_FTYPE_V8HF_V8HF,, true) // Vector
@@ -299,7 +292,6 @@ LVX_BUILTIN_DIRECT   (fmaxwo, fmaxv8sf3, V8SF_FTYPE_V8SF_V8SF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fmaxd, fmaxdf3, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fmaxdp, fmaxv2df3, V2DF_FTYPE_V2DF_V2DF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fmaxdq, fmaxv4df3, V4DF_FTYPE_V4DF_V4DF,, true) // Vector
-LVX_BUILTIN_DIRECT   (xfmaxhx, X256_FTYPE_X256_X256,, lvx_1) // Extension lvx-1
 
 LVX_BUILTIN_DIRECT   (fnegh, neghf2, FLOAT16_FTYPE_FLOAT16,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fnegho, negv8hf2, V8HF_FTYPE_V8HF,, true) // Vector
@@ -320,8 +312,6 @@ LVX_BUILTIN_DIRECT   (fabswo, absv8sf2, V8SF_FTYPE_V8SF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fabsd, absdf2, FLOAT64_FTYPE_FLOAT64,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fabsdp, absv2df2, V2DF_FTYPE_V2DF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fabsdq, absv4df2, V4DF_FTYPE_V4DF,, true) // Vector
-
-
 
 LVX_BUILTIN_DIRECT   (faddh, FLOAT16_FTYPE_FLOAT16_FLOAT16_FLOATINGS,, true) // Scalar
 LVX_BUILTIN_DIRECT   (faddho, V8HF_FTYPE_V8HF_V8HF_FLOATINGS,, true) // Vector
@@ -367,7 +357,6 @@ LVX_BUILTIN_DIRECT   (fmuldq, V4DF_FTYPE_V4DF_V4DF_FLOATINGS,, true) // Vector
 LVX_BUILTIN_DIRECT   (fdivw, FLOAT32_FTYPE_FLOAT32_FLOAT32_FLOATINGS,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fdivd, FLOAT64_FTYPE_FLOAT64_FLOAT64_FLOATINGS,, true) // Scalar
 
-
 LVX_BUILTIN_DIRECT   (fmulwcq, V8SF_FTYPE_V8SF_V8SF_CONJUGATE,, true) // Vector
 LVX_BUILTIN_DIRECT   (fmuldc, V2DF_FTYPE_V2DF_V2DF_CONJUGATE,, true) // Vector
 LVX_BUILTIN_DIRECT   (fmuldcp, V4DF_FTYPE_V4DF_V4DF_CONJUGATE,, true) // Vector
@@ -386,7 +375,6 @@ LVX_BUILTIN_DIRECT   (ffmawo, V8SF_FTYPE_V8SF_V8SF_V8SF_FLOATINGS,, true) // Vec
 LVX_BUILTIN_DIRECT   (ffmad, FLOAT64_FTYPE_FLOAT64_FLOAT64_FLOAT64_FLOATINGS,, true) // Scalar
 LVX_BUILTIN_DIRECT   (ffmadp, V2DF_FTYPE_V2DF_V2DF_V2DF_FLOATINGS,, true) // Vector
 LVX_BUILTIN_DIRECT   (ffmadq, V4DF_FTYPE_V4DF_V4DF_V4DF_FLOATINGS,, true) // Vector
-
 
 LVX_BUILTIN_DIRECT   (ffmadc, V2DF_FTYPE_V2DF_V2DF_V2DF_CONJUGATE,, true) // Vector
 LVX_BUILTIN_DIRECT   (ffmadcp, V4DF_FTYPE_V4DF_V4DF_V4DF_CONJUGATE,, true) // Vector
@@ -410,13 +398,6 @@ LVX_BUILTIN_DIRECT   (ffmsxwdq, V4DF_FTYPE_V4SF_V4SF_V4DF_FLOATINGS,, true) // V
 LVX_BUILTIN_DIRECT   (ffmsdc, V2DF_FTYPE_V2DF_V2DF_V2DF_CONJUGATE,, true) // Vector
 LVX_BUILTIN_DIRECT   (ffmsdcp, V4DF_FTYPE_V4DF_V4DF_V4DF_CONJUGATE,, true) // Vector
 LVX_BUILTIN_DIRECT   (ffmsdcq, V8DF_FTYPE_V8DF_V8DF_V8DF_CONJUGATE,, true) // Vector
-
-
-
-
-
-
-
 
 /*                   TODO: Specialize for lvx-2 since it only supports 0 in the 2nd arg. */
 LVX_BUILTIN_DIRECT   (floatw, FLOAT32_FTYPE_INT32_UINT8_FLOATINGS,, true) // Scalar
@@ -683,20 +664,6 @@ LVX_BUILTIN_INDIRECT (xundef2048, X2048_FTYPE,, true, (XUNDEF, X2048mode)) // Ex
 LVX_BUILTIN_INDIRECT (xundef4096, X4096_FTYPE,, true, (XUNDEF, X4096mode)) // Extension
 LVX_BUILTIN_INDIRECT (xundef8192, X8192_FTYPE,, true, (XUNDEF, X8192mode)) // Extension
 
-LVX_BUILTIN_INDIRECT (xzero256, X256_FTYPE,, true, (XZERO, X256mode)) // Extension
-LVX_BUILTIN_INDIRECT (xzero512, X512_FTYPE,, true, (XZERO, X512mode)) // Extension
-LVX_BUILTIN_INDIRECT (xzero1024, X1024_FTYPE,, true, (XZERO, X1024mode)) // Extension
-LVX_BUILTIN_INDIRECT (xzero2048, X2048_FTYPE,, true, (XZERO, X2048mode)) // Extension
-LVX_BUILTIN_INDIRECT (xzero4096, X4096_FTYPE,, true, (XZERO, X4096mode)) // Extension
-LVX_BUILTIN_INDIRECT (xzero8192, X8192_FTYPE,, true, (XZERO, X8192mode)) // Extension
-
-LVX_BUILTIN_DIRECT   (xsplatd256, X256_FTYPE_UINT64,, true) // Extension
-LVX_BUILTIN_DIRECT   (xsplatd512, X512_FTYPE_UINT64,, true) // Extension
-LVX_BUILTIN_DIRECT   (xsplatd1024, X1024_FTYPE_UINT64,, true) // Extension
-LVX_BUILTIN_DIRECT   (xsplatd2048, X2048_FTYPE_UINT64,, true) // Extension
-LVX_BUILTIN_DIRECT   (xsplatd4096, X4096_FTYPE_UINT64,, true) // Extension
-LVX_BUILTIN_DIRECT   (xsplatd8192, X8192_FTYPE_UINT64,, true) // Extension
-
 LVX_BUILTIN_DIRECT   (xaligno512, X256_FTYPE_X512_UINT64,, lvx_1) // Extension lvx-1
 LVX_BUILTIN_DIRECT   (xaligno1024, X256_FTYPE_X1024_UINT64,, lvx_1) // Extension lvx-1
 LVX_BUILTIN_DIRECT   (xaligno2048, X256_FTYPE_X2048_UINT64,, lvx_1) // Extension lvx-1
@@ -716,15 +683,6 @@ LVX_BUILTIN_DIRECT   (xputqo256, lvx_xputqo, X256_FTYPE_V4DI,, true) // Extensio
 LVX_BUILTIN_DIRECT   (xputdq256, lvx_xputdq, X256_FTYPE_X256_V2DI_XHALF,, true) // Extension
 LVX_BUILTIN_DIRECT   (xmovetd256, lvx_xmovetd, X256_FTYPE_X256_DI_XQUARTER,, lvx_1) // Extension lvx-1
 
-LVX_BUILTIN_DIRECT   (xfscalewo, X256_FTYPE_X256_UINT64_FLOATINGS,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xmma4164bw, X512_FTYPE_X512_X512_X512_XMATMUL,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xmadd44bw0, X512_FTYPE_X256_X256_X512_EXTENDMUL,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xmadd44bw1, X512_FTYPE_X256_X256_X512_EXTENDMUL,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xmaddifwo, X256_FTYPE_X256_X256_X256_FLOATINGS,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xmsbfifwo, X256_FTYPE_X256_X256_X256_FLOATINGS,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xffma44hw, X512_FTYPE_X256_X256_X512_FLOATINGS,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xfnarrow44wh, X256_FTYPE_X512_FLOATINGS,, lvx_1) // Extension lvx-1
-
 LVX_BUILTIN_DIRECT   (xando, X256_FTYPE_X256_X256,, lvx_1) // Extension lvx-1
 LVX_BUILTIN_DIRECT   (xnando, X256_FTYPE_X256_X256,, lvx_1) // Extension lvx-1
 LVX_BUILTIN_DIRECT   (xandno, X256_FTYPE_X256_X256,, lvx_1) // Extension lvx-1
@@ -736,27 +694,3 @@ LVX_BUILTIN_DIRECT   (xneoro, X256_FTYPE_X256_X256,, lvx_1) // Extension lvx-1
 LVX_BUILTIN_DIRECT   (xsbmm8dq, X256_FTYPE_X256_X256,, lvx_1) // Extension lvx-1
 LVX_BUILTIN_DIRECT   (xsbmmt8dq, X256_FTYPE_X256_X256,, lvx_1) // Extension lvx-1
 
-LVX_BUILTIN_DIRECT   (xclampwo, X256_FTYPE_X256_X256_X256,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xtrunc48wb, X256_FTYPE_X1024,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xsx48bw, X1024_FTYPE_X256,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xzx48bw, X1024_FTYPE_X256,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xsplatox, X512_FTYPE_X256_XSHUFFLEX,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xcopyx, X512_FTYPE_X512_XSHUFFLEX,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xsplatov, X1024_FTYPE_X256_XSHUFFLEV,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xcopyv, X1024_FTYPE_X1024_XSHUFFLEV,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xmt44d, X1024_FTYPE_X1024,, true) // Extension
-LVX_BUILTIN_DIRECT   (xsendo, VOID_FTYPE_X256_XCHANNEL,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xrecvo, X256_FTYPE_XCHANNEL,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xsendrecvo, X256_FTYPE_X256_XCHANNELS,, lvx_1) // Extension lvx-1
-
-LVX_BUILTIN_DIRECT   (xfmma484hw, X512_FTYPE_X512_X512_X512_FLOATINGS,, true) // Extension
-LVX_BUILTIN_DIRECT   (xmma484bw, X512_FTYPE_X256_X256_X512_XMATMUL,, true) // Extension
-
-LVX_BUILTIN_INDIRECT (xswapo256, V4DI_FTYPE_PX256_V4DI,, true) // Extension
-LVX_BUILTIN_INDIRECT (xswapq256, V2DI_FTYPE_PX256_V2DI_XHALF,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_INDIRECT (xswapd256, DI_FTYPE_PX256_DI_XQUARTER,, lvx_1) // Extension lvx-1
-
-LVX_BUILTIN_DIRECT   (xfmma444w_0, X512_FTYPE_X512_X512_X512_FLOATINGS,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xfmma444w_1, X512_FTYPE_X512_X512_X512_FLOATINGS,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xfmma424d_0, X1024_FTYPE_X512_X512_X1024_FLOATINGS,, lvx_1) // Extension lvx-1
-LVX_BUILTIN_DIRECT   (xfmma424d_1, X1024_FTYPE_X512_X512_X1024_FLOATINGS,, lvx_1) // Extension lvx-1
