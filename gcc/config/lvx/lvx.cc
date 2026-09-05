@@ -128,7 +128,13 @@ static struct lvx_sched2
   unsigned char *insn_flags;
   rtx bcu_use[2];
   rtx_insn *cond_insn;
-  size_t bundle_state[1];
+  /* A scratch DFA state, state_size () bytes -- one byte per automaton, so it
+     grows whenever scheduling.md is split into more of them.  It used to be a
+     fixed size_t[1] copied with sizeof, which state_transition then read and
+     wrote past, into bundle_size below.  state_size () rather than
+     dfa_state_size: the constructor below runs before schedule_ebbs, so
+     dfa_start () has not set dfa_state_size yet on the first function.  */
+  void *bundle_state;
   int bundle_size;
 } lvx_sched2[1];
 
@@ -6900,6 +6906,7 @@ lvx_sched2_ctor (int max_uid)
   lvx_sched2->insn_cycle = XNEWVEC (short, lvx_sched2->max_uid);
   memset (lvx_sched2->insn_cycle, -1, sizeof (short) * lvx_sched2->max_uid);
   lvx_sched2->insn_flags = XCNEWVEC (unsigned char, lvx_sched2->max_uid);
+  lvx_sched2->bundle_state = xmalloc (state_size ());
   lvx_sched2->cond_insn = make_insn_raw (gen_cond_insn ());
   SET_PREV_INSN (lvx_sched2->cond_insn) = 0;
   SET_NEXT_INSN (lvx_sched2->cond_insn) = 0;
@@ -6915,6 +6922,8 @@ lvx_sched2_dtor (void)
   lvx_sched2->insn_cycle = 0;
   XDELETEVEC (lvx_sched2->insn_flags);
   lvx_sched2->insn_flags = 0;
+  free (lvx_sched2->bundle_state);
+  lvx_sched2->bundle_state = 0;
 }
 
 static void
@@ -6988,15 +6997,20 @@ lvx_sched_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
 	  /* Templates mixing a TINY and a LITE mnemonic: the resources are the
 	     SUM of the two, so neither range below can account them.  */
 	  else if (type == TYPE_ALU_TINY_LITE_X2)
-	    resources->tiny_count++, resources->lite_count++;
-	  /* movet_ext* emit xputdq, which is ALU_LITE_MISC: they sit in the
-	     LITE range, movet_ext being the two-xputdq pair.  */
+	    resources->tiny_count += 2, resources->lite_count++;
+	  else if (type == TYPE_ALU_TINY_LITE_X4)
+	    resources->tiny_count += 4, resources->lite_count += 2;
+	  /* A LITE instruction occupies a LITE unit *and* an ALU slot, and a
+	     FULL one occupies all three -- the same statement scheduling.md
+	     makes, and the machine description before it.  tiny_count is the
+	     ALU slot count, so every one of these bumps it too.  movet_ext*
+	     emit xputdq, which is ALU_LITE_MISC, and sit in the LITE range.  */
 	  else if (type >= TYPE_ALU_LITE && type < TYPE_ALU_LITE_X2)
-	    resources->lite_count++;
+	    resources->tiny_count++, resources->lite_count++;
 	  else if (type >= TYPE_ALU_LITE_X2 && type < TYPE_ALU_FULL)
-	    resources->lite_count += 2;
+	    resources->tiny_count += 2, resources->lite_count += 2;
 	  else if (type >= TYPE_ALU_FULL && type < TYPE_CACHE)
-	    resources->full_count++;
+	    resources->tiny_count++, resources->lite_count++, resources->full_count++;
 	  else
 	    gcc_unreachable ();
 	}
@@ -7389,8 +7403,7 @@ lvx_sched_dfa_new_cycle (FILE *, int, rtx_insn *insn, int last_clock,
 	  if (GET_CODE (pattern) == COND_EXEC)
 	    // If-converted INSN, either merge the BCU prefix or use a new one.
 	    {
-	      memcpy (lvx_sched2->bundle_state, curr_state,
-		      sizeof (lvx_sched2->bundle_state));
+	      memcpy (lvx_sched2->bundle_state, curr_state, state_size ());
 	      if (state_transition (lvx_sched2->bundle_state, insn) >= 0)
 		gcc_unreachable ();
 
@@ -7442,7 +7455,13 @@ lvx_sched_dfa_new_cycle (FILE *, int, rtx_insn *insn, int last_clock,
 
       lvx_sched2->bundle_size += get_attr_length (insn);
       if (lvx_sched2->bundle_size > LVX_SCHED2_BUNDLE_SIZE)
-	gcc_unreachable ();
+	{
+	  fprintf (stderr, "LVXDBG overflow size=%d uid=%d type=%d len=%d\n",
+		   lvx_sched2->bundle_size, INSN_UID (insn),
+		   (int) get_attr_type (insn), (int) get_attr_length (insn));
+	  debug_rtx (insn);
+	  gcc_unreachable ();
+	}
     }
 
   // Use this hook to record the cycle and flags of INSN in SCHED2.

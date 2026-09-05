@@ -9,12 +9,13 @@
 ;; product into a sum -- a single-resource automaton has 2^N NDFA states over
 ;; its own N units and minimises to the counter 0..N.
 ;;
-;; lvx_alu is the one group that cannot be split further: the absence_sets
-;; below relate tiny0/tiny1 to lite0/lite1 and full, and "all functional units
-;; mentioned in a set should belong to the same automaton".  tiny2 and tiny3
-;; join them because lvx_tiny_u alternates over all four.
+;; There is no exception left: with the absence_sets gone nothing relates two
+;; resources, so every resource gets its own automaton and each minimises to
+;; its own counter 0..N.
 (define_automaton "lvx_issue")
-(define_automaton "lvx_alu")
+(define_automaton "lvx_tiny")
+(define_automaton "lvx_lite")
+(define_automaton "lvx_full")
 (define_automaton "lvx_lsu")
 (define_automaton "lvx_ext")
 (define_automaton "lvx_bcu")
@@ -39,12 +40,12 @@
   "lvx_tiny0_u,
    lvx_tiny1_u,
    lvx_tiny2_u,
-   lvx_tiny3_u,
-   lvx_lite0_u,
-   lvx_lite1_u,
-   lvx_full_u"
-  "lvx_alu"
+   lvx_tiny3_u"
+  "lvx_tiny"
 )
+
+(define_cpu_unit "lvx_lite0_u, lvx_lite1_u"   "lvx_lite")
+(define_cpu_unit "lvx_full_u"                 "lvx_full")
 
 (define_cpu_unit "lvx_lsu0_u, lvx_lsu1_u"     "lvx_lsu")
 (define_cpu_unit "lvx_ext0_u, lvx_ext1_u"     "lvx_ext")
@@ -54,11 +55,12 @@
 (define_cpu_unit "lvx_auxr0_u, lvx_auxr1_u"   "lvx_auxr")
 (define_cpu_unit "lvx_auxw0_u, lvx_auxw1_u"   "lvx_auxw")
 
-(absence_set "lvx_tiny0_u" "lvx_lite0_u,lvx_full_u")
-(absence_set "lvx_tiny1_u" "lvx_lite1_u")
-(absence_set "lvx_lite0_u" "lvx_tiny0_u, lvx_full_u")
-(absence_set "lvx_lite1_u" "lvx_tiny1_u")
-(absence_set "lvx_full_u"  "lvx_tiny0_u, lvx_lite0_u")
+;; No absence_set, exclusion_set or presence_set.  That LITE units are two of
+;; the four ALU slots is stated the way the machine description states it: an
+;; ALU_LITE reservation takes one LITE *and* one TINY, an ALU_FULL takes one of
+;; each of FULL, LITE and TINY.  The resource counters then say everything, no
+;; cross-unit constraint is needed, and the reservations below are a literal
+;; transcription of Reservation.table's resources x requirements.
 
 (define_reservation "lvx_issue_u"
   "(lvx_issue0_u
@@ -156,14 +158,14 @@
 ;;
 
 (define_reservation "lvx_v1_all_r" "lvx_issue_x8_u")
-(define_reservation "lvx_v1_alu_full_r" "lvx_full_u + lvx_issue_u")
-(define_reservation "lvx_v1_alu_full_x_r" "lvx_full_u + lvx_issue_x2_u")
-(define_reservation "lvx_v1_alu_full_y_r" "lvx_full_u + lvx_issue_x3_u")
-(define_reservation "lvx_v1_alu_lite_r" "lvx_lite_u + lvx_issue_u")
-(define_reservation "lvx_v1_alu_lite_x_r" "lvx_lite_u + lvx_issue_x2_u")
-(define_reservation "lvx_v1_alu_lite_y_r" "lvx_lite_u + lvx_issue_x3_u")
-(define_reservation "lvx_v1_alu_lite_x2_r" "lvx_lite_x2_u + lvx_issue_x2_u")
-(define_reservation "lvx_v1_alu_lite_x2_x_r" "lvx_lite_x2_u + lvx_issue_x4_u")
+(define_reservation "lvx_v1_alu_full_r" "lvx_full_u + lvx_lite_u + lvx_tiny_u + lvx_issue_u")
+(define_reservation "lvx_v1_alu_full_x_r" "lvx_full_u + lvx_lite_u + lvx_tiny_u + lvx_issue_x2_u")
+(define_reservation "lvx_v1_alu_full_y_r" "lvx_full_u + lvx_lite_u + lvx_tiny_u + lvx_issue_x3_u")
+(define_reservation "lvx_v1_alu_lite_r" "lvx_lite_u + lvx_tiny_u + lvx_issue_u")
+(define_reservation "lvx_v1_alu_lite_x_r" "lvx_lite_u + lvx_tiny_u + lvx_issue_x2_u")
+(define_reservation "lvx_v1_alu_lite_y_r" "lvx_lite_u + lvx_tiny_u + lvx_issue_x3_u")
+(define_reservation "lvx_v1_alu_lite_x2_r" "lvx_lite_x2_u + lvx_tiny_x2_u + lvx_issue_x2_u")
+(define_reservation "lvx_v1_alu_lite_x2_x_r" "lvx_lite_x2_u + lvx_tiny_x2_u + lvx_issue_x4_u")
 (define_reservation "lvx_v1_alu_tiny_r" "lvx_tiny_u + lvx_issue_u")
 (define_reservation "lvx_v1_alu_tiny_x_r" "lvx_tiny_u + lvx_issue_x2_u")
 (define_reservation "lvx_v1_alu_tiny_y_r" "lvx_tiny_u + lvx_issue_x3_u")
@@ -202,7 +204,8 @@
 (define_reservation "lvx_v1_lsu_memw_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_issue_u")
 (define_reservation "lvx_v1_lsu_memw_x_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_issue_x2_u")
 (define_reservation "lvx_v1_lsu_memw_y_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_issue_x3_u")
-(define_reservation "lvx_v1_alu_tiny_lite_x2_r" "lvx_tiny_u + lvx_lite_u + lvx_issue_x2_u")
+(define_reservation "lvx_v1_alu_tiny_lite_x2_r" "lvx_tiny_x2_u + lvx_lite_u + lvx_issue_x2_u")
+(define_reservation "lvx_v1_alu_tiny_lite_x4_r" "lvx_tiny_x4_u + lvx_lite_x2_u + lvx_issue_x4_u")
 (define_reservation "lvx_v1_ext_r" "(lvx_ext0_u | lvx_ext1_u) + lvx_issue_u")
 (define_reservation "lvx_v1_ext_auxw_r" "(lvx_ext0_u | lvx_ext1_u) + lvx_auxw_u + lvx_issue_u")
 (define_reservation "lvx_v1_nop_r" "lvx_tiny_u + lvx_issue_u")
@@ -258,11 +261,13 @@
 ;; for another insn -- three LITE-needing instructions on two LITE units, which
 ;; gas rejects.  Naming a LITE unit explicitly is what makes the pair sound.
 ;;
-;; The four-mnemonic form (copyd + fnegd + copyd + fnegd) needs no type of its
-;; own: it fills all four ALU slots, and lvx_tiny_x4_u reserving tiny0..tiny3
-;; already excludes lite0 and lite1 through the absence_sets above, so
-;; alu_tiny_x4 states exactly that.
+;; The four-mnemonic form (copyd + fnegd + copyd + fnegd) needs its own type
+;; under this encoding: it is TINY4 + LITE2, where lvx_splatq256's four copyd
+;; are TINY4 alone.  The absence_sets used to conflate the two by making
+;; tiny0..tiny3 exclude both LITE units; with those gone the counters differ
+;; and so must the types.
 (define_insn_reservation "lvx_v1_alu_tiny_lite_x2" 1 (eq_attr "type" "alu_tiny_lite_x2") "lvx_v1_alu_tiny_lite_x2_r")
+(define_insn_reservation "lvx_v1_alu_tiny_lite_x4" 1 (eq_attr "type" "alu_tiny_lite_x4") "lvx_v1_alu_tiny_lite_x4_r")
 (define_insn_reservation "lvx_v1_cache" 1 (eq_attr "type" "cache") "lvx_v1_lsu_r")
 (define_insn_reservation "lvx_v1_cache_x" 1 (eq_attr "type" "cache_x") "lvx_v1_lsu_x_r")
 (define_insn_reservation "lvx_v1_cache_y" 1 (eq_attr "type" "cache_y") "lvx_v1_lsu_y_r")

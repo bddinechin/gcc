@@ -4465,7 +4465,7 @@
         (unspec:V4DF [(match_operand:V4DF 1 "register_operand" "r")] UNSPEC_FCONJ))]
   "LVX_2"
   "copyd %x0 = %x1\n\tfnegd %y0 = %y1\n\tcopyd %z0 = %z1\n\tfnegd %t0 = %t1"
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu_tiny_lite_x4")
    (set_attr "length"        "16")]
 )
 

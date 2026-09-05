@@ -27,6 +27,7 @@
   alu_lite_x2_x,
   movet_ext,
   alu_tiny_lite_x2,
+  alu_tiny_lite_x4,
   alu_full,
   alu_full_x,
   alu_full_y,
