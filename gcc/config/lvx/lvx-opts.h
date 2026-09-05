@@ -43,10 +43,16 @@ enum lvx_arch_type
 
 #define HAVE_LVX_ABD_ONLY_I32_IMMEDIATE (LVX_1)
 #define HAVE_LVX_MULD_ONLY_I32_IMMEDIATE (1)
-#define HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE (LVX_1)
+/* COMPD and CMOVED take one immediate form, upper27_lower5, and they take it
+   on both cores -- Opcode.table has COMPD/CMOVED _registerY_ and
+   _upper27_lower5_ and nothing wider for either lvx_v1 or lvx_v2.  Gating
+   these on LVX_1 let -march=lvx-2 select the 64-bit-immediate alternatives,
+   which gas rejects ("expected one of [Immediate_lvx_v2_wrapped32,
+   RegClass_lvx_v2_singleReg]").  */
+#define HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE (1)
 #define HAVE_LVX_COMP_SIDI_ALL_NALL (0)
-#define HAVE_LVX_COMPD_MAX_IMMEDIATE_I32 (LVX_1)
-#define HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32 (LVX_1)
+#define HAVE_LVX_COMPD_MAX_IMMEDIATE_I32 (1)
+#define HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32 (1)
 
 #define HAVE_LVX_ATOMIC_LOAD_SI  (1)
 #define HAVE_LVX_ATOMIC_LOAD_DI  (1)
