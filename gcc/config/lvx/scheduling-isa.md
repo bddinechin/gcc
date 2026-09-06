@@ -12,9 +12,6 @@
 (automata_option "ndfa")
 (automata_option "v")
 
-;; Shadowed by a composite spelling and therefore unnameable here: ALU_LITE2.
-;; A pattern needing one wants a different naming convention, not a workaround.
-
 ;; One automaton per resource.  Every alternation below stays inside a
 ;; single unit bank and no exclusion/presence/absence set is emitted, so
 ;; the partition is exact and each automaton minimises to its counter.
