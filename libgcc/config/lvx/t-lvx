@@ -52,11 +52,6 @@ lvx-libgcc-files := $(addprefix $(srcdir)/config/lvx/, $(lvx-libgcc-c))
 
 $(lvx-libgcc-o): CFLAGS += -Werror
 
-# reorg_loops introduces pseudo-conditioned RTL that crashes sched2; hwloop
-# patterns aren't useful in EH bookkeeping code anyway.
-CFLAGS-unwind-dw2-fde.c += -fno-hwloop
-CFLAGS-unwind-sjlj.c    += -fno-hwloop
-
 LIB2ADD += $(lvx-libgcc-files)
 LIB2FUNCS_EXCLUDE += $(addprefix _,$(softfp-func-exclude))
 
