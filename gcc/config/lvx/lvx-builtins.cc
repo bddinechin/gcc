@@ -208,8 +208,8 @@ struct lvx_modmap
 #define LVX_MOD_SATURATE   lvx_modmap_saturate
 #define LVX_MOD_SHIFTLEFT  lvx_modmap_shiftleft
 #define LVX_MOD_SHIFTRIGHT lvx_modmap_shiftright
+#define LVX_MOD_MOSTSIG    lvx_modmap_mostsig
 #define LVX_MOD_SIGNEDSAT  lvx_modmap_signedsat
-#define LVX_MOD_SILENT     lvx_modmap_silent
 #define LVX_MOD_SIMDCOND   lvx_modmap_simdcond
 #define LVX_MOD_SIMDCONDD  lvx_modmap_simdcondd
 #define LVX_MOD_STORECOND  lvx_modmap_storecond
@@ -421,16 +421,13 @@ const struct lvx_modmap lvx_modmap_signedsat_all = {
 const struct lvx_modmap *lvx_modmap_signedsat = &lvx_modmap_signedsat_all;
 
 
-const char *lvx_mod_silent_lvx_1_in[] = {
- "", ".s", NULL
+const char *lvx_mod_mostsig[] = {
+ "", ".m", NULL
 };
-const char *lvx_mod_silent_lvx_1_out[] = {
- "", "", NULL
+const struct lvx_modmap lvx_modmap_mostsig_all = {
+  lvx_mod_mostsig, lvx_mod_mostsig
 };
-const struct lvx_modmap lvx_modmap_silent_lvx_1 = {
-  lvx_mod_silent_lvx_1_in, lvx_mod_silent_lvx_1_out,
-};
-const struct lvx_modmap *lvx_modmap_silent = NULL;
+const struct lvx_modmap *lvx_modmap_mostsig = &lvx_modmap_mostsig_all;
 
 const char *lvx_mod_simdcond[] = {
  ".nez", ".eqz", ".ltz", ".gez", ".lez", ".gtz", ".odd", ".even", NULL
@@ -862,8 +859,8 @@ tree lvx_builtin_types[LVX_BTI_MAX];
 #define LVX_ATYPE_SATURATE LVX_ATYPE_STRING
 #define LVX_ATYPE_SHIFTLEFT LVX_ATYPE_STRING
 #define LVX_ATYPE_SHIFTRIGHT LVX_ATYPE_STRING
+#define LVX_ATYPE_MOSTSIG LVX_ATYPE_STRING
 #define LVX_ATYPE_SIGNEDSAT LVX_ATYPE_STRING
-#define LVX_ATYPE_SILENT LVX_ATYPE_STRING
 #define LVX_ATYPE_SIMDCOND LVX_ATYPE_STRING
 #define LVX_ATYPE_SIMDCONDD LVX_ATYPE_STRING
 #define LVX_ATYPE_STORECOND LVX_ATYPE_STRING
@@ -2023,7 +2020,6 @@ lvx_init_builtins (void)
   lvx_modmap_loadcond  = &lvx_modmap_loadcond_lvx_1;
   lvx_modmap_xloadcond = &lvx_modmap_xloadcond_lvx_1;
   lvx_modmap_storecond = &lvx_modmap_storecond_lvx_1;
-  lvx_modmap_silent    = &lvx_modmap_silent_lvx_1;
   lvx_modmap_xvariant  = &lvx_modmap_xvariant_lvx_1;
   lvx_modmap_xloadq    = &lvx_modmap_xloadq_lvx_1;
   lvx_modmap_boolcasco = &lvx_modmap_boolcasco_lvx_1;

@@ -5361,13 +5361,13 @@
     if (flag_reciprocal_math)
       {
         rtx t = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_lvx_fsrec<suffix> (t, b, rm));
+        emit_insn (gen_lvx_fsrec<suffix> (t, b));
         emit_insn (gen_lvx_fmul<suffix> (operands[0], a, t, rm));
       }
     else if (flag_unsafe_math_optimizations)
       {
         rtx re = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_lvx_fsrec<suffix> (re, b, rn));
+        emit_insn (gen_lvx_fsrec<suffix> (re, b));
         rtx y0 = gen_reg_rtx (<MODE>mode);
         emit_insn (gen_lvx_fmul<suffix> (y0, a, re, rn));
         rtx e0 = gen_reg_rtx (<MODE>mode);

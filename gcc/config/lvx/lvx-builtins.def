@@ -406,10 +406,10 @@ LVX_BUILTIN_DIRECT   (fixedud, INT64_FTYPE_FLOAT64_UINT8_FLOATINGS,, true) // Sc
 LVX_BUILTIN_DIRECT   (fixedudp, V2DI_FTYPE_V2DF_UINT8_FLOATINGS,, true) // Vector
 LVX_BUILTIN_DIRECT   (fixedudq, V4DI_FTYPE_V4DF_UINT8_FLOATINGS,, true) // Vector
 
-LVX_BUILTIN_DIRECT   (fwidenhw, FLOAT32_FTYPE_FLOAT16_SILENT,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fwidenhwo, V8SF_FTYPE_V8HF_SILENT,, true) // Vector
-LVX_BUILTIN_DIRECT   (fwidenwd, FLOAT64_FTYPE_FLOAT32_SILENT,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fwidenwdq, V4DF_FTYPE_V4SF_SILENT,, true) // Vector
+LVX_BUILTIN_DIRECT   (fwidenhw, FLOAT32_FTYPE_FLOAT16_MOSTSIG,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fwidenhwo, V8SF_FTYPE_V8HF_MOSTSIG,, true) // Vector
+LVX_BUILTIN_DIRECT   (fwidenwd, FLOAT64_FTYPE_FLOAT32_MOSTSIG,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fwidenwdq, V4DF_FTYPE_V4SF_MOSTSIG,, true) // Vector
 
 LVX_BUILTIN_DIRECT   (fnarrowwh, FLOAT16_FTYPE_FLOAT32_FLOATINGS,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fnarrowdw, FLOAT32_FTYPE_FLOAT64_FLOATINGS,, true) // Scalar
@@ -421,12 +421,12 @@ LVX_BUILTIN_DIRECT   (fconjdc, V2DF_FTYPE_V2DF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fconjdcp, V4DF_FTYPE_V4DF,, true) // Vector
 LVX_BUILTIN_DIRECT   (fconjdcq, V8DF_FTYPE_V8DF,, true) // Vector
 
-LVX_BUILTIN_DIRECT   (fsrecw, FLOAT32_FTYPE_FLOAT32_SILENT,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fsrecwq, V4SF_FTYPE_V4SF_SILENT,, true) // Vector
-LVX_BUILTIN_DIRECT   (fsrecwo, V8SF_FTYPE_V8SF_SILENT,, true) // Vector
-LVX_BUILTIN_DIRECT   (fsrecd, FLOAT64_FTYPE_FLOAT64_SILENT,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fsrecdp, V2DF_FTYPE_V2DF_SILENT,, true) // Vector
-LVX_BUILTIN_DIRECT   (fsrecdq, V4DF_FTYPE_V4DF_SILENT,, true) // Vector
+LVX_BUILTIN_DIRECT   (fsrecw, FLOAT32_FTYPE_FLOAT32,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fsrecwq, V4SF_FTYPE_V4SF,, true) // Vector
+LVX_BUILTIN_DIRECT   (fsrecwo, V8SF_FTYPE_V8SF,, true) // Vector
+LVX_BUILTIN_DIRECT   (fsrecd, FLOAT64_FTYPE_FLOAT64,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fsrecdp, V2DF_FTYPE_V2DF,, true) // Vector
+LVX_BUILTIN_DIRECT   (fsrecdq, V4DF_FTYPE_V4DF,, true) // Vector
 
 LVX_BUILTIN_DIRECT   (fsrsrw, FLOAT32_FTYPE_FLOAT32,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fsrsrwq, V4SF_FTYPE_V4SF,, true) // Vector

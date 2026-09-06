@@ -4829,8 +4829,7 @@
 
 (define_expand "lvx_fsrecwo"
   [(match_operand:V8SF 0 "register_operand" "")
-   (match_operand:V8SF 1 "register_operand" "")
-   (match_operand 2 "" "")]
+   (match_operand:V8SF 1 "register_operand" "")]
   ""
   {
     /* No fsrecwo in the ISA: 256 bits is two 128-bit fsrecwq.  */
@@ -4838,8 +4837,7 @@
       emit_insn (gen_lvx_fsrecwq (simplify_gen_subreg (V4SFmode, operands[0],
                                                        V8SFmode, i * 16),
                                   simplify_gen_subreg (V4SFmode, operands[1],
-                                                       V8SFmode, i * 16),
-                                  operands[2]));
+                                                       V8SFmode, i * 16)));
     DONE;
   }
 )
@@ -4861,8 +4859,7 @@
 
 (define_insn "lvx_fsrecw"
   [(set (match_operand:SF 0 "register_operand" "=r")
-        (unspec:SF [(match_operand:SF 1 "register_operand" "r")
-                    (match_operand 2 "" "")] UNSPEC_FSREC))]
+        (unspec:SF [(match_operand:SF 1 "register_operand" "r")] UNSPEC_FSREC))]
   ""
   "fsrecw %0 = %1"
   [(set_attr "type" "alu")
@@ -4871,8 +4868,7 @@
 
 (define_insn "lvx_fsrecd"
   [(set (match_operand:DF 0 "register_operand" "=r")
-        (unspec:DF [(match_operand:DF 1 "register_operand" "r")
-                    (match_operand 2 "" "")] UNSPEC_FSREC))]
+        (unspec:DF [(match_operand:DF 1 "register_operand" "r")] UNSPEC_FSREC))]
   ""
   "fsrecd %0 = %1"
   [(set_attr "type" "alu")
@@ -4881,8 +4877,7 @@
 
 (define_insn "lvx_fsrecwq"
   [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")
-                      (match_operand 2 "" "")] UNSPEC_FSREC))]
+        (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")] UNSPEC_FSREC))]
   "LVX_2"
   "fsrecwq %0 = %1"
   [(set_attr "type" "alu")
@@ -4891,15 +4886,14 @@
 
 (define_expand "lvx_fsrecdp"
   [(match_operand:V2DF 0 "register_operand" "")
-   (match_operand:V2DF 1 "register_operand" "")
-   (match_operand 2 "" "")]
+   (match_operand:V2DF 1 "register_operand" "")]
   "LVX_2"
   {
     for (int i = 0; i < 2; i++)
       {
         rtx opnd0 = gen_rtx_SUBREG (DFmode, operands[0], i*8);
         rtx opnd1 = gen_rtx_SUBREG (DFmode, operands[1], i*8);
-        emit_insn (gen_lvx_fsrecd (opnd0, opnd1, operands[2]));
+        emit_insn (gen_lvx_fsrecd (opnd0, opnd1));
       }
     DONE;
   }
@@ -4907,15 +4901,14 @@
 
 (define_expand "lvx_fsrecdq"
   [(match_operand:V4DF 0 "register_operand" "")
-   (match_operand:V4DF 1 "register_operand" "")
-   (match_operand 2 "" "")]
+   (match_operand:V4DF 1 "register_operand" "")]
   ""
   {
     for (int i = 0; i < 4; i++)
       {
         rtx opnd0 = gen_rtx_SUBREG (DFmode, operands[0], i*8);
         rtx opnd1 = gen_rtx_SUBREG (DFmode, operands[1], i*8);
-        emit_insn (gen_lvx_fsrecd (opnd0, opnd1, operands[2]));
+        emit_insn (gen_lvx_fsrecd (opnd0, opnd1));
       }
     DONE;
   }
