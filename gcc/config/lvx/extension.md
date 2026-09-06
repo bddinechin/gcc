@@ -27,7 +27,8 @@
                      UNSPEC_XMOVEF))]
    "LVX_2 && (HAVE_LVX_MOV_FROM_CORE_V4DI_TO_EXT_V1OI)"
    "xmovefo %0 = %1"
-   [(set_attr "type" "movef_ext")]
+   [(set_attr "type" "movef_ext")
+    (set_attr "issue" "ext_misc_auxw")]
 )
 
 (define_insn "lvx_xmovefq"
@@ -37,7 +38,8 @@
                      UNSPEC_XMOVEF))]
    "LVX_2 && (HAVE_LVX_MOV_FROM_CORE_V2DI_TO_EXT_V1OI)"
    "xmovefq %0 = %1%2"
-   [(set_attr "type" "movef_ext")]
+   [(set_attr "type" "movef_ext")
+    (set_attr "issue" "ext_misc_auxw")]
 )
 
 (define_insn "lvx_xmovefd"
@@ -47,7 +49,8 @@
                    UNSPEC_XMOVEF))]
    "LVX_2 && (HAVE_LVX_MOV_FROM_CORE_V1DI_TO_EXT_V1OI)"
    "xmovefd %0 = %1%2"
-   [(set_attr "type" "movef_ext")]
+   [(set_attr "type" "movef_ext")
+    (set_attr "issue" "ext_misc_auxw")]
 )
 
 (define_insn_and_split "lvx_xputqo"
@@ -69,6 +72,7 @@
     DONE;
   }
   [(set_attr "type" "movet_ext")
+   (set_attr "issue" "x2_alu_lite_misc")
    (set_attr "length" "8")]
 )
 
@@ -81,6 +85,7 @@
   "HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V2DI"
   "xputdq %0%3 = %x2, %y2"
   [(set_attr "type" "alu_lite_recv")
+   (set_attr "issue" "alu_lite_misc")
    (set_attr "length" "4")]
 )
 
@@ -93,6 +98,7 @@
   "LVX_2 && (HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V1DI)"
   "xmovetd %0%3 = %2"
   [(set_attr "type" "alu_lite_recv")
+   (set_attr "issue" "alu_lite_misc")
    (set_attr "length" "4")]
 )
 
@@ -138,6 +144,7 @@
       }
   }
   [(set_attr "type" "copy_ext,load_ext_uncached,load_ext_uncached_x,load_ext_uncached_y,store_ext,store_ext_x,store_ext_y,movef_ext,movet_ext,copy_core")
+   (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_y, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y, ext_misc_auxw, x2_alu_lite_misc, lsu_auxr_auxw")
    (set_attr "length"                "4,                4,                  8,                 12,             4,               8,              12,                 4,                    8,            4")]
 )
 
@@ -165,6 +172,7 @@
       }
   }
   [(set_attr "type" "copy_ext,load_ext,load_ext_x,load_ext_y,load_ext_uncached,load_ext_uncached_x,load_ext_uncached_y,store_ext,store_ext_x,store_ext_y,movef_ext,movet_ext,copy_core")
+   (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_y, lsu, lsu_x, lsu_y, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y, ext_misc_auxw, x2_alu_lite_misc, lsu_auxr_auxw")
    (set_attr "length"                "4,       4,         8,        12,                4,                  8,                 12,             4,               8,              12,                 4,                    8,            4")]
 )
 
@@ -174,6 +182,7 @@
   "LVX_2"
   "xmovefo %0 = %1"
   [(set_attr "type" "movef_ext")
+   (set_attr "issue" "ext_misc_auxw")
    (set_attr "length" "4")]
 )
 
@@ -184,6 +193,7 @@
   ""
   "xputdq %0.lo = %x1, %y1"
   [(set_attr "type" "movet_ext_hi")
+   (set_attr "issue" "alu_lite_misc")
    (set_attr "length" "4")]
 )
 
@@ -194,6 +204,7 @@
   ""
   "xputdq %0.hi = %x1, %y1"
   [(set_attr "type" "movet_ext_lo")
+   (set_attr "issue" "alu_lite_misc")
    (set_attr "length" "4")]
 )
 
@@ -430,6 +441,7 @@
   ""
   "xso.q0%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
    (set_attr "length"       "4,          8,         12")]
 )
 
@@ -440,6 +452,7 @@
   ""
   "xso.q1%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
    (set_attr "length"       "4,          8,         12")]
 )
 
@@ -450,6 +463,7 @@
   ""
   "xso.q2%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
    (set_attr "length"       "4,          8,         12")]
 )
 
@@ -460,6 +474,7 @@
   ""
   "xso.q3%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
    (set_attr "length"       "4,          8,         12")]
 )
 
@@ -473,6 +488,7 @@
   ""
   "guard%3 %2? xso.q0%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
    (set_attr "bcu_used" "yes")
    (set_attr "length"       "8,         12,         16")]
 )
@@ -487,6 +503,7 @@
   ""
   "guard%3 %2? xso.q1%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
    (set_attr "bcu_used" "yes")
    (set_attr "length"       "8,         12,         16")]
 )
@@ -501,6 +518,7 @@
   ""
   "guard%3 %2? xso.q2%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
    (set_attr "bcu_used" "yes")
    (set_attr "length"       "8,         12,         16")]
 )
@@ -515,6 +533,7 @@
   ""
   "guard%3 %2? xso.q3%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
    (set_attr "bcu_used" "yes")
    (set_attr "length"       "8,         12,         16")]
 )
@@ -653,6 +672,7 @@
   ""
   "xso%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
    (set_attr "length"       "4,          8,         12")]
 )
 
@@ -713,6 +733,7 @@
   ""
   "guard%3 %2? xso%X1 %1 = %0"
   [(set_attr "type" "store_ext,store_ext_x,store_ext_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
    (set_attr "bcu_used" "yes")
    (set_attr "length"       "8,         12,         16")]
 )
@@ -783,6 +804,7 @@
   "HAVE_LVX_EXT_BUFFER_PRELOAD_<MODE>"
   "xplo%4%X2 %b0, %3 = %O2"
   [(set_attr "type" "preload,preload_x,preload_y")
+   (set_attr "issue" "lsu, lsu_x, lsu_y")
    (set_attr "length" "4,   8,   12")]
 )
 
@@ -795,6 +817,7 @@
   "HAVE_LVX_EXT_BUFFER_PRELOAD_<XBUFF:MODE>"
   "xpl<AI:lsusize>%4%X2 %b0, %3 = %O2"
   [(set_attr "type" "preload,preload_x,preload_y")
+   (set_attr "issue" "lsu, lsu_x, lsu_y")
    (set_attr "length" "4,   8,   12")]
 )
 
@@ -807,7 +830,8 @@
                          (match_operand:DI 2 "register_operand" "r")] UNSPEC_XALIGN256))]
   "LVX_2 && (HAVE_LVX_EXT_BUFFER_MOV_EXT_<CHUNK>_<XBUFF:MODE>)"
   "xaligno %0 = %b1, %2"
-  [(set_attr "type" "copy_ext")]
+  [(set_attr "type" "copy_ext")
+   (set_attr "issue" "ext_misc_auxw")]
 )
 
 (define_insn "lvx_xaccesso<XBUFF:bitsize>"
@@ -816,7 +840,8 @@
                       (match_operand:DI 2 "register_operand" "r")] UNSPEC_XACCESS256))]
   "LVX_2 && (HAVE_LVX_EXT_BUFFER_MOV_CORE_<V256:MODE>_<XBUFF:MODE>)"
   "xaccesso %0 = %b1, %2"
-  [(set_attr "type" "movef_ext")]
+  [(set_attr "type" "movef_ext")
+   (set_attr "issue" "ext_misc_auxw")]
 )
 
 ;; XCOPYO, XCOPYX, XCOPYV
@@ -841,7 +866,8 @@
                   (match_operand:X256 2 "register_operand" "x")))]
   "HAVE_LVX_EXT_AND_<MODE>"
   "xando %0 = %1, %2"
-  [(set_attr "type" "ext_int")]
+  [(set_attr "type" "ext_int")
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xnando"
@@ -850,7 +876,8 @@
                   (not:X256 (match_operand:X256 2 "register_operand" "x"))))]
   "HAVE_LVX_EXT_NAND_<MODE>"
   "xnando %0 = %1, %2"
-  [(set_attr "type" "ext_int")]
+  [(set_attr "type" "ext_int")
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xandno"
@@ -859,7 +886,8 @@
                   (match_operand:X256 2 "register_operand" "x")))]
   "HAVE_LVX_EXT_ANDN_<MODE>"
   "xandno %0 = %1, %2"
-  [(set_attr "type" "ext_int")]
+  [(set_attr "type" "ext_int")
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xioro"
@@ -868,7 +896,8 @@
                   (match_operand:X256 2 "register_operand" "x")))]
   "HAVE_LVX_EXT_IOR_<MODE>"
   "xioro %0 = %1, %2"
-  [(set_attr "type" "ext_int")]
+  [(set_attr "type" "ext_int")
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xnioro"
@@ -877,7 +906,8 @@
                   (not:X256 (match_operand:X256 2 "register_operand" "x"))))]
   "HAVE_LVX_EXT_NIOR_<MODE>"
   "xnioro %0 = %1, %2"
-  [(set_attr "type" "ext_int")]
+  [(set_attr "type" "ext_int")
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xiorno"
@@ -886,7 +916,8 @@
                   (match_operand:X256 2 "register_operand" "x")))]
   "HAVE_LVX_EXT_IORN_<MODE>"
   "xiorno %0 = %1, %2"
-  [(set_attr "type" "ext_int")]
+  [(set_attr "type" "ext_int")
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xeoro"
@@ -895,7 +926,8 @@
                   (match_operand:X256 2 "register_operand" "x")))]
   "HAVE_LVX_EXT_EOR_<MODE>"
   "xeoro %0 = %1, %2"
-  [(set_attr "type" "ext_int")]
+  [(set_attr "type" "ext_int")
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xneoro"
@@ -904,7 +936,8 @@
                             (match_operand:X256 2 "register_operand" "x"))))]
   "HAVE_LVX_EXT_NEOR_<MODE>"
   "xneoro %0 = %1, %2"
-  [(set_attr "type" "ext_int")]
+  [(set_attr "type" "ext_int")
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xsbmm8dq"
@@ -913,7 +946,8 @@
                       (match_operand:X256 2 "register_operand" "x")] UNSPEC_SBMM8D))]
   "HAVE_LVX_EXT_SBMM8_V1OI"
   "xsbmm8dq %0 = %1, %2"
-  [(set_attr "type" "ext_int")]
+  [(set_attr "type" "ext_int")
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xsbmmt8dq"
@@ -922,5 +956,6 @@
                       (match_operand:X256 2 "register_operand" "x")] UNSPEC_SBMMT8D))]
   "HAVE_LVX_EXT_SBMMT8_V1OI"
   "xsbmmt8dq %0 = %1, %2"
-  [(set_attr "type" "ext_int")]
+  [(set_attr "type" "ext_int")
+   (set_attr "issue" "ext")]
 )

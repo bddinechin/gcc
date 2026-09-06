@@ -25,7 +25,11 @@
      (const_string "yes")
      (const_string "no")))
 
-;; Scheduling classes
+;; Processor resources and the reservation each issue class stands for,
+;; generated from the machine description.
+(include "scheduling-isa.md")
+
+;; Latencies and bypasses -- the microarchitecture half.
 (include "scheduling.md")
 
 ;; Constraints
@@ -40,7 +44,8 @@
   [(const_int -1)]
   ""
   ""
-  [(set_attr "type" "bcu")]
+  [(set_attr "type" "bcu")
+   (set_attr "issue" "bcu_brrp")]
 )
 
 (define_expand "store_multiple"
@@ -151,6 +156,7 @@
   "(XVECLEN (operands[0], 0) == 4)"
   "lo %o1 = %3[%2]"
   [(set_attr "type" "load_core,load_core_x,load_core_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "4,8,12")])
 
 (define_insn "*lo_multiple_uncached"
@@ -167,6 +173,7 @@
   "(XVECLEN (operands[0], 0) == 4)"
   "lo.u %o1 = %3[%2]"
   [(set_attr "type" "load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "4,8,12")])
 
 (define_insn "*lq_multiple_cached"
@@ -179,6 +186,7 @@
   "(XVECLEN (operands[0], 0) == 2)"
   "lq %q1 = %3[%2]"
   [(set_attr "type" "load_core,load_core_x,load_core_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "4,8,12")])
 
 (define_insn "*lq_multiple_uncached"
@@ -191,6 +199,7 @@
   "(XVECLEN (operands[0], 0) == 2)"
   "lq.u %q1 = %3[%2]"
   [(set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "4,8,12")])
 
 (define_insn "*sq_multiple"
@@ -204,6 +213,7 @@
   "(XVECLEN (operands[0], 0) == 2)"
   "sq %2[%1] = %q3"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length" "4,8,12")])
 
 (define_insn "*so_multiple"
@@ -223,6 +233,7 @@
   "(XVECLEN (operands[0], 0) == 4)"
   "so %2[%1] = %o3"
   [(set_attr "type" "store_core,store_core_x,store_core_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length" "4,8,12")])
 
 
@@ -274,6 +285,7 @@
     }
 }
   [(set_attr "type" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y, store_core, store_core_x, store_core_y, load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y, bcu_get, all, alu_full_x, alu_tiny_y")
+   (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y, bcu2_tiny_lsu, all, alu_full_x, alu_tiny_y")
    (set_attr "length"      "4,        4,          8,         12,          4,            8,           12,         4,           8,          12,                  4,                    8,                   12,       4,   4,          8,         12")]
 )
 
@@ -286,6 +298,7 @@
   ""
   "pcrel %0 = %T1"
   [(set_attr "type" "alu_tiny_y")
+   (set_attr "issue" "alu_tiny_y")
    (set_attr "length" "12")]
 )
 
@@ -296,7 +309,8 @@
   [(set (pc) (label_ref (match_operand 0)))]
   ""
   "goto %0"
-  [(set_attr "type" "bcu_xfer")]
+  [(set_attr "type" "bcu_xfer")
+   (set_attr "issue" "bcu_xfer")]
 )
 
 (define_expand "indirect_jump"
@@ -306,7 +320,8 @@
   [(set (pc) (match_operand:P 0 "address_operand" "r"))]
   ""
   "igoto %0"
-  [(set_attr "type" "bcu_xfer_brrp")]
+  [(set_attr "type" "bcu_xfer_brrp")
+   (set_attr "issue" "bcu_xfer_brrp")]
 )
 
 ;; Restore the frame and jump, for __builtin_longjmp and nonlocal goto.
@@ -376,21 +391,24 @@
   )]
   "<MODE>mode == Pmode"
   "igoto %0"
-  [(set_attr "type" "bcu_xfer_brrp")]
+  [(set_attr "type" "bcu_xfer_brrp")
+   (set_attr "issue" "bcu_xfer_brrp")]
 )
 
 (define_insn "nop"
   [(const_int 0)]
   ""
   "nop\n\t;;"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "nop_volatile"
   [(unspec_volatile [(const_int 0)] UNSPECV_NOP)]
   ""
   "nop"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 ;; Provide a 37bits offset for 32bits and 64bits for 64bits.
@@ -403,6 +421,7 @@
    ""
    "pcrel %0 = @gotaddr()"
   [(set_attr "type" "alu_tiny<symlen1>")
+   (set_attr "issue" "alu_tiny<symlen1>")
    (set_attr "length" "<symlen2>")]
 )
 
@@ -411,7 +430,8 @@
          (match_operand:ALLP 1 "system_register_operand" "SFR"))]
    ""
    "get %0 = %1"
-  [(set_attr "type" "bcu_get")]
+  [(set_attr "type" "bcu_get")
+   (set_attr "issue" "bcu2_tiny_lsu")]
 )
 
 (define_insn "lvx_get"
@@ -421,7 +441,8 @@
    "@
     get %0 = %1
     iget %0"
-  [(set_attr "type" "bcu_get")]
+  [(set_attr "type" "bcu_get")
+   (set_attr "issue" "bcu2_tiny_lsu")]
 )
 
 (define_insn "*set_<mode>"
@@ -429,7 +450,8 @@
          (match_operand:ALLP 1 "register_operand" "r,r"))]
    ""
    "set %0 = %1"
-  [(set_attr "type" "all,bcu2")]
+  [(set_attr "type" "all,bcu2")
+   (set_attr "issue" "all, bcu2")]
 )
 
 (define_insn "lvx_set"
@@ -437,14 +459,16 @@
          (unspec_volatile:DI [(match_operand:DI 1 "register_operand" "r,r")] UNSPEC_SET))]
    ""
    "set %0 = %1"
-  [(set_attr "type" "all,bcu2")]
+  [(set_attr "type" "all,bcu2")
+   (set_attr "issue" "all, bcu2")]
 )
 
 (define_insn "lvx_scall"
   [(unspec_volatile:DI [(match_operand:SI 0 "nonmemory_operand" "=r,i")] UNSPEC_SCALL)]
   ""
   "scall %0"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "lvx_wfxl"
@@ -452,7 +476,8 @@
          (unspec_volatile:DI [(match_operand:DI 1 "register_operand" "r,r")] UNSPEC_WFXL))]
    ""
    "wfxl %0, %1"
-  [(set_attr "type" "all,bcu2")]
+  [(set_attr "type" "all,bcu2")
+   (set_attr "issue" "all, bcu2")]
 )
 
 (define_insn "lvx_wfxm"
@@ -460,7 +485,8 @@
          (unspec_volatile:DI [(match_operand:DI 1 "register_operand" "r,r")] UNSPEC_WFXM))]
    ""
    "wfxm %0, %1"
-  [(set_attr "type" "all,bcu2")]
+  [(set_attr "type" "all,bcu2")
+   (set_attr "issue" "all, bcu2")]
 )
 
 (define_insn "lvx_syncgroup"
@@ -470,35 +496,40 @@
         (unspec:DI [(reg:DI LVX_IPE_REGNO) (match_dup 0)] UNSPEC_EFFECT))]
   ""
   "syncgroup %0"
-  [(set_attr "type" "bcu2")]
+  [(set_attr "type" "bcu2")
+   (set_attr "issue" "bcu2")]
 )
 
 (define_insn "lvx_await"
    [(unspec_volatile [(const_int 0)] UNSPEC_AWAIT)]
    ""
    "await"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "lvx_barrier"
    [(unspec_volatile [(const_int 0)] UNSPEC_BARRIER)]
    ""
    "barrier"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "lvx_sleep"
    [(unspec_volatile [(const_int 0)] UNSPEC_SLEEP)]
    ""
    "sleep"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "lvx_stop"
    [(unspec_volatile [(const_int 0)] UNSPEC_STOP)]
    ""
    "stop"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "lvx_waitit"
@@ -506,14 +537,16 @@
          (unspec_volatile:DI [(match_operand:DI 1 "register_operand" "0")] UNSPEC_WAITIT))]
    ""
    "waitit %0"
-  [(set_attr "type" "bcu_get")]
+  [(set_attr "type" "bcu_get")
+   (set_attr "issue" "bcu2_tiny_lsu")]
 )
 
 (define_insn "trap"
   [(trap_if (const_int 1) (const_int 0))]
   ""
   "errop"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "lvx_fence"
@@ -521,7 +554,8 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "fence%0"
-  [(set_attr "type" "cache2")]
+  [(set_attr "type" "cache2")
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "lvx_d1inval"
@@ -529,7 +563,8 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "d1inval"
-  [(set_attr "type" "cache2")]
+  [(set_attr "type" "cache2")
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "lvx_i1inval"
@@ -537,7 +572,8 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "i1inval"
-  [(set_attr "type" "cache2")]
+  [(set_attr "type" "cache2")
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "lvx_dinvall"
@@ -546,7 +582,8 @@
   ""
   "dinvall%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache, cache_x, cache_y")]
+   (set_attr "type" "cache, cache_x, cache_y")
+   (set_attr "issue" "lsu, lsu_x, lsu_y")]
 )
 
 (define_insn "lvx_dtouchl"
@@ -556,7 +593,8 @@
   ""
   "dtouchl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache, cache_x, cache_y")]
+   (set_attr "type" "cache, cache_x, cache_y")
+   (set_attr "issue" "lsu, lsu_x, lsu_y")]
 )
 
 (define_insn "lvx_dpurgel"
@@ -565,7 +603,8 @@
   ""
   "dpurgel%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache, cache_x, cache_y")]
+   (set_attr "type" "cache, cache_x, cache_y")
+   (set_attr "issue" "lsu, lsu_x, lsu_y")]
 )
 
 (define_insn "lvx_dflushl"
@@ -574,7 +613,8 @@
   ""
   "dflushl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache, cache_x, cache_y")]
+   (set_attr "type" "cache, cache_x, cache_y")
+   (set_attr "issue" "lsu, lsu_x, lsu_y")]
 )
 
 (define_insn "lvx_i1invals"
@@ -583,7 +623,8 @@
   ""
   "i1invals%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache2, cache2_x, cache2_y")]
+   (set_attr "type" "cache2, cache2_x, cache2_y")
+   (set_attr "issue" "lsu2_memw, lsu2_memw_x, lsu2_memw_y")]
 )
 
 (define_insn "lvx_dinvalsw"
@@ -593,7 +634,8 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "dinvalsw%2 %0, %1"
-  [(set_attr "type" "cache2")]
+  [(set_attr "type" "cache2")
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "lvx_dpurgesw"
@@ -603,7 +645,8 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "dpurgesw%2 %0, %1"
-  [(set_attr "type" "cache2")]
+  [(set_attr "type" "cache2")
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "lvx_dflushsw"
@@ -613,7 +656,8 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "dflushsw%2 %0, %1"
-  [(set_attr "type" "cache2")]
+  [(set_attr "type" "cache2")
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "prefetch"
@@ -623,7 +667,8 @@
   ""
   "dtouchl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache, cache_x, cache_y")]
+   (set_attr "type" "cache, cache_x, cache_y")
+   (set_attr "issue" "lsu, lsu_x, lsu_y")]
 )
 
 (define_insn "lvx_tlbdinval"
@@ -631,7 +676,8 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "tlbdinval"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "lvx_tlbiinval"
@@ -639,21 +685,24 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "tlbiinval"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "lvx_tlbprobe"
   [(unspec_volatile [(const_int 0)] UNSPEC_TLBPROBE)]
   ""
   "tlbprobe"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "lvx_tlbread"
   [(unspec_volatile [(const_int 0)] UNSPEC_TLBREAD)]
   ""
   "tlbread"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "lvx_tlbwrite"
@@ -661,14 +710,16 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "tlbwrite"
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "memory_barrier"
   [(clobber (mem:BLK (scratch)))]
   ""
   "fence"
-  [(set_attr "type" "cache2")]
+  [(set_attr "type" "cache2")
+   (set_attr "issue" "lsu2_memw")]
 )
 
 ;; Uncached Loads (Deprecated)
@@ -681,7 +732,8 @@
    ""
    "lbz.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")]
+   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
 (define_insn "lvx_lbsu"
@@ -692,7 +744,8 @@
    ""
    "lbs.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")]
+   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
 (define_insn "lvx_lhzu"
@@ -703,7 +756,8 @@
    ""
    "lhz.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "load_core_uncached, load_core_uncached_x, load_core_uncached_y")]
+   (set_attr "type" "load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
 (define_insn "lvx_lhsu"
@@ -714,7 +768,8 @@
    ""
    "lhs.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "load_core_uncached, load_core_uncached_x, load_core_uncached_y")]
+   (set_attr "type" "load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
 (define_insn "lvx_lwzu"
@@ -725,7 +780,8 @@
    ""
    "lwz.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")]
+   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
 (define_insn "lvx_lwsu"
@@ -736,7 +792,8 @@
    ""
    "lws.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")]
+   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
 (define_insn "lvx_ldu"
@@ -747,7 +804,8 @@
    ""
    "ld.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "load_core_uncached, load_core_uncached_x, load_core_uncached_y")]
+   (set_attr "type" "load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
 (define_insn "lvx_lqu"
@@ -758,7 +816,8 @@
    ""
    "lq.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type"   "load_core_uncached, load_core_uncached_x,load_core_uncached_y")]
+   (set_attr "type"   "load_core_uncached, load_core_uncached_x,load_core_uncached_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
 ;; FIXME AUTO: add size info for 'reg[reg]' addressing (currently falling back to lsu.x)
@@ -768,7 +827,8 @@
    ""
    "l<SHORT:lsusize><ANY_EXTEND:lsux>%V1 %0 = %1"
   [(set_attr "length" "            4,               8,              12,                      4,                        8,                       12")
-   (set_attr "type"   "load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")]
+   (set_attr "type"   "load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
 ;; FIXME AUTO: add size info for 'reg[reg]' addressing (currently falling back to lsu.x)
@@ -790,6 +850,7 @@
    }
 }
   [(set_attr "type"   "alu_lite, load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+   (set_attr "issue" "alu_lite, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "       4,             4,               8,              12,                      4,                        8,                       12")])
 
 (define_insn "zero_extend<mode>di2"
@@ -810,6 +871,7 @@
    }
 }
   [(set_attr "type"   "alu_lite, load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+   (set_attr "issue" "alu_lite, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "       4,             4,               8,              12,                      4,                        8,                       12")])
 
 (define_insn "*icall_<mode>"
@@ -818,7 +880,8 @@
    (clobber (reg:DI LVX_RA_REGNO))]
   ""
   "icall %0"
-  [(set_attr "type" "bcu_xfer_brrp")]
+  [(set_attr "type" "bcu_xfer_brrp")
+   (set_attr "issue" "bcu_xfer_brrp")]
 )
 
 (define_expand "call"
@@ -838,7 +901,8 @@
    (clobber (reg:DI LVX_RA_REGNO))]
   ""
   "call %0"
-  [(set_attr "type" "bcu_xfer")]
+  [(set_attr "type" "bcu_xfer")
+   (set_attr "issue" "bcu_xfer")]
 )
 
 (define_expand "call_value"
@@ -864,7 +928,8 @@
       operands[1] = XEXP (operands[1], 0);
     return "scall %1";
   }
-  [(set_attr "type" "all")]
+  [(set_attr "type" "all")
+   (set_attr "issue" "all")]
 )
 
 (define_insn "*call_value_<mode>"
@@ -874,7 +939,8 @@
    (clobber (reg:DI LVX_RA_REGNO))]
   ""
   "call %1"
-  [(set_attr "type" "bcu_xfer")]
+  [(set_attr "type" "bcu_xfer")
+   (set_attr "issue" "bcu_xfer")]
 )
 
 (define_expand "sibcall_value"
@@ -897,7 +963,8 @@
    (return)]
   ""
   "goto %1"
-  [(set_attr "type" "bcu_xfer")]
+  [(set_attr "type" "bcu_xfer")
+   (set_attr "issue" "bcu_xfer")]
 )
 
 (define_expand "sibcall"
@@ -918,7 +985,8 @@
    (return)]
   ""
   "goto %0"
-  [(set_attr "type" "bcu_xfer")]
+  [(set_attr "type" "bcu_xfer")
+   (set_attr "issue" "bcu_xfer")]
 )
 
 ;;
@@ -951,7 +1019,8 @@
    (clobber (reg:DI LVX_RA_REGNO))]
   ""
   "icall %1"
-  [(set_attr "type" "bcu_xfer_brrp")]
+  [(set_attr "type" "bcu_xfer_brrp")
+   (set_attr "issue" "bcu_xfer_brrp")]
 )
 
 (define_code_iterator gt_comp [gt gtu])
@@ -1069,7 +1138,8 @@
    (use (reg:DI LVX_RA_REGNO))]
   ""
   "ret"
-  [(set_attr "type" "bcu_xfer")]
+  [(set_attr "type" "bcu_xfer")
+   (set_attr "issue" "bcu_xfer")]
 )
 
 (define_expand "untyped_call"
@@ -1106,6 +1176,7 @@
   ""
   "loopdo %0, %1"
   [(set_attr "type" "all")
+   (set_attr "issue" "all")
    (set_attr "length" "4")])
 
 ;; operand 0 is the loop count pseudo register
