@@ -256,9 +256,9 @@ enum lvx_arch_type
 #define HAVE_LVX_FMA_V2SI (0)
 #define HAVE_LVX_FMA_V4HF_V4HF_V4HF (1) // ffmahq
 #define HAVE_LVX_FMA_V4SF_V4HF_V4HF (0) // ffmahwq
-#define HAVE_LVX_FMA_V4SF_V4SF_V4SF (0) // ffmawp
+#define HAVE_LVX_FMA_V4SF_V4SF_V4SF (1) // ffmawq
 #define HAVE_LVX_FMA_V4SI (0)
-#define HAVE_LVX_FMA_V8HF_V8HF_V8HF (0) // ffmaho
+#define HAVE_LVX_FMA_V8HF_V8HF_V8HF (1) // ffmaho
 
 #define HAVE_LVX_FMS_DF_DF_DF (1) // ffmsd
 #define HAVE_LVX_FMS_DF_SF_SF (0) // ffmswd
@@ -269,9 +269,9 @@ enum lvx_arch_type
 #define HAVE_LVX_FMS_V2SI (0)
 #define HAVE_LVX_FMS_V4HF_V4HF_V4HF (1) // ffmshq
 #define HAVE_LVX_FMS_V4SF_V4HF_V4HF (0) // ffmshwq
-#define HAVE_LVX_FMS_V4SF_V4SF_V4SF (0) // ffmswp
+#define HAVE_LVX_FMS_V4SF_V4SF_V4SF (1) // ffmswq
 #define HAVE_LVX_FMS_V4SI (0)
-#define HAVE_LVX_FMS_V8HF_V8HF_V8HF (0) // ffmsho
+#define HAVE_LVX_FMS_V8HF_V8HF_V8HF (1) // ffmsho
 
 #define HAVE_LVX_FSDIV_DF (0) // fsdivd -- removed from the ISA
 #define HAVE_LVX_FSDIV_SF (0) // fsdivw -- removed from the ISA
