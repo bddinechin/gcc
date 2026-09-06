@@ -127,6 +127,13 @@
 (define_predicate "zero_comparison_operator"
   (match_code "eq,ne,le,lt,ge,gt"))
 
+;; Integer comparison operators CCB encodes directly, as the ccbcomp values
+;; 0-5 (double word) and 8-13 (word).  The other four ordered codes -- gt, le,
+;; gtu, leu -- reach CCB by swapping its two register operands, which is what
+;; the "%S" output modifier does.
+(define_predicate "int_comparison_operator"
+  (match_code "lt,ge,ltu,geu,eq,ne"))
+
 ;; Floating-point comparisons operators supported.
 (define_predicate "float_comparison_operator"
   (match_code "ne,eq,ge,lt,uneq,unge,unlt,ltgt"))

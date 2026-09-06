@@ -7066,7 +7066,7 @@ lvx_sched_adjust_cost (rtx_insn *cons_insn, int dep_type,
       // Use (set_of) instead of (reg_overlap_mentioned_p) to catch cases in
       // SCHED2 of producing a register pair and consuming a single register.
       if (JUMP_P (cons_insn))
-	// Reduce cost except for the dependence carrying the tested value.
+	// Zero cost except for the dependence(s) carrying the tested value(s).
 	// Case of carrying is when PROD_INSN modifies a REG used by CONS_INSN.
 	{
 	  rtx x = PATTERN (cons_insn);
@@ -7076,11 +7076,35 @@ lvx_sched_adjust_cost (rtx_insn *cons_insn, int dep_type,
 	    {
 	      x = SET_SRC (x);
 	      if (GET_CODE (x) == IF_THEN_ELSE)
-		x = XEXP (XEXP (x, 0), 0);
-	      if (GET_CODE (x) == ZERO_EXTRACT)
-		x = XEXP (x, 0);
-	      if (!REG_P (x) || !set_of (x, prod_insn))
-		cost = 0;
+		{
+		  rtx op = XEXP (x, 0);
+		  rtx x0 = XEXP (op, 0);
+		  rtx x1 = XEXP (op, 1);
+		  if (GET_CODE (x0) == ZERO_EXTRACT)
+		    // Case of CB.ODD, CB.EVEN.
+		    {
+		      x0 = XEXP (x0, 0);
+		    }
+		  else if (GET_CODE (x0) == AND)
+		    // Case of CCB.[WD]ANY, CCB.[WD]NONE.
+		    {
+		      x1 = XEXP (x0, 1);
+		      x0 = XEXP (x0, 0);
+		    }
+		  if (x1 == const0_rtx)
+		    // Case of CB (x1 was updated in the CCB case).
+		    {
+		      if (!set_of (x0, prod_insn))
+			cost = 0;
+		    }
+		  else
+		    // Case of CCB.
+		    {
+		      if (!set_of (x0, prod_insn)
+			  && !set_of (x1, prod_insn))
+			cost = 0;
+		    }
+		}
 	    }
 	  else if (ANY_RETURN_P (x))
 	    {

@@ -65,6 +65,7 @@
 (define_reservation "lvx_bcu_x2_u" "lvx_bcu0_u+lvx_bcu1_u")
 (define_reservation "lvx_ext_u" "(lvx_ext0_u|lvx_ext1_u|lvx_ext2_u|lvx_ext3_u)")
 (define_reservation "lvx_brrp_u" "(lvx_brrp0_u|lvx_brrp1_u)")
+(define_reservation "lvx_brrp_x2_u" "lvx_brrp0_u+lvx_brrp1_u")
 (define_reservation "lvx_auxr_u" "(lvx_auxr0_u|lvx_auxr1_u)")
 (define_reservation "lvx_auxw_u" "(lvx_auxw0_u|lvx_auxw1_u)")
 (define_reservation "lvx_xfer_u" "lvx_xfer0_u")
@@ -84,6 +85,7 @@
 (define_reservation "lvx_full_r" "lvx_issue_u + lvx_tiny_u + lvx_lite_u + lvx_full_u")
 (define_reservation "lvx_full_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lite_u + lvx_full_u")
 (define_reservation "lvx_bcu_brrp_r" "lvx_issue_u + lvx_bcu_u + lvx_brrp_u")
+(define_reservation "lvx_bcu_brrp2_r" "lvx_issue_u + lvx_bcu_u + lvx_brrp_x2_u")
 (define_reservation "lvx_bcu2_r" "lvx_issue_u + lvx_bcu_x2_u")
 (define_reservation "lvx_bcu_xfer_r" "lvx_issue_u + lvx_bcu_u + lvx_xfer_u")
 (define_reservation "lvx_bcu_xfer_brrp_r" "lvx_issue_u + lvx_bcu_u + lvx_brrp_u + lvx_xfer_u")
@@ -140,6 +142,7 @@
    full,
    full_x,
    bcu_brrp,
+   bcu_brrp2,
    bcu2,
    bcu_xfer,
    bcu_xfer_brrp,

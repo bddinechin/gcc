@@ -267,9 +267,14 @@
   ""
   {
     enum mode_class comp_class = GET_MODE_CLASS (<MODE>mode);
-    if (comp_class == MODE_INT && operands[2] == const0_rtx
-        && zero_comparison_operator (operands[0], VOIDmode)
-        && GET_MODE_SIZE (<MODE>mode) <= UNITS_PER_WORD)
+    /* CB compares one register against zero, CCB compares two registers, so
+       an integer comparison that fits a GPR needs no lowering either way.
+       Everything else -- floating point, and the modes wider than a GPR --
+       still goes through a COMP* into a predicate tested by CB.  */
+    if (comp_class == MODE_INT && GET_MODE_SIZE (<MODE>mode) <= UNITS_PER_WORD
+        && (register_operand (operands[2], VOIDmode)
+            || (zero_comparison_operator (operands[0], VOIDmode)
+                && operands[2] == const0_rtx)))
       ;
     else
       {
@@ -309,6 +314,39 @@
   "cb.<EQNE:evenodd> %0? %1"
   [(set_attr "type" "branch")
    (set_attr "issue" "bcu_brrp")]
+)
+
+
+;; CCB
+
+(define_insn "*ccb<mode>"
+  [(set (pc)
+        (if_then_else (match_operator 0 "ordered_comparison_operator"
+                                      [(match_operand:SIDI 1 "register_operand" "r")
+                                       (match_operand:SIDI 2 "register_operand" "r")])
+                      (label_ref (match_operand 3 "" ""))
+                      (pc)))]
+  ""
+  {
+    if (int_comparison_operator (operands[0], VOIDmode))
+      return "ccb.<SIDI:suffix>%0 %1, %2? %3";
+    return "ccb.<SIDI:suffix>%S0 %2, %1? %3";
+  }
+  [(set_attr "type" "branch")
+   (set_attr "issue" "bcu_brrp2")]
+)
+
+(define_insn "*ccb<mode>.<EQNE:anynone>"
+  [(set (pc)
+        (if_then_else (EQNE (and:SIDI (match_operand:SIDI 0 "register_operand" "r")
+                                      (match_operand:SIDI 1 "register_operand" "r"))
+                            (const_int 0))
+                      (label_ref (match_operand 2))
+                      (pc)))]
+  ""
+  "ccb.<SIDI:suffix><EQNE:anynone> %0, %1? %2"
+  [(set_attr "type" "branch")
+   (set_attr "issue" "bcu_brrp2")]
 )
 
 

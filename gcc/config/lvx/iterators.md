@@ -86,6 +86,13 @@
   (ne "odd")
 ])
 
+;; Code attribute to generate "any" or "none", the ccbcomp values that test
+;; the AND of the two register operands rather than comparing them.
+(define_code_attr anynone [
+  (eq "none")
+  (ne "any")
+])
+
 ;; Code attribute to generate "EQ" or "NE".
 (define_code_attr eqne [
   (eq "EQ")
