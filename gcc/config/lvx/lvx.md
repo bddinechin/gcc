@@ -1140,7 +1140,11 @@
   "loopdo %0, %1"
   [(set_attr "type" "all")
    (set_attr "issue" "all")
-   (set_attr "length" "4")])
+   (set_attr "length" "4")
+   ;; The end-of-loop address is a PC-relative immediate of the same width as
+   ;; CB's, and LOOPDO has no extended form to widen to.  (lvx_hwloop_optimize)
+   ;; reads this to decide whether the body fits.
+   (set_attr "pcrel" "17")])
 
 ;; operand 0 is the loop count pseudo register
 ;; operand 1 is the label to jump to at the top of the loop

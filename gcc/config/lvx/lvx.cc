@@ -4615,10 +4615,49 @@ lvx_hwloop_optimize (hwloop_info loop)
       emit_insn (gen_rtx_SET (gen_raw_REG (DImode, REGNO (iter_reg)),
 			      gen_rtx_ZERO_EXTEND (DImode, iter_reg)));
 
-  emit_insn (gen_lvx_loopdo (iter_reg, loop->end_label));
+  rtx_insn *loopdo = emit_insn (gen_lvx_loopdo (iter_reg, loop->end_label));
   rtx_insn *seq = get_insns ();
 
   end_sequence ();
+
+  /* LOOPDO carries the end-of-loop address as a PC-relative immediate, and the
+     hardware takes the back edge when the next bundle's address reaches it, so
+     the body has to fit in that immediate's reach.  This is the range question
+     a conditional branch answers by picking CCBX over CCB -- with the one
+     difference that LOOPDO has no extended form to pick.  A body that does not
+     fit cannot be a hardware loop at all, so hand it back and let
+     (lvx_hwloop_fail) put the counter decrement and the branch in its place.
+
+     The arithmetic is (lvx_fix_pcreljump_ranges)'s: the immediate is signed
+     and scaled by 4, so PCREL bits of it reach 2**(PCREL + 1) bytes, less one
+     maximum bundle of slack; and a quarter of the distance is the margin for
+     this being an estimate.  It is an estimate for the same reasons as there,
+     plus two of its own -- the preheader insns between the LOOPDO and the loop
+     head are not counted, and SCHED2 has not run, so a "length" that overstates
+     its template is not yet settled.  Erring towards the software loop is the
+     cheap direction to err in.  */
+  {
+    long length = 0;
+    unsigned ix;
+    basic_block bb;
+
+    FOR_EACH_VEC_ELT (loop->blocks, ix, bb)
+      {
+	rtx_insn *body_insn;
+	FOR_BB_INSNS (bb, body_insn)
+	  if (NONDEBUG_INSN_P (body_insn))
+	    length += get_attr_length (body_insn);
+      }
+
+    long range = (2L << get_attr_pcrel (loopdo)) - LVX_SCHED2_BUNDLE_SIZE;
+    if (length + (length >> 2) >= range)
+      {
+	if (dump_file)
+	  fprintf (dump_file, ";; loop %d body is %ld bytes, past LOOPDO's"
+		   " %ld-byte reach\n", loop->loop_no, length, range);
+	return false;
+      }
+  }
 
   /* Place the loopdo instruction in the entry block into the loop body.  */
   if (!single_succ_p (entry_bb) || vec_safe_length (loop->incoming) > 1)
@@ -8056,25 +8095,39 @@ lvx_asm_final_postscan_insn (FILE *file, rtx_insn *insn,
 
       if (flags & LVX_SCHED2_INSN_STOP)
 	{
-	  if (TARGET_SCHED2_DATES)
+	  /* The doloop_end insn prints no syllable of its own -- it is the
+	     "# loopdo end" comment -- but it does carry the STOP flag of the
+	     bundle it shares with the last instructions of the loop body, and
+	     that bundle has to be closed here.  The hardware takes the back
+	     edge when the address of the *next* bundle reaches the end label,
+	     so a bundle left open puts the exit block's first instructions
+	     inside the loop and never lands on the end label at all; the
+	     assembler meanwhile keeps filling that bundle past what one can
+	     hold.  When the body's last bundle ends on a branch, a taken
+	     branch wins over the loop-back, so a nop bundle is appended to
+	     stand as the last one in its place.  Nothing is printed when the
+	     marker is alone in a bundle of its own: the instruction before it
+	     closed the body already, and a second ";;" would be an empty
+	     bundle.  */
+	  const char *note = "";
+	  if (doloop_end && jump_cycle == prev_cycle)
 	    {
-	      if (!doloop_end)
-		{
-		  const char *stalled = "";
-		  if (flags & LVX_SCHED2_INSN_STALL)
-		    stalled = "\t(stalled)";
-		  fprintf (file, "\t;;\t# (end cycle %d)%s\n", cycle,
-			   stalled);
-		}
-	      else if (jump_cycle == prev_cycle)
-		fprintf (file, "\tnop\n\t;;\n");
+	      fprintf (file, "\tnop\n\t;;\n");
+	      note = 0;
 	    }
-	  else
+	  else if (doloop_end && cycle != prev_cycle)
+	    note = 0;
+	  else if (!doloop_end && (flags & LVX_SCHED2_INSN_STALL))
+	    note = "\t(stalled)";
+	  else if (doloop_end)
+	    note = "\t(loop end)";
+
+	  if (note)
 	    {
-	      if (!doloop_end)
+	      if (TARGET_SCHED2_DATES)
+		fprintf (file, "\t;;\t# (end cycle %d)%s\n", cycle, note);
+	      else
 		fprintf (file, "\t;;\n");
-	      else if (jump_cycle == prev_cycle)
-		fprintf (file, "\tnop\n\t;;\n");
 	    }
 	}
 
