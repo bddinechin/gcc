@@ -5478,19 +5478,53 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn_and_split "trunc<wide><mode>2"
-  [(set (match_operand:S128F 0 "register_operand" "=&r")
+(define_insn "lvx_fnarrow<narrowx>"
+  [(set (match_operand:S128F 0 "register_operand" "=r")
         (float_truncate:S128F (match_operand:<WIDE> 1 "register_operand" "r")))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (float_truncate:<HALF> (subreg:<HWIDE> (match_dup 1) 0)))
-   (set (subreg:<HALF> (match_dup 0) 8)
-        (float_truncate:<HALF> (subreg:<HWIDE> (match_dup 1) 16)))]
-  ""
+  "LVX_2 && HAVE_LVX_FP_NARROW_VECTOR"
+  "fnarrow<narrowx> %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "full")]
+   (set_attr "issue" "lite")]
+)
+
+(define_expand "trunc<wide><mode>2"
+  [(set (match_operand:S128F 0 "register_operand" "")
+        (float_truncate:S128F (match_operand:<WIDE> 1 "register_operand" "")))]
+  "LVX_2"
+  {
+    if (HAVE_LVX_FP_NARROW_VECTOR)
+      {
+	emit_insn (gen_lvx_fnarrow<narrowx> (operands[0], operands[1]));
+	DONE;
+      }
+
+    /* One scalar FNARROW per lane, through a stack slot.  The lanes cannot be
+       reached with subregs -- a 2-byte HF at offset 2 of a register pair is
+       not an addressable subreg and simplify_gen_subreg returns NULL -- and
+       the 64-bit chunk patterns this used to split into went with 64-bit
+       SIMD, which is what made a v8hf divide ICE on a subreg:V4HF.
+
+       Do NOT "simplify" this by dropping the optab and letting the middle end
+       lower the conversion: with no trunc<wide><mode>2 the result folds to a
+       zero vector at -O1 and above.  A missing optab miscompiles here, it does
+       not fall back.  */
+    machine_mode dm = GET_MODE_INNER (<MODE>mode);
+    machine_mode sm = GET_MODE_INNER (<WIDE>mode);
+    rtx smem = assign_stack_temp (<WIDE>mode, GET_MODE_SIZE (<WIDE>mode));
+    rtx dmem = assign_stack_temp (<MODE>mode, GET_MODE_SIZE (<MODE>mode));
+
+    emit_move_insn (smem, force_reg (<WIDE>mode, operands[1]));
+    for (int i = 0; i < GET_MODE_NUNITS (<MODE>mode); i++)
+      {
+	rtx t = gen_reg_rtx (sm);
+	rtx r = gen_reg_rtx (dm);
+	emit_move_insn (t, adjust_address (smem, sm, i * GET_MODE_SIZE (sm)));
+	emit_insn (gen_rtx_SET (r, gen_rtx_FLOAT_TRUNCATE (dm, t)));
+	emit_move_insn (adjust_address (dmem, dm, i * GET_MODE_SIZE (dm)), r);
+      }
+    emit_move_insn (operands[0], dmem);
+    DONE;
+  }
 )
 
 (define_expand "extend<mode><wide>2"
@@ -6024,23 +6058,56 @@
   ""
 )
 
-(define_insn_and_split "trunc<wide><mode>2"
-  [(set (match_operand:S256F 0 "register_operand" "=&r")
-        (float_truncate:S256F (match_operand:<WIDE> 1 "register_operand" "r")))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<QUART> (match_dup 0) 0)
-        (float_truncate:<QUART> (subreg:<QWIDE> (match_dup 1) 0)))
-   (set (subreg:<QUART> (match_dup 0) 8)
-        (float_truncate:<QUART> (subreg:<QWIDE> (match_dup 1) 16)))
-   (set (subreg:<QUART> (match_dup 0) 16)
-        (float_truncate:<QUART> (subreg:<QWIDE> (match_dup 1) 32)))
-   (set (subreg:<QUART> (match_dup 0) 24)
-        (float_truncate:<QUART> (subreg:<QWIDE> (match_dup 1) 48)))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "full")]
+;; FNARROWWHO and FNARROWDWQ write 128 bits, which is the widest narrowing
+;; the ISA has, so a 256-bit result takes two of them -- one per 128-bit half
+;; of the destination, reading the corresponding 256-bit half of the source.
+;; This used to split into 64-bit <QUART> chunks, whose sub-patterns went with
+;; 64-bit SIMD, exactly as the S128F case above did.
+
+(define_expand "trunc<wide><mode>2"
+  [(set (match_operand:S256F 0 "register_operand" "")
+        (float_truncate:S256F (match_operand:<WIDE> 1 "register_operand" "")))]
+  "LVX_2"
+  {
+    /* 128 bits is the widest narrowing the ISA has, so a 256-bit result is
+       two of them -- one per 128-bit half of the destination, reading the
+       corresponding 256-bit half of the source.  With the vector form gated
+       off it is one scalar FNARROW per lane, as in the S128F case above, and
+       for the same reason: leaving the optab out miscompiles rather than
+       falling back.  */
+    machine_mode dm = GET_MODE_INNER (<MODE>mode);
+    machine_mode sm = GET_MODE_INNER (<WIDE>mode);
+    rtx dst = gen_reg_rtx (<MODE>mode);
+    rtx src = force_reg (<WIDE>mode, operands[1]);
+
+    if (HAVE_LVX_FP_NARROW_VECTOR)
+      {
+	for (int i = 0; i < 2; i++)
+	  {
+	    rtx d = simplify_gen_subreg (<HALF>mode, dst, <MODE>mode, i * 16);
+	    rtx s = simplify_gen_subreg (<HWIDE>mode, src, <WIDE>mode, i * 32);
+	    gcc_assert (d && s);
+	    emit_insn (gen_lvx_fnarrow<narrowx> (d, s));
+	  }
+	emit_move_insn (operands[0], dst);
+	DONE;
+      }
+
+    rtx smem = assign_stack_temp (<WIDE>mode, GET_MODE_SIZE (<WIDE>mode));
+    rtx dmem = assign_stack_temp (<MODE>mode, GET_MODE_SIZE (<MODE>mode));
+
+    emit_move_insn (smem, src);
+    for (int i = 0; i < GET_MODE_NUNITS (<MODE>mode); i++)
+      {
+	rtx t = gen_reg_rtx (sm);
+	rtx r = gen_reg_rtx (dm);
+	emit_move_insn (t, adjust_address (smem, sm, i * GET_MODE_SIZE (sm)));
+	emit_insn (gen_rtx_SET (r, gen_rtx_FLOAT_TRUNCATE (dm, t)));
+	emit_move_insn (adjust_address (dmem, dm, i * GET_MODE_SIZE (dm)), r);
+      }
+    emit_move_insn (operands[0], dmem);
+    DONE;
+  }
 )
 
 (define_expand "extend<mode><wide>2"

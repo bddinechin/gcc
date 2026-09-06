@@ -872,6 +872,13 @@
 ])
 
 ;; Attribute to get the widening suffix of a vector mode.
+(define_mode_attr narrowx [
+  (V8HF    "who")
+  (V4SF    "dwq")
+  (V16HF   "who")
+  (V8SF    "dwq")
+])
+
 (define_mode_attr widenx [
   (V8QI    "bho")
   (V4HI    "hwq")

@@ -35,6 +35,16 @@ enum lvx_arch_type
 #define LVX_1 (lvx_arch_name == LVX_ARCH_LVX_1)
 #define LVX_2 (lvx_arch_name == LVX_ARCH_LVX_2)
 
+/* FNARROWWHO and FNARROWDWQ are the vector narrowings, and they cannot be
+   used as the ISA currently describes them: their format ALU_FHOWR/ALU_FWQWR
+   declares the destination { singleReg: registerW }, 64 bits, while the
+   behaviour packs eight binary16 (or four binary32) results into it -- 128
+   bits.  gas, generated from the same description, rejects
+   "fnarrowwho $r0r1 = $r0r1r2r3".  Until the destination becomes pairedReg,
+   trunc<wide><mode>2 narrows one lane at a time with the scalar FNARROWWH /
+   FNARROWDW, which are consistent.  Flip this to (1) when the ISA is fixed.  */
+#define HAVE_LVX_FP_NARROW_VECTOR (0) // fnarrowwho, fnarrowdwq
+
 #define HAVE_LVX_FP_CONV_WITH_SHIFT (0)
 #define HAVE_LVX_SILENT_FP_OPS (0)
 #define HAVE_LVX_ADDRESSING_XS (0)
