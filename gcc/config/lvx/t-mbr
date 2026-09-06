@@ -1,4 +1,19 @@
 MULTILIB_EXTRA_OPTS = fdata-sections ffunction-sections
-MULTILIB_OPTIONS = march=lvx-1
-MULTILIB_DIRNAMES = lvx-1
-MULTILIB_EXCLUSIONS = !march=lvx-1
+# Both cores get a libgcc.  With only the lvx-1 variant declared, an
+# -march=lvx-2 compile selected multilib directory "." -- which was never
+# built -- so -print-libgcc-file-name returned a bare "libgcc.a" and no
+# lvx-2 program could link against libgcc at all.  That is broader than the
+# missing __divv4sf3 the libgcc t-lvx comment describes: it was every helper.
+#
+# MULTILIB_REQUIRED rather than MULTILIB_EXCLUSIONS, because the two variants
+# are now an explicit list.  It is safe to require an -march because
+# DRIVER_SELF_SPECS in lvx.h supplies -march=lvx-1 when none is given, so
+# multilib selection never sees a compile without one.
+MULTILIB_OPTIONS = march=lvx-1/march=lvx-2
+MULTILIB_DIRNAMES = lvx-1 lvx-2
+# The exclusion drops the bare "." variant, which would only duplicate
+# lvx-1; the original config did the same with a one-option rule.  It is
+# safe to have no default variant because DRIVER_SELF_SPECS in lvx.h
+# supplies -march=lvx-1 when none is given, so multilib selection never
+# sees a compile without an -march.
+MULTILIB_EXCLUSIONS = !march=lvx-1/!march=lvx-2
