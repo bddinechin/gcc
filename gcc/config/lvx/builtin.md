@@ -5101,102 +5101,33 @@
 ;;
 ;; The ISA has both IEEE families and the mnemonics invite the wrong pairing:
 ;; fmin/fmax are 754-2019 minimum/maximum and propagate a NaN, fminn/fmaxn are
-;; 754-2008 minNum/maxNum and return the numeric operand.  C's fmin and fmax
-;; are the -2008 ones, so the fmin<mode>3 optabs in scalar.md and vector.md
-;; emit fminn/fmaxn.  A builtin, though, is named after an instruction and must
-;; emit that instruction -- __builtin_lvx_fmind was reaching fmindf3 and coming
-;; out as fminnd, which left the ISA's fmind unreachable by any route.
+;; 754-2008 minNum/maxNum and return the numeric operand.
 ;;
-;; These are UNSPECs rather than smin/smax: a builtin's semantics are exact,
-;; and smin's behaviour on NaN and signed zero is unspecified, which is the
-;; second way the same patterns went wrong before.
+;; One define_insn per mode class covers all four, the way config/aarch64 does
+;; it: an int iterator over the unspecs, and an attribute that spells both the
+;; pattern name and the mnemonic.  aarch64 names the -2008 pair after the
+;; standard names and gives the -2019 pair a private one, fmin_nan<mode>3;
+;; here every one of the four is a builtin, so they are all lvx_-prefixed and
+;; the standard names sit below.
 
-(define_insn "lvx_fmin<suffix>"
+(define_insn "lvx_<minmax><suffix>"
   [(set (match_operand:FLOATM 0 "register_operand" "=r")
         (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
                         (match_operand:FLOATM 2 "register_operand" "r")]
-                       UNSPEC_FMIN))]
+                       MINMAX))]
   ""
-  "fmin<suffix> %0 = %1, %2"
+  "<minmax><suffix> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
 )
 
-(define_insn "lvx_fminn<suffix>"
-  [(set (match_operand:FLOATM 0 "register_operand" "=r")
-        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
-                        (match_operand:FLOATM 2 "register_operand" "r")]
-                       UNSPEC_FMINN))]
-  ""
-  "fminn<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_fmax<suffix>"
-  [(set (match_operand:FLOATM 0 "register_operand" "=r")
-        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
-                        (match_operand:FLOATM 2 "register_operand" "r")]
-                       UNSPEC_FMAX))]
-  ""
-  "fmax<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_fmaxn<suffix>"
-  [(set (match_operand:FLOATM 0 "register_operand" "=r")
-        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
-                        (match_operand:FLOATM 2 "register_operand" "r")]
-                       UNSPEC_FMAXN))]
-  ""
-  "fmaxn<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
-)
-
-;; The same four at 128 bits, which is lvx-2.
-
-(define_insn "lvx_fmin<suffix>"
+(define_insn "lvx_<minmax><suffix>"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
                        (match_operand:V128F 2 "register_operand" "r")]
-                      UNSPEC_FMIN))]
+                      MINMAX))]
   "LVX_2"
-  "fmin<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_fminn<suffix>"
-  [(set (match_operand:V128F 0 "register_operand" "=r")
-        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
-                       (match_operand:V128F 2 "register_operand" "r")]
-                      UNSPEC_FMINN))]
-  "LVX_2"
-  "fminn<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_fmax<suffix>"
-  [(set (match_operand:V128F 0 "register_operand" "=r")
-        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
-                       (match_operand:V128F 2 "register_operand" "r")]
-                      UNSPEC_FMAX))]
-  "LVX_2"
-  "fmax<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_fmaxn<suffix>"
-  [(set (match_operand:V128F 0 "register_operand" "=r")
-        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
-                       (match_operand:V128F 2 "register_operand" "r")]
-                      UNSPEC_FMAXN))]
-  "LVX_2"
-  "fmaxn<suffix> %0 = %1, %2"
+  "<minmax><suffix> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
 )
@@ -5225,6 +5156,86 @@
   }
 )
 
+;; C's fmin and fmax are 754-2008 minNum and maxNum, and fmin<mode>3 /
+;; fmax<mode>3 are GCC's standard names for them: md.texi requires the other
+;; operand to be returned when one is a quiet NaN.  The RTL codes smin and smax
+;; cannot say that -- md.texi leaves their NaN and signed-zero results
+;; unspecified -- so the patterns carrying those bodies are named smin<mode>3
+;; and smax<mode>3, where the unspecified contract is the right one and either
+;; instruction satisfies it.  These are the defined ones.  Same split as
+;; aarch64, for the same reason.
+;;
+;; Both reach fminn/fmaxn, so nothing about the generated code changes; what
+;; changes is that a pattern no longer promises IEEE semantics through an RTL
+;; code that disclaims them.  That ambiguity is how the two families were
+;; crossed twice, in scalar.md until a412f7a9c65 and in vector.md until
+;; 2026-09-06.
+
+(define_expand "fmin<mode>3"
+  [(match_operand:FLOATM 0 "register_operand" "")
+   (match_operand:FLOATM 1 "register_operand" "")
+   (match_operand:FLOATM 2 "register_operand" "")]
+  ""
+  {
+    emit_insn (gen_lvx_fminn<suffix> (operands[0], operands[1], operands[2]));
+    DONE;
+  }
+)
+
+(define_expand "fmax<mode>3"
+  [(match_operand:FLOATM 0 "register_operand" "")
+   (match_operand:FLOATM 1 "register_operand" "")
+   (match_operand:FLOATM 2 "register_operand" "")]
+  ""
+  {
+    emit_insn (gen_lvx_fmaxn<suffix> (operands[0], operands[1], operands[2]));
+    DONE;
+  }
+)
+
+(define_expand "fmin<mode>3"
+  [(match_operand:V128F 0 "register_operand" "")
+   (match_operand:V128F 1 "register_operand" "")
+   (match_operand:V128F 2 "register_operand" "")]
+  "LVX_2"
+  {
+    emit_insn (gen_lvx_fminn<suffix> (operands[0], operands[1], operands[2]));
+    DONE;
+  }
+)
+
+(define_expand "fmax<mode>3"
+  [(match_operand:V128F 0 "register_operand" "")
+   (match_operand:V128F 1 "register_operand" "")
+   (match_operand:V128F 2 "register_operand" "")]
+  "LVX_2"
+  {
+    emit_insn (gen_lvx_fmaxn<suffix> (operands[0], operands[1], operands[2]));
+    DONE;
+  }
+)
+
+(define_expand "fmin<mode>3"
+  [(match_operand:V256F 0 "register_operand" "")
+   (match_operand:V256F 1 "register_operand" "")
+   (match_operand:V256F 2 "register_operand" "")]
+  "LVX_2"
+  {
+    emit_insn (gen_lvx_fminn<suffix> (operands[0], operands[1], operands[2]));
+    DONE;
+  }
+)
+
+(define_expand "fmax<mode>3"
+  [(match_operand:V256F 0 "register_operand" "")
+   (match_operand:V256F 1 "register_operand" "")
+   (match_operand:V256F 2 "register_operand" "")]
+  "LVX_2"
+  {
+    emit_insn (gen_lvx_fmaxn<suffix> (operands[0], operands[1], operands[2]));
+    DONE;
+  }
+)
 
 ;; LVX_LBX, LVX_LHX, LVX_LWX
 

@@ -2537,7 +2537,7 @@
 ; __builtin_fmin(NaN, x) returned NaN instead of x.  Every non-NaN case
 ; agreed, which is why it went unnoticed; validation/tests/micro/minmax.c
 ; is the regression test.  Do not "simplify" these back to fmin/fmax.
-(define_insn "fminhf3"
+(define_insn "sminhf3"
   [(set (match_operand:HF 0 "register_operand" "=r")
         (smin:HF (match_operand:HF 1 "register_operand" "r")
                  (match_operand:HF 2 "register_operand" "r")))]
@@ -2547,7 +2547,7 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "fmaxhf3"
+(define_insn "smaxhf3"
   [(set (match_operand:HF 0 "register_operand" "=r")
         (smax:HF (match_operand:HF 1 "register_operand" "r")
                  (match_operand:HF 2 "register_operand" "r")))]
@@ -2804,7 +2804,7 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "fminsf3"
+(define_insn "sminsf3"
   [(set (match_operand:SF 0 "register_operand" "=r")
         (smin:SF (match_operand:SF 1 "register_operand" "r")
                  (match_operand:SF 2 "register_operand" "r")))]
@@ -2814,7 +2814,7 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "fmaxsf3"
+(define_insn "smaxsf3"
   [(set (match_operand:SF 0 "register_operand" "=r")
         (smax:SF (match_operand:SF 1 "register_operand" "r")
                  (match_operand:SF 2 "register_operand" "r")))]
@@ -3149,7 +3149,7 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "fmindf3"
+(define_insn "smindf3"
   [(set (match_operand:DF 0 "register_operand" "=r")
         (smin:DF (match_operand:DF 1 "register_operand" "r")
                  (match_operand:DF 2 "register_operand" "r")))]
@@ -3159,7 +3159,7 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "fmaxdf3"
+(define_insn "smaxdf3"
   [(set (match_operand:DF 0 "register_operand" "=r")
         (smax:DF (match_operand:DF 1 "register_operand" "r")
                  (match_operand:DF 2 "register_operand" "r")))]

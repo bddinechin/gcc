@@ -5533,7 +5533,7 @@
 ;; Nothing but a NaN operand separates the two, so this cannot be caught by a
 ;; test that does not feed one; validation/tests/ir/minmax-nan.ll is the check.
 
-(define_insn "fmin<mode>3"
+(define_insn "smin<mode>3"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smin:V128F (match_operand:V128F 1 "register_operand" "r")
                     (match_operand:V128F 2 "register_operand" "r")))]
@@ -5544,7 +5544,7 @@
    (set_attr "length" "4")]
 )
 
-(define_insn "*fmin<mode>3_s1"
+(define_insn "*smin<mode>3_s1"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smin:V128F (vec_duplicate:V128F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V128F 2 "register_operand" "r")))]
@@ -5555,7 +5555,7 @@
    (set_attr "length" "4")]
 )
 
-(define_insn "*fmin<mode>3_s2"
+(define_insn "*smin<mode>3_s2"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smin:V128F (match_operand:V128F 1 "register_operand" "r")
                     (vec_duplicate:V128F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
@@ -5566,7 +5566,7 @@
    (set_attr "length" "4")]
 )
 
-(define_insn "fmax<mode>3"
+(define_insn "smax<mode>3"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smax:V128F (match_operand:V128F 1 "register_operand" "r")
                     (match_operand:V128F 2 "register_operand" "r")))]
@@ -5577,7 +5577,7 @@
    (set_attr "length" "4")]
 )
 
-(define_insn "*fmax<mode>3_s1"
+(define_insn "*smax<mode>3_s1"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smax:V128F (vec_duplicate:V128F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V128F 2 "register_operand" "r")))]
@@ -5588,7 +5588,7 @@
    (set_attr "length" "4")]
 )
 
-(define_insn "*fmax<mode>3_s2"
+(define_insn "*smax<mode>3_s2"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smax:V128F (match_operand:V128F 1 "register_operand" "r")
                     (vec_duplicate:V128F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
@@ -6073,7 +6073,7 @@
 
 ;; V256F (V16HF V8SF V4D)
 
-(define_insn_and_split "fmin<mode>3"
+(define_insn_and_split "smin<mode>3"
   [(set (match_operand:V256F 0 "register_operand" "=r")
         (smin:V256F (match_operand:V256F 1 "register_operand" "r")
                     (match_operand:V256F 2 "register_operand" "r")))]
@@ -6091,7 +6091,7 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn_and_split "*fmin<mode>3_s1"
+(define_insn_and_split "*smin<mode>3_s1"
   [(set (match_operand:V256F 0 "register_operand" "=&r")
         (smin:V256F (vec_duplicate:V256F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V256F 2 "register_operand" "r")))]
@@ -6109,7 +6109,7 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn_and_split "*fmin<mode>3_s2"
+(define_insn_and_split "*smin<mode>3_s2"
   [(set (match_operand:V256F 0 "register_operand" "=&r")
         (smin:V256F (match_operand:V256F 1 "register_operand" "r")
                     (vec_duplicate:V256F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
@@ -6127,7 +6127,7 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn_and_split "fmax<mode>3"
+(define_insn_and_split "smax<mode>3"
   [(set (match_operand:V256F 0 "register_operand" "=r")
         (smax:V256F (match_operand:V256F 1 "register_operand" "r")
                     (match_operand:V256F 2 "register_operand" "r")))]
@@ -6145,7 +6145,7 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn_and_split "*fmax<mode>3_s1"
+(define_insn_and_split "*smax<mode>3_s1"
   [(set (match_operand:V256F 0 "register_operand" "=&r")
         (smax:V256F (vec_duplicate:V256F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V256F 2 "register_operand" "r")))]
@@ -6163,7 +6163,7 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn_and_split "*fmax<mode>3_s2"
+(define_insn_and_split "*smax<mode>3_s2"
   [(set (match_operand:V256F 0 "register_operand" "=&r")
         (smax:V256F (match_operand:V256F 1 "register_operand" "r")
                     (vec_duplicate:V256F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
