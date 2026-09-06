@@ -263,14 +263,11 @@
                         (match_operand 2 "" "")] UNSPEC_XLOAD))]
   ""
   "xlo%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu") (const_string "lsu"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_x") (const_string "lsu_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_y") (const_string "lsu_y"))])
+    [(const_string "lsu")
+     (const_string "lsu_x")
+     (const_string "lsu_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -322,14 +319,11 @@
                        (match_operand 3 "" "")] UNSPEC_XLOADQ0))]
   ""
   "xlo%3%X2.q0 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))])
+  [(set (attr "type") (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu") (const_string "lsu"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_x") (const_string "lsu_x"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_y") (const_string "lsu_y"))])
+    [(const_string "lsu")
+     (const_string "lsu_x")
+     (const_string "lsu_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -340,14 +334,11 @@
                        (match_operand 3 "" "")] UNSPEC_XLOADQ1))]
   ""
   "xlo%3%X2.q1 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))])
+  [(set (attr "type") (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu") (const_string "lsu"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_x") (const_string "lsu_x"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_y") (const_string "lsu_y"))])
+    [(const_string "lsu")
+     (const_string "lsu_x")
+     (const_string "lsu_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -358,14 +349,11 @@
                        (match_operand 3 "" "")] UNSPEC_XLOADQ2))]
   ""
   "xlo%3%X2.q2 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))])
+  [(set (attr "type") (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu") (const_string "lsu"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_x") (const_string "lsu_x"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_y") (const_string "lsu_y"))])
+    [(const_string "lsu")
+     (const_string "lsu_x")
+     (const_string "lsu_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -376,14 +364,11 @@
                        (match_operand 3 "" "")] UNSPEC_XLOADQ3))]
   ""
   "xlo%3%X2.q3 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))])
+  [(set (attr "type") (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu") (const_string "lsu"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_x") (const_string "lsu_x"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_y") (const_string "lsu_y"))])
+    [(const_string "lsu")
+     (const_string "lsu_x")
+     (const_string "lsu_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -396,14 +381,11 @@
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ0))]
   ""
   "guard%5%X2.q0 %3? xlo%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu") (const_string "lsu"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_x") (const_string "lsu_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_y") (const_string "lsu_y"))])
+    [(const_string "lsu")
+     (const_string "lsu_x")
+     (const_string "lsu_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -416,14 +398,11 @@
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ1))]
   ""
   "guard%5%X2.q1 %3? xlo%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu") (const_string "lsu"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_x") (const_string "lsu_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_y") (const_string "lsu_y"))])
+    [(const_string "lsu")
+     (const_string "lsu_x")
+     (const_string "lsu_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -436,14 +415,11 @@
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ2))]
   ""
   "guard%5%X2.q2 %3? xlo%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu") (const_string "lsu"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_x") (const_string "lsu_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_y") (const_string "lsu_y"))])
+    [(const_string "lsu")
+     (const_string "lsu_x")
+     (const_string "lsu_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -456,14 +432,11 @@
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ3))]
   ""
   "guard%5%X2.q3 %3? xlo%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu") (const_string "lsu"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_x") (const_string "lsu_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_y") (const_string "lsu_y"))])
+    [(const_string "lsu")
+     (const_string "lsu_x")
+     (const_string "lsu_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -602,14 +575,11 @@
                       (match_operand 5 "" "")] UNSPEC_XLOADC))]
   ""
   "guard%5%X2 %3? xlo%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu") (const_string "lsu"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_x") (const_string "lsu_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_y") (const_string "lsu_y"))])
+    [(const_string "lsu")
+     (const_string "lsu_x")
+     (const_string "lsu_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -621,14 +591,11 @@
                       (match_operand 4 "" "")] UNSPEC_XLOADC))]
   ""
   "guard%4%X1 %2? xlo%3 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext"))])
+  [(set (attr "type") (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_ext_uncached") (const_string "load_ext")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu") (const_string "lsu"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_x") (const_string "lsu_x"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_y") (const_string "lsu_y"))])
+    [(const_string "lsu")
+     (const_string "lsu_x")
+     (const_string "lsu_y")])
    (set_attr "length" "4, 8, 12")]
 )
 

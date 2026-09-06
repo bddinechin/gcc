@@ -5039,14 +5039,11 @@
                    (match_operand 2 "" "")] UNSPEC_LOAD))]
   ""
   "ld%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5056,14 +5053,11 @@
                    (match_operand 2 "" "")] UNSPEC_LOAD))]
   ""
   "ld%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5073,14 +5067,11 @@
                    (match_operand 2 "" "")] UNSPEC_LOAD))]
   ""
   "lq%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5090,14 +5081,11 @@
                          (match_operand 2 "" "")] UNSPEC_LOAD))]
   ""
   "lq%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5107,14 +5095,11 @@
                          (match_operand 2 "" "")] UNSPEC_LOAD))]
   ""
   "lo%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5226,14 +5211,11 @@
                                     (match_operand 2 "" "")] UNSPEC_LOADZX)))]
   ""
   "lbz%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5243,14 +5225,11 @@
                                     (match_operand 2 "" "")] UNSPEC_LOADZX)))]
   ""
   "lhz%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5260,14 +5239,11 @@
                                     (match_operand 2 "" "")] UNSPEC_LOADZX)))]
   ""
   "lwz%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5277,14 +5253,11 @@
                     (match_operand 2 "" "")] UNSPEC_LOAD))]
   ""
   "ld%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5294,14 +5267,11 @@
                     (match_operand 2 "" "")] UNSPEC_LOAD))]
   ""
   "lq%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5311,14 +5281,11 @@
                     (match_operand 2 "" "")] UNSPEC_LOADZX))]
   ""
   "lhz%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5328,14 +5295,11 @@
                     (match_operand 2 "" "")] UNSPEC_LOADZX))]
   ""
   "lwz%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5345,14 +5309,11 @@
                     (match_operand 2 "" "")] UNSPEC_LOAD))]
   ""
   "ld%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5362,14 +5323,11 @@
                       (match_operand 2 "" "")] UNSPEC_LOAD))]
   ""
   "lq%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5379,14 +5337,11 @@
                       (match_operand 2 "" "")] UNSPEC_LOAD))]
   ""
   "lo%2%X1 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5418,14 +5373,11 @@
                                     (match_operand 5 "" "")] UNSPEC_LOADC)))]
   ""
   "guard%5%X2 %3? lbz%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5438,14 +5390,11 @@
                                     (match_operand 5 "" "")] UNSPEC_LOADC)))]
   ""
   "guard%5%X2 %3? lhz%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5458,14 +5407,11 @@
                                     (match_operand 5 "" "")] UNSPEC_LOADC)))]
   ""
   "guard%5%X2 %3? lwz%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5478,14 +5424,11 @@
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
   "guard%5%X2 %3? ld%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5498,14 +5441,11 @@
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
   "guard%5%X2 %3? lq%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5518,14 +5458,11 @@
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
   "guard%5%X2 %3? lhz%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5538,14 +5475,11 @@
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
   "guard%5%X2 %3? lwz%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5558,14 +5492,11 @@
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
   "guard%5%X2 %3? ld%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5608,14 +5539,11 @@
                       (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
   "guard%5%X2 %3? lq%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5645,14 +5573,11 @@
                       (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
   "guard%5%X2 %3? lo%4 %0 = %2"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5664,14 +5589,11 @@
                       (match_operand 4 "" "")] UNSPEC_LOADC))]
   ""
   "guard%4%X1 %2? lo%3 %0 = %1"
-  [(set_attr_alternative "type"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+  [(set (attr "type") (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_uncached") (const_string "load")))
    (set_attr_alternative "issue"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_y")])
    (set_attr "length" "4, 8, 12")]
 )
 
