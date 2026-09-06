@@ -5439,7 +5439,7 @@
         (fma:S128F (match_operand:S128F 1 "register_operand" "r")
                    (match_operand:S128F 2 "register_operand" "r")
                    (match_operand:S128F 3 "register_operand" "0")))]
-  ""
+  "LVX_2"
   "ffma<suffix> %0 = %1, %2"
   "!HAVE_LVX_FMA_<MODE>_<MODE>_<MODE> && reload_completed"
   [(set (subreg:<CHUNK> (match_dup 0) 0)
@@ -5461,7 +5461,7 @@
         (fma:S128F (neg:S128F (match_operand:S128F 1 "register_operand" "r"))
                    (match_operand:S128F 2 "register_operand" "r")
                    (match_operand:S128F 3 "register_operand" "0")))]
-  ""
+  "LVX_2"
   "ffms<suffix> %0 = %1, %2"
   "!HAVE_LVX_FMS_<MODE>_<MODE>_<MODE> && reload_completed"
   [(set (subreg:<CHUNK> (match_dup 0) 0)
@@ -5917,7 +5917,7 @@
         (fma:S256F (match_operand:S256F 1 "register_operand" "r")
                    (match_operand:S256F 2 "register_operand" "r")
                    (match_operand:S256F 3 "register_operand" "0")))]
-  ""
+  "LVX_2"
   "#"
 )
 
@@ -5968,7 +5968,7 @@
         (fma:S256F (neg:S256F (match_operand:S256F 1 "register_operand" "r"))
                    (match_operand:S256F 2 "register_operand" "r")
                    (match_operand:S256F 3 "register_operand" "0")))]
-  ""
+  "LVX_2"
   "#"
 )
 

@@ -752,7 +752,7 @@
   [(set (match_operand:<WCHUNK> 0 "register_operand" "=r")
         (unspec:<WCHUNK> [(match_operand:S128L 1 "register_operand" "r")
                           (match_operand 2 "" "")] UNSPEC_WIDENS))]
-  ""
+  "LVX_2"
   "widens<wchunkx>%2 %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
@@ -3447,7 +3447,7 @@
                        (match_operand:S128F 2 "register_operand" "r")
                        (match_operand:S128F 3 "register_operand" "0")
                        (match_operand 4 "" "")] UNSPEC_FFMA))]
-  "HAVE_LVX_FMA_<MODE>_<MODE>_<MODE>"
+  "LVX_2 && (HAVE_LVX_FMA_<MODE>_<MODE>_<MODE>)"
   "ffma<suffix>%4 %0 = %1, %2"
   [(set (attr "type")
      (if_then_else (match_operand 1 "float16_inner_mode") (const_string "fmadds") (const_string "fmaddd")))
@@ -3779,7 +3779,7 @@
                        (match_operand:S128F 2 "register_operand" "r")
                        (match_operand:S128F 3 "register_operand" "0")
                        (match_operand 4 "" "")] UNSPEC_FFMS))]
-  "HAVE_LVX_FMS_<MODE>_<MODE>_<MODE>"
+  "LVX_2 && (HAVE_LVX_FMS_<MODE>_<MODE>_<MODE>)"
   "ffms<suffix>%4 %0 = %1, %2"
   [(set (attr "type")
      (if_then_else (match_operand 1 "float16_inner_mode") (const_string "fmadds") (const_string "fmaddd")))
