@@ -649,8 +649,7 @@
         (UNARITH:V16QI (match_operand:V16QI 1 "register_operand" "r")))]
   "LVX_2 && (HAVE_LVX_<unarith>_V16QI)"
   "<stem>bx %0 = %1"
-  [(set_attr "type" "alu_lite_x2_x")
-   (set_attr "length"          "16")]
+  [(set_attr "type" "alu_lite")]
 )
 (define_insn "*<prefix>v32qi2_2"
   [(set (match_operand:V32QI 0 "register_operand" "=r")
@@ -2188,8 +2187,7 @@
         (neg:V128J (match_operand:V128J 1 "register_operand" "r")))]
   "LVX_2"
   "neg<suffix> %0 = %1"
-  [(set_attr "type" "alu_lite_x2_x")
-   (set_attr "length"          "16")]
+  [(set_attr "type" "alu_lite")]
 )
 
 (define_insn "ssneg<mode>2"
@@ -2197,8 +2195,7 @@
         (ss_neg:V128J (match_operand:V128J 1 "register_operand" "r")))]
   "LVX_2"
   "sbfs<suffix> %0 = %1, 0"
-  [(set_attr "type" "alu_lite_x2_x")
-   (set_attr "length"          "16")]
+  [(set_attr "type" "alu_lite")]
 )
 
 (define_insn "abs<mode>2"
@@ -2206,8 +2203,7 @@
         (abs:V128J (match_operand:V128J 1 "register_operand" "r")))]
   "LVX_2"
   "abs<suffix> %0 = %1"
-  [(set_attr "type" "alu_lite_x2_x")
-   (set_attr "length"          "16")]
+  [(set_attr "type" "alu_lite")]
 )
 
 (define_expand "ssabs<mode>2"
@@ -2235,8 +2231,7 @@
         (ss_abs:V128J (match_operand:V128J 1 "register_operand" "r")))]
   "LVX_2 && (HAVE_LVX_SS_ABS_<MODE>)"
   "abss<suffix> %0 = %1"
-  [(set_attr "type" "alu_lite_x2_x")
-   (set_attr "length"          "16")]
+  [(set_attr "type" "alu_lite")]
 )
 
 (define_insn "clrsb<mode>2"

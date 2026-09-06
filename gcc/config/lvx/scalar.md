@@ -151,8 +151,7 @@
         (neg:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
   "negw %0 = %1"
-  [(set_attr "type" "alu_tiny_w")
-   (set (attr "length") (const_int 8))]
+  [(set_attr "type" "alu_tiny")]
 )
 
 ;; No "neghi2"/"negqi2".  They emitted neghq and negbo, which are not scalar
@@ -648,121 +647,109 @@
 )
 
 (define_insn "lvx_land<suffix>"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
-        (and:SIDI (ne:SIDI (match_operand:SIDI 1 "register_operand" "%r,r") (const_int 0))
-                  (ne:SIDI (match_operand:SIDI 2 "register_s32_operand" "r,I32") (const_int 0))))]
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (and:SIDI (ne:SIDI (match_operand:SIDI 1 "register_operand" "%r") (const_int 0))
+                  (ne:SIDI (match_operand:SIDI 2 "register_operand" "r") (const_int 0))))]
   ""
   "land<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 (define_insn "*ext_landw"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (and:DI (ne:DI (match_operand:SI 1 "register_operand" "%r,r") (const_int 0))
-                (ne:DI (match_operand:SI 2 "register_w32_operand" "r,W32") (const_int 0))))]
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (and:DI (ne:DI (match_operand:SI 1 "register_operand" "%r") (const_int 0))
+                (ne:DI (match_operand:SI 2 "register_operand" "r") (const_int 0))))]
   ""
   "landw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 
 (define_insn "lvx_lnand<suffix>"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
-        (ior:SIDI (eq:SIDI (match_operand:SIDI 1 "register_operand" "%r,r") (const_int 0))
-                  (eq:SIDI (match_operand:SIDI 2 "register_s32_operand" "r,I32") (const_int 0))))]
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (ior:SIDI (eq:SIDI (match_operand:SIDI 1 "register_operand" "%r") (const_int 0))
+                  (eq:SIDI (match_operand:SIDI 2 "register_operand" "r") (const_int 0))))]
   ""
   "lnand<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 (define_insn "*ext_lnandw"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (ior:DI (eq:DI (match_operand:SI 1 "register_operand" "%r,r") (const_int 0))
-                (eq:DI (match_operand:SI 2 "register_w32_operand" "r,W32") (const_int 0))))]
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (ior:DI (eq:DI (match_operand:SI 1 "register_operand" "%r") (const_int 0))
+                (eq:DI (match_operand:SI 2 "register_operand" "r") (const_int 0))))]
   ""
   "lnandw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 
 (define_insn "lvx_lior<suffix>"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
-        (ior:SIDI (ne:SIDI (match_operand:SIDI 1 "register_operand" "%r,r") (const_int 0))
-                  (ne:SIDI (match_operand:SIDI 2 "register_s32_operand" "r,I32") (const_int 0))))]
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (ior:SIDI (ne:SIDI (match_operand:SIDI 1 "register_operand" "%r") (const_int 0))
+                  (ne:SIDI (match_operand:SIDI 2 "register_operand" "r") (const_int 0))))]
   ""
   "lior<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 (define_insn "*ext_liorw"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (ior:DI (ne:DI (match_operand:SI 1 "register_operand" "%r,r") (const_int 0))
-                (ne:DI (match_operand:SI 2 "register_w32_operand" "r,W32") (const_int 0))))]
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (ior:DI (ne:DI (match_operand:SI 1 "register_operand" "%r") (const_int 0))
+                (ne:DI (match_operand:SI 2 "register_operand" "r") (const_int 0))))]
   ""
   "liorw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 
 (define_insn "*lior<suffix>"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
-        (ne:SIDI (ior:SIDI (match_operand:SIDI 1 "register_operand" "%r,r")
-                           (match_operand:SIDI 2 "register_s32_operand" "r,I32"))
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (ne:SIDI (ior:SIDI (match_operand:SIDI 1 "register_operand" "%r")
+                           (match_operand:SIDI 2 "register_operand" "r"))
                  (const_int 0)))]
   ""
   "lior<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 (define_insn "*ext_liorw"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (ne:DI (ior:SI (match_operand:SI 1 "register_operand" "%r,r")
-                       (match_operand:SI 2 "register_w32_operand" "r,W32"))
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (ne:DI (ior:SI (match_operand:SI 1 "register_operand" "%r")
+                       (match_operand:SI 2 "register_operand" "r"))
                (const_int 0)))]
   ""
   "liorw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 
 (define_insn "lvx_lnior<suffix>"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
-        (and:SIDI (eq:SIDI (match_operand:SIDI 1 "register_operand" "%r,r") (const_int 0))
-                  (eq:SIDI (match_operand:SIDI 2 "register_s32_operand" "r,I32") (const_int 0))))]
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (and:SIDI (eq:SIDI (match_operand:SIDI 1 "register_operand" "%r") (const_int 0))
+                  (eq:SIDI (match_operand:SIDI 2 "register_operand" "r") (const_int 0))))]
   ""
   "lnior<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 (define_insn "*ext_lniorw"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (and:DI (eq:DI (match_operand:SI 1 "register_operand" "%r,r") (const_int 0))
-                (eq:DI (match_operand:SI 2 "register_w32_operand" "r,W32") (const_int 0))))]
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (and:DI (eq:DI (match_operand:SI 1 "register_operand" "%r") (const_int 0))
+                (eq:DI (match_operand:SI 2 "register_operand" "r") (const_int 0))))]
   ""
   "lniorw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 
 (define_insn "*lnior<suffix>"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
-        (eq:SIDI (ior:SIDI (match_operand:SIDI 1 "register_operand" "%r,r")
-                           (match_operand:SIDI 2 "register_s32_operand" "r,I32"))
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (eq:SIDI (ior:SIDI (match_operand:SIDI 1 "register_operand" "%r")
+                           (match_operand:SIDI 2 "register_operand" "r"))
                  (const_int 0)))]
   ""
   "lnior<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 (define_insn "*ext_lniorw"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (eq:DI (ior:SI (match_operand:SI 1 "register_operand" "%r,r")
-                       (match_operand:SI 2 "register_w32_operand" "r,W32"))
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (eq:DI (ior:SI (match_operand:SI 1 "register_operand" "%r")
+                       (match_operand:SI 2 "register_operand" "r"))
                  (const_int 0)))]
   ""
   "lniorw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
-   (set_attr "length" "     4,         8")]
+  [(set_attr "type" "alu_tiny")]
 )
 
 (define_insn "*zxh_and"
@@ -1403,8 +1390,7 @@
         (zero_extend:DI (neg:SI (match_operand:SI 1 "register_operand" "r"))))]
   ""
   "negw %0 = %1"
-  [(set_attr "type" "alu_tiny_w")
-   (set (attr "length") (const_int 8))]
+  [(set_attr "type" "alu_tiny")]
 )
 
 ;; zero-extend version of ssnegsi2
@@ -1504,8 +1490,7 @@
         (not:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
   "notw %0 = %1"
-  [(set_attr "type" "alu_tiny_w")
-   (set (attr "length") (const_int 8))]
+  [(set_attr "type" "alu_tiny")]
 )
 ;; zero-extend version of one_cmplsi2
 (define_insn "*one_cmplsi2_zext"
@@ -1513,8 +1498,7 @@
         (zero_extend:DI (not:SI (match_operand:SI 1 "register_operand" "r"))))]
   ""
   "notw %0 = %1"
-  [(set_attr "type" "alu_tiny_w")
-   (set (attr "length") (const_int 8))]
+  [(set_attr "type" "alu_tiny")]
 )
 
 (define_insn "lvx_stsuw"

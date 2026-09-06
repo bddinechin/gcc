@@ -867,8 +867,8 @@
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_ZXE))]
   ""
   "andq %0 = %1, 0x00FF00FF.@"
-  [(set_attr "type" "alu_lite_x2_x")
-   (set_attr "length"          "16")]
+  [(set_attr "type" "alu_lite_x")
+   (set_attr "length"           "8")]
 )
 
 (define_insn "lvx_zxebhx"
@@ -900,8 +900,8 @@
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_ZXE))]
   ""
   "andq %0 = %1, 0x0000FFFF.@"
-  [(set_attr "type" "alu_lite_x2_x")
-   (set_attr "length"          "16")]
+  [(set_attr "type" "alu_lite_x")
+   (set_attr "length"           "8")]
 )
 
 (define_insn "lvx_zxehwo"
@@ -1131,8 +1131,8 @@
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_QXO))]
   ""
   "andq %0 = %1, 0xFF00FF00.@"
-  [(set_attr "type" "alu_lite_x2_x")
-   (set_attr "length"          "16")]
+  [(set_attr "type" "alu_lite_x")
+   (set_attr "length"           "8")]
 )
 
 (define_insn "lvx_qxobhx"
@@ -1164,8 +1164,8 @@
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_QXO))]
   ""
   "andq %0 = %1, 0xFFFF0000.@"
-  [(set_attr "type" "alu_lite_x2_x")
-   (set_attr "length"          "16")]
+  [(set_attr "type" "alu_lite_x")
+   (set_attr "length"           "8")]
 )
 
 (define_insn "lvx_qxohwo"
