@@ -111,16 +111,17 @@
   (match_code "mem")
 {
   /* Weak symbols can be resolved to 0 and thus generate long branches that
-     don't fit in our 27 bits offsets. Calls to a function which declaration
-     has the 'farcall' attribute must also use indirect calls.
-     Reject weak symbols and 'farcall's here and handle that case
-     in the call expanders to generate indirect calls for weak references. */
+     don't fit in our 27 bits offsets.  Reject them here and let the call
+     expanders handle that case by generating indirect calls.
 
-  bool farcall = lvx_is_farcall_p (op);
+     A 'farcall' is out of CALL's reach too, but it is accepted here: CALLX
+     spans 54 bits, so the call stays direct.  Which of the two forms comes
+     out is the business of the patterns, each conditioned on
+     lvx_is_farcall_p, not of this predicate.  */
 
-  return  !farcall && (GET_CODE (XEXP (op, 0)) == LABEL_REF
-                       || (GET_CODE (XEXP (op, 0)) == SYMBOL_REF
-                             && !SYMBOL_REF_WEAK (XEXP (op, 0))));
+  return GET_CODE (XEXP (op, 0)) == LABEL_REF
+	 || (GET_CODE (XEXP (op, 0)) == SYMBOL_REF
+	     && !SYMBOL_REF_WEAK (XEXP (op, 0)));
 })
 
 ;; Integer comparison operators against integer zero.

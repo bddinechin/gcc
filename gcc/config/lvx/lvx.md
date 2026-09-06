@@ -928,10 +928,29 @@
   [(call (match_operand:P 0 "jump_operand" "")
          (match_operand 1 "" ""))
    (clobber (reg:DI LVX_RA_REGNO))]
-  ""
+  "!lvx_is_farcall_p (operands[0])"
   "call %0"
   [(set_attr "type" "jump")
    (set_attr "issue" "bcu_xfer")]
+)
+
+;; The X forms of the direct transfers.  CALL and GOTO reach 27 bits, which is
+;; 256 MB either way; CALLX and GOTOX put a second BCU syllable in the bundle
+;; to carry 27 more.  Unlike the conditional branches, the choice is not made
+;; by lvx_fix_pcreljump_ranges -- a call names a symbol, whose distance only
+;; the linker knows -- so it rests on the "farcall" attribute and -mfarcall,
+;; through which the user states that a callee is out of CALL's reach.  See
+;; "Long Offset Branches" in lvx.cc for why the "pcrel" attribute stays 0 here.
+
+(define_insn "*callx_<mode>"
+  [(call (match_operand:P 0 "jump_operand" "")
+         (match_operand 1 "" ""))
+   (clobber (reg:DI LVX_RA_REGNO))]
+  "lvx_is_farcall_p (operands[0])"
+  "callx %0"
+  [(set_attr "type" "jump")
+   (set_attr "issue" "bcu2_x")
+   (set_attr "length" "8")]
 )
 
 (define_expand "call_value"
@@ -966,10 +985,22 @@
         (call (match_operand:P 1 "jump_operand" "")
               (match_operand 2 "" "")))
    (clobber (reg:DI LVX_RA_REGNO))]
-  ""
+  "!lvx_is_farcall_p (operands[1])"
   "call %1"
   [(set_attr "type" "jump")
    (set_attr "issue" "bcu_xfer")]
+)
+
+(define_insn "*callx_value_<mode>"
+  [(set (match_operand 0 "" "")
+        (call (match_operand:P 1 "jump_operand" "")
+              (match_operand 2 "" "")))
+   (clobber (reg:DI LVX_RA_REGNO))]
+  "lvx_is_farcall_p (operands[1])"
+  "callx %1"
+  [(set_attr "type" "jump")
+   (set_attr "issue" "bcu2_x")
+   (set_attr "length" "8")]
 )
 
 (define_expand "sibcall_value"
@@ -990,10 +1021,22 @@
         (call (match_operand:P 1 "jump_operand" "")
               (match_operand 2 "" "")))
    (return)]
-  ""
+  "!lvx_is_farcall_p (operands[1])"
   "goto %1"
   [(set_attr "type" "jump")
    (set_attr "issue" "bcu_xfer")]
+)
+
+(define_insn "*sibcallx_value_<mode>"
+  [(set (match_operand 0 "" "")
+        (call (match_operand:P 1 "jump_operand" "")
+              (match_operand 2 "" "")))
+   (return)]
+  "lvx_is_farcall_p (operands[1])"
+  "gotox %1"
+  [(set_attr "type" "jump")
+   (set_attr "issue" "bcu2_x")
+   (set_attr "length" "8")]
 )
 
 (define_expand "sibcall"
@@ -1012,10 +1055,21 @@
   [(call (match_operand:P 0 "jump_operand" "")
          (match_operand 1 "" ""))
    (return)]
-  ""
+  "!lvx_is_farcall_p (operands[0])"
   "goto %0"
   [(set_attr "type" "jump")
    (set_attr "issue" "bcu_xfer")]
+)
+
+(define_insn "*sibcallx_<mode>"
+  [(call (match_operand:P 0 "jump_operand" "")
+         (match_operand 1 "" ""))
+   (return)]
+  "lvx_is_farcall_p (operands[0])"
+  "gotox %0"
+  [(set_attr "type" "jump")
+   (set_attr "issue" "bcu2_x")
+   (set_attr "length" "8")]
 )
 
 ;;

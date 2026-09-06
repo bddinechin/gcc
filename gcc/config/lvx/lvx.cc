@@ -5534,15 +5534,18 @@ lvx_function_ok_for_sibcall (tree decl, tree exp ATTRIBUTE_UNUSED)
   if (!decl)
     return false;
 
-  /* Do not tail-call to farcall, there are cases where our prologue
-   * overwrite the target register
-   */
-  tree attrs = TYPE_ATTRIBUTES (TREE_TYPE (decl));
-  if (LVX_FARCALL || lookup_attribute ("farcall", attrs))
-    return false;
+  /* A farcall used to be refused here, for the same reason as the weak
+     symbol below: it went out as an indirect jump through a register the
+     prologue could overwrite.  It no longer does -- a farcall sibcall is a
+     GOTOX naming the symbol, with no register in it at all -- so there is
+     nothing left to refuse.  (The test that stood here read the attribute
+     off TYPE_ATTRIBUTES, where a decl attribute never is, so it only ever
+     caught -mfarcall; an __attribute__((farcall)) tail call reached the
+     indirect sibcall patterns, which are commented out below, and ICEd.)  */
 
-  /* Do not tail-call calls to weak symbol
-   * Same reason as for farcall
+  /* Do not tail-call calls to weak symbol, whose reference still becomes an
+     indirect jump: GCC can allocate the destination to a call-used register
+     that the epilogue restores before the jump is taken.
    */
   if (DECL_WEAK (decl))
     {

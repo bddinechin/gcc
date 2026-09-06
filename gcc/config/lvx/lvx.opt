@@ -30,7 +30,7 @@ Enum(lvx_arch_type) String(lvx-2) Value(LVX_ARCH_LVX_2)
 
 mfarcall
 Target Var(LVX_FARCALL)
-Avoid all range limits on call instructions
+Assume every callee lies outside CALL's reach and emit the extended CALLX form
 
 mdump-costs
 Target Var(DUMP_COSTS) Init(0)
