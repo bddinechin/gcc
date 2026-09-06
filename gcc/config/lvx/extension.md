@@ -251,6 +251,23 @@
   }
 )
 
+;; ...and the insn the expander above produces, which did not exist here:
+;; every value of these modes that had to be stored -- returning one is enough
+;; -- reached vregs as (set (mem:V2OI) (reg:V2OI)) and died as an
+;; unrecognizable insn.  KVX carries this pattern and lvx_split_tca_moves'
+;; counterpart; LVX had kept the expander and lost both.
+
+(define_insn_and_split "*mov<mode>"
+  [(set (match_operand:XMOVM 0 "nonimmediate_operand" "=x,x,x,x,a,b,m,r,x")
+        (match_operand:XMOVM 1 "nonimmediate_operand"  "x,a,b,m,x,x,x,x,r"))]
+  "LVX_2" "#" "reload_completed"
+  [(const_int 0)]
+  {
+    lvx_split_tca_moves (operands[0], operands[1]);
+    DONE;
+  }
+)
+
 ;; XLOW*, XHIGH*
 
 (define_insn "lvx_xlow<hbitsize>"

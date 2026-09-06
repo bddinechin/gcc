@@ -97,6 +97,8 @@ extern enum lvx_variant lvx_insn_variant (rtx_insn *insn);
 extern bool lvx_uncached_variant_p (enum lvx_variant variant);
 extern const char *lvx_variant_suffix (enum lvx_variant variant);
 
+extern void lvx_split_tca_moves (rtx dst, rtx src);
+
 extern bool lvx_expand_load_multiple (rtx operands[]);
 extern bool lvx_expand_store_multiple (rtx operands[]);
 

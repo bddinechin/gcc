@@ -1759,6 +1759,44 @@ lvx_split_128bits_move (rtx dst, rtx src)
     }
 }
 
+/* Split a move of an extension value the instruction set cannot do in one go.
+   The extension file moves 256 bits at a time -- xlo, xso and xcopyo -- so a
+   wider move is a run over V1OI chunks.  A register-to-register move goes
+   through UNSPEC_XCOPY; anything touching memory is a plain set, which the
+   256-bit *mov pattern then turns into xlo or xso.
+
+   KVX picks a wider chunk for the register case when the ISA has one
+   (HAVE_KVX_EXT_COPY_V2OI, V4OI).  LVX removed xcopyx and xcopyv, so
+   HAVE_LVX_EXT_COPY_V1OI is the only one left and V1OI is the only chunk.  */
+
+void
+lvx_split_tca_moves (rtx dst, rtx src)
+{
+  gcc_assert (GET_MODE (dst) == GET_MODE (src));
+
+  machine_mode mode = GET_MODE (dst);
+  bool tca_to_tca = extension_register_operand (src, VOIDmode)
+		    && extension_register_operand (dst, VOIDmode);
+  int chunk_size = GET_MODE_SIZE (V1OImode);
+
+  for (int offset = 0; offset < GET_MODE_SIZE (mode); offset += chunk_size)
+    {
+      rtx op0 = simplify_gen_subreg (V1OImode, dst, mode, offset);
+      rtx op1 = simplify_gen_subreg (V1OImode, src, mode, offset);
+      gcc_assert (op0 && op1);
+
+      if (tca_to_tca)
+	{
+	  rtx modifier = gen_rtx_CONST_STRING (VOIDmode, "");
+	  rtx xcopy = gen_rtx_UNSPEC (V1OImode, gen_rtvec (2, op1, modifier),
+				      UNSPEC_XCOPY);
+	  emit_insn (gen_rtx_SET (op0, xcopy));
+	}
+      else
+	emit_insn (gen_rtx_SET (op0, op1));
+    }
+}
+
 /* Split a 256-bit register move into 64-bit moves.  */
 void
 lvx_split_256bits_move (rtx dst, rtx src)
