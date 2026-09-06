@@ -1786,3 +1786,10 @@
   (V32OI   "V4OI")
 ])
 
+;; The four IEEE min/max families, so the 256-bit aggregates are written once.
+;; fmin/fmax propagate a NaN (754-2019 minimum/maximum); fminn/fmaxn return the
+;; numeric operand (754-2008 minNum/maxNum).  See the note in builtin.md.
+(define_int_iterator MINMAX [UNSPEC_FMIN UNSPEC_FMINN UNSPEC_FMAX UNSPEC_FMAXN])
+
+(define_int_attr minmax [(UNSPEC_FMIN "fmin") (UNSPEC_FMINN "fminn")
+			 (UNSPEC_FMAX "fmax") (UNSPEC_FMAXN "fmaxn")])

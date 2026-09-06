@@ -117,6 +117,10 @@
         UNSPEC_FMULC
         UNSPEC_FFMAC
         UNSPEC_FFMSC
+        UNSPEC_FMIN
+        UNSPEC_FMINN
+        UNSPEC_FMAX
+        UNSPEC_FMAXN
         UNSPEC_FMULX
         UNSPEC_FFMAX
         UNSPEC_FFMSX

@@ -5097,6 +5097,135 @@
 )
 
 
+;; FMIN*, FMINN*, FMAX*, FMAXN*
+;;
+;; The ISA has both IEEE families and the mnemonics invite the wrong pairing:
+;; fmin/fmax are 754-2019 minimum/maximum and propagate a NaN, fminn/fmaxn are
+;; 754-2008 minNum/maxNum and return the numeric operand.  C's fmin and fmax
+;; are the -2008 ones, so the fmin<mode>3 optabs in scalar.md and vector.md
+;; emit fminn/fmaxn.  A builtin, though, is named after an instruction and must
+;; emit that instruction -- __builtin_lvx_fmind was reaching fmindf3 and coming
+;; out as fminnd, which left the ISA's fmind unreachable by any route.
+;;
+;; These are UNSPECs rather than smin/smax: a builtin's semantics are exact,
+;; and smin's behaviour on NaN and signed zero is unspecified, which is the
+;; second way the same patterns went wrong before.
+
+(define_insn "lvx_fmin<suffix>"
+  [(set (match_operand:FLOATM 0 "register_operand" "=r")
+        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
+                        (match_operand:FLOATM 2 "register_operand" "r")]
+                       UNSPEC_FMIN))]
+  ""
+  "fmin<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "lvx_fminn<suffix>"
+  [(set (match_operand:FLOATM 0 "register_operand" "=r")
+        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
+                        (match_operand:FLOATM 2 "register_operand" "r")]
+                       UNSPEC_FMINN))]
+  ""
+  "fminn<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "lvx_fmax<suffix>"
+  [(set (match_operand:FLOATM 0 "register_operand" "=r")
+        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
+                        (match_operand:FLOATM 2 "register_operand" "r")]
+                       UNSPEC_FMAX))]
+  ""
+  "fmax<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "lvx_fmaxn<suffix>"
+  [(set (match_operand:FLOATM 0 "register_operand" "=r")
+        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
+                        (match_operand:FLOATM 2 "register_operand" "r")]
+                       UNSPEC_FMAXN))]
+  ""
+  "fmaxn<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+;; The same four at 128 bits, which is lvx-2.
+
+(define_insn "lvx_fmin<suffix>"
+  [(set (match_operand:V128F 0 "register_operand" "=r")
+        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
+                       (match_operand:V128F 2 "register_operand" "r")]
+                      UNSPEC_FMIN))]
+  "LVX_2"
+  "fmin<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "lvx_fminn<suffix>"
+  [(set (match_operand:V128F 0 "register_operand" "=r")
+        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
+                       (match_operand:V128F 2 "register_operand" "r")]
+                      UNSPEC_FMINN))]
+  "LVX_2"
+  "fminn<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "lvx_fmax<suffix>"
+  [(set (match_operand:V128F 0 "register_operand" "=r")
+        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
+                       (match_operand:V128F 2 "register_operand" "r")]
+                      UNSPEC_FMAX))]
+  "LVX_2"
+  "fmax<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "lvx_fmaxn<suffix>"
+  [(set (match_operand:V128F 0 "register_operand" "=r")
+        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
+                       (match_operand:V128F 2 "register_operand" "r")]
+                      UNSPEC_FMAXN))]
+  "LVX_2"
+  "fmaxn<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+;; ...and at 256 bits, which the ISA does not have: two halves of the 128-bit
+;; form, the shape lvx_fsrecwo and the other aggregates already use.
+
+(define_expand "lvx_<minmax><suffix>"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (unspec:V256F [(match_operand:V256F 1 "register_operand" "")
+                       (match_operand:V256F 2 "register_operand" "")]
+                      MINMAX))]
+  "LVX_2"
+  {
+    for (int half = 0; half < 2; half++)
+      {
+	unsigned off = half * 16;
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode, off);
+	rtx a = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode, off);
+	rtx b = simplify_gen_subreg (<HALF>mode, operands[2], <MODE>mode, off);
+	gcc_assert (d && a && b);
+	emit_insn (gen_rtx_SET (d, gen_rtx_UNSPEC (<HALF>mode,
+			        gen_rtvec (2, a, b), <MINMAX>)));
+      }
+    DONE;
+  }
+)
+
+
 ;; LVX_LBX, LVX_LHX, LVX_LWX
 
 (define_insn "lvx_lbz"

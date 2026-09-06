@@ -5523,12 +5523,22 @@
 
 ;; V128F (V8HF V4SF V2DF)
 
+;; fmin<mode>3 and fmax<mode>3 are GCC's standard names for C's fmin and fmax,
+;; which are 754-2008 minNum: they return the numeric operand when one side is
+;; a NaN.  That is fminn/fmaxn, not fmin/fmax -- the same pairing scalar.md got
+;; wrong until a412f7a9c65, still wrong here until 2026-09-06.  The mnemonics
+;; without the n propagate the NaN and belong to fminimum/fmaximum and to
+;; __builtin_lvx_fmin*, which builtin.md now emits directly.
+;;
+;; Nothing but a NaN operand separates the two, so this cannot be caught by a
+;; test that does not feed one; validation/tests/ir/minmax-nan.ll is the check.
+
 (define_insn "fmin<mode>3"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (smin:V128F (match_operand:V128F 1 "register_operand" "r")
                     (match_operand:V128F 2 "register_operand" "r")))]
   "LVX_2 && (HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans))"
-  "fmin<suffix> %0 = %1, %2"
+  "fminn<suffix> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")
    (set_attr "length" "4")]
@@ -5539,7 +5549,7 @@
         (smin:V128F (vec_duplicate:V128F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V128F 2 "register_operand" "r")))]
   "LVX_2 && (HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans))"
-  "fmin<suffix> %0 = %1, %2"
+  "fminn<suffix> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")
    (set_attr "length" "4")]
@@ -5550,7 +5560,7 @@
         (smin:V128F (match_operand:V128F 1 "register_operand" "r")
                     (vec_duplicate:V128F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
   "LVX_2 && (HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans))"
-  "fmin<suffix> %0 = %1, %2"
+  "fminn<suffix> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")
    (set_attr "length" "4")]
@@ -5561,7 +5571,7 @@
         (smax:V128F (match_operand:V128F 1 "register_operand" "r")
                     (match_operand:V128F 2 "register_operand" "r")))]
   "LVX_2 && (HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans))"
-  "fmax<suffix> %0 = %1, %2"
+  "fmaxn<suffix> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")
    (set_attr "length" "4")]
@@ -5572,7 +5582,7 @@
         (smax:V128F (vec_duplicate:V128F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V128F 2 "register_operand" "r")))]
   "LVX_2 && (HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans))"
-  "fmax<suffix> %0 = %1, %2"
+  "fmaxn<suffix> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")
    (set_attr "length" "4")]
@@ -5583,7 +5593,7 @@
         (smax:V128F (match_operand:V128F 1 "register_operand" "r")
                     (vec_duplicate:V128F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
   "LVX_2 && (HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans))"
-  "fmax<suffix> %0 = %1, %2"
+  "fmaxn<suffix> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")
    (set_attr "length" "4")]

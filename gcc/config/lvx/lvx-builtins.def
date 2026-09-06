@@ -273,25 +273,49 @@ LVX_BUILTIN_DIRECT   (xorsignd, xorsigndf3, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true
 LVX_BUILTIN_DIRECT   (xorsigndp, xorsignv2df3, V2DF_FTYPE_V2DF_V2DF,, true) // Vector
 LVX_BUILTIN_DIRECT   (xorsigndq, xorsignv4df3, V4DF_FTYPE_V4DF_V4DF,, true) // Vector
 
-LVX_BUILTIN_DIRECT   (fminh, fminhf3, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fminho, fminv8hf3, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fminhx, fminv16hf3, V16HF_FTYPE_V16HF_V16HF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fminw, fminsf3, FLOAT32_FTYPE_FLOAT32_FLOAT32,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fminwq, fminv4sf3, V4SF_FTYPE_V4SF_V4SF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fminwo, fminv8sf3, V8SF_FTYPE_V8SF_V8SF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fmind, fmindf3, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fmindp, fminv2df3, V2DF_FTYPE_V2DF_V2DF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fmindq, fminv4df3, V4DF_FTYPE_V4DF_V4DF,, lvx_2) // Vector
+// fmin*: the NaN-propagating family (754-2019 minimum/maximum);
+// fminn*: the numeric one (754-2008 minNum/maxNum), which is what C uses
+LVX_BUILTIN_DIRECT   (fminh, lvx_fminh, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fminho, lvx_fminho, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fminhx, lvx_fminhx, V16HF_FTYPE_V16HF_V16HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fminw, lvx_fminw, FLOAT32_FTYPE_FLOAT32_FLOAT32,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fminwq, lvx_fminwq, V4SF_FTYPE_V4SF_V4SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fminwo, lvx_fminwo, V8SF_FTYPE_V8SF_V8SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmind, lvx_fmind, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fmindp, lvx_fmindp, V2DF_FTYPE_V2DF_V2DF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmindq, lvx_fmindq, V4DF_FTYPE_V4DF_V4DF,, lvx_2) // Vector
 
-LVX_BUILTIN_DIRECT   (fmaxh, fmaxhf3, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fmaxho, fmaxv8hf3, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fmaxhx, fmaxv16hf3, V16HF_FTYPE_V16HF_V16HF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fmaxw, fmaxsf3, FLOAT32_FTYPE_FLOAT32_FLOAT32,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fmaxwq, fmaxv4sf3, V4SF_FTYPE_V4SF_V4SF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fmaxwo, fmaxv8sf3, V8SF_FTYPE_V8SF_V8SF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fmaxd, fmaxdf3, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fmaxdp, fmaxv2df3, V2DF_FTYPE_V2DF_V2DF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fmaxdq, fmaxv4df3, V4DF_FTYPE_V4DF_V4DF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fminnh, lvx_fminnh, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fminnho, lvx_fminnho, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fminnhx, lvx_fminnhx, V16HF_FTYPE_V16HF_V16HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fminnw, lvx_fminnw, FLOAT32_FTYPE_FLOAT32_FLOAT32,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fminnwq, lvx_fminnwq, V4SF_FTYPE_V4SF_V4SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fminnwo, lvx_fminnwo, V8SF_FTYPE_V8SF_V8SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fminnd, lvx_fminnd, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fminndp, lvx_fminndp, V2DF_FTYPE_V2DF_V2DF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fminndq, lvx_fminndq, V4DF_FTYPE_V4DF_V4DF,, lvx_2) // Vector
+
+// fmax*: the NaN-propagating family (754-2019 minimum/maximum);
+// fmaxn*: the numeric one (754-2008 minNum/maxNum), which is what C uses
+LVX_BUILTIN_DIRECT   (fmaxh, lvx_fmaxh, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fmaxho, lvx_fmaxho, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmaxhx, lvx_fmaxhx, V16HF_FTYPE_V16HF_V16HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmaxw, lvx_fmaxw, FLOAT32_FTYPE_FLOAT32_FLOAT32,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fmaxwq, lvx_fmaxwq, V4SF_FTYPE_V4SF_V4SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmaxwo, lvx_fmaxwo, V8SF_FTYPE_V8SF_V8SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmaxd, lvx_fmaxd, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fmaxdp, lvx_fmaxdp, V2DF_FTYPE_V2DF_V2DF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmaxdq, lvx_fmaxdq, V4DF_FTYPE_V4DF_V4DF,, lvx_2) // Vector
+
+LVX_BUILTIN_DIRECT   (fmaxnh, lvx_fmaxnh, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fmaxnho, lvx_fmaxnho, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmaxnhx, lvx_fmaxnhx, V16HF_FTYPE_V16HF_V16HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmaxnw, lvx_fmaxnw, FLOAT32_FTYPE_FLOAT32_FLOAT32,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fmaxnwq, lvx_fmaxnwq, V4SF_FTYPE_V4SF_V4SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmaxnwo, lvx_fmaxnwo, V8SF_FTYPE_V8SF_V8SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmaxnd, lvx_fmaxnd, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fmaxndp, lvx_fmaxndp, V2DF_FTYPE_V2DF_V2DF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fmaxndq, lvx_fmaxndq, V4DF_FTYPE_V4DF_V4DF,, lvx_2) // Vector
 
 LVX_BUILTIN_DIRECT   (fnegh, neghf2, FLOAT16_FTYPE_FLOAT16,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fnegho, negv8hf2, V8HF_FTYPE_V8HF,, lvx_2) // Vector
