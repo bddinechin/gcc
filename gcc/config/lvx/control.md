@@ -2145,7 +2145,7 @@
         (match_operand:ALLIFV 1 "memory_operand" "Ca,Cb,Cm,Za,Zb,Zm"))]
   "lvx_hardreg_aligned_p (operands[0], <MODE>mode)"
   "l<ALLIFV:lsusizezx>%V1 %0 = %1"
-  [(set_attr "type" "load, load, load, load_uncached, load_uncached, load_uncached")
+  [(set_attr "type" "load, load, load, loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"       "4,           8,           12,                 4,                    8,                   12")
    (set_attr "predicable"  "yes,         yes,         yes,               yes,                  yes,                  yes")]
@@ -2156,7 +2156,7 @@
         (ANY_EXTEND:DI (match_operand:SHORT 1 "memory_operand" "Ca,Cb,Cm,Za,Zb,Zm")))]
   "lvx_hardreg_aligned_p (operands[0], <MODE>mode)"
   "l<SHORT:lsusize><ANY_EXTEND:lsux>%V1 %0 = %1"
-  [(set_attr "type" "load, load, load, load_uncached, load_uncached, load_uncached")
+  [(set_attr "type" "load, load, load, loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"       "4,           8,          12,                  4,                    8,                   12")
    (set_attr "predicable"  "yes,         yes,         yes,               yes,                  yes,                  yes")]

@@ -53,7 +53,7 @@
         gcc_unreachable ();
       }
   }
-  [(set_attr "type" "alu, load, load, load, load_uncached, load_uncached, load_uncached, store, store, store")
+  [(set_attr "type" "alu, load, load, load, loadu, loadu, loadu, store, store, store")
    (set_attr "issue" "x2_alu_tiny, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"         "8,             4,             8,             12,                     4,                       8,                      12,             4,               8,              12")]
 )
@@ -135,7 +135,7 @@
         gcc_unreachable ();
       }
   }
-  [(set_attr "type" "alu, load, load, load, load_uncached, load_uncached, load_uncached, store, store, store")
+  [(set_attr "type" "alu, load, load, load, loadu, loadu, loadu, store, store, store")
    (set_attr "issue" "x4_alu_tiny, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"        "16,            4,              8,             12,                     4,                       8,                      12,             4,               8,              12")]
 )

@@ -130,9 +130,9 @@ lvx_load_class_p (enum attr_type type)
 {
   switch (type)
     {
-    case TYPE_LOAD: case TYPE_LOAD_EXT:
-    case TYPE_LOAD_UNCACHED: case TYPE_LOAD_EXT_UNCACHED:
-    case TYPE_ALOAD: case TYPE_ALOADCLEAR: case TYPE_ATOMIC:
+    case TYPE_LOAD: case TYPE_XLOAD:
+    case TYPE_LOADU: case TYPE_XLOADU:
+    case TYPE_ALOAD: case TYPE_ALOADC: case TYPE_ATOMIC:
       return true;
     default:
       return false;

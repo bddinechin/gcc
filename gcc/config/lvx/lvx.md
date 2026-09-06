@@ -176,7 +176,7 @@
           (mem:DI (plus:P (match_dup 2) (match_operand 9 "const_int_operand" "I10,I37,i"))))])]
   "(XVECLEN (operands[0], 0) == 4)"
   "lo.u %o1 = %3[%2]"
-  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
+  [(set_attr "type" "loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "4,8,12")])
 
@@ -202,7 +202,7 @@
           (mem:DI (plus:P (match_dup 2) (match_operand 5 "const_int_operand" "I10,I37,i"))))])]
   "(XVECLEN (operands[0], 0) == 2)"
   "lq.u %q1 = %3[%2]"
-  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
+  [(set_attr "type" "loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "4,8,12")])
 
@@ -288,7 +288,7 @@
       gcc_unreachable ();
     }
 }
-  [(set_attr "type" "alu, alu, alu, alu, store, store, store, load, load, load, load_uncached, load_uncached, load_uncached, sysget, all, alu, alu")
+  [(set_attr "type" "alu, alu, alu, alu, store, store, store, load, load, load, loadu, loadu, loadu, sysget, all, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y, bcu2_tiny_lsu, all, alu_full_x, alu_tiny_y")
    (set_attr "length"      "4,        4,          8,         12,          4,            8,           12,         4,           8,          12,                  4,                    8,                   12,       4,   4,          8,         12")]
 )
@@ -736,7 +736,7 @@
    ""
    "lbz.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_uncached, load_uncached, load_uncached")
+   (set_attr "type" "loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -748,7 +748,7 @@
    ""
    "lbs.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_uncached, load_uncached, load_uncached")
+   (set_attr "type" "loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -760,7 +760,7 @@
    ""
    "lhz.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "load_uncached, load_uncached, load_uncached")
+   (set_attr "type" "loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -772,7 +772,7 @@
    ""
    "lhs.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "load_uncached, load_uncached, load_uncached")
+   (set_attr "type" "loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -784,7 +784,7 @@
    ""
    "lwz.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_uncached, load_uncached, load_uncached")
+   (set_attr "type" "loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -796,7 +796,7 @@
    ""
    "lws.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_uncached, load_uncached, load_uncached")
+   (set_attr "type" "loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -808,7 +808,7 @@
    ""
    "ld.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "load_uncached, load_uncached, load_uncached")
+   (set_attr "type" "loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -820,7 +820,7 @@
    ""
    "lq.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type"   "load_uncached, load_uncached, load_uncached")
+   (set_attr "type"   "loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -831,7 +831,7 @@
    ""
    "l<SHORT:lsusize><ANY_EXTEND:lsux>%V1 %0 = %1"
   [(set_attr "length" "            4,               8,              12,                      4,                        8,                       12")
-   (set_attr "type"   "load, load, load, load_uncached, load_uncached, load_uncached")
+   (set_attr "type"   "load, load, load, loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -853,7 +853,7 @@
      gcc_unreachable ();
    }
 }
-  [(set_attr "type"   "alu, load, load, load, load_uncached, load_uncached, load_uncached")
+  [(set_attr "type"   "alu, load, load, load, loadu, loadu, loadu")
    (set_attr "issue" "alu_lite, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "       4,             4,               8,              12,                      4,                        8,                       12")])
 
@@ -874,7 +874,7 @@
        gcc_unreachable ();
    }
 }
-  [(set_attr "type"   "alu, load, load, load, load_uncached, load_uncached, load_uncached")
+  [(set_attr "type"   "alu, load, load, load, loadu, loadu, loadu")
    (set_attr "issue" "alu_lite, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "       4,             4,               8,              12,                      4,                        8,                       12")])
 

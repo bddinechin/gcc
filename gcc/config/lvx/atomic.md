@@ -242,7 +242,7 @@
                                 (match_operand 2 "" "")] UNSPEC_ALCLR))]
   "HAVE_LVX_ATOMIC_CV1_LIKE_LOAD_CLEAR_<MODE>"
   "alclr<lsusize>%2%X1 %0 = %1"
-  [(set_attr "type" "aloadclear, aloadclear, aloadclear")
+  [(set_attr "type" "aloadc, aloadc, aloadc")
    (set_attr "issue" "lsu2_memw_auxw, lsu2_memw_auxw_x, lsu2_memw_auxw_y")
    (set_attr "length"             "4,                8,               12")]
 )
@@ -253,7 +253,7 @@
                                (match_operand 2 "" "")] UNSPEC_ALCLR))]
   "HAVE_LVX_ATOMIC_CV2_LIKE_LOAD_CLEAR_<MODE>"
   "alclr<lsusize>%2%X1 %0 = %O1"
-  [(set_attr "type" "aloadclear, aloadclear, aloadclear")
+  [(set_attr "type" "aloadc, aloadc, aloadc")
    (set_attr "issue" "lsu2_memw_auxw, lsu2_memw_auxw_x, lsu2_memw_auxw_y")
    (set_attr "length"             "4,                8,               12")]
 )
