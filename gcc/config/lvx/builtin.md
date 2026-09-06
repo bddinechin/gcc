@@ -4545,18 +4545,31 @@
    (set_attr "issue" "lite")]
 )
 
+;; Widening every lane of a 128-bit vector gives 256 bits, which the ISA does
+;; not have in one instruction.  It has the half-widening one -- fwidenhwq
+;; reads a whole V8HF and the mostsig modifier picks which four lanes it
+;; widens -- so two of those, one per half, cover all eight.
+;;
+;; This used to cut the SOURCE into two 64-bit pieces and widen each, which is
+;; what a 64-bit SIMD family would do; that family left the ISA, so the halves
+;; matched no pattern and every call was an unrecognizable insn.  vector.md
+;; widens with lo/hi at its own call sites and always did.
+;;
+;; There is no modifier argument: both halves are used, so there is nothing for
+;; the caller to select.
+
 (define_expand "lvx_fwiden<widenx>"
   [(match_operand:<WIDE> 0 "register_operand")
-   (match_operand:S128F 1 "register_operand")
-   (match_operand 2 "")]
+   (match_operand:S128F 1 "register_operand")]
   ""
   {
-    rtx op1_l = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode, 0);
-    rtx op1_m = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode, 8);
+    rtx lo = gen_rtx_CONST_STRING (VOIDmode, "");
+    rtx hi = gen_rtx_CONST_STRING (VOIDmode, ".m");
     rtx op0_l = simplify_gen_subreg (<HWIDE>mode, operands[0], <WIDE>mode, 0);
     rtx op0_m = simplify_gen_subreg (<HWIDE>mode, operands[0], <WIDE>mode, 16);
-    emit_insn (gen_lvx_fwiden<hwidenx> (op0_l, op1_l, operands[2]));
-    emit_insn (gen_lvx_fwiden<hwidenx> (op0_m, op1_m, operands[2]));
+    gcc_assert (op0_l && op0_m);
+    emit_insn (gen_lvx_fwiden<hwidenx> (op0_l, operands[1], lo));
+    emit_insn (gen_lvx_fwiden<hwidenx> (op0_m, operands[1], hi));
     DONE;
   }
 )
