@@ -2099,6 +2099,21 @@ lvx_expand_builtin (tree exp, rtx target, rtx subtarget ATTRIBUTE_UNUSED,
 	create_output_operand (&ops[opno++], target, TYPE_MODE (TREE_TYPE (exp)));
 
       nops += !!has_target_p;
+
+      /* The pattern this builtin names can be compiled out -- its
+	 HAVE_LVX_* gate is (0) because the instruction left the ISA -- and
+	 then icode is CODE_FOR_nothing and insn_data[icode] describes
+	 nothing at all.  The assert below read n_generator_args out of it
+	 and crashed on the mismatch; say what is actually wrong instead.  */
+      if (icode == CODE_FOR_nothing)
+	{
+	  error ("%<%s%> is not supported on this target",
+		 lvx_builtins[fcode].name);
+	  if (!has_target_p)
+	    return const0_rtx;
+	  return target ? target : gen_reg_rtx (TYPE_MODE (TREE_TYPE (exp)));
+	}
+
       gcc_assert (opno + call_expr_nargs (exp)
 		  == insn_data[icode].n_generator_args);
       for (int argno = 0; argno < call_expr_nargs (exp); argno++)
