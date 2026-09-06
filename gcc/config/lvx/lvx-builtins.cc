@@ -294,14 +294,10 @@ const struct lvx_modmap lvx_modmap_coherency_all = {
 const struct lvx_modmap *lvx_modmap_coherency = &lvx_modmap_coherency_all;
 
 const char *lvx_mod_conjugate_lvx_1_in[] = {
- "", ".rn", ".ru", ".rd", ".rz",
- ".s", ".rn.s", ".ru.s", ".rd.s", ".rz.s",
- NULL
+ "", ".rn", ".ru", ".rd", ".rz", NULL
 };
 const char *lvx_mod_conjugate_lvx_1_out[] = {
- "", ".rn", ".ru", ".rd", ".rz",
- "", ".rn", ".ru", ".rd", ".rz",
- NULL
+ "", ".rn", ".ru", ".rd", ".rz", NULL
 };
 const struct lvx_modmap lvx_modmap_conjugate_lvx_1 = {
   lvx_mod_conjugate_lvx_1_in, lvx_mod_conjugate_lvx_1_out
@@ -325,15 +321,11 @@ const struct lvx_modmap lvx_modmap_extendmul_all = {
 const struct lvx_modmap *lvx_modmap_extendmul = &lvx_modmap_extendmul_all;
 
 const char *lvx_mod_floatings_all_in[] = {
- "", ".rn", ".ru", ".rd", ".rz",
- ".s", ".rn.s", ".ru.s", ".rd.s", ".rz.s",
- NULL
+ "", ".rn", ".ru", ".rd", ".rz", NULL
 };
 
 const char *lvx_mod_floatings_lvx_1_out[] = {
- "", ".rn", ".ru", ".rd", ".rz",
- "", ".rn", ".ru", ".rd", ".rz",
- NULL
+ "", ".rn", ".ru", ".rd", ".rz", NULL
 };
 const struct lvx_modmap lvx_modmap_floatings_lvx_1 = {
   lvx_mod_floatings_all_in, lvx_mod_floatings_lvx_1_out
@@ -466,11 +458,6 @@ const char *lvx_mod_transpose_all_in[] = {
   ".ru", ".tn.ru", ".nt.ru", ".tt.ru", ".nn.ru",
   ".rz", ".tn.rz", ".nt.rz", ".tt.rz", ".nn.rz",
   ".rn", ".tn.rn", ".nt.rn", ".tt.rn", ".nn.rn",
-  ".s", ".tn.s", ".nt.s", ".tt.s", ".nn.s",
-  ".rn.s", ".tn.rn.s", ".nt.rn.s", ".tt.rn.s", ".nn.rn.s",
-  ".rd.s", ".tn.rd.s", ".nt.rd.s", ".tt.rd.s", ".nn.rd.s",
-  ".ru.s", ".tn.ru.s", ".nt.ru.s", ".tt.ru.s", ".nn.ru.s",
-  ".rz.s", ".tn.rz.s", ".nt.rz.s", ".tt.rz.s", ".nn.rz.s",
   NULL
 };
 const char *lvx_mod_transpose_all_out[] = {
@@ -480,11 +467,6 @@ const char *lvx_mod_transpose_all_out[] = {
   ".ru", ".tn.ru", ".nt.ru", ".tt.ru", ".ru",
   ".rz", ".tn.rz", ".nt.rz", ".tt.rz", ".rz",
   ".rn", ".tn.rn", ".nt.rn", ".tt.rn", ".rn",
-  ".s", ".tn.s", ".nt.s", ".tt.s", ".s",
-  ".rn.s", ".tn.rn.s", ".nt.rn.s", ".tt.rn.s", ".rn.s",
-  ".rd.s", ".tn.rd.s", ".nt.rd.s", ".tt.rd.s", ".rd.s",
-  ".ru.s", ".tn.ru.s", ".nt.ru.s", ".tt.ru.s", ".ru.s",
-  ".rz.s", ".tn.rz.s", ".nt.rz.s", ".tt.rz.s", ".rz.s",
   NULL
 };
 const struct lvx_modmap lvx_modmap_transpose_all = {
@@ -992,7 +974,10 @@ lvx_tree_string_constant (tree arg, const char *name)
   tree offset_tree = 0;
   arg = string_constant (arg, &offset_tree, 0, 0);
   if (!arg)
-    error ("%<%s%> requires a constant string modifier", name);
+    {
+      error ("%<%s%> requires a constant string modifier", name);
+      return "";
+    }
   return TREE_STRING_POINTER (arg);
 }
 
@@ -1014,7 +999,12 @@ build_arg (tree arg, const char *name, const struct lvx_modmap *mod_table)
     }
   error ("%<%s%> modifier %<%s%> not recognized", name, modifier);
   inform (input_location, "modifier list: %s", buffer);
-  return 0;
+
+  /* The error above already fails the compilation, but every caller passes
+     this result straight into a gen_* that dereferences it, so returning
+     NULL_RTX turns a diagnostic into a segfault.  Hand back the table's first
+     output -- the default modifier -- and let the error do its job.  */
+  return gen_rtx_CONST_STRING (VOIDmode, mod_table->omap[0]);
 }
 
 static rtx
