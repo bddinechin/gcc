@@ -248,7 +248,7 @@ enum lvx_arch_type
 #define HAVE_LVX_FMA_DF_SF_SF (0) // ffmawd
 #define HAVE_LVX_FMA_SF_HF_HF (0) // ffmahw
 #define HAVE_LVX_FMA_SF_SF_SF (1) // ffmaw
-#define HAVE_LVX_FMA_V2DF_V2DF_V2DF (0) // ffmadp
+#define HAVE_LVX_FMA_V2DF_V2DF_V2DF (1) // ffmadp
 #define HAVE_LVX_FMA_V2DF_V2SF_V2SF (1) // ffmawp
 /* maddwp/msbfwp are gone -- replaced by maddwq/msbfwq, so the V2SI form
    exists on neither core.  The V4SI macro below stays 0 until the
@@ -264,7 +264,7 @@ enum lvx_arch_type
 #define HAVE_LVX_FMS_DF_SF_SF (0) // ffmswd
 #define HAVE_LVX_FMS_SF_HF_HF (0) // ffmshw
 #define HAVE_LVX_FMS_SF_SF_SF (1) // ffmsw
-#define HAVE_LVX_FMS_V2DF_V2DF_V2DF (0) // ffmsdp
+#define HAVE_LVX_FMS_V2DF_V2DF_V2DF (1) // ffmsdp
 #define HAVE_LVX_FMS_V2DF_V2SF_V2SF (1) // ffmswp
 #define HAVE_LVX_FMS_V2SI (0)
 #define HAVE_LVX_FMS_V4HF_V4HF_V4HF (1) // ffmshq

@@ -5865,8 +5865,8 @@
         (mult:V2DF (match_operand:V2DF 1 "register_operand" "r")
                    (match_operand:V2DF 2 "register_operand" "r")))]
   "LVX_2"
-  "#"
-  "reload_completed"
+  "fmuldp %0 = %1, %2"
+  "!HAVE_LVX_MULT_V2DF && reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
         (mult:DF (subreg:DF (match_dup 1) 0)
                  (subreg:DF (match_dup 2) 0)))
@@ -5883,9 +5883,9 @@
         (fma:V2DF (match_operand:V2DF 1 "register_operand" "r")
                   (match_operand:V2DF 2 "register_operand" "r")
                   (match_operand:V2DF 3 "register_operand" "0")))]
-  ""
-  "#"
-  "reload_completed"
+  "LVX_2"
+  "ffmadp %0 = %1, %2"
+  "!HAVE_LVX_FMA_V2DF_V2DF_V2DF && reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
         (fma:DF  (subreg:DF (match_dup 1) 0)
                  (subreg:DF (match_dup 2) 0)
@@ -5904,9 +5904,9 @@
         (fma:V2DF (neg:V2DF (match_operand:V2DF 1 "register_operand" "r"))
                   (match_operand:V2DF 2 "register_operand" "r")
                   (match_operand:V2DF 3 "register_operand" "0")))]
-  ""
-  "#"
-  "reload_completed"
+  "LVX_2"
+  "ffmsdp %0 = %1, %2"
+  "!HAVE_LVX_FMS_V2DF_V2DF_V2DF && reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
         (fma:DF  (neg:DF (subreg:DF (match_dup 1) 0))
                  (subreg:DF (match_dup 2) 0)
@@ -6610,7 +6610,7 @@
                    (match_operand:V4DF 2 "register_operand" "r")))]
   "LVX_2"
   "#"
-  "reload_completed"
+  "!HAVE_LVX_MULT_V2DF && reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
         (mult:DF (subreg:DF (match_dup 1) 0)
                  (subreg:DF (match_dup 2) 0)))
@@ -6628,6 +6628,20 @@
    (set_attr "issue" "lite")]
 )
 
+(define_split
+  [(set (match_operand:V4DF 0 "register_operand" "")
+        (mult:V4DF (match_operand:V4DF 1 "register_operand" "")
+                   (match_operand:V4DF 2 "register_operand" "")))]
+  "HAVE_LVX_MULT_V2DF && reload_completed"
+  [(set (subreg:V2DF (match_dup 0) 0)
+        (mult:V2DF (subreg:V2DF (match_dup 1) 0)
+                   (subreg:V2DF (match_dup 2) 0)))
+   (set (subreg:V2DF (match_dup 0) 16)
+        (mult:V2DF (subreg:V2DF (match_dup 1) 16)
+                   (subreg:V2DF (match_dup 2) 16)))]
+  ""
+)
+
 (define_insn_and_split "fmav4df4"
   [(set (match_operand:V4DF 0 "register_operand" "=r")
         (fma:V4DF (match_operand:V4DF 1 "register_operand" "r")
@@ -6635,7 +6649,7 @@
                   (match_operand:V4DF 3 "register_operand" "0")))]
   "LVX_2"
   "#"
-  "reload_completed"
+  "!HAVE_LVX_FMA_V2DF_V2DF_V2DF && reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
         (fma:DF  (subreg:DF (match_dup 1) 0)
                  (subreg:DF (match_dup 2) 0)
@@ -6657,6 +6671,23 @@
    (set_attr "issue" "lite")]
 )
 
+(define_split
+  [(set (match_operand:V4DF 0 "register_operand" "")
+        (fma:V4DF (match_operand:V4DF 1 "register_operand" "")
+                  (match_operand:V4DF 2 "register_operand" "")
+                  (match_operand:V4DF 3 "register_operand" "")))]
+  "HAVE_LVX_FMA_V2DF_V2DF_V2DF && reload_completed"
+  [(set (subreg:V2DF (match_dup 0) 0)
+        (fma:V2DF (subreg:V2DF (match_dup 1) 0)
+                  (subreg:V2DF (match_dup 2) 0)
+                  (subreg:V2DF (match_dup 3) 0)))
+   (set (subreg:V2DF (match_dup 0) 16)
+        (fma:V2DF (subreg:V2DF (match_dup 1) 16)
+                  (subreg:V2DF (match_dup 2) 16)
+                  (subreg:V2DF (match_dup 3) 16)))]
+  ""
+)
+
 (define_insn_and_split "fnmav4df4"
   [(set (match_operand:V4DF 0 "register_operand" "=r")
         (fma:V4DF (neg:V4DF (match_operand:V4DF 1 "register_operand" "r"))
@@ -6664,7 +6695,7 @@
                   (match_operand:V4DF 3 "register_operand" "0")))]
   "LVX_2"
   "#"
-  "reload_completed"
+  "!HAVE_LVX_FMS_V2DF_V2DF_V2DF && reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
         (fma:DF  (neg:DF (subreg:DF (match_dup 1) 0))
                  (subreg:DF (match_dup 2) 0)
@@ -6684,6 +6715,23 @@
   ""
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
+)
+
+(define_split
+  [(set (match_operand:V4DF 0 "register_operand" "")
+        (fma:V4DF (neg:V4DF (match_operand:V4DF 1 "register_operand" ""))
+                  (match_operand:V4DF 2 "register_operand" "")
+                  (match_operand:V4DF 3 "register_operand" "")))]
+  "HAVE_LVX_FMS_V2DF_V2DF_V2DF && reload_completed"
+  [(set (subreg:V2DF (match_dup 0) 0)
+        (fma:V2DF (neg:V2DF (subreg:V2DF (match_dup 1) 0))
+                  (subreg:V2DF (match_dup 2) 0)
+                  (subreg:V2DF (match_dup 3) 0)))
+   (set (subreg:V2DF (match_dup 0) 16)
+        (fma:V2DF (neg:V2DF (subreg:V2DF (match_dup 1) 16))
+                  (subreg:V2DF (match_dup 2) 16)
+                  (subreg:V2DF (match_dup 3) 16)))]
+  ""
 )
 
 (define_expand "vec_unpacks_hi_<packi>"
