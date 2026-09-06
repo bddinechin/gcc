@@ -119,6 +119,59 @@ static struct lvx_ifcvt
   rtx_insn *else_end;
 } lvx_ifcvt[1];
 
+/* The processor resources each issue class occupies, generated from the
+   machine description and indexed by the "issue" attribute.  */
+#include "config/lvx/lvx-issue-table.inc"
+
+/* Anything that reads memory into a register.  Was a range test over the type
+   enum; "type" is semantic now, so ask directly.  */
+static bool
+lvx_load_class_p (enum attr_type type)
+{
+  switch (type)
+    {
+    case TYPE_LOAD: case TYPE_LOAD_EXT:
+    case TYPE_LOAD_UNCACHED: case TYPE_LOAD_EXT_UNCACHED:
+    case TYPE_ALOAD: case TYPE_ALOADCLEAR: case TYPE_ATOMIC:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/* The multiply-accumulate family, which reads its accumuland a cycle late.  */
+static bool
+lvx_accumulate_class_p (enum attr_type type)
+{
+  switch (type)
+    {
+    case TYPE_IMADD: case TYPE_FMADDS: case TYPE_FMADDD:
+    case TYPE_FDOTP: case TYPE_FDMDA:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/* The multiply/multiply-accumulate family, whose results the scoreboard has to
+   wait longer for.  This used to be a range test over the type enum, which
+   asked the reader to keep it in step with the order of types.md; "type" is
+   semantic now, so the question can be asked directly.  */
+static bool
+lvx_multiply_class_p (enum attr_type type)
+{
+  switch (type)
+    {
+    case TYPE_IMUL: case TYPE_IMADD:
+    case TYPE_FMULS: case TYPE_FMADDS:
+    case TYPE_FMULD: case TYPE_FMADDD:
+    case TYPE_FCVT: case TYPE_FDOTP: case TYPE_FDMDA:
+      return true;
+    default:
+      return false;
+    }
+}
+
 /* SCHED2 data structure.  */
 static struct lvx_sched2
 {
@@ -6805,72 +6858,25 @@ lvx_insn_cost (rtx_insn *insn, bool speed)
       return 0;
     }
 
-  enum attr_type type = get_attr_type (insn);
-  if (type == TYPE_NOP)
+  if (get_attr_type (insn) == TYPE_NOP)
     return 0;
-
   if (!speed)
     return get_attr_length (insn);
 
-  int cost = 0;
-  if (type == TYPE_ALL)
-    {
-      cost = lvx_type_all_cost (1, 0, speed);
-    }
-  else if (type >= TYPE_ALU_TINY && type < TYPE_ALU_LITE)
-    {
-      int nunits = 1;
-      if (type >= TYPE_ALU_TINY_X2 && type <= TYPE_ALU_TINY_X2_Y)
-	nunits = 2;
-      if (type >= TYPE_ALU_TINY_X4 && type <= TYPE_ALU_TINY_X4_X)
-	nunits = 4;
-      cost += lvx_type_tiny_cost (nunits, 0, speed);
-    }
-  else if (type >= TYPE_ALU_LITE && type < TYPE_ALU_FULL)
-    {
-      int nunits = 1;
-      if (type >= TYPE_ALU_LITE_X2 && type < TYPE_ALU_FULL)
-	nunits = 2;
-      cost += lvx_type_lite_cost (nunits, 0, speed);
-    }
-  else if (type >= TYPE_ALU_FULL && type < TYPE_CACHE)
-    {
-      int penalty = (type == TYPE_ALU_FULL_SFU) * (15 - 1);
-      cost += lvx_type_full_cost (1, penalty, speed);
-    }
-  else if (type >= TYPE_CACHE && type < TYPE_MULT_INT)
-    {
-      int penalty = 0;
-      if (type >= TYPE_LOAD_CORE && type <= TYPE_LOAD_EXT_Y)
-	penalty = (3 - 1);
-      if ((type >= TYPE_LOAD_CORE_UNCACHED
-	   && type <= TYPE_LOAD_EXT_UNCACHED_Y)
-	  || (type >= TYPE_ALOAD_CORE
-	      && type <= TYPE_ATOMIC_CORE_Y))
-	penalty = (24 - 1);
-      cost += lvx_type_lsu_cost (1, penalty, speed);
-    }
-  else if (type >= TYPE_MULT_INT && type < TYPE_BCU)
-    {
-      int penalty = (2 - 1);
-      if (type == TYPE_MULT_FP3 || type == TYPE_MADD_FP3)
-	penalty = (3 - 1);
-      if (type == TYPE_MULT_FP4 || type == TYPE_MADD_FP4
-	  || type == TYPE_CONV_FP4 || type == TYPE_DOTP_FP4
-	  || type == TYPE_DMDA_FP4)
-	penalty = (4 - 1);
-      cost += lvx_type_mau_cost (1, penalty, speed);
-    }
-  else if (type >= TYPE_BCU && type < TYPE_EXT)
-    {
-      cost += lvx_type_bcu_cost (1, 0, speed);
-    }
-  else if (type >= TYPE_EXT && type <= TYPE_EXT_FLOAT)
-    {
-      cost += lvx_type_tca_cost (1, 3, speed);
-    }
-  else
-    gcc_unreachable ();
+  /* What an instruction costs is how many instructions it is, weighted by how
+     scarce the unit it needs is, plus the latency it makes a consumer wait.
+     Both come from the description now: the issue class says how many and
+     which units, and define_insn_reservation says how long.  */
+  const struct lvx_issue_resources *r
+    = &lvx_issue_table[(int) get_attr_issue (insn)];
+  int weight = 1;
+  if (get_attr_type (insn) == TYPE_ALL)
+    weight = 4;
+  else if (r->full || r->lsu || r->bcu || r->ext)
+    weight = COST_FACTOR (4);
+
+  int latency = insn_default_latency (insn);
+  int cost = COSTS_N_INSNS (weight * r->ninsns) + (latency > 0 ? latency - 1 : 0);
 
   if (DUMP_COSTS)
     {
@@ -6973,70 +6979,38 @@ lvx_dependencies_fprint (FILE *file, rtx_insn *insn)
 static void
 lvx_sched_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
 {
-  if (NONDEBUG_INSN_P (insn) && INSN_CODE (insn) >= 0)
+  if (!NONDEBUG_INSN_P (insn) || INSN_CODE (insn) < 0)
+    return;
+
+  resources->insn_count++;
+
+  enum attr_type type = get_attr_type (insn);
+  if (type == TYPE_NOP)
+    /* A nop is a placeholder the bundler fills, not a demand on the bundle.  */
+    return;
+  if (type == TYPE_ALL)
+    /* Alone in its bundle: claim one of everything so nothing joins it.  */
     {
-      resources->insn_count++;
-      // Keep the TYPE tests in sync with the order of the types.md file.
-      enum attr_type type = get_attr_type (insn);
-      if (type == TYPE_ALL)
-	{
-	  resources->tiny_count++, resources->lite_count++;
-	  resources->full_count++, resources->lsu_count++;
-	  resources->bcu_count++, resources->ext_count++;
-	}
-      else if (type == TYPE_NOP)
-	;
-      else if (type >= TYPE_ALU_TINY && type < TYPE_CACHE)
-	{
-	  if (type >= TYPE_ALU_TINY && type < TYPE_ALU_TINY_X2)
-	    resources->tiny_count++;
-	  else if (type >= TYPE_ALU_TINY_X2 && type < TYPE_ALU_TINY_X4)
-	    resources->tiny_count += 2;
-	  else if (type >= TYPE_ALU_TINY_X4 && type < TYPE_ALU_LITE)
-	    resources->tiny_count += 4;
-	  /* Templates mixing a TINY and a LITE mnemonic: the resources are the
-	     SUM of the two, so neither range below can account them.  */
-	  else if (type == TYPE_ALU_TINY_LITE_X2)
-	    resources->tiny_count += 2, resources->lite_count++;
-	  else if (type == TYPE_ALU_TINY_LITE_X4)
-	    resources->tiny_count += 4, resources->lite_count += 2;
-	  /* A LITE instruction occupies a LITE unit *and* an ALU slot, and a
-	     FULL one occupies all three -- the same statement scheduling.md
-	     makes, and the machine description before it.  tiny_count is the
-	     ALU slot count, so every one of these bumps it too.  movet_ext*
-	     emit xputdq, which is ALU_LITE_MISC, and sit in the LITE range.  */
-	  else if (type >= TYPE_ALU_LITE && type < TYPE_ALU_LITE_X2)
-	    resources->tiny_count++, resources->lite_count++;
-	  else if (type >= TYPE_ALU_LITE_X2 && type < TYPE_ALU_FULL)
-	    resources->tiny_count += 2, resources->lite_count += 2;
-	  else if (type >= TYPE_ALU_FULL && type < TYPE_CACHE)
-	    resources->tiny_count++, resources->lite_count++, resources->full_count++;
-	  else
-	    gcc_unreachable ();
-	}
-      else if (type >= TYPE_CACHE && type < TYPE_MULT_INT)
-	{
-	  resources->lsu_count++;
-	  if (type >= TYPE_STORE_CORE && type < TYPE_STORE_EXT)
-	    resources->auxr_count++;
-	}
-      else if (type >= TYPE_MULT_INT && type < TYPE_BCU)
-	{
-	  resources->lite_count++;
-	  if (type >= TYPE_MADD_INT)
-	    resources->auxr_count++;
-	}
-      else if (type >= TYPE_BCU && type < TYPE_EXT)
-	{
-	  resources->bcu_count++;
-	  if (type == TYPE_BCU_XFER)
-	    resources->xfer_count++;
-	}
-      else if (type >= TYPE_EXT && type <= TYPE_EXT_FLOAT)
-	resources->ext_count++;
-      else
-	gcc_unreachable ();
+      resources->tiny_count++, resources->lite_count++;
+      resources->full_count++, resources->lsu_count++;
+      resources->bcu_count++, resources->ext_count++;
+      return;
     }
+
+  /* Otherwise the machine description already says what this occupies, and
+     says it once: the same vector the automaton reserves.  This used to be a
+     ladder of range tests over the type enum, under a comment asking the
+     reader to keep them in step with the ORDER of types.md.  */
+  const struct lvx_issue_resources *r
+    = &lvx_issue_table[(int) get_attr_issue (insn)];
+  resources->tiny_count += r->tiny;
+  resources->lite_count += r->lite;
+  resources->full_count += r->full;
+  resources->lsu_count += r->lsu;
+  resources->bcu_count += r->bcu;
+  resources->ext_count += r->ext;
+  resources->auxr_count += r->auxr;
+  resources->xfer_count += r->xfer;
 }
 
 static int lvx_sched_issue_rate (void);
@@ -7142,7 +7116,7 @@ lvx_sched_adjust_cost (rtx_insn *cons_insn, int dep_type,
 	  enum attr_type prod_type = get_attr_type (prod_insn);
 	  // If the producer is a load feeding the target of a conditional
 	  // or a scatter load, set cost to 1 instead of the load latency.
-	  if (prod_type >= TYPE_LOAD_CORE && prod_type < TYPE_STORE_CORE)
+	  if (lvx_load_class_p (prod_type))
 	    {
 	      rtx x = prod_set ? SET_DEST (prod_set) : 0;
 	      rtx op = cons_set ? SET_SRC (cons_set) : 0;
@@ -7737,8 +7711,7 @@ lvx_sched2_fix_insn_issue (rtx_insn *insn, rtx *opvec, int noperands)
       int stall = 0;
       int cycle = lvx_sched2->insn_cycle[uid] + scoreboard.delay;
       enum attr_type type = get_attr_type (insn);
-      // Keep TYPE tests in sync with the order of the types.md file.
-      if (type >= TYPE_MADD_INT && type <= TYPE_MADD_FP4
+      if (lvx_accumulate_class_p (type)
 	  && noperands > 3 && REG_P (opvec[3]))
 	{
 	  int regno = REGNO (opvec[3]);
@@ -7768,7 +7741,7 @@ lvx_sched2_fix_insn_issue (rtx_insn *insn, rtx *opvec, int noperands)
 		}
 	    }
 	}
-      if (type >= TYPE_MULT_INT && type < TYPE_BCU && noperands > 0
+      if (lvx_multiply_class_p (type) && noperands > 0
 	  && REG_P (opvec[0]))
 	{
 	  int regno = REGNO (opvec[0]);

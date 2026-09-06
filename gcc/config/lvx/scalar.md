@@ -5,7 +5,7 @@
         (bswap:HI (match_operand:HI 1 "register_operand" "r")))]
   ""
   "sbmm8d %0 = %1, 0x0102"
-  [(set_attr "type" "alu_tiny_x")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny_x")
    (set_attr "length"        "8")]
 )
@@ -16,7 +16,7 @@
         (zero_extend:DI (bswap:HI (match_operand:HI 1 "register_operand" "r"))))]
   ""
   "sbmm8d %0 = %1, 0x0102"
-  [(set_attr "type" "alu_tiny_x")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny_x")
    (set_attr "length"        "8")]
 )
@@ -145,7 +145,7 @@
         (neg:DI (match_operand:DI 1 "register_operand" "r")))]
   ""
   "negd %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -154,7 +154,7 @@
         (neg:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
   "negw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -171,7 +171,7 @@
         (ss_neg:SIDI (match_operand:SIDI 1 "register_operand" "r")))]
   ""
   "sbfs<suffix> %0 = %1, 0"
-  [(set_attr "type" "alu_tiny_x")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny_x")
    (set_attr "length"        "8")]
 )
@@ -184,7 +184,7 @@
         (abs:SIDI (match_operand:SIDI 1 "register_operand" "r")))]
   ""
   "abs<suffix> %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -219,7 +219,7 @@
         (ss_abs:SIDI (match_operand:SIDI 1 "register_operand" "r")))]
   "HAVE_LVX_SS_ABS_<MODE>"
   "abss<suffix> %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -242,7 +242,7 @@
                     (smin:SIDI (match_dup 1) (match_dup 2))))]
   "HAVE_LVX_ABD_ONLY_I32_IMMEDIATE"
   "abd<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -254,7 +254,7 @@
                     (smin:SIDI (match_dup 2) (match_dup 1))))]
   "HAVE_LVX_ABD_ONLY_I32_IMMEDIATE"
   "abd<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -267,7 +267,7 @@
                                   (smin:SI (match_dup 1) (match_dup 2)))))]
   "HAVE_LVX_ABD_SI"
   "abdw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -317,7 +317,7 @@
                        (smin:SIDI (match_dup 1) (match_dup 2))))]
   "HAVE_LVX_SS_ABD_<MODE>"
   "abds<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -329,7 +329,7 @@
                                      (smin:SI (match_dup 1) (match_dup 2)))))]
   "HAVE_LVX_SS_ABD_SI"
   "abdsw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -379,7 +379,7 @@
                     (umin:SIDI (match_dup 1) (match_dup 2))))]
   "HAVE_LVX_UABD_<MODE>"
   "abdu<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -391,7 +391,7 @@
                                   (umin:SI (match_dup 1) (match_dup 2)))))]
   "HAVE_LVX_UABD_SI"
   "abduw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -403,7 +403,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL02_ADD_<MODE>"
   "addx2<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -415,7 +415,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL02_ADD_<MODE>"
   "addx2<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -427,7 +427,7 @@
                                  (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
   "HAVE_LVX_MUL02_ADD_SI"
   "addx2w %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -439,7 +439,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL04_ADD_<MODE>"
   "addx4<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -451,7 +451,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL04_ADD_<MODE>"
   "addx4<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -463,7 +463,7 @@
                                  (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
   "HAVE_LVX_MUL04_ADD_SI"
   "addx4w %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -475,7 +475,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL08_ADD_<MODE>"
   "addx8<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -487,7 +487,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL08_ADD_<MODE>"
   "addx8<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -499,7 +499,7 @@
                                  (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
   "HAVE_LVX_MUL08_ADD_SI"
   "addx8w %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -511,7 +511,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL16_ADD_<MODE>"
   "addx16<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -523,7 +523,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL16_ADD_<MODE>"
   "addx16<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -535,7 +535,7 @@
                                  (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
   "HAVE_LVX_MUL16_ADD_SI"
   "addx16w %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -547,7 +547,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL32_ADD_<MODE>"
   "addx32<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -559,7 +559,7 @@
                                  (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
   "HAVE_LVX_MUL32_ADD_SI"
   "addx32w %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -571,7 +571,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL64_ADD_<MODE>"
   "addx64<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -583,7 +583,7 @@
                                  (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
   "HAVE_LVX_MUL64_ADD_SI"
   "addx64w %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -595,7 +595,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL32_ADD_<MODE>"
   "addx32<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -618,7 +618,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL32_ADD_<MODE>"
   "addx32<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -630,7 +630,7 @@
                                  (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
   "HAVE_LVX_MUL32_ADD_SI"
   "addx32w %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -642,7 +642,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL64_ADD_<MODE>"
   "addx64<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -665,7 +665,7 @@
                    (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MUL64_ADD_<MODE>"
   "addx64<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -677,7 +677,7 @@
                                  (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
   "HAVE_LVX_MUL64_ADD_SI"
   "addx64w %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "     4,         8")]
 )
@@ -688,7 +688,7 @@
                   (ne:SIDI (match_operand:SIDI 2 "register_operand" "r") (const_int 0))))]
   ""
   "land<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 (define_insn "*ext_landw"
@@ -697,7 +697,7 @@
                 (ne:DI (match_operand:SI 2 "register_operand" "r") (const_int 0))))]
   ""
   "landw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -707,7 +707,7 @@
                   (eq:SIDI (match_operand:SIDI 2 "register_operand" "r") (const_int 0))))]
   ""
   "lnand<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 (define_insn "*ext_lnandw"
@@ -716,7 +716,7 @@
                 (eq:DI (match_operand:SI 2 "register_operand" "r") (const_int 0))))]
   ""
   "lnandw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -726,7 +726,7 @@
                   (ne:SIDI (match_operand:SIDI 2 "register_operand" "r") (const_int 0))))]
   ""
   "lior<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 (define_insn "*ext_liorw"
@@ -735,7 +735,7 @@
                 (ne:DI (match_operand:SI 2 "register_operand" "r") (const_int 0))))]
   ""
   "liorw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -746,7 +746,7 @@
                  (const_int 0)))]
   ""
   "lior<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 (define_insn "*ext_liorw"
@@ -756,7 +756,7 @@
                (const_int 0)))]
   ""
   "liorw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -766,7 +766,7 @@
                   (eq:SIDI (match_operand:SIDI 2 "register_operand" "r") (const_int 0))))]
   ""
   "lnior<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 (define_insn "*ext_lniorw"
@@ -775,7 +775,7 @@
                 (eq:DI (match_operand:SI 2 "register_operand" "r") (const_int 0))))]
   ""
   "lniorw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -786,7 +786,7 @@
                  (const_int 0)))]
   ""
   "lnior<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 (define_insn "*ext_lniorw"
@@ -796,7 +796,7 @@
                  (const_int 0)))]
   ""
   "lniorw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -806,7 +806,7 @@
                 (const_int 65535) ))]
   ""
   "zxhd %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -817,7 +817,7 @@
                            (match_operand 3 "sixbits_unsigned_operand" "i")))]
   ""
   "extfs %0 = %1, %2+%3-1, %3"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -828,7 +828,7 @@
                            (match_operand 3 "sixbits_unsigned_operand" "i")))]
   ""
   "extfz %0 = %1, %2+%3-1, %3"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -839,7 +839,7 @@
         (match_operand:SIDI 3 "register_operand" "r"))]
   ""
   "insf %0 = %3, %1+%2-1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -871,7 +871,7 @@
                  (match_operand:SI 2 "register_w32_operand" "r,I10,W32")))]
   ""
   "addw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type" "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -885,7 +885,7 @@
                     (match_operand:SI 2 "register_w32_operand" "r,W32")))]
   ""
   "addsw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_x")
+  [(set_attr "type"   "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "4,       8")]
 )
@@ -896,7 +896,7 @@
                     (match_operand:SI 2 "register_w32_operand" "r,W32")))]
   "HAVE_LVX_US_PLUS_SI"
   "addusw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -907,7 +907,7 @@
                   (match_operand:SI 2 "register_operand" "r,r,r")))]
   ""
   "sbfw<_sx> %0 = %2, %1"
-  [(set_attr "type" "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type" "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -921,7 +921,7 @@
                      (match_operand:SI 2 "register_operand" "r,r")))]
   ""
   "sbfsw<_sx> %0 = %2, %1"
-  [(set_attr "type"   "alu_tiny,alu_tiny_x")
+  [(set_attr "type"   "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "4,       8")]
 )
@@ -932,7 +932,7 @@
                      (match_operand:SI 2 "register_w32_operand" "r,W32")))]
   "HAVE_LVX_US_MINUS_SI"
   "sbfusw<_sx> %0 = %2, %1"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -943,7 +943,7 @@
                  (match_operand:SI 2 "register_w32_operand" "r,W32")))]
   ""
   "mulw<_sx> %0 = %1, %2"
-  [(set_attr "type" "mult_int, mult_int_x")
+  [(set_attr "type" "imul, imul")
    (set_attr "issue" "alu_lite, alu_lite_x")
    (set_attr "length"      "4,          8")]
 )
@@ -954,7 +954,7 @@
                  (sign_extend:DI (match_operand:SI 2 "register_operand" "r"))))]
   ""
   "mulxwd %0 = %1, %2"
-  [(set_attr "type" "mult_int")
+  [(set_attr "type" "imul")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -964,7 +964,7 @@
                  (zero_extend:DI (match_operand:SI 2 "register_operand" "r"))))]
   ""
   "mulxwd.u %0 = %1, %2"
-  [(set_attr "type" "mult_int")
+  [(set_attr "type" "imul")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -974,7 +974,7 @@
                  (sign_extend:DI (match_operand:SI 2 "register_operand" "r"))))]
   ""
   "mulxwd.su %0 = %2, %1"
-  [(set_attr "type" "mult_int")
+  [(set_attr "type" "imul")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1047,7 +1047,7 @@
                  (match_operand:SI 3 "register_operand" "0")))]
   ""
   "maddw %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 ;; zero-extend version of maddsisi4
@@ -1058,7 +1058,7 @@
                                  (match_operand:SI 3 "register_operand" "0"))))]
   ""
   "maddw %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1069,7 +1069,7 @@
                  (match_operand:DI 3 "register_operand" "0")))]
   ""
   "maddxwd %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1080,7 +1080,7 @@
                  (match_operand:DI 3 "register_operand" "0")))]
   ""
   "maddxwd.u %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1091,7 +1091,7 @@
                  (match_operand:DI 3 "register_operand" "0")))]
   ""
   "maddxwd.su %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1102,7 +1102,7 @@
                  (match_operand:DI 3 "register_operand" "0")))]
   ""
   "maddxwd.su %0 = %2, %1"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1113,7 +1113,7 @@
                            (match_operand:SI 2 "register_operand" "r"))))]
   ""
   "msbfw %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 ;; zero-extend version of msubsisi4
@@ -1124,7 +1124,7 @@
                                            (match_operand:SI 2 "register_operand" "r")))))]
   ""
   "msbfw %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1135,7 +1135,7 @@
                            (sign_extend:DI (match_operand:SI 2 "register_operand" "r")))))]
   ""
   "msbfxwd %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1146,7 +1146,7 @@
                            (zero_extend:DI (match_operand:SI 2 "register_operand" "r")))))]
   ""
   "msbfxwd.u %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1157,7 +1157,7 @@
                            (zero_extend:DI (match_operand:SI 2 "register_operand" "r")))))]
   ""
   "msbfxwd.su %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1168,7 +1168,7 @@
                            (sign_extend:DI (match_operand:SI 2 "register_operand" "r")))))]
   ""
   "msbfxwd.su %0 = %2, %1"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1178,7 +1178,7 @@
                    (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
   "sllw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1188,7 +1188,7 @@
                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
   "slsw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1198,7 +1198,7 @@
                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   "HAVE_LVX_US_ASHIFT_SI"
   "slusw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1208,7 +1208,7 @@
                      (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
   "sraw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1218,7 +1218,7 @@
                      (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
   "srlw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1228,7 +1228,7 @@
                     (match_operand:SI 2 "reg_shift_operand" "rU06")] UNSPEC_SRS))]
   ""
   "srsw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1238,7 +1238,7 @@
                  (match_operand:SI 2 "register_w32_operand" "r,I10,W32")))]
   ""
   "minw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1252,7 +1252,7 @@
                  (match_operand:SI 2 "register_w32_operand" "r,I10,W32")))]
   ""
   "maxw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1266,7 +1266,7 @@
                  (match_operand:SI 2 "register_w32_operand" "r,I10,W32")))]
   ""
   "minuw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1280,7 +1280,7 @@
                  (match_operand:SI 2 "register_w32_operand" "r,I10,W32")))]
   ""
   "maxuw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1294,7 +1294,7 @@
                 (match_operand:SI 2 "register_w32_operand" "r,I10,W32")))]
   ""
   "andw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1308,7 +1308,7 @@
                 (not:SI (match_operand:SI 2 "register_w32_operand" "r,I10,W32"))))]
   ""
   "nandw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1322,7 +1322,7 @@
                 (match_operand:SI 2 "register_w32_operand" "r,I10,W32")))]
   ""
   "andnw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1336,7 +1336,7 @@
                 (match_operand:SI 2 "register_w32_operand" "r,I10,W32")))]
   ""
   "iorw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1350,7 +1350,7 @@
                 (not:SI (match_operand:SI 2 "register_w32_operand" "r,I10,W32"))))]
   ""
   "niorw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1364,7 +1364,7 @@
                 (match_operand:SI 2 "register_w32_operand" "r,I10,W32")))]
   ""
   "iornw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1378,7 +1378,7 @@
                 (match_operand:SI 2 "register_w32_operand" "r,I10,W32")))]
   ""
   "eorw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1392,7 +1392,7 @@
                         (match_operand:SI 2 "register_w32_operand" "r,I10,W32"))))]
   ""
   "neorw<_sx> %0 = %1, %2"
-  [(set_attr "type"   "alu_tiny,alu_tiny_w,alu_tiny_x")
+  [(set_attr "type"   "alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x, alu_tiny_x")
    (set_attr_alternative "length"
      [(const_int 4)
@@ -1406,7 +1406,7 @@
                    (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
   "rolw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1416,7 +1416,7 @@
                      (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
   "rorw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1426,7 +1426,7 @@
                     (match_operand:SI 2 "register_w32_operand" "r,W32")] UNSPEC_AVG))]
   ""
   "avgw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "4,8")]
 )
@@ -1437,7 +1437,7 @@
                     (match_operand:SI 2 "register_w32_operand" "r,W32")] UNSPEC_AVGR))]
   ""
   "avgrw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "4,8")]
 )
@@ -1448,7 +1448,7 @@
                     (match_operand:SI 2 "register_w32_operand" "r,W32")] UNSPEC_AVGU))]
   ""
   "avguw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "4,8")]
 )
@@ -1459,7 +1459,7 @@
                     (match_operand:SI 2 "register_w32_operand" "r,W32")] UNSPEC_AVGRU))]
   ""
   "avgruw<_sx> %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length" "4,8")]
 )
@@ -1469,7 +1469,7 @@
         (bswap:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
   "sbmm8d %0 = %1, 0x01020408"
-  [(set_attr "type" "alu_tiny_x")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny_x")
    (set_attr "length"        "8")]
 )
@@ -1479,7 +1479,7 @@
         (zero_extend:DI (bswap:SI (match_operand:SI 1 "register_operand" "r"))))]
   ""
   "sbmm8d %0 = %1, 0x01020408"
-  [(set_attr "type" "alu_tiny_x")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny_x")
    (set_attr "length"        "8")]
 )
@@ -1490,7 +1490,7 @@
         (zero_extend:DI (neg:SI (match_operand:SI 1 "register_operand" "r"))))]
   ""
   "negw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1500,7 +1500,7 @@
         (zero_extend:DI (ss_neg:SI (match_operand:SI 1 "register_operand" "r"))))]
   ""
   "sbfsw %0 = %1, 0"
-  [(set_attr "type" "alu_tiny_x")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny_x")
    (set_attr "length"        "8")]
 )
@@ -1511,7 +1511,7 @@
         (zero_extend:DI (abs:SI (match_operand:SI 1 "register_operand" "r"))))]
   ""
   "absw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1521,7 +1521,7 @@
         (zero_extend:DI (ss_abs:SI (match_operand:SI 1 "register_operand" "r"))))]
   "HAVE_LVX_SS_ABS_SI"
   "abssw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1530,7 +1530,7 @@
         (clrsb:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
   "clsw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 ;; zero-extend version of clrsbsi2
@@ -1539,7 +1539,7 @@
         (zero_extend:DI (clrsb:SI (match_operand:SI 1 "register_operand" "r"))))]
   ""
   "clsw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1548,7 +1548,7 @@
         (clz:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
   "clzw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 ;; zero-extend version of clzsi2
@@ -1557,7 +1557,7 @@
         (zero_extend:DI (clz:SI (match_operand:SI 1 "register_operand" "r"))))]
   ""
   "clzw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1566,7 +1566,7 @@
         (ctz:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
   "ctzw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 ;; zero-extend version of ctzsi2
@@ -1575,7 +1575,7 @@
         (zero_extend:DI (ctz:SI (match_operand:SI 1 "register_operand" "r"))))]
   ""
   "ctzw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1584,7 +1584,7 @@
         (popcount:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
   "cbsw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 ;; zero-extend version of popcountsi2
@@ -1593,7 +1593,7 @@
         (zero_extend:DI (popcount:SI (match_operand:SI 1 "register_operand" "r"))))]
   ""
   "cbsw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1602,7 +1602,7 @@
         (not:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
   "notw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 ;; zero-extend version of one_cmplsi2
@@ -1611,7 +1611,7 @@
         (zero_extend:DI (not:SI (match_operand:SI 1 "register_operand" "r"))))]
   ""
   "notw %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1621,7 +1621,7 @@
                     (match_operand:SI 2 "register_operand" "r")] UNSPEC_STSU))]
   ""
   "stsuw %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -1634,7 +1634,7 @@
                  (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   ""
   "addd %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -1647,7 +1647,7 @@
   ;; the operand printed last.  Any Format ending .W or .M enables it.  These
   ;; have no ALU_DWRI variant, so unlike addd/sbfd there is no s10/s37/s64.
   "addsd %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"    "4,          8")]
 )
@@ -1661,7 +1661,7 @@
   ;; the operand printed last.  Any Format ending .W or .M enables it.  These
   ;; have no ALU_DWRI variant, so unlike addd/sbfd there is no s10/s37/s64.
   "addusd %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"    "4,          8")]
 )
@@ -1672,7 +1672,7 @@
                   (match_operand:DI 2 "register_operand" "r,r,r,r")))]
   ""
   "sbfd %0 = %2, %1"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -1685,7 +1685,7 @@
   ;; the operand printed last.  Any Format ending .W or .M enables it.  These
   ;; have no ALU_DWRI variant, so unlike addd/sbfd there is no s10/s37/s64.
   "sbfsd %0 = %2, %1"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"    "4,          8")]
 )
@@ -1699,7 +1699,7 @@
   ;; the operand printed last.  Any Format ending .W or .M enables it.  These
   ;; have no ALU_DWRI variant, so unlike addd/sbfd there is no s10/s37/s64.
   "sbfusd %0 = %2, %1"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"    "4,          8")]
 )
@@ -1719,7 +1719,7 @@
                  (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   "!HAVE_LVX_MULD_ONLY_I32_IMMEDIATE"
   "muld %0 = %1, %2"
-  [(set_attr "type" "mult_int, mult_int, mult_int_x, mult_int_y")
+  [(set_attr "type" "imul, imul, imul, imul")
    (set_attr "issue" "alu_lite, alu_lite, alu_lite_x, alu_lite_y")
    (set_attr "length"      "4,        4,          8,         12")]
 )
@@ -1729,7 +1729,7 @@
                  (match_operand:DI 2 "register_s32_operand" "r,I32")))]
   "HAVE_LVX_MULD_ONLY_I32_IMMEDIATE"
   "muld %0 = %1, %2"
-  [(set_attr "type" "mult_int, mult_int_x")
+  [(set_attr "type" "imul, imul")
    (set_attr "issue" "alu_lite, alu_lite_x")
    (set_attr "length"      "4,          8")]
 )
@@ -1802,7 +1802,7 @@
                  (sign_extend:TI (match_operand:DI 2 "register_operand" "r"))))]
   ""
   "mulxdq %0 = %1, %2"
-  [(set_attr "type" "mult_int")
+  [(set_attr "type" "imul")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1812,7 +1812,7 @@
                  (zero_extend:TI (match_operand:DI 2 "register_operand" "r"))))]
   ""
   "mulxdq.u %0 = %1, %2"
-  [(set_attr "type" "mult_int")
+  [(set_attr "type" "imul")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1822,7 +1822,7 @@
                  (sign_extend:TI (match_operand:DI 2 "register_operand" "r"))))]
   ""
   "mulxdq.su %0 = %2, %1"
-  [(set_attr "type" "mult_int")
+  [(set_attr "type" "imul")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1881,7 +1881,7 @@
                  (match_operand:DI 3 "register_operand" "0")))]
   ""
   "maddd %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1892,7 +1892,7 @@
                  (match_operand:TI 3 "register_operand" "0")))]
   ""
   "maddxdq %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1903,7 +1903,7 @@
                  (match_operand:TI 3 "register_operand" "0")))]
   ""
   "maddxdq.u %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1920,7 +1920,7 @@
                  (match_operand:TI 3 "register_operand" "0")))]
   ""
   "maddxdq.su %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1931,7 +1931,7 @@
                  (match_operand:TI 3 "register_operand" "0")))]
   ""
   "maddxdq.su %0 = %2, %1"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1942,7 +1942,7 @@
                            (match_operand:DI 2 "register_operand" "r"))))]
   ""
   "msbfd %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1953,7 +1953,7 @@
                            (sign_extend:TI (match_operand:DI 2 "register_operand" "r")))))]
   ""
   "msbfxdq %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1964,7 +1964,7 @@
                            (zero_extend:TI (match_operand:DI 2 "register_operand" "r")))))]
   ""
   "msbfxdq.u %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1978,7 +1978,7 @@
                            (zero_extend:TI (match_operand:DI 2 "register_operand" "r")))))]
   ""
   "msbfxdq.su %0 = %1, %2"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1989,7 +1989,7 @@
                            (sign_extend:TI (match_operand:DI 2 "register_operand" "r")))))]
   ""
   "msbfxdq.su %0 = %2, %1"
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -1999,7 +1999,7 @@
                    (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
   "slld %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2009,7 +2009,7 @@
                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
   "slsd %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2019,7 +2019,7 @@
                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   "HAVE_LVX_US_ASHIFT_DI"
   "slusd %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2029,7 +2029,7 @@
                      (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
   "srad %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2039,7 +2039,7 @@
                      (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
   "srld %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2049,7 +2049,7 @@
                     (match_operand:SI 2 "reg_shift_operand" "rU06")] UNSPEC_SRS))]
   ""
   "srsd %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2059,7 +2059,7 @@
                  (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   ""
   "mind %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2070,7 +2070,7 @@
                  (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   ""
   "maxd %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2081,7 +2081,7 @@
                  (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   ""
   "minud %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2092,7 +2092,7 @@
                  (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   ""
   "maxud %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2103,7 +2103,7 @@
                 (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   ""
   "andd %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2114,7 +2114,7 @@
                 (not:DI (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))))]
   ""
   "nandd %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2125,7 +2125,7 @@
                 (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   ""
   "andnd %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2136,7 +2136,7 @@
                 (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   ""
   "iord %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2147,7 +2147,7 @@
                 (not:DI (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))))]
   ""
   "niord %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2158,7 +2158,7 @@
                 (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   ""
   "iornd %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2169,7 +2169,7 @@
                 (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   ""
   "eord %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2180,7 +2180,7 @@
                         (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))))]
   ""
   "neord %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2238,7 +2238,7 @@
         (bswap:DI (match_operand:DI 1 "register_operand" "r")))]
   ""
   "sbmm8d %0 = %1, 0x0102040810204080"
-  [(set_attr "type" "alu_tiny_y")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny_y")
    (set_attr "length"       "12")]
 )
@@ -2248,7 +2248,7 @@
         (clrsb:DI (match_operand:DI 1 "register_operand" "r")))]
   ""
   "clsd %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2257,7 +2257,7 @@
         (clz:DI (match_operand:DI 1 "register_operand" "r")))]
   ""
   "clzd %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2266,7 +2266,7 @@
         (ctz:DI (match_operand:DI 1 "register_operand" "r")))]
   ""
   "ctzd %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2275,7 +2275,7 @@
         (popcount:DI (match_operand:DI 1 "register_operand" "r")))]
   ""
   "cbsd %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2284,7 +2284,7 @@
         (not:DI (match_operand:DI 1 "register_operand" "r")))]
   ""
   "notd %0 = %1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2296,7 +2296,7 @@
         (subreg:DI (match_operand:TI 1 "nonimmediate_operand" "r") 0))]
   ""
   "copyd %0 = %x1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2305,7 +2305,7 @@
         (subreg:DI (match_operand:TI 1 "nonimmediate_operand" "r") 8))]
   ""
   "copyd %0 = %y1"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2351,7 +2351,7 @@
     gcc_checking_assert (CONST_INT_P (operands[2]));
     operands[2] = GEN_INT (INTVAL (operands[2]) & 63);
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")]
 )
 
@@ -2371,7 +2371,7 @@
     gcc_checking_assert (CONST_INT_P (operands[2]));
     operands[2] = GEN_INT (INTVAL (operands[2]) & 63);
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")]
 )
 
@@ -2390,7 +2390,7 @@
     gcc_checking_assert (CONST_INT_P (operands[2]));
     operands[2] = GEN_INT (INTVAL (operands[2]) & 63);
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")]
 )
 
@@ -2418,7 +2418,7 @@
                  (match_operand:HF 2 "register_operand" "r")))]
   ""
   "faddh %0 = %1, %2"
-  [(set_attr "type" "mult_fp3")
+  [(set_attr "type" "fmuls")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2428,7 +2428,7 @@
                   (match_operand:HF 2 "register_operand" "r")))]
   ""
   "fsbfh %0 = %2, %1"
-  [(set_attr "type" "mult_fp3")
+  [(set_attr "type" "fmuls")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2438,7 +2438,7 @@
                  (match_operand:HF 2 "register_operand" "r")))]
   ""
   "fmulh %0 = %1, %2"
-  [(set_attr "type" "mult_fp3")
+  [(set_attr "type" "fmuls")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2448,7 +2448,7 @@
                  (float_extend:SF (match_operand:HF 2 "register_operand" "r"))))]
   "HAVE_LVX_MULT_SF_HF_HF"
   "fmulhw %0 = %1, %2"
-  [(set_attr "type" "mult_fp3")
+  [(set_attr "type" "fmuls")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2477,7 +2477,7 @@
                  (match_operand:HF 3 "register_operand" "0")))]
   ""
   "ffmah %0 = %1, %2"
-  [(set_attr "type" "madd_fp3")
+  [(set_attr "type" "fmadds")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2488,7 +2488,7 @@
                  (match_operand:SF 3 "register_operand" "0")))]
   "HAVE_LVX_FMA_SF_HF_HF"
   "ffmahw %0 = %1, %2"
-  [(set_attr "type" "madd_fp3")
+  [(set_attr "type" "fmadds")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2499,7 +2499,7 @@
                  (match_operand:HF 3 "register_operand" "0")))]
   ""
   "ffmsh %0 = %1, %2"
-  [(set_attr "type" "madd_fp3")
+  [(set_attr "type" "fmadds")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2510,7 +2510,7 @@
                 (match_operand:SF 3 "register_operand" "0")))]
   "HAVE_LVX_FMS_SF_HF_HF"
   "ffmshw %0 = %1, %2"
-  [(set_attr "type" "madd_fp3")
+  [(set_attr "type" "fmadds")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2521,7 +2521,7 @@
                 (match_operand:SF 3 "register_operand" "0")))]
   "HAVE_LVX_FMS_SF_HF_HF"
   "ffmshw %0 = %1, %2"
-  [(set_attr "type" "madd_fp3")
+  [(set_attr "type" "fmadds")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2543,7 +2543,7 @@
                  (match_operand:HF 2 "register_operand" "r")))]
   "HAVE_LVX_MIN_HF && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans)"
   "fminnh %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2553,7 +2553,7 @@
                  (match_operand:HF 2 "register_operand" "r")))]
   "HAVE_LVX_MAX_HF && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans)"
   "fmaxnh %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2562,7 +2562,7 @@
         (neg:HF (match_operand:HF 1 "register_operand" "r")))]
   ""
   "fnegh %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2571,7 +2571,7 @@
         (abs:HF (match_operand:HF 1 "register_operand" "r")))]
   ""
   "fabsh %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2580,7 +2580,7 @@
         (unspec:DI  [(match_operand:HF 1 "register_operand" "r")] UNSPEC_GETSIGN))]
   ""
   "extfs %0 = %1, 15, 15"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2590,7 +2590,7 @@
                     (match_operand:DI 2 "register_operand" "r")] UNSPEC_SETSIGN))]
   ""
   "insf %0 = %2, 15, 15"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2678,7 +2678,7 @@
         (float_extend:SF (match_operand:HF 1 "register_operand" "r")))]
   ""
   "fwidenhw %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2703,7 +2703,7 @@
                  (match_operand:SF 2 "register_operand" "r")))]
   ""
   "faddw %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2713,7 +2713,7 @@
                   (match_operand:SF 2 "register_operand" "r")))]
   ""
   "fsbfw %0 = %2, %1"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2723,7 +2723,7 @@
                  (match_operand:SF 2 "register_operand" "r")))]
   ""
   "fmulw %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2733,7 +2733,7 @@
                  (float_extend:DF (match_operand:SF 2 "register_operand" "r"))))]
   "HAVE_LVX_MULT_DF_SF_SF"
   "fmulwd %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2756,7 +2756,7 @@
                  (match_operand:SF 3 "register_operand" "0")))]
   ""
   "ffmaw %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2767,7 +2767,7 @@
                  (match_operand:DF 3 "register_operand" "0")))]
   "HAVE_LVX_FMA_DF_SF_SF"
   "ffmawd %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2778,7 +2778,7 @@
                  (match_operand:SF 3 "register_operand" "0")))]
   ""
   "ffmsw %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2789,7 +2789,7 @@
                 (match_operand:DF 3 "register_operand" "0")))]
   "HAVE_LVX_FMS_DF_SF_SF"
   "ffmswd %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2800,7 +2800,7 @@
                 (match_operand:DF 3 "register_operand" "0")))]
   "HAVE_LVX_FMS_DF_SF_SF"
   "ffmswd %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2810,7 +2810,7 @@
                  (match_operand:SF 2 "register_operand" "r")))]
   "HAVE_LVX_MIN_SF && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans)"
   "fminnw %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2820,7 +2820,7 @@
                  (match_operand:SF 2 "register_operand" "r")))]
   "HAVE_LVX_MAX_SF && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans)"
   "fmaxnw %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2829,7 +2829,7 @@
         (neg:SF (match_operand:SF 1 "register_operand" "r")))]
   ""
   "fnegw %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2838,7 +2838,7 @@
         (abs:SF (match_operand:SF 1 "register_operand" "r")))]
   ""
   "fabsw %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2847,7 +2847,7 @@
         (unspec:DI  [(match_operand:SF 1 "register_operand" "r")] UNSPEC_GETSIGN))]
   ""
   "extfs %0 = %1, 31, 31"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2857,7 +2857,7 @@
                     (match_operand:DI 2 "register_operand" "r")] UNSPEC_SETSIGN))]
   ""
   "insf %0 = %2, 31, 31"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -2897,7 +2897,7 @@
       return "floatw.rn %0 = %1, 0";
     return "floatw.rn %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2910,7 +2910,7 @@
       return "floatuw.rn %0 = %1, 0";
     return "floatuw.rn %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2969,7 +2969,7 @@
       return "fixedw.rz %0 = %1, 0";
     return "fixedw.rz %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 ;; zero-extend version of fix_truncsfsi2
@@ -2982,7 +2982,7 @@
       return "fixedw.rz %0 = %1, 0";
     return "fixedw.rz %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2995,7 +2995,7 @@
       return "fixeduw.rz %0 = %1, 0";
     return "fixeduw.rz %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 ;; zero-extend version of fixuns_truncsfsi2
@@ -3008,7 +3008,7 @@
       return "fixeduw.rz %0 = %1, 0";
     return "fixeduw.rz %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3017,7 +3017,7 @@
         (float_truncate:HF (match_operand:SF 1 "register_operand" "r")))]
   ""
   "fnarrowwh %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3026,7 +3026,7 @@
         (float_extend:DF (match_operand:SF 1 "register_operand" "r")))]
   ""
   "fwidenwd %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3052,7 +3052,7 @@
                    UNSPEC_FRSR))]
   ""
   "fsrsrw %0 = %1"
-  [(set_attr "type" "alu_lite_sfu")
+  [(set_attr "type" "fdiv")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3091,7 +3091,7 @@
                  (match_operand:DF 2 "register_operand" "r")))]
   ""
   "faddd %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3101,7 +3101,7 @@
                   (match_operand:DF 2 "register_operand" "r")))]
   ""
   "fsbfd %0 = %2, %1"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3111,7 +3111,7 @@
                  (match_operand:DF 2 "register_operand" "r")))]
   ""
   "fmuld %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3134,7 +3134,7 @@
                  (match_operand:DF 3 "register_operand" "0")))]
   ""
   "ffmad %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3145,7 +3145,7 @@
                  (match_operand:DF 3 "register_operand" "0")))]
   ""
   "ffmsd %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3155,7 +3155,7 @@
                  (match_operand:DF 2 "register_operand" "r")))]
   "HAVE_LVX_MIN_DF && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans)"
   "fminnd %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3165,7 +3165,7 @@
                  (match_operand:DF 2 "register_operand" "r")))]
   "HAVE_LVX_MAX_DF && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans)"
   "fmaxnd %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3174,7 +3174,7 @@
         (neg:DF (match_operand:DF 1 "register_operand" "r")))]
   ""
   "fnegd %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3183,7 +3183,7 @@
         (abs:DF (match_operand:DF 1 "register_operand" "r")))]
   ""
   "fabsd %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3192,7 +3192,7 @@
         (unspec:DI  [(match_operand:DF 1 "register_operand" "r")] UNSPEC_GETSIGN))]
   ""
   "extfs %0 = %1, 63, 63"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -3202,7 +3202,7 @@
                     (match_operand:DI 2 "register_operand" "r")] UNSPEC_SETSIGN))]
   ""
   "insf %0 = %2, 63, 63"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")]
 )
 
@@ -3242,7 +3242,7 @@
       return "floatd.rn %0 = %1, 0";
     return "floatd.rn %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3255,7 +3255,7 @@
       return "floatud.rn %0 = %1, 0";
     return "floatud.rn %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3268,7 +3268,7 @@
       return "fixedd.rz %0 = %1, 0";
     return "fixedd.rz %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3281,7 +3281,7 @@
       return "fixedud.rz %0 = %1, 0";
     return "fixedud.rz %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3302,7 +3302,7 @@
         (float_truncate:SF (match_operand:DF 1 "register_operand" "r")))]
   ""
   "fnarrowdw %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3355,7 +3355,7 @@
                     (match_operand:SI 2 "register_operand" "r")] UNSPEC_DIVMOD))]
   ""
   "divmodw.sx %0 = %1, %2"
-  [(set_attr "type" "alu_full")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_full")]
 )
 
@@ -3365,7 +3365,7 @@
                     (match_operand:SI 2 "register_operand" "r")] UNSPEC_DIVMODU))]
   ""
   "divmoduw.sx %0 = %1, %2"
-  [(set_attr "type" "alu_full")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_full")]
 )
 
@@ -3375,7 +3375,7 @@
                     (match_operand:DI 2 "register_operand" "r")] UNSPEC_DIVMOD))]
   ""
   "divmodd %0 = %1, %2"
-  [(set_attr "type" "alu_full")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_full")]
 )
 
@@ -3385,7 +3385,7 @@
                     (match_operand:DI 2 "register_operand" "r")] UNSPEC_DIVMODU))]
   ""
   "divmodud %0 = %1, %2"
-  [(set_attr "type" "alu_full")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_full")]
 )
 
@@ -3462,7 +3462,7 @@
                         (match_operand 2 "" "")] UNSPEC_FSQRT))]
   ""
   "fsqrt<fmode>%2 %0 = %1"
-  [(set_attr "type" "alu_full_sfu")
+  [(set_attr "type" "fdiv")
    (set_attr "issue" "alu_full")]
 )
 
@@ -3484,7 +3484,7 @@
                         (match_operand 2 "" "")] UNSPEC_FRINT))]
   ""
   "frint<fmode>%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 

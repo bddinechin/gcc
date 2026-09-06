@@ -17,11 +17,15 @@
 ;; Instruction types
 (include "types.md")
 
+;; Whether the pattern occupies a BCU slot, which lvx_sched_dfa_new_cycle uses
+;; to share one guard syllable between the instructions a bundle guards on the
+;; same condition.  A predicated pattern overrides it to yes.
 (define_attr "bcu_used" "no,yes"
   (if_then_else
-    (ior (eq_attr "type" "bcu")
-         (eq_attr "type" "bcu_get")
-         (eq_attr "type" "bcu_xfer"))
+    (ior (eq_attr "type" "branch")
+         (eq_attr "type" "sysget")
+         (eq_attr "type" "jump")
+         (eq_attr "type" "ijump"))
      (const_string "yes")
      (const_string "no")))
 
@@ -44,7 +48,7 @@
   [(const_int -1)]
   ""
   ""
-  [(set_attr "type" "bcu")
+  [(set_attr "type" "branch")
    (set_attr "issue" "bcu_brrp")]
 )
 
@@ -155,7 +159,7 @@
           (mem:DI (plus:P (match_dup 2) (match_operand 9 "const_int_operand" "I10,I37,i"))))])]
   "(XVECLEN (operands[0], 0) == 4)"
   "lo %o1 = %3[%2]"
-  [(set_attr "type" "load_core,load_core_x,load_core_y")
+  [(set_attr "type" "load, load, load")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "4,8,12")])
 
@@ -172,7 +176,7 @@
           (mem:DI (plus:P (match_dup 2) (match_operand 9 "const_int_operand" "I10,I37,i"))))])]
   "(XVECLEN (operands[0], 0) == 4)"
   "lo.u %o1 = %3[%2]"
-  [(set_attr "type" "load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "4,8,12")])
 
@@ -185,7 +189,7 @@
           (mem:DI (plus:P (match_dup 2) (match_operand 5 "const_int_operand" "I10,I37,i"))))])]
   "(XVECLEN (operands[0], 0) == 2)"
   "lq %q1 = %3[%2]"
-  [(set_attr "type" "load_core,load_core_x,load_core_y")
+  [(set_attr "type" "load, load, load")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "4,8,12")])
 
@@ -198,7 +202,7 @@
           (mem:DI (plus:P (match_dup 2) (match_operand 5 "const_int_operand" "I10,I37,i"))))])]
   "(XVECLEN (operands[0], 0) == 2)"
   "lq.u %q1 = %3[%2]"
-  [(set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "4,8,12")])
 
@@ -212,7 +216,7 @@
           (match_operand:DI 5 "register_operand" "r,r,r"))])]
   "(XVECLEN (operands[0], 0) == 2)"
   "sq %2[%1] = %q3"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length" "4,8,12")])
 
@@ -232,7 +236,7 @@
           (match_operand:DI 9 "register_operand" "r,r,r"))])]
   "(XVECLEN (operands[0], 0) == 4)"
   "so %2[%1] = %o3"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length" "4,8,12")])
 
@@ -284,7 +288,7 @@
       gcc_unreachable ();
     }
 }
-  [(set_attr "type" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y, store_core, store_core_x, store_core_y, load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y, bcu_get, all, alu_full_x, alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu, store, store, store, load, load, load, load_uncached, load_uncached, load_uncached, sysget, all, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y, bcu2_tiny_lsu, all, alu_full_x, alu_tiny_y")
    (set_attr "length"      "4,        4,          8,         12,          4,            8,           12,         4,           8,          12,                  4,                    8,                   12,       4,   4,          8,         12")]
 )
@@ -297,7 +301,7 @@
 ]
   ""
   "pcrel %0 = %T1"
-  [(set_attr "type" "alu_tiny_y")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny_y")
    (set_attr "length" "12")]
 )
@@ -309,7 +313,7 @@
   [(set (pc) (label_ref (match_operand 0)))]
   ""
   "goto %0"
-  [(set_attr "type" "bcu_xfer")
+  [(set_attr "type" "jump")
    (set_attr "issue" "bcu_xfer")]
 )
 
@@ -320,7 +324,7 @@
   [(set (pc) (match_operand:P 0 "address_operand" "r"))]
   ""
   "igoto %0"
-  [(set_attr "type" "bcu_xfer_brrp")
+  [(set_attr "type" "ijump")
    (set_attr "issue" "bcu_xfer_brrp")]
 )
 
@@ -391,7 +395,7 @@
   )]
   "<MODE>mode == Pmode"
   "igoto %0"
-  [(set_attr "type" "bcu_xfer_brrp")
+  [(set_attr "type" "ijump")
    (set_attr "issue" "bcu_xfer_brrp")]
 )
 
@@ -420,7 +424,7 @@
          (unspec:P [(const_int 0)] UNSPEC_PIC))]
    ""
    "pcrel %0 = @gotaddr()"
-  [(set_attr "type" "alu_tiny<symlen1>")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny<symlen1>")
    (set_attr "length" "<symlen2>")]
 )
@@ -430,7 +434,7 @@
          (match_operand:ALLP 1 "system_register_operand" "SFR"))]
    ""
    "get %0 = %1"
-  [(set_attr "type" "bcu_get")
+  [(set_attr "type" "sysget")
    (set_attr "issue" "bcu2_tiny_lsu")]
 )
 
@@ -441,7 +445,7 @@
    "@
     get %0 = %1
     iget %0"
-  [(set_attr "type" "bcu_get")
+  [(set_attr "type" "sysget")
    (set_attr "issue" "bcu2_tiny_lsu")]
 )
 
@@ -450,7 +454,7 @@
          (match_operand:ALLP 1 "register_operand" "r,r"))]
    ""
    "set %0 = %1"
-  [(set_attr "type" "all,bcu2")
+  [(set_attr "type" "all, branch2")
    (set_attr "issue" "all, bcu2")]
 )
 
@@ -459,7 +463,7 @@
          (unspec_volatile:DI [(match_operand:DI 1 "register_operand" "r,r")] UNSPEC_SET))]
    ""
    "set %0 = %1"
-  [(set_attr "type" "all,bcu2")
+  [(set_attr "type" "all, branch2")
    (set_attr "issue" "all, bcu2")]
 )
 
@@ -476,7 +480,7 @@
          (unspec_volatile:DI [(match_operand:DI 1 "register_operand" "r,r")] UNSPEC_WFXL))]
    ""
    "wfxl %0, %1"
-  [(set_attr "type" "all,bcu2")
+  [(set_attr "type" "all, branch2")
    (set_attr "issue" "all, bcu2")]
 )
 
@@ -485,7 +489,7 @@
          (unspec_volatile:DI [(match_operand:DI 1 "register_operand" "r,r")] UNSPEC_WFXM))]
    ""
    "wfxm %0, %1"
-  [(set_attr "type" "all,bcu2")
+  [(set_attr "type" "all, branch2")
    (set_attr "issue" "all, bcu2")]
 )
 
@@ -496,7 +500,7 @@
         (unspec:DI [(reg:DI LVX_IPE_REGNO) (match_dup 0)] UNSPEC_EFFECT))]
   ""
   "syncgroup %0"
-  [(set_attr "type" "bcu2")
+  [(set_attr "type" "branch2")
    (set_attr "issue" "bcu2")]
 )
 
@@ -537,7 +541,7 @@
          (unspec_volatile:DI [(match_operand:DI 1 "register_operand" "0")] UNSPEC_WAITIT))]
    ""
    "waitit %0"
-  [(set_attr "type" "bcu_get")
+  [(set_attr "type" "sysget")
    (set_attr "issue" "bcu2_tiny_lsu")]
 )
 
@@ -554,7 +558,7 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "fence%0"
-  [(set_attr "type" "cache2")
+  [(set_attr "type" "cache")
    (set_attr "issue" "lsu2_memw")]
 )
 
@@ -563,7 +567,7 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "d1inval"
-  [(set_attr "type" "cache2")
+  [(set_attr "type" "cache")
    (set_attr "issue" "lsu2_memw")]
 )
 
@@ -572,7 +576,7 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "i1inval"
-  [(set_attr "type" "cache2")
+  [(set_attr "type" "cache")
    (set_attr "issue" "lsu2_memw")]
 )
 
@@ -582,7 +586,7 @@
   ""
   "dinvall%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache, cache_x, cache_y")
+   (set_attr "type" "cache, cache, cache")
    (set_attr "issue" "lsu, lsu_x, lsu_y")]
 )
 
@@ -593,7 +597,7 @@
   ""
   "dtouchl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache, cache_x, cache_y")
+   (set_attr "type" "cache, cache, cache")
    (set_attr "issue" "lsu, lsu_x, lsu_y")]
 )
 
@@ -603,7 +607,7 @@
   ""
   "dpurgel%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache, cache_x, cache_y")
+   (set_attr "type" "cache, cache, cache")
    (set_attr "issue" "lsu, lsu_x, lsu_y")]
 )
 
@@ -613,7 +617,7 @@
   ""
   "dflushl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache, cache_x, cache_y")
+   (set_attr "type" "cache, cache, cache")
    (set_attr "issue" "lsu, lsu_x, lsu_y")]
 )
 
@@ -623,7 +627,7 @@
   ""
   "i1invals%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache2, cache2_x, cache2_y")
+   (set_attr "type" "cache, cache, cache")
    (set_attr "issue" "lsu2_memw, lsu2_memw_x, lsu2_memw_y")]
 )
 
@@ -634,7 +638,7 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "dinvalsw%2 %0, %1"
-  [(set_attr "type" "cache2")
+  [(set_attr "type" "cache")
    (set_attr "issue" "lsu2_memw")]
 )
 
@@ -645,7 +649,7 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "dpurgesw%2 %0, %1"
-  [(set_attr "type" "cache2")
+  [(set_attr "type" "cache")
    (set_attr "issue" "lsu2_memw")]
 )
 
@@ -656,7 +660,7 @@
    (clobber (mem:BLK (scratch)))]
   ""
   "dflushsw%2 %0, %1"
-  [(set_attr "type" "cache2")
+  [(set_attr "type" "cache")
    (set_attr "issue" "lsu2_memw")]
 )
 
@@ -667,7 +671,7 @@
   ""
   "dtouchl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
-   (set_attr "type" "cache, cache_x, cache_y")
+   (set_attr "type" "cache, cache, cache")
    (set_attr "issue" "lsu, lsu_x, lsu_y")]
 )
 
@@ -718,7 +722,7 @@
   [(clobber (mem:BLK (scratch)))]
   ""
   "fence"
-  [(set_attr "type" "cache2")
+  [(set_attr "type" "cache")
    (set_attr "issue" "lsu2_memw")]
 )
 
@@ -732,7 +736,7 @@
    ""
    "lbz.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+   (set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -744,7 +748,7 @@
    ""
    "lbs.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+   (set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -756,7 +760,7 @@
    ""
    "lhz.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+   (set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -768,7 +772,7 @@
    ""
    "lhs.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+   (set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -780,7 +784,7 @@
    ""
    "lwz.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+   (set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -792,7 +796,7 @@
    ""
    "lws.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
-   (set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+   (set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -804,7 +808,7 @@
    ""
    "ld.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+   (set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -816,7 +820,7 @@
    ""
    "lq.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
-   (set_attr "type"   "load_core_uncached, load_core_uncached_x,load_core_uncached_y")
+   (set_attr "type"   "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -827,7 +831,7 @@
    ""
    "l<SHORT:lsusize><ANY_EXTEND:lsux>%V1 %0 = %1"
   [(set_attr "length" "            4,               8,              12,                      4,                        8,                       12")
-   (set_attr "type"   "load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+   (set_attr "type"   "load, load, load, load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
 )
 
@@ -849,7 +853,7 @@
      gcc_unreachable ();
    }
 }
-  [(set_attr "type"   "alu_lite, load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+  [(set_attr "type"   "alu, load, load, load, load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "alu_lite, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "       4,             4,               8,              12,                      4,                        8,                       12")])
 
@@ -870,7 +874,7 @@
        gcc_unreachable ();
    }
 }
-  [(set_attr "type"   "alu_lite, load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+  [(set_attr "type"   "alu, load, load, load, load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "alu_lite, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length" "       4,             4,               8,              12,                      4,                        8,                       12")])
 
@@ -880,7 +884,7 @@
    (clobber (reg:DI LVX_RA_REGNO))]
   ""
   "icall %0"
-  [(set_attr "type" "bcu_xfer_brrp")
+  [(set_attr "type" "ijump")
    (set_attr "issue" "bcu_xfer_brrp")]
 )
 
@@ -901,7 +905,7 @@
    (clobber (reg:DI LVX_RA_REGNO))]
   ""
   "call %0"
-  [(set_attr "type" "bcu_xfer")
+  [(set_attr "type" "jump")
    (set_attr "issue" "bcu_xfer")]
 )
 
@@ -939,7 +943,7 @@
    (clobber (reg:DI LVX_RA_REGNO))]
   ""
   "call %1"
-  [(set_attr "type" "bcu_xfer")
+  [(set_attr "type" "jump")
    (set_attr "issue" "bcu_xfer")]
 )
 
@@ -963,7 +967,7 @@
    (return)]
   ""
   "goto %1"
-  [(set_attr "type" "bcu_xfer")
+  [(set_attr "type" "jump")
    (set_attr "issue" "bcu_xfer")]
 )
 
@@ -985,7 +989,7 @@
    (return)]
   ""
   "goto %0"
-  [(set_attr "type" "bcu_xfer")
+  [(set_attr "type" "jump")
    (set_attr "issue" "bcu_xfer")]
 )
 
@@ -1001,7 +1005,7 @@
 ;;                 (match_operand 2 "" "")))
 ;;      (return)]
 ;;   "igoto<P:suffix> %1"
-;; [(set_attr "type" "bcu_xfer")]
+;; [(set_attr "type" "jump")]
 ;; )
 
 ;; (define_insn "*isibcall_real_<mode>"
@@ -1009,7 +1013,7 @@
 ;;            (match_operand 1 "" ""))
 ;;      (return)]
 ;;   "igoto<P:suffix> %0"
-;; [(set_attr "type" "bcu_xfer")]
+;; [(set_attr "type" "jump")]
 ;; )
 
 (define_insn "*icall_value_<mode>"
@@ -1019,7 +1023,7 @@
    (clobber (reg:DI LVX_RA_REGNO))]
   ""
   "icall %1"
-  [(set_attr "type" "bcu_xfer_brrp")
+  [(set_attr "type" "ijump")
    (set_attr "issue" "bcu_xfer_brrp")]
 )
 
@@ -1138,7 +1142,7 @@
    (use (reg:DI LVX_RA_REGNO))]
   ""
   "ret"
-  [(set_attr "type" "bcu_xfer")
+  [(set_attr "type" "jump")
    (set_attr "issue" "bcu_xfer")]
 )
 

@@ -7,7 +7,7 @@
           (match_operand:SI 3 "register_w32_operand" "r,W32")]))]
   ""
   "compw.%1 %0 = %2, %3"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -19,7 +19,7 @@
           (match_operand:SI 3 "register_w32_operand" "r,W32")]))]
   ""
   "compw.%1 %0 = %2, %3"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -47,7 +47,7 @@
           (match_operand:DI 3 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")]))]
   "!HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE"
   "compd.%1 %0 = %2, %3"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length"      "4,       4,         8,        12")]
 )
@@ -58,7 +58,7 @@
           (match_operand:DI 3 "register_s32_operand" "r,I32")]))]
   "HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE"
   "compd.%1 %0 = %2, %3"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -99,7 +99,7 @@
           (const_int 0)))]
   ""
   "compw.any %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -113,7 +113,7 @@
           (const_int 0)))]
   "!HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE"
   "compd.any %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length"      "4,       4,         8,        12")]
 )
@@ -126,7 +126,7 @@
           (const_int 0)))]
   "HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE"
   "compd.any %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -140,7 +140,7 @@
           (const_int 0)))]
   ""
   "compw.none %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -154,7 +154,7 @@
           (const_int 0)))]
   "!HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE"
   "compd.none %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length"      "4,       4,         8,        12")]
 )
@@ -167,7 +167,7 @@
           (const_int 0)))]
   "HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE"
   "compd.none %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -181,7 +181,7 @@
           (const_int 0)))]
   "HAVE_LVX_COMP_SIDI_ALL_NALL"
   "compw.all %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -195,7 +195,7 @@
           (const_int 0)))]
   "HAVE_LVX_COMP_SIDI_ALL_NALL && !HAVE_LVX_COMPD_MAX_IMMEDIATE_I32"
   "compd.all %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length"      "4,       4,         8,        12")]
 )
@@ -208,7 +208,7 @@
           (const_int 0)))]
   "HAVE_LVX_COMP_SIDI_ALL_NALL && HAVE_LVX_COMPD_MAX_IMMEDIATE_I32"
   "compd.all %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -222,7 +222,7 @@
           (const_int 0)))]
   "HAVE_LVX_COMP_SIDI_ALL_NALL"
   "compw.nall %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -236,7 +236,7 @@
           (const_int 0)))]
   "HAVE_LVX_COMP_SIDI_ALL_NALL && !HAVE_LVX_COMPD_MAX_IMMEDIATE_I32"
   "compd.nall %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length"      "4,       4,         8,        12")]
 )
@@ -249,7 +249,7 @@
           (const_int 0)))]
   "HAVE_LVX_COMP_SIDI_ALL_NALL && HAVE_LVX_COMPD_MAX_IMMEDIATE_I32"
   "compd.nall %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny_x")
    (set_attr "length"      "4,         8")]
 )
@@ -294,7 +294,7 @@
                       (pc)))]
   ""
   "cb.<SIDI:suffix>%0z %1? %2"
-  [(set_attr "type" "bcu")
+  [(set_attr "type" "branch")
    (set_attr "issue" "bcu_brrp")]
 )
 
@@ -307,7 +307,7 @@
                       (pc)))]
   ""
   "cb.<EQNE:evenodd> %0? %1"
-  [(set_attr "type" "bcu")
+  [(set_attr "type" "branch")
    (set_attr "issue" "bcu_brrp")]
 )
 
@@ -347,7 +347,7 @@
                     (match_operand:V2DI 3 "reg_zero_mone_operand" "rS01")])))]
   ""
   "compd.%1 %x0 = %x2, %x3\n\tcompd.%1 %y0 = %y2, %y3"
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"         "8")]
 )
@@ -359,7 +359,7 @@
                     (match_operand:V2DI 3 "reg_zero_mone_operand" "rS01")])))]
   ""
   "compd.%1 %x0 = %2, %x3\n\tcompd.%1 %y0 = %2, %y3"
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"         "8")]
 )
@@ -371,7 +371,7 @@
           (match_operand:V128N 3 "reg_zero_mone_operand" "r,S01")]))]
   "LVX_2"
   "compn<suffix>.%1 %0 = %2, %3"
-  [(set_attr "type" "alu_lite,alu_lite_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_lite, alu_lite_x")
    (set_attr "length"      "4,        8")]
 )
@@ -383,7 +383,7 @@
           (match_operand:V128N 3 "reg_zero_mone_operand" "r,S01")]))]
   "LVX_2"
   "compn<suffix>.%1 %0 = %2, %3"
-  [(set_attr "type" "alu_lite,alu_lite_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_lite, alu_lite_x")
    (set_attr "length"      "4,        8")]
 )
@@ -396,7 +396,7 @@
 ;;                     (vec_duplicate:V2DI (match_operand:DI 3 "nonmemory_operand" "r"))])))]
 ;;   ""
 ;;   "compd.%1 %x0 = %x2, %3\n\tcompd.%1 %y0 = %y2, %3"
-;;   [(set_attr "type" "alu_tiny_x2")
+;;   [(set_attr "type" "alu")
 ;;    (set_attr "length"         "8")]
 ;; )
 
@@ -409,7 +409,7 @@
   {
     return "compdp.%1 %L0 = %L2, %L3\n\tcompdp.%1 %M0 = %M2, %M3";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -423,7 +423,7 @@
   {
     return "compdp.%1 %L0 = %2, %L3\n\tcompdp.%1 %M0 = %2, %M3";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -436,7 +436,7 @@
 ;;           (vec_duplicate:S128K (match_operand:<CHUNK> 3 "nonmemory_operand" "r,r"))]))]
 ;;   ""
 ;;   "compn<chunkx>.%1 %x0 = %x2, %3\n\tcompn<chunkx>.%1 %y0 = %y2, %3"
-;;   [(set_attr "type" "alu_tiny_x2")
+;;   [(set_attr "type" "alu")
 ;;    (set_attr "length"         "8")]
 ;; )
 
@@ -453,7 +453,7 @@
    (set (match_dup 0)
         (neg:V2DI (match_dup 0)))]
   ""
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")]
 )
 
@@ -470,7 +470,7 @@
    (set (match_dup 0)
         (neg:V2DI (match_dup 0)))]
   ""
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")]
 )
 
@@ -488,7 +488,7 @@
 ;;    (set (match_dup 0)
 ;;         (neg:V2DI (match_dup 0)))]
 ;;   ""
-;;   [(set_attr "type" "alu_tiny_x2")]
+;;   [(set_attr "type" "alu")]
 ;; )
 
 ;; not selectionable
@@ -499,7 +499,7 @@
 ;;           (vec_duplicate:V2DI (match_operand:DI 3 "nonmemory_operand" "r"))]))]
 ;;   "HAVE_LVX_NEG_CMP_DI"
 ;;   "compnd.%1 %x0 = %x2, %3\n\tcompnd.%1 %y0 = %y2, %3"
-;;   [(set_attr "type" "alu_tiny_x2")
+;;   [(set_attr "type" "alu")
 ;;    (set_attr "length"         "8")]
 ;; )
 
@@ -512,7 +512,7 @@
   {
     return "compn<hsuffix>.%1 %L0 = %L2, %L3\n\tcompn<hsuffix>.%1 %M0 = %M2, %M3";
   }
-  [(set_attr "type" "alu_tiny_x4,alu_tiny_x4_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "x4_alu_tiny, x4_alu_tiny_x")
    (set_attr "length"        "16,           32")]
 )
@@ -526,7 +526,7 @@
   {
     return "compn<hsuffix>.%1 %L0 = %2, %L3\n\tcompn<hsuffix>.%1 %M0 = %2, %M3";
   }
-  [(set_attr "type" "alu_tiny_x4,alu_tiny_x4_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "x4_alu_tiny, x4_alu_tiny_x")
    (set_attr "length"        "16,           32")]
 )
@@ -542,7 +542,7 @@
 ;;     return "compn<chunkx>.%1 %x0 = %x2, %3\n\tcompn<chunkx>.%1 %y0 = %y2, %3\n\t"
 ;;            "compn<chunkx>.%1 %z0 = %z2, %3\n\tcompn<chunkx>.%1 %t0 = %t2, %3";
 ;;   }
-;;   [(set_attr "type" "alu_tiny_x4")
+;;   [(set_attr "type" "alu")
 ;;    (set_attr "length"        "16")]
 ;; )
 
@@ -559,7 +559,7 @@
    (set (match_dup 0)
         (neg:V4DI (match_dup 0)))]
   ""
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")]
 )
 
@@ -576,7 +576,7 @@
    (set (match_dup 0)
         (neg:V4DI (match_dup 0)))]
   ""
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")]
 )
 
@@ -594,7 +594,7 @@
 ;;    (set (match_dup 0)
 ;;         (neg:V4DI (match_dup 0)))]
 ;;   ""
-;;   [(set_attr "type" "alu_tiny_x4")]
+;;   [(set_attr "type" "alu")]
 ;; )
 
 ;; not selectionable
@@ -608,7 +608,7 @@
 ;;     return "compnd.%1 %x0 = %x2, %3\n\tcompnd.%1 %y0 = %y2, %3\n\t"
 ;;            "compnd.%1 %z0 = %z2, %3\n\tcompnd.%1 %t0 = %t2, %3";
 ;;   }
-;;   [(set_attr "type" "alu_tiny_x4")
+;;   [(set_attr "type" "alu")
 ;;    (set_attr "length"        "16")]
 ;; )
 
@@ -675,7 +675,7 @@
           (match_operand:V128N 3 "const_zero_operand" "")))]
   "LVX_2"
   "compn<suffix>.any %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -689,7 +689,7 @@
           (match_operand:V128N 3 "const_zero_operand" "")))]
   "LVX_2"
   "compn<suffix>.none %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -705,7 +705,7 @@
   {
     return "compn<hsuffix>.any %L0 = %L1, %L2\n\tcompn<hsuffix>.any %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -721,7 +721,7 @@
   {
     return "compn<hsuffix>.none %L0 = %L1, %L2\n\tcompn<hsuffix>.none %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -736,7 +736,7 @@
           (match_operand:ALLF 3 "register_f32_operand" "r,H32")]))]
   "HAVE_LVX_CMP_<ALLF:MODE>"
   "fcomp<ALLF:suffix>.%F1 %0 = %2, %3"
-  [(set_attr "type" "alu_lite,alu_lite_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_lite, alu_lite_x")
    (set_attr "length"      "4,         8")]
 )
@@ -753,7 +753,7 @@
                     (match_operand:V2DF 3 "register_operand" "r")])))]
   ""
   "fcompd.%F1 %x0 = %x2, %x3\n\tfcompd.%F1 %y0 = %y2, %y3"
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -765,7 +765,7 @@
                     (match_operand:V2DF 3 "register_operand" "r")])))]
   ""
   "fcompd.%F1 %x0 = %2, %x3\n\tfcompd.%F1 %y0 = %2, %y3"
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -777,7 +777,7 @@
                     (vec_duplicate:V2DF (match_operand:DF 3 "nonmemory_operand" "r"))])))]
   ""
   "fcompd.%F1 %x0 = %x2, %3\n\tfcompd.%F1 %y0 = %y2, %3"
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -789,7 +789,7 @@
           (match_operand:V128F 3 "register_operand" "r")]))]
   "LVX_2"
   "fcompn<V128F:suffix>.%F1 %0 = %2, %3"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length"      "4")]
 )
@@ -801,7 +801,7 @@
           (match_operand:V128F 3 "register_operand" "r")]))]
   "LVX_2"
   "fcompn<V128F:suffix>.%F1 %0 = %2, %3"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length"      "4")]
 )
@@ -816,7 +816,7 @@
     return "fcompd.%F1 %x0 = %x2, %x3\n\tfcompd.%F1 %y0 = %y2, %y3\n\t"
            "fcompd.%F1 %z0 = %z2, %z3\n\tfcompd.%F1 %t0 = %t2, %t3";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -831,7 +831,7 @@
     return "fcompd.%F1 %x0 = %2, %x3\n\tfcompd.%F1 %y0 = %2, %y3\n\t"
            "fcompd.%F1 %z0 = %2, %z3\n\tfcompd.%F1 %t0 = %2, %t3";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -846,7 +846,7 @@
     return "fcompd.%F1 %x0 = %x2, %3\n\tfcompd.%F1 %y0 = %y2, %3\n\t"
            "fcompd.%F1 %z0 = %z2, %3\n\tfcompd.%F1 %t0 = %t2, %3";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -859,7 +859,7 @@
 ;;           (vec_duplicate:S128F (match_operand:<CHUNK> 3 "nonmemory_operand" "r"))]))]
 ;;   ""
 ;;   "fcompn<chunkx>.%F1 %x0 = %x2, %3\n\tfcompn<chunkx>.%F1 %y0 = %y2, %3"
-;;   [(set_attr "type" "alu_lite_x2")
+;;   [(set_attr "type" "alu")
 ;;    (set_attr "length"         "8")]
 ;; )
 
@@ -876,7 +876,7 @@
    (set (match_dup 0)
         (neg:V2DI (match_dup 0)))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -893,7 +893,7 @@
    (set (match_dup 0)
         (neg:V2DI (match_dup 0)))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -911,7 +911,7 @@
 ;;    (set (match_dup 0)
 ;;         (neg:V2DI (match_dup 0)))]
 ;;   ""
-;;   [(set_attr "type" "alu_lite_x2")]
+;;   [(set_attr "type" "alu")]
 ;; )
 
 ;; fixme: not selectionable
@@ -922,7 +922,7 @@
 ;;           (vec_duplicate:V2DF (match_operand:DF 3 "nonmemory_operand" "r"))]))]
 ;;   "HAVE_LVX_NEG_CMP_DF"
 ;;   "fcompnd.%F1 %x0 = %x2, %3\n\tfcompnd.%F1 %y0 = %y2, %3"
-;;   [(set_attr "type" "alu_tiny_x2")
+;;   [(set_attr "type" "alu")
 ;;    (set_attr "length"         "8")]
 ;; )
 
@@ -943,7 +943,7 @@
          [(subreg:<HALF> (match_dup 2) 16)
           (subreg:<HALF> (match_dup 3) 16)]))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -964,7 +964,7 @@
          [(vec_duplicate:<HALF> (match_dup 2))
           (subreg:<HALF> (match_dup 3) 16)]))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -986,7 +986,7 @@
 ;;          [(subreg:<HALF> (match_dup 2) 16)
 ;;           (vec_duplicate:<HALF> (match_dup 3))]))]
 ;;   ""
-;;   [(set_attr "type" "alu_lite_x2")]
+;;   [(set_attr "type" "alu")]
 ;; )
 
 ;; not selectable
@@ -1000,7 +1000,7 @@
 ;;     return "fcompn<chunkx>.%F1 %x0 = %x2, %3\n\tfcompn<chunkx>.%F1 %y0 = %y2, %3\n\t"
 ;;            "fcompn<chunkx>.%F1 %z0 = %z2, %3\n\tfcompn<chunkx>.%F1 %t0 = %t2, %3";
 ;;   }
-;;   [(set_attr "type" "alu_tiny_x4")
+;;   [(set_attr "type" "alu")
 ;;    (set_attr "length"        "16")]
 ;; )
 
@@ -1021,7 +1021,7 @@
          [(subreg:V2DF (match_dup 2) 16)
           (subreg:V2DF (match_dup 3) 16)]))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1042,7 +1042,7 @@
          [(vec_duplicate:V2DF (match_dup 2))
           (subreg:V2DF (match_dup 3) 16)]))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1064,7 +1064,7 @@
 ;;          [(subreg:V2DF (match_dup 2) 16)
 ;;           (vec_duplicate:V2DF (match_dup 3))]))]
 ;;   ""
-;;   [(set_attr "type" "alu_lite_x2")]
+;;   [(set_attr "type" "alu")]
 ;; )
 
 ;; not selectionable
@@ -1078,7 +1078,7 @@
 ;;     return "fcompnd.%F1 %x0 = %x2, %3\n\tfcompnd.%F1 %y0 = %y2, %3\n\t"
 ;;            "fcompnd.%F1 %z0 = %z2, %3\n\tfcompnd.%F1 %t0 = %t2, %3";
 ;;   }
-;;   [(set_attr "type" "alu_tiny_x4")
+;;   [(set_attr "type" "alu")
 ;;    (set_attr "length"        "16")]
 ;; )
 
@@ -1176,7 +1176,7 @@
                              (match_operand:FITGPR 4 "register_operand" "0,0,0,0")))]
   "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
-  [(set_attr "type" "alu_lite,alu_lite,alu_lite_x,alu_lite_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_lite, alu_lite, alu_lite_x, alu_lite_y")
    (set_attr "length"      "4,       4,         8,        12")]
 )
@@ -1189,7 +1189,7 @@
                              (match_operand:FITGPR 4 "register_operand" "0,0")))]
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
-  [(set_attr "type" "alu_lite,alu_lite_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_lite, alu_lite_x")
    (set_attr "length"      "4,         8")]
 )
@@ -1203,7 +1203,7 @@
                              (match_operand:FITGPR 3 "register_operand" "0,0,0,0")))]
   "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
-  [(set_attr "type" "alu_lite,alu_lite,alu_lite_x,alu_lite_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_lite, alu_lite, alu_lite_x, alu_lite_y")
    (set_attr "length"      "4,       4,         8,        12")]
 )
@@ -1216,7 +1216,7 @@
                              (match_operand:FITGPR 3 "register_operand" "0,0")))]
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
-  [(set_attr "type" "alu_lite,alu_lite_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_lite, alu_lite_x")
    (set_attr "length"      "4,         8")]
 )
@@ -1230,7 +1230,7 @@
                              (match_operand:ALL128 4 "register_operand" "0")))]
   ""
   "cmoved.<SIDI:suffix>%2z %3? %x0 = %x1\n\tcmoved.<SIDI:suffix>%2z %3? %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -1244,7 +1244,7 @@
                              (match_operand:ALL128 3 "register_operand" "0")))]
   ""
   "cmoved.<EQNE:evenodd> %2? %x0 = %x1\n\tcmoved.<EQNE:evenodd> %2? %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -1268,7 +1268,7 @@
                              (subreg:<HALF> (match_dup 1) 16)
                              (subreg:<HALF> (match_dup 4) 16)))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1298,7 +1298,7 @@
     else
       gcc_unreachable ();
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1314,7 +1314,7 @@
     return "cmoved.<SIDI:suffix>%2z %3? %x0 = %x1\n\tcmoved.<SIDI:suffix>%2z %3? %y0 = %y1\n\t"
            "cmoved.<SIDI:suffix>%2z %3? %z0 = %z1\n\tcmoved.<SIDI:suffix>%2z %3? %t0 = %t1";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -1342,7 +1342,7 @@
                              (subreg:<HALF> (match_dup 1) 16)
                              (subreg:<HALF> (match_dup 3) 16)))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1376,7 +1376,7 @@
     else
       gcc_unreachable ();
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1392,7 +1392,7 @@
     return "cmoved.<EQNE:evenodd> %2? %x0 = %x1\n\tcmoved.<EQNE:evenodd> %2? %y0 = %y1\n\t"
            "cmoved.<EQNE:evenodd> %2? %z0 = %z1\n\tcmoved.<EQNE:evenodd> %2? %t0 = %t1";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -1424,7 +1424,7 @@
                               (subreg:<QUART> (match_dup 1) 48)
                               (subreg:<QUART> (match_dup 4) 48)))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1463,7 +1463,7 @@
                               (subreg:<QUART> (match_dup 1) 48)
                               (subreg:<QUART> (match_dup 3) 48)))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1510,7 +1510,7 @@
                             (match_operand:V128B 4 "register_operand" "0")))]
   "LVX_2"
   "cmove<suffix>.%2z %3? %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length"      "4")]
 )
@@ -1525,7 +1525,7 @@
                             (match_operand:V128B 4 "register_operand" "0")))]
   "LVX_2"
   "cmove<suffix>.%2z %3? %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length"      "4")]
 )
@@ -1546,7 +1546,7 @@
 ;;       return "cmoved.d%R2z %x3? %x0 = %x1\n\tcmoved.d%R2z %y3? %y0 = %y1";
 ;;     return "cmove<chunkx>.%R2z %x3? %x0 = %x1\n\tcmove<chunkx>.%R2z %y3? %y0 = %y1";
 ;;   }
-;;   [(set_attr "type" "alu_lite_x2")
+;;   [(set_attr "type" "alu")
 ;;    (set_attr "length"         "8")]
 ;; )
 
@@ -1573,7 +1573,7 @@
   {
     operands[5] = CONST0_RTX (<HMASK>mode);
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1589,7 +1589,7 @@
     return "cmove<hsuffix>.%2z %L3? %L0 = %L1\n\t"
            "cmove<hsuffix>.%2z %M3? %M0 = %M1";
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -1618,7 +1618,7 @@
   {
     operands[5] = CONST0_RTX (<HMASK>mode);
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1635,7 +1635,7 @@
     return "cmove<hsuffix>.%2z %L3? %L0 = %L1\n\t"
            "cmove<hsuffix>.%2z %M3? %M0 = %M1";
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -1669,7 +1669,7 @@
   {
     operands[5] = CONST0_RTX (<HMASK>mode);
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1687,7 +1687,7 @@
     return "cmove<hsuffix>.%R2z %L3? %L0 = %L1\n\t"
            "cmove<hsuffix>.%R2z %M3? %M0 = %M1";
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -1725,7 +1725,7 @@
   {
     operands[5] = CONST0_RTX (<QMASK>mode);
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1763,7 +1763,7 @@
   {
     operands[5] = CONST0_RTX (<QMASK>mode);
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1810,7 +1810,7 @@
   {
     operands[5] = CONST0_RTX (<QMASK>mode);
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1826,7 +1826,7 @@
           (match_operand:FITGPR 1 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
-  [(set_attr "type" "alu_lite,alu_lite,alu_lite_x,alu_lite_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_lite, alu_lite, alu_lite_x, alu_lite_y")
    (set_attr "length"      "4,       4,         8,        12")]
 )
@@ -1839,7 +1839,7 @@
           (match_operand:FITGPR 1 "register_w32_operand" "r,W32")))]
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
-  [(set_attr "type" "alu_lite,alu_lite_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_lite, alu_lite_x")
    (set_attr "length"      "4,         8")]
 )
@@ -1853,7 +1853,7 @@
           (match_operand:FITGPR 1 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
   "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
-  [(set_attr "type" "alu_lite,alu_lite,alu_lite_x,alu_lite_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_lite, alu_lite, alu_lite_x, alu_lite_y")
    (set_attr "length"      "4,       4,         8,        12")]
 )
@@ -1866,7 +1866,7 @@
           (match_operand:FITGPR 1 "register_w32_operand" "r,W32")))]
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
-  [(set_attr "type" "alu_lite,alu_lite_x")
+  [(set_attr "type" "alu, alu")
    (set_attr "issue" "alu_lite, alu_lite_x")
    (set_attr "length"      "4,         8")]
 )
@@ -1880,7 +1880,7 @@
           (match_operand:ALL128 1 "reg_zero_mone_operand" "rS01")))]
   ""
   "cmoved.<SIDI:suffix>%2z %3? %x0 = %x1\n\tcmoved.<SIDI:suffix>%2z %3? %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -1894,7 +1894,7 @@
           (match_operand:ALL128 1 "reg_zero_mone_operand" "rS01")))]
   ""
   "cmoved.<EQNE:evenodd> %2? %x0 = %x1\n\tcmoved.<EQNE:evenodd> %2? %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -1911,7 +1911,7 @@
     return "cmoved.<SIDI:suffix>%2z %3? %x0 = %x1\n\tcmoved.<SIDI:suffix>%2z %3? %y0 = %y1\n\t"
            "cmoved.<SIDI:suffix>%2z %3? %z0 = %z1\n\tcmoved.<SIDI:suffix>%2z %3? %t0 = %t1";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -1928,7 +1928,7 @@
     return "cmoved.<EQNE:evenodd> %2? %x0 = %x1\n\tcmoved.<EQNE:evenodd> %2? %y0 = %y1\n\t"
            "cmoved.<EQNE:evenodd> %2? %z0 = %z1\n\tcmoved.<EQNE:evenodd> %2? %t0 = %t1";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -2134,7 +2134,7 @@
         (match_operand:ALLIFV 1 "register_operand" "r,r,r"))]
   "lvx_hardreg_aligned_p (operands[1], <MODE>mode)"
   "s<ALLIFV:lsusize>%X0 %0 = %1"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"        "4,           8,          12")
    (set_attr "predicable"  "yes,         yes,         yes")]
@@ -2145,7 +2145,7 @@
         (match_operand:ALLIFV 1 "memory_operand" "Ca,Cb,Cm,Za,Zb,Zm"))]
   "lvx_hardreg_aligned_p (operands[0], <MODE>mode)"
   "l<ALLIFV:lsusizezx>%V1 %0 = %1"
-  [(set_attr "type" "load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+  [(set_attr "type" "load, load, load, load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"       "4,           8,           12,                 4,                    8,                   12")
    (set_attr "predicable"  "yes,         yes,         yes,               yes,                  yes,                  yes")]
@@ -2156,7 +2156,7 @@
         (ANY_EXTEND:DI (match_operand:SHORT 1 "memory_operand" "Ca,Cb,Cm,Za,Zb,Zm")))]
   "lvx_hardreg_aligned_p (operands[0], <MODE>mode)"
   "l<SHORT:lsusize><ANY_EXTEND:lsux>%V1 %0 = %1"
-  [(set_attr "type" "load_core, load_core_x, load_core_y, load_core_uncached, load_core_uncached_x, load_core_uncached_y")
+  [(set_attr "type" "load, load, load, load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"       "4,           8,          12,                  4,                    8,                   12")
    (set_attr "predicable"  "yes,         yes,         yes,               yes,                  yes,                  yes")]

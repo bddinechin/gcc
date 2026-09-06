@@ -313,7 +313,7 @@
         (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
                       (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8))))]
   ""
-  [(set_attr "type" "mult_int")
+  [(set_attr "type" "imul")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -331,7 +331,7 @@
         (mult:<HWIDE> (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
                       (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8))))]
   ""
-  [(set_attr "type" "mult_int")
+  [(set_attr "type" "imul")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -349,7 +349,7 @@
         (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
                       (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8))))]
   ""
-  [(set_attr "type" "mult_int")
+  [(set_attr "type" "imul")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -394,7 +394,7 @@
                                     (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))
                       (subreg:<HWIDE> (match_dup 3) 16)))]
   ""
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -415,7 +415,7 @@
                                     (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))
                       (subreg:<HWIDE> (match_dup 3) 16)))]
   ""
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -436,7 +436,7 @@
                                     (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))
                       (subreg:<HWIDE> (match_dup 3) 16)))]
   ""
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -481,7 +481,7 @@
                        (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
                                      (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))))]
   ""
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -502,7 +502,7 @@
                        (mult:<HWIDE> (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
                                      (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))))]
   ""
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -523,7 +523,7 @@
                        (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
                                      (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))))]
   ""
-  [(set_attr "type" "madd_int")
+  [(set_attr "type" "imadd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -754,7 +754,7 @@
                           (match_operand 2 "" "")] UNSPEC_WIDENS))]
   ""
   "widens<wchunkx>%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -764,7 +764,7 @@
                           (match_operand 2 "" "")] UNSPEC_WIDENZ))]
   "LVX_2"
   "widenz<wchunkx>%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -774,7 +774,7 @@
                           (match_operand 2 "" "")] UNSPEC_WIDENQ))]
   "LVX_2"
   "widenq<wchunkx>%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -879,7 +879,7 @@
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_ZXE))]
   ""
   "andq %0 = %1, 0x00FF00FF.@"
-  [(set_attr "type" "alu_lite_x")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite_x")
    (set_attr "length"           "8")]
 )
@@ -891,7 +891,7 @@
   {
     return "andq %L0 = %L1, 0x00FF00FF.@\n\tandq %M0 = %M1, 0x00FF00FF.@";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"          "32")]
 )
@@ -914,7 +914,7 @@
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_ZXE))]
   ""
   "andq %0 = %1, 0x0000FFFF.@"
-  [(set_attr "type" "alu_lite_x")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite_x")
    (set_attr "length"           "8")]
 )
@@ -926,7 +926,7 @@
   {
     return "andq %L0 = %L1, 0x0000FFFF.@\n\tandq %M0 = %M1, 0x0000FFFF.@";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"          "32")]
 )
@@ -936,7 +936,7 @@
         (unspec:V2DI [(match_operand:V4SI 1 "register_operand" "r")] UNSPEC_ZXE))]
   ""
   "zxwd %x0 = %x1\n\tzxwd %y0 = %y1"
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"         "8")]
 )
@@ -949,7 +949,7 @@
     return "zxwd %x0 = %x1\n\tzxwd %y0 = %y1\n\t"
            "zxwd %z0 = %z1\n\tzxwd %t0 = %t1";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -959,7 +959,7 @@
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_QXE))]
   "LVX_2"
   "sllho %0 = %1, 8"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -999,7 +999,7 @@
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_QXE))]
   "LVX_2"
   "sllwq %0 = %1, 16"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -1022,7 +1022,7 @@
         (unspec:V2DI [(match_operand:V4SI 1 "register_operand" "r")] UNSPEC_QXE))]
   "LVX_2"
   "slldp %0 = %1, 32"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -1034,7 +1034,7 @@
   {
     return "slldp %L0 = %L1, 32\n\tslldp %M0 = %M1, 32";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -1072,7 +1072,7 @@
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_ZXO))]
   "LVX_2"
   "srlho %0 = %1, 8"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -1112,7 +1112,7 @@
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_ZXO))]
   "LVX_2"
   "srlwq %0 = %1, 16"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -1135,7 +1135,7 @@
         (unspec:V2DI [(match_operand:V4SI 1 "register_operand" "r")] UNSPEC_ZXO))]
   "LVX_2"
   "srldp %0 = %1, 32"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -1147,7 +1147,7 @@
   {
     return "srldp %L0 = %L1, 32\n\tsrldp %M0 = %M1, 32";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -1157,7 +1157,7 @@
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_QXO))]
   ""
   "andq %0 = %1, 0xFF00FF00.@"
-  [(set_attr "type" "alu_lite_x")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite_x")
    (set_attr "length"           "8")]
 )
@@ -1169,7 +1169,7 @@
   {
     return "andq %L0 = %L1, 0xFF00FF00.@\n\tandq %M0 = %M1, 0xFF00FF00.@";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"          "32")]
 )
@@ -1192,7 +1192,7 @@
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_QXO))]
   ""
   "andq %0 = %1, 0xFFFF0000.@"
-  [(set_attr "type" "alu_lite_x")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite_x")
    (set_attr "length"           "8")]
 )
@@ -1204,7 +1204,7 @@
   {
     return "andq %L0 = %L1, 0xFFFF0000.@\n\tandq %M0 = %M1, 0xFFFF0000.@";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"          "32")]
 )
@@ -1363,7 +1363,7 @@
         (unspec:V256 [(match_operand:V128 1 "register_operand" "r")] UNSPEC_SPLAT))]
   ""
   "copyd %x0 = %x1\n\tcopyd %y0 = %y1\n\tcopyd %z0 = %x1\n\tcopyd %t0 = %y1"
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -1374,7 +1374,7 @@
                (const_int 0)))]
   ""
   "compd.ne %0 = %1, 0"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")
    (set_attr "length"      "4")]
 )
@@ -1440,7 +1440,7 @@
                     (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmoved%4 %3? %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length"      "4")]
 )
@@ -1453,7 +1453,7 @@
                     (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmoved%4 %3? %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length"      "4")]
 )
@@ -1466,7 +1466,7 @@
                       (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmoved%4 %3? %x0 = %x1\n\tcmoved%4 %3? %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -1501,7 +1501,7 @@
                         (match_dup 3)
                         (match_dup 4)] UNSPEC_SELECT))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1516,7 +1516,7 @@
     return "cmoved%4 %3? %x0 = %x1\n\tcmoved%4 %3? %y0 = %y1\n\t"
            "cmoved%4 %3? %z0 = %z1\n\tcmoved%4 %3? %t0 = %t1";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -1666,7 +1666,7 @@
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
   "LVX_2"
   "cmove<suffix>%4 %3? %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length"      "4")]
 )
@@ -1701,7 +1701,7 @@
                         (subreg:<HALF> (match_dup 3) 16)
                         (match_dup 4)] UNSPEC_SELECT))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1716,7 +1716,7 @@
     return "cmove<hsuffix>%4 %L3? %L0 = %L1\n\t"
            "cmove<hsuffix>%4 %M3? %M0 = %M1";
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -1796,7 +1796,7 @@
                     (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmoved%4 %3? %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length"      "4")]
 )
@@ -1809,7 +1809,7 @@
                     (match_operand 4 "" "")] UNSPEC_SELECT))]
   ""
   "cmoved%4 %3? %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length"      "4")]
 )
@@ -1822,7 +1822,7 @@
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
   "LVX_2"
   "cmove<suffix>%4 %3? %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length"      "4")]
 )
@@ -1857,7 +1857,7 @@
                         (subreg:<HMASK> (match_dup 3) 16)
                         (match_dup 4)] UNSPEC_SELECT))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -1872,7 +1872,7 @@
     return "cmove<hsuffix>%4 %L3? %L0 = %L1\n\t"
            "cmove<hsuffix>%4 %M3? %M0 = %M1";
   }
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length"         "8")]
 )
@@ -1883,7 +1883,7 @@
                       (match_operand:V8HI 2 "register_operand" "r")] UNSPEC_STSU))]
   "LVX_2 && (HAVE_LVX_STSU_V4HI)"
   "stsuho %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -1896,7 +1896,7 @@
   {
     return "stsuho %L0 = %L1, %L2\n\tstsuho %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -1915,7 +1915,7 @@
         (unspec:V16HI [(subreg:V16HI (match_dup 1) 32)
                        (subreg:V16HI (match_dup 2) 32)] UNSPEC_STSU))]
   ""
-  [(set_attr "type" "alu_full")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_full")]
 )
 
@@ -1925,7 +1925,7 @@
                       (match_operand:V4SI 2 "register_operand" "r")] UNSPEC_STSU))]
   "LVX_2 && (HAVE_LVX_STSU_V2SI)"
   "stsuwq %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -1938,7 +1938,7 @@
   {
     return "stsuwq %L0 = %L1, %L2\n\tstsuwq %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -1957,7 +1957,7 @@
         (unspec:V8SI [(subreg:V8SI (match_dup 1) 32)
                       (subreg:V8SI (match_dup 2) 32)] UNSPEC_STSU))]
   ""
-  [(set_attr "type" "alu_full")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_full")]
 )
 
@@ -1967,7 +1967,7 @@
                     (match_operand:DI 2 "register_operand" "r")] UNSPEC_STSU))]
   "HAVE_LVX_STSU_DI"
   "stsud %0 = %1, %2"
-  [(set_attr "type" "alu_tiny")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny")
    (set_attr "length" "4")]
 )
@@ -1978,7 +1978,7 @@
                       (match_operand:V2DI 2 "register_operand" "r")] UNSPEC_STSU))]
   "LVX_2 && (HAVE_LVX_STSU_V2DI)"
   "stsudp %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -2005,7 +2005,7 @@
         (unspec:V2DI [(subreg:V2DI (match_dup 1) 16)
                       (subreg:V2DI (match_dup 2) 16)] UNSPEC_STSU))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -2017,7 +2017,7 @@
   {
     return "stsudp %L0 = %L1, %L2\n\tstsudp %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -2036,7 +2036,7 @@
         (unspec:V4DI [(subreg:V4DI (match_dup 1) 32)
                       (subreg:V4DI (match_dup 2) 32)] UNSPEC_STSU))]
   ""
-  [(set_attr "type" "alu_full")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_full")]
 )
 
@@ -2049,7 +2049,7 @@
                     (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")] UNSPEC_SBMM8D))]
   "HAVE_LVX_SBMM8_DI"
   "sbmm8d %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2060,7 +2060,7 @@
                       (match_operand:V2DI 2 "register_operand" "r")] UNSPEC_SBMM8D))]
   "LVX_2 && (HAVE_LVX_SBMM8_V2DI)"
   "sbmm8dp %0 = %1, %2"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -2071,7 +2071,7 @@
                         (match_operand:SIMD128 2 "register_operand" "r")] UNSPEC_SBMM8D))]
   "HAVE_LVX_SBMM8_<ALL128:MODE>"
   "sbmm8d %x0 = %1, %x2\n\tsbmm8d %y0 = %1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"         "8")]
 )
@@ -2082,7 +2082,7 @@
                         (vec_duplicate:V2DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMM8D))]
   "HAVE_LVX_SBMM8_<ALL128:MODE>"
   "sbmm8d %x0 = %x1, %2\n\tsbmm8d %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"         "8")]
 )
@@ -2094,7 +2094,7 @@
                         (match_operand:DI 3 "register_operand" "r")] UNSPEC_SBMM8DXY))]
   "HAVE_LVX_SBMM8_<ALL128:MODE>"
   "sbmm8d %x0 = %x1, %2\n\tsbmm8d %y0 = %y1, %3"
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"         "8")]
 )
@@ -2163,7 +2163,7 @@
   {
     return "sbmm8dp %L0 = %L1, %L2\n\tsbmm8dp %M0 = %M1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -2176,7 +2176,7 @@
   {
     return "sbmm8dp %L0 = %1, %L2\n\tsbmm8dp %M0 = %1, %M2";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -2189,7 +2189,7 @@
   {
     return "sbmm8dp %L0 = %L1, %2\n\tsbmm8dp %M0 = %M1, %2";
   }
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length" "8")]
 )
@@ -2247,7 +2247,7 @@
                     (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")] UNSPEC_SBMMT8D))]
   "HAVE_LVX_TSBMM8_DI"
   "sbmmt8 %0 = %1, %2"
-  [(set_attr "type" "alu_tiny,alu_tiny,alu_tiny_x,alu_tiny_y")
+  [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
    (set_attr "length" "4,4,8,12")]
 )
@@ -2258,7 +2258,7 @@
                       (match_operand:V2DI 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
   "HAVE_LVX_TSBMM8_V2DI"
   "sbmmt8 %x0 = %x1, %x2\n\tsbmmt8 %y0 = %y1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"         "8")]
 )
@@ -2269,7 +2269,7 @@
                         (match_operand:SIMD128 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
   "HAVE_LVX_TSBMM8_<ALL128:MODE>"
   "sbmmt8 %x0 = %1, %x2\n\tsbmmt8 %y0 = %1, %y2"
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"         "8")]
 )
@@ -2280,7 +2280,7 @@
                         (vec_duplicate:V2DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMMT8D))]
   "HAVE_LVX_TSBMM8_<ALL128:MODE>"
   "sbmmt8 %x0 = %x1, %2\n\tsbmmt8 %y0 = %y1, %2"
-  [(set_attr "type" "alu_tiny_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"         "8")]
 )
@@ -2350,7 +2350,7 @@
     return "sbmmt8 %x0 = %x1, %x2\n\tsbmmt8 %y0 = %y1, %y2\n\t"
            "sbmmt8 %z0 = %z1, %z2\n\tsbmmt8 %t0 = %t1, %t2";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -2364,7 +2364,7 @@
     return "sbmmt8 %x0 = %1, %x2\n\tsbmmt8 %y0 = %1, %y2\n\t"
            "sbmmt8 %z0 = %1, %z2\n\tsbmmt8 %t0 = %1, %t2";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -2378,7 +2378,7 @@
     return "sbmmt8 %x0 = %x1, %2\n\tsbmmt8 %y0 = %y1, %2\n\t"
            "sbmmt8 %z0 = %z1, %2\n\tsbmmt8 %t0 = %t1, %2";
   }
-  [(set_attr "type" "alu_tiny_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x4_alu_tiny")
    (set_attr "length"        "16")]
 )
@@ -2436,7 +2436,7 @@
                       (match_operand 3 "" "")] UNSPEC_FADD))]
   "HAVE_LVX_CPLX_PLUS_V4SF"
   "faddwcp%3 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2447,7 +2447,7 @@
                       (match_operand 3 "" "")] UNSPEC_FADD))]
   "HAVE_LVX_CPLX_PLUS_V2DF"
   "fadddc%3 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2458,7 +2458,7 @@
                       (match_operand 3 "" "")] UNSPEC_FADD))]
   "HAVE_LVX_CPLX_PLUS_V2DF"
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2529,7 +2529,7 @@
                       (subreg:V2DF (match_dup 2) 48)
                       (match_dup 3)] UNSPEC_FADD))]
   ""
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2540,7 +2540,7 @@
                       (match_operand 3 "" "")] UNSPEC_FADD))]
   "HAVE_LVX_CPLX_PLUS_V4SF"
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2570,7 +2570,7 @@
                     (match_operand 3 "" "")] UNSPEC_FADD))]
   ""
   "faddh%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp3")
+  [(set_attr "type" "fmuls")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2581,7 +2581,7 @@
                     (match_operand 3 "" "")] UNSPEC_FADD))]
   ""
   "faddw%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2592,7 +2592,7 @@
                     (match_operand 3 "" "")] UNSPEC_FADD))]
   ""
   "faddd%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2613,7 +2613,7 @@
                     (subreg:DF (match_dup 2) 8)
                     (match_dup 3)] UNSPEC_FADD))]
   ""
-  [(set_attr "type" "mulwq_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2624,7 +2624,7 @@
                       (match_operand 3 "" "")] UNSPEC_FADD))]
   "LVX_2"
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2652,7 +2652,7 @@
                       (match_operand 3 "" "")] UNSPEC_FADD))]
   ""
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2680,7 +2680,7 @@
                       (match_operand 3 "" "")] UNSPEC_FADD))]
   ""
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2733,7 +2733,7 @@
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
   "HAVE_LVX_CPLX_MINUS_V4SF"
   "fsbfwcp%3 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2744,7 +2744,7 @@
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
   "HAVE_LVX_CPLX_MINUS_V2DF"
   "fsbfdc%3 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2755,7 +2755,7 @@
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
   ""
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2826,7 +2826,7 @@
                       (subreg:V2DF (match_dup 2) 48)
                       (match_dup 3)] UNSPEC_FSBF))]
   ""
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2837,7 +2837,7 @@
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
   ""
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2867,7 +2867,7 @@
                     (match_operand 3 "" "")] UNSPEC_FSBF))]
   ""
   "fsbfh%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp3")
+  [(set_attr "type" "fmuls")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2878,7 +2878,7 @@
                     (match_operand 3 "" "")] UNSPEC_FSBF))]
   ""
   "fsbfw%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2889,7 +2889,7 @@
                     (match_operand 3 "" "")] UNSPEC_FSBF))]
   ""
   "fsbfd%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2910,7 +2910,7 @@
                     (subreg:DF (match_dup 2) 8)
                     (match_dup 3)] UNSPEC_FSBF))]
   ""
-  [(set_attr "type" "mulwq_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2921,7 +2921,7 @@
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
   "LVX_2"
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2949,7 +2949,7 @@
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
   ""
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -2977,7 +2977,7 @@
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
   ""
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3032,7 +3032,7 @@
                     (match_operand 3 "" "")] UNSPEC_FMUL))]
   ""
   "fmulh%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp3")
+  [(set_attr "type" "fmuls")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3043,7 +3043,7 @@
                     (match_operand 3 "" "")] UNSPEC_FMUL))]
   ""
   "fmulw%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3054,7 +3054,7 @@
                     (match_operand 3 "" "")] UNSPEC_FMUL))]
   ""
   "fmuld%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3065,7 +3065,7 @@
                     (match_operand 3 "" "")] UNSPEC_FDIV))]
   ""
   "fdivw%3 %0 = %1, %2"
-  [(set_attr "type" "alu_full_sfu")
+  [(set_attr "type" "fdiv")
    (set_attr "issue" "alu_full")]
 )
 
@@ -3076,7 +3076,7 @@
                     (match_operand 3 "" "")] UNSPEC_FDIV))]
   ""
   "fdivd%3 %0 = %1, %2"
-  [(set_attr "type" "alu_full_sfu")
+  [(set_attr "type" "fdiv")
    (set_attr "issue" "alu_full")]
 )
 
@@ -3097,7 +3097,7 @@
                     (subreg:DF (match_dup 2) 8)
                     (match_dup 3)] UNSPEC_FMUL))]
   ""
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3108,7 +3108,7 @@
                       (match_operand 3 "" "")] UNSPEC_FMUL))]
   ""
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3136,7 +3136,7 @@
                       (match_operand 3 "" "")] UNSPEC_FMUL))]
   ""
   "#"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3182,7 +3182,7 @@
                     (subreg:DF (match_dup 2) 24)
                     (match_dup 3)] UNSPEC_FMUL))]
   ""
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3258,7 +3258,7 @@
                     (match_operand 3 "" "")] UNSPEC_FMULX))]
   "HAVE_LVX_MULT_SF_HF_HF"
   "fmulhw%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp3")
+  [(set_attr "type" "fmuls")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3269,7 +3269,7 @@
                     (match_operand 3 "" "")] UNSPEC_FMULX))]
   "HAVE_LVX_MULT_DF_SF_SF"
   "fmulwd%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3381,7 +3381,7 @@
                     (match_operand 4 "" "")] UNSPEC_FFMA))]
   ""
   "ffmah%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp3")
+  [(set_attr "type" "fmadds")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3393,7 +3393,7 @@
                     (match_operand 4 "" "")] UNSPEC_FFMA))]
   ""
   "ffmaw%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3405,7 +3405,7 @@
                     (match_operand 4 "" "")] UNSPEC_FFMA))]
   ""
   "ffmad%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3450,7 +3450,8 @@
   "HAVE_LVX_FMA_<MODE>_<MODE>_<MODE>"
   "ffma<suffix>%4 %0 = %1, %2"
   [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "madd_fp3") (const_string "madd_fp4")))]
+     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "fmadds") (const_string "fmaddd")))
+   (set_attr "issue" "alu_lite")]
 )
 
 (define_insn_and_split "lvx_ffmadp"
@@ -3473,7 +3474,7 @@
                     (subreg:DF (match_dup 3) 8)
                     (match_dup 4)] UNSPEC_FFMA))]
   ""
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3567,7 +3568,7 @@
                     (subreg:DF (match_dup 3) 24)
                     (match_dup 4)] UNSPEC_FFMA))]
   ""
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3579,7 +3580,7 @@
                       (match_operand 4 "" "")] UNSPEC_FFMAC))]
   "HAVE_LVX_CPLX_FMA_V4SF_V4SF_V4SF"
   "ffmawcp%4 %0 = %1, %2"
-  [(set_attr "type" "dmda_fp4")
+  [(set_attr "type" "fdmda")
    (set_attr "issue" "alu_full")]
 )
 
@@ -3618,7 +3619,7 @@
                       (subreg:V4SF (match_dup 3) 16)
                       (match_dup 4)] UNSPEC_FFMAC))]
   ""
-  [(set_attr "type" "dmda_fp4")
+  [(set_attr "type" "fdmda")
    (set_attr "issue" "alu_full")]
 )
 
@@ -3663,7 +3664,7 @@
                     (match_operand 4 "" "")] UNSPEC_FFMAX))]
   "HAVE_LVX_FMA_SF_HF_HF"
   "ffmahw%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp3")
+  [(set_attr "type" "fmadds")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3675,7 +3676,7 @@
                     (match_operand 4 "" "")] UNSPEC_FFMAX))]
   "HAVE_LVX_FMA_DF_SF_SF"
   "ffmawd%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3712,7 +3713,7 @@
                     (match_operand 4 "" "")] UNSPEC_FFMS))]
   ""
   "ffmsh%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp3")
+  [(set_attr "type" "fmadds")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3724,7 +3725,7 @@
                     (match_operand 4 "" "")] UNSPEC_FFMS))]
   ""
   "ffmsw%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3736,7 +3737,7 @@
                     (match_operand 4 "" "")] UNSPEC_FFMS))]
   ""
   "ffmsd%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3781,7 +3782,8 @@
   "HAVE_LVX_FMS_<MODE>_<MODE>_<MODE>"
   "ffms<suffix>%4 %0 = %1, %2"
   [(set (attr "type")
-     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "madd_fp3") (const_string "madd_fp4")))]
+     (if_then_else (match_operand 1 "float16_inner_mode") (const_string "fmadds") (const_string "fmaddd")))
+   (set_attr "issue" "alu_lite")]
 )
 
 (define_insn_and_split "lvx_ffmsdp"
@@ -3804,7 +3806,7 @@
                     (subreg:DF (match_dup 3) 8)
                     (match_dup 4)] UNSPEC_FFMS))]
   ""
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3898,7 +3900,7 @@
                     (subreg:DF (match_dup 3) 24)
                     (match_dup 4)] UNSPEC_FFMS))]
   ""
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -3910,7 +3912,7 @@
                       (match_operand 4 "" "")] UNSPEC_FFMSC))]
   "HAVE_LVX_CPLX_FMS_V4SF_V4SF_V4SF"
   "ffmswcp%4 %0 = %1, %2"
-  [(set_attr "type" "dmda_fp4")
+  [(set_attr "type" "fdmda")
    (set_attr "issue" "alu_full")]
 )
 
@@ -3949,7 +3951,7 @@
                       (subreg:V4SF (match_dup 3) 16)
                       (match_dup 4)] UNSPEC_FFMSC))]
   ""
-  [(set_attr "type" "dmda_fp4")
+  [(set_attr "type" "fdmda")
    (set_attr "issue" "alu_full")]
 )
 
@@ -3994,7 +3996,7 @@
                     (match_operand 4 "" "")] UNSPEC_FFMSX))]
   "HAVE_LVX_FMS_SF_HF_HF"
   "ffmshw%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp3")
+  [(set_attr "type" "fmadds")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4006,7 +4008,7 @@
                     (match_operand 4 "" "")] UNSPEC_FFMSX))]
   "HAVE_LVX_FMS_DF_SF_SF"
   "ffmswd%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4039,7 +4041,7 @@
                       (match_operand 3 "" "")] UNSPEC_FMM))]
   "HAVE_LVX_MULT_M2x2_SF_M2x2_SF_M2x2_SF"
   "fmm222w%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4051,7 +4053,7 @@
                       (match_operand 4 "" "")] UNSPEC_FMMA))]
   "HAVE_LVX_MA_M2x2_SF_M2x2_SF_M2x2_SF"
   "fmma222w%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4063,7 +4065,7 @@
                       (match_operand 4 "" "")] UNSPEC_FMMS))]
   "HAVE_LVX_MS_M2x2_SF_M2x2_SF_M2x2_SF"
   "fmms222w%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4074,7 +4076,7 @@
                       (match_operand 3 "" "")] UNSPEC_FFDMA))]
   "HAVE_LVX_FDMA_V4SF_V8SF_V8SF"
   "ffdmawq%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4085,7 +4087,7 @@
                       (match_operand 3 "" "")] UNSPEC_FFDMS))]
   "HAVE_LVX_FDMS_V4SF_V8SF_V8SF"
   "ffdmswq%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4097,7 +4099,7 @@
                       (match_operand 4 "" "")] UNSPEC_FFDMDA))]
   "HAVE_LVX_FDMDA_V4SF_V8SF_V8SF"
   "ffdmdawq%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4109,7 +4111,7 @@
                       (match_operand 4 "" "")] UNSPEC_FFDMSA))]
   "HAVE_LVX_FDMSA_V4SF_V8SF_V8SF"
   "ffdmsawq%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4121,7 +4123,7 @@
                       (match_operand 4 "" "")] UNSPEC_FFDMDS))]
   "HAVE_LVX_FDMDS_V4SF_V8SF_V8SF"
   "ffdmdswq%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4133,7 +4135,7 @@
                       (match_operand 4 "" "")] UNSPEC_FFDMAS))]
   "HAVE_LVX_FDMAS_V4SF_V8SF_V8SF"
   "ffdmaswq%4 %0 = %1, %2"
-  [(set_attr "type" "madd_fp4")
+  [(set_attr "type" "fmaddd")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4151,7 +4153,7 @@
       return "floatw%3 %0 = %1, %2";
     return "floatw%3 %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4166,7 +4168,7 @@
       return "floatd%3 %0 = %1, %2";
     return "floatd%3 %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4187,7 +4189,7 @@
                     (match_dup 2)
                     (match_dup 3)] UNSPEC_FLOAT))]
   ""
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4216,7 +4218,7 @@
                     (match_dup 2)
                     (match_dup 3)] UNSPEC_FLOAT))]
   ""
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4234,7 +4236,7 @@
       return "floatuw%3 %0 = %1, %2";
     return "floatuw%3 %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4249,7 +4251,7 @@
       return "floatud%3 %0 = %1, %2";
     return "floatud%3 %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4270,7 +4272,7 @@
                     (match_dup 2)
                     (match_operand 3 "" "")] UNSPEC_FLOATU))]
   ""
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4299,7 +4301,7 @@
                     (match_dup 2)
                     (match_operand 3 "" "")] UNSPEC_FLOATU))]
   ""
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4317,7 +4319,7 @@
       return "fixedw%3 %0 = %1, %2";
     return "fixedw%3 %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 ;; zero-extend version of lvx_fixedw
@@ -4332,7 +4334,7 @@
       return "fixedw%3 %0 = %1, %2";
     return "fixedw%3 %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4347,7 +4349,7 @@
       return "fixedd%3 %0 = %1, %2";
     return "fixedd%3 %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4368,7 +4370,7 @@
                     (match_dup 2)
                     (match_dup 3)] UNSPEC_FIXED))]
   ""
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4397,7 +4399,7 @@
                     (match_dup 2)
                     (match_dup 3)] UNSPEC_FIXED))]
   ""
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4415,7 +4417,7 @@
       return "fixeduw%3 %0 = %1, %2";
     return "fixeduw%3 %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 ;; zero-extend version of lvx_fixeduw
@@ -4430,7 +4432,7 @@
       return "fixeduw%3 %0 = %1, %2";
     return "fixeduw%3 %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4445,7 +4447,7 @@
       return "fixedud%3 %0 = %1, %2";
     return "fixedud%3 %0 = %1";
   }
-  [(set_attr "type" "conv_fp4")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4466,7 +4468,7 @@
                     (match_dup 2)
                     (match_dup 3)] UNSPEC_FIXEDU))]
   ""
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4495,7 +4497,7 @@
                     (match_dup 2)
                     (match_dup 3)] UNSPEC_FIXEDU))]
   ""
-  [(set_attr "type" "mult_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4508,7 +4510,7 @@
                     (match_operand 2 "" "")] UNSPEC_FWIDEN))]
   ""
   "fwidenhw%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4518,7 +4520,7 @@
                       (match_operand 2 "" "")] UNSPEC_FWIDEN))]
   "LVX_2"
   "fwidenhwq%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4528,7 +4530,7 @@
                       (match_operand 2 "" "")] UNSPEC_FWIDEN))]
   "LVX_2"
   "fwidenwdp%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4539,7 +4541,7 @@
   ;; not LVX_2: fwidenwd is a scalar SF->DF widen and is on lvx_v1 too.
   ""
   "fwidenwd%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4568,7 +4570,7 @@
                     (match_operand 2 "" "")] UNSPEC_FNARROW))]
   ""
   "fnarrowwh%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4578,7 +4580,7 @@
                     (match_operand 2 "" "")] UNSPEC_FNARROW))]
   ""
   "fnarrowdw%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4587,7 +4589,7 @@
         (unspec:V2SF [(match_operand:V2SF 1 "register_operand" "r")] UNSPEC_FCONJ))]
   ""
   "fnegd %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4596,7 +4598,7 @@
         (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")] UNSPEC_FCONJ))]
   "LVX_2"
   "fnegdp %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
    (set_attr "length" "4")]
 )
@@ -4606,7 +4608,7 @@
         (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "r")] UNSPEC_FCONJ))]
   "LVX_2"
   "fnegdp %x0 = %x1\n\tfnegdp %y0 = %y1"
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")
    (set_attr "length" "8")]
 )
@@ -4616,7 +4618,7 @@
         (unspec:V2DF [(match_operand:V2DF 1 "register_operand" "r")] UNSPEC_FCONJ))]
   ""
   "copyd %x0 = %x1\n\tfnegd %y0 = %y1"
-  [(set_attr "type" "alu_tiny_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_tiny__alu_lite")
    (set_attr "length"         "8")]
 )
@@ -4626,7 +4628,7 @@
         (unspec:V4DF [(match_operand:V4DF 1 "register_operand" "r")] UNSPEC_FCONJ))]
   "LVX_2"
   "copyd %x0 = %x1\n\tfnegd %y0 = %y1\n\tcopyd %z0 = %z1\n\tfnegd %t0 = %t1"
-  [(set_attr "type" "alu_tiny_lite_x4")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_tiny__x2_alu_lite")
    (set_attr "length"        "16")]
 )
@@ -4642,7 +4644,7 @@
    (set (subreg:V4DF (match_dup 0) 32)
         (unspec:V4DF [(subreg:V4DF (match_dup 1) 32)] UNSPEC_FCONJ))]
   ""
-  [(set_attr "type" "alu_lite_x2")
+  [(set_attr "type" "alu")
    (set_attr "issue" "x2_alu_lite")]
 )
 
@@ -4670,7 +4672,7 @@
                     (match_operand 2 "" "")] UNSPEC_FCDIV))]
   "HAVE_LVX_FCDIV_SF"
   "fcdivw%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4694,7 +4696,7 @@
                     (match_operand 2 "" "")] UNSPEC_FCDIV))]
   "HAVE_LVX_FCDIV_DF"
   "fcdivd%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")
 ])
 
@@ -4722,7 +4724,7 @@
                     (match_operand 2 "" "")] UNSPEC_FSDIV))]
   "HAVE_LVX_FSDIV_SF"
   "fsdivw%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4746,7 +4748,7 @@
                     (match_operand 2 "" "")] UNSPEC_FSDIV))]
   "HAVE_LVX_FSDIV_DF"
   "fsdivd%2 %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4863,7 +4865,7 @@
                     (match_operand 2 "" "")] UNSPEC_FSREC))]
   ""
   "fsrecw %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4873,7 +4875,7 @@
                     (match_operand 2 "" "")] UNSPEC_FSREC))]
   ""
   "fsrecd %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4883,7 +4885,7 @@
                       (match_operand 2 "" "")] UNSPEC_FSREC))]
   "LVX_2"
   "fsrecwq %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4927,7 +4929,7 @@
         (unspec:SF [(match_operand:SF 1 "register_operand" "r")] UNSPEC_FSRSR))]
   ""
   "fsrsrw %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4936,7 +4938,7 @@
         (unspec:DF [(match_operand:DF 1 "register_operand" "r")] UNSPEC_FSRSR))]
   ""
   "fsrsrd %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4945,7 +4947,7 @@
         (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")] UNSPEC_FSRSR))]
   "LVX_2"
   "fsrsrwq %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -4987,7 +4989,7 @@
         (unspec:SI [(match_operand:DI 1 "register_operand" "r")] UNSPEC_READY))]
   ""
   "iord %0 = %1, %1"
-  [(set_attr "type" "alu_tiny_use")
+  [(set_attr "type" "ghost")
    (set_attr "issue" "alu_tiny")
    (set_attr "length"          "4")]
 )
@@ -4998,7 +5000,7 @@
                     (match_operand:DI 2 "register_operand" "r")] UNSPEC_READY))]
   ""
   "iord %0 = %1, %2"
-  [(set_attr "type" "alu_tiny_use")
+  [(set_attr "type" "ghost")
    (set_attr "issue" "alu_tiny")
    (set_attr "length"          "4")]
 )
@@ -5010,7 +5012,7 @@
                     (match_operand:DI 3 "register_operand" "r")] UNSPEC_READY))]
   ""
   "iord %0 = %1, %2\n\tiord %0 = %3, %3"
-  [(set_attr "type" "alu_tiny_use_x2")
+  [(set_attr "type" "ghost")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"             "8")]
 )
@@ -5023,7 +5025,7 @@
                     (match_operand:DI 4 "register_operand" "r")] UNSPEC_READY))]
   ""
   "iord %0 = %1, %2\n\tiord %0 = %3, %4"
-  [(set_attr "type" "alu_tiny_use_x2")
+  [(set_attr "type" "ghost")
    (set_attr "issue" "x2_alu_tiny")
    (set_attr "length"             "8")]
 )
@@ -5038,9 +5040,13 @@
   ""
   "ld%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5051,9 +5057,13 @@
   ""
   "ld%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5064,9 +5074,13 @@
   ""
   "lq%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5077,9 +5091,13 @@
   ""
   "lq%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5090,9 +5108,13 @@
   ""
   "lo%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5106,7 +5128,7 @@
    (use (match_dup 1))]
   ""
   "lbz%2%X1 %0 = %1"
-  [(set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"                    "4,                       8,                      12")]
 )
@@ -5118,7 +5140,7 @@
    (use (match_dup 1))]
   ""
   "lbs%2%X1 %0 = %1"
-  [(set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"                    "4,                       8,                      12")]
 )
@@ -5130,7 +5152,7 @@
    (use (match_dup 1))]
   ""
   "lhz%2%X1 %0 = %1"
-  [(set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"                    "4,                       8,                      12")]
 )
@@ -5142,7 +5164,7 @@
    (use (match_dup 1))]
   ""
   "lhs%2%X1 %0 = %1"
-  [(set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"                    "4,                       8,                      12")]
 )
@@ -5154,7 +5176,7 @@
    (use (match_dup 1))]
   ""
   "lwz%2%X1 %0 = %1"
-  [(set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"                    "4,                       8,                      12")]
 )
@@ -5166,7 +5188,7 @@
    (use (match_dup 1))]
   ""
   "lws%2%X1 %0 = %1"
-  [(set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"                    "4,                       8,                      12")]
 )
@@ -5178,7 +5200,7 @@
    (use (match_dup 1))]
   ""
   "lhz%2%X1 %0 = %1"
-  [(set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"                    "4,                       8,                      12")]
 )
@@ -5190,7 +5212,7 @@
    (use (match_dup 1))]
   ""
   "lwz%2%X1 %0 = %1"
-  [(set_attr "type" "load_core_uncached,load_core_uncached_x,load_core_uncached_y")
+  [(set_attr "type" "load_uncached, load_uncached, load_uncached")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
    (set_attr "length"                    "4,                       8,                      12")]
 )
@@ -5205,9 +5227,13 @@
   ""
   "lbz%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5218,9 +5244,13 @@
   ""
   "lhz%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5231,9 +5261,13 @@
   ""
   "lwz%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5244,9 +5278,13 @@
   ""
   "ld%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5257,9 +5295,13 @@
   ""
   "lq%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5270,9 +5312,13 @@
   ""
   "lhz%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5283,9 +5329,13 @@
   ""
   "lwz%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5296,9 +5346,13 @@
   ""
   "ld%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5309,9 +5363,13 @@
   ""
   "lq%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5322,9 +5380,13 @@
   ""
   "lo%2%X1 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 2 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5357,9 +5419,13 @@
   ""
   "guard%5%X2 %3? lbz%4 %0 = %2"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5373,9 +5439,13 @@
   ""
   "guard%5%X2 %3? lhz%4 %0 = %2"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5389,9 +5459,13 @@
   ""
   "guard%5%X2 %3? lwz%4 %0 = %2"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5405,9 +5479,13 @@
   ""
   "guard%5%X2 %3? ld%4 %0 = %2"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5421,9 +5499,13 @@
   ""
   "guard%5%X2 %3? lq%4 %0 = %2"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5437,9 +5519,13 @@
   ""
   "guard%5%X2 %3? lhz%4 %0 = %2"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5453,9 +5539,13 @@
   ""
   "guard%5%X2 %3? lwz%4 %0 = %2"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5469,9 +5559,13 @@
   ""
   "guard%5%X2 %3? ld%4 %0 = %2"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5515,9 +5609,13 @@
   ""
   "guard%5%X2 %3? lq%4 %0 = %2"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5548,9 +5646,13 @@
   ""
   "guard%5%X2 %3? lo%4 %0 = %2"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 4 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5563,9 +5665,13 @@
   ""
   "guard%4%X1 %2? lo%3 %0 = %1"
   [(set_attr_alternative "type"
-    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "load_core_uncached") (const_string "load_core"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_core_uncached_x") (const_string "load_core_x"))
-     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_core_uncached_y") (const_string "load_core_y"))])
+    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_uncached") (const_string "load"))
+     (if_then_else (match_operand 3 "uncached_modifier") (const_string "load_uncached") (const_string "load"))])
+   (set_attr_alternative "issue"
+    [(if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_auxw") (const_string "lsu_auxw"))
+     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_auxw_x") (const_string "lsu_auxw_x"))
+     (if_then_else (match_operand 3 "uncached_modifier") (const_string "lsu_auxw_y") (const_string "lsu_auxw_y"))])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5578,7 +5684,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sb%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5588,7 +5694,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sb%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5599,7 +5705,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sh%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5609,7 +5715,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sh%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5620,7 +5726,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sw%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5630,7 +5736,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sw%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5641,7 +5747,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sd%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5652,7 +5758,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sq%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5663,7 +5769,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sh%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5674,7 +5780,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sw%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5685,7 +5791,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sd%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5696,7 +5802,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "sq%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5707,7 +5813,7 @@
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
   ""
   "so%X1 %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5742,7 +5848,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sb %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5755,7 +5861,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sb %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5769,7 +5875,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sh %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5782,7 +5888,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sh %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5796,7 +5902,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sw %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5809,7 +5915,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sw %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5823,7 +5929,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sd %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5837,7 +5943,7 @@
    (clobber (match_dup 1))]
   ""
  "guard%3%X1 %2? sq %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5851,7 +5957,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sh %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5865,7 +5971,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sw %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5879,7 +5985,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sd %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5926,7 +6032,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sq %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5940,7 +6046,7 @@
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? so %1 = %0"
-  [(set_attr "type" "store_core,store_core_x,store_core_y")
+  [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
    (set_attr "length"            "4,               8,              12")]
 )
@@ -5985,7 +6091,7 @@
                       (match_operand 3 "" "")] UNSPEC_FADD))]
   "LVX_2"
   "faddho%3 %0 = %1, %2"
-  [(set_attr "type" "madd_fp3")
+  [(set_attr "type" "fmadds")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -5996,7 +6102,7 @@
                       (match_operand 3 "" "")] UNSPEC_FADD))]
   "LVX_2"
   "faddwq%3 %0 = %1, %2"
-  [(set_attr "type" "mulwq_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -6007,7 +6113,7 @@
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
   "LVX_2"
   "fsbfho%3 %0 = %2, %1"
-  [(set_attr "type" "mult_fp3")
+  [(set_attr "type" "fmuls")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -6018,7 +6124,7 @@
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
   "LVX_2"
   "fsbfwq%3 %0 = %1, %2"
-  [(set_attr "type" "mulwq_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -6029,7 +6135,7 @@
                       (match_operand 3 "" "")] UNSPEC_FMUL))]
   "LVX_2"
   "fmulho%3 %0 = %1, %2"
-  [(set_attr "type" "mult_fp3")
+  [(set_attr "type" "fmuls")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -6040,7 +6146,7 @@
                       (match_operand 3 "" "")] UNSPEC_FMUL))]
   "LVX_2"
   "fmulwq%3 %0 = %1, %2"
-  [(set_attr "type" "mulwq_fp4")
+  [(set_attr "type" "fmuld")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -6053,7 +6159,7 @@
         (truncate:S128L (match_operand:<WIDE> 1 "register_operand" "r")))]
   "LVX_2"
   "trunc<truncx> %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
@@ -6063,7 +6169,7 @@
                       UNSPEC_FRACT))]
   "LVX_2"
   "fract<truncx> %0 = %1"
-  [(set_attr "type" "alu_lite")
+  [(set_attr "type" "alu")
    (set_attr "issue" "alu_lite")]
 )
 
