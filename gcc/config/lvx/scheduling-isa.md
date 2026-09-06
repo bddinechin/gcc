@@ -12,6 +12,9 @@
 (automata_option "ndfa")
 (automata_option "v")
 
+;; Also spellable as a repeat of another class, and taken as the class,
+;; which is one instruction: lsu2_memw_auxw, lsu2_memw_auxw_x2.
+
 ;; One automaton per resource.  Every alternation below stays inside a
 ;; single unit bank and no exclusion/presence/absence set is emitted, so
 ;; the partition is exact and each automaton minimises to its counter.
