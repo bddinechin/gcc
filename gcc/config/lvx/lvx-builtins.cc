@@ -2088,6 +2088,7 @@ lvx_expand_builtin (tree exp, rtx target, rtx subtarget ATTRIBUTE_UNUSED,
   else if (lvx_builtins[fcode].type == LVX_BLTN_DIRECT)
     {
       struct expand_operand ops[MAX_RECOG_OPERANDS];
+      rtx argrtx[MAX_RECOG_OPERANDS];
       int opno = 0;
       enum insn_code icode = lvx_builtins[fcode].icode;
       if (has_target_p)
@@ -2107,10 +2108,39 @@ lvx_expand_builtin (tree exp, rtx target, rtx subtarget ATTRIBUTE_UNUSED,
 	  else
 	    thing = expand_normal (arg);
 
+	  argrtx[argno] = thing;
 	  create_input_operand (&ops[opno++], thing, TYPE_MODE (TREE_TYPE (arg)));
 	}
       if (!maybe_expand_insn (icode, nops, ops))
-        gcc_unreachable ();
+	{
+	  /* The arguments do not fit the pattern.  This is a mistake in the
+	     source rather than an impossibility -- typically an operand the
+	     instruction takes as an immediate given a variable, or given a
+	     constant it cannot encode -- so say which argument, rather than
+	     crashing on the gcc_unreachable that used to be here.  */
+	  int bad = -1;
+	  for (int argno = 0; argno < call_expr_nargs (exp); argno++)
+	    if (!insn_operand_matches (icode, (!!has_target_p) + argno,
+				       argrtx[argno]))
+	      {
+		bad = argno;
+		break;
+	      }
+
+	  if (bad >= 0)
+	    error ("argument %d to %<%s%> is not valid for this instruction; "
+		   "the operand must be a constant the instruction can encode",
+		   bad + 1, lvx_builtins[fcode].name);
+	  else
+	    error ("%<%s%> cannot be expanded with these arguments",
+		   lvx_builtins[fcode].name);
+
+	  /* Diagnosed, so the compilation fails -- but the caller uses this
+	     result, and it has to be of the mode it asked for.  */
+	  if (!has_target_p)
+	    return const0_rtx;
+	  return target ? target : gen_reg_rtx (TYPE_MODE (TREE_TYPE (exp)));
+	}
 
       return has_target_p ? ops[0].value : const0_rtx;
     }

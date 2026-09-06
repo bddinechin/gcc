@@ -4145,9 +4145,9 @@
 (define_insn "lvx_floatw"
   [(set (match_operand:SF 0 "register_operand" "=r")
         (unspec:SF [(match_operand:SI 1 "register_operand" "r")
-                    (match_operand 2 "sixbits_unsigned_operand" "i")
+                    (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FLOAT))]
-  ""
+  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
       return "floatw%3 %0 = %1, %2";
@@ -4160,9 +4160,9 @@
 (define_insn "lvx_floatd"
   [(set (match_operand:DF 0 "register_operand" "=r")
         (unspec:DF [(match_operand:DI 1 "register_operand" "r")
-                    (match_operand 2 "sixbits_unsigned_operand" "i")
+                    (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FLOAT))]
-  ""
+  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
       return "floatd%3 %0 = %1, %2";
@@ -4175,7 +4175,7 @@
 (define_insn_and_split "lvx_floatdp"
   [(set (match_operand:V2DF 0 "register_operand" "=r")
         (unspec:V2DF [(match_operand:V2DI 1 "register_operand" "r")
-                      (match_operand 2 "sixbits_unsigned_operand" "i")
+                      (match_operand 2 "fp_conv_shift_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FLOAT))]
   "LVX_2"
   "#"
@@ -4196,7 +4196,7 @@
 (define_insn_and_split "lvx_floatdq"
   [(set (match_operand:V4DF 0 "register_operand" "=r")
         (unspec:V4DF [(match_operand:V4DI 1 "register_operand" "r")
-                      (match_operand 2 "sixbits_unsigned_operand" "i")
+                      (match_operand 2 "fp_conv_shift_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FLOAT))]
   "LVX_2"
   "#"
@@ -4228,9 +4228,9 @@
 (define_insn "lvx_floatuw"
   [(set (match_operand:SF 0 "register_operand" "=r")
         (unspec:SF [(match_operand:SI 1 "register_operand" "r")
-                    (match_operand 2 "sixbits_unsigned_operand" "i")
+                    (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FLOATU))]
-  ""
+  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
       return "floatuw%3 %0 = %1, %2";
@@ -4243,9 +4243,9 @@
 (define_insn "lvx_floatud"
   [(set (match_operand:DF 0 "register_operand" "=r")
         (unspec:DF [(match_operand:DI 1 "register_operand" "r")
-                    (match_operand 2 "sixbits_unsigned_operand" "i")
+                    (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FLOATU))]
-  ""
+  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
       return "floatud%3 %0 = %1, %2";
@@ -4258,7 +4258,7 @@
 (define_insn_and_split "lvx_floatudp"
   [(set (match_operand:V2DF 0 "register_operand" "=r")
         (unspec:V2DF [(match_operand:V2DI 1 "register_operand" "r")
-                      (match_operand 2 "sixbits_unsigned_operand" "i")
+                      (match_operand 2 "fp_conv_shift_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FLOATU))]
   "LVX_2"
   "#"
@@ -4279,7 +4279,7 @@
 (define_insn_and_split "lvx_floatudq"
   [(set (match_operand:V4DF 0 "register_operand" "=r")
         (unspec:V4DF [(match_operand:V4DI 1 "register_operand" "r")
-                      (match_operand 2 "sixbits_unsigned_operand" "i")
+                      (match_operand 2 "fp_conv_shift_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FLOATU))]
   "LVX_2"
   "#"
@@ -4311,9 +4311,9 @@
 (define_insn "lvx_fixedw"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (unspec:SI [(match_operand:SF 1 "register_operand" "r")
-                    (match_operand 2 "sixbits_unsigned_operand" "i")
+                    (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FIXED))]
-  ""
+  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
       return "fixedw%3 %0 = %1, %2";
@@ -4326,7 +4326,7 @@
 (define_insn "*lvx_fixedw_zext"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (zero_extend:DI (unspec:SI [(match_operand:SF 1 "register_operand" "r")
-                                    (match_operand 2 "sixbits_unsigned_operand" "i")
+                                    (match_operand 2 "fp_conv_shift_operand" "i")
                                     (match_operand 3 "" "")] UNSPEC_FIXED)))]
   ""
   {
@@ -4341,9 +4341,9 @@
 (define_insn "lvx_fixedd"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (unspec:DI [(match_operand:DF 1 "register_operand" "r")
-                    (match_operand 2 "sixbits_unsigned_operand" "i")
+                    (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FIXED))]
-  ""
+  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
       return "fixedd%3 %0 = %1, %2";
@@ -4356,7 +4356,7 @@
 (define_insn_and_split "lvx_fixeddp"
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (unspec:V2DI [(match_operand:V2DF 1 "register_operand" "r")
-                      (match_operand 2 "sixbits_unsigned_operand" "i")
+                      (match_operand 2 "fp_conv_shift_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FIXED))]
   "LVX_2"
   "#"
@@ -4377,7 +4377,7 @@
 (define_insn_and_split "lvx_fixeddq"
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V4DF 1 "register_operand" "r")
-                      (match_operand 2 "sixbits_unsigned_operand" "i")
+                      (match_operand 2 "fp_conv_shift_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FIXED))]
   "LVX_2"
   "#"
@@ -4409,9 +4409,9 @@
 (define_insn "lvx_fixeduw"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (unspec:SI [(match_operand:SF 1 "register_operand" "r")
-                    (match_operand 2 "sixbits_unsigned_operand" "i")
+                    (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FIXEDU))]
-  ""
+  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
       return "fixeduw%3 %0 = %1, %2";
@@ -4424,7 +4424,7 @@
 (define_insn "*lvx_fixeduw_zext"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (zero_extend:DI (unspec:SI [(match_operand:SF 1 "register_operand" "r")
-                                    (match_operand 2 "sixbits_unsigned_operand" "i")
+                                    (match_operand 2 "fp_conv_shift_operand" "i")
                                     (match_operand 3 "" "")] UNSPEC_FIXEDU)))]
   ""
   {
@@ -4439,9 +4439,9 @@
 (define_insn "lvx_fixedud"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (unspec:DI [(match_operand:DF 1 "register_operand" "r")
-                    (match_operand 2 "sixbits_unsigned_operand" "i")
+                    (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FIXEDU))]
-  ""
+  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
   {
     if (HAVE_LVX_FP_CONV_WITH_SHIFT)
       return "fixedud%3 %0 = %1, %2";
@@ -4454,7 +4454,7 @@
 (define_insn_and_split "lvx_fixedudp"
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (unspec:V2DI [(match_operand:V2DF 1 "register_operand" "r")
-                      (match_operand 2 "sixbits_unsigned_operand" "i")
+                      (match_operand 2 "fp_conv_shift_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FIXEDU))]
   "LVX_2"
   "#"
@@ -4475,7 +4475,7 @@
 (define_insn_and_split "lvx_fixedudq"
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V4DF 1 "register_operand" "r")
-                      (match_operand 2 "sixbits_unsigned_operand" "i")
+                      (match_operand 2 "fp_conv_shift_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FIXEDU))]
   "LVX_2"
   "#"

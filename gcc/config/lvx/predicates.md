@@ -54,6 +54,18 @@
   return (INTVAL (op) >= 0 && INTVAL (op) < (1<<6));
 })
 
+(define_predicate "fp_conv_shift_operand"
+  (match_code "const_int")
+{
+  /* The scale of a float<->fixed conversion.  Without the shifted form the
+     instruction has no scale operand at all, so only a zero scale can be
+     honoured; anything else has to be rejected here rather than assembled
+     and silently dropped.  */
+  if (!HAVE_LVX_FP_CONV_WITH_SHIFT)
+    return op == const0_rtx;
+  return (INTVAL (op) >= 0 && INTVAL (op) < (1<<6));
+})
+
 (define_predicate "const_pow2lt64_operand"
   (match_code "const_int")
 {
