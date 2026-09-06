@@ -67,6 +67,14 @@
     rtx op0_hi = simplify_gen_subreg (<X256:HALF>mode, operands[0], <X256:MODE>mode, 16);
     rtx op1_hi = simplify_gen_subreg (<X256:HALF>mode, operands[1], <V256:MODE>mode, 16);
 
+    /* simplify_gen_subreg returns NULL when it cannot form the view, and a
+       128-bit view of a V1OI extension register is one of the cases where it
+       does: the halves of an XVR value are reached through the .lo/.hi
+       selector the *xmovet_lo and *xmovet_hi patterns print, not through a subreg.
+       Building a SET around the NULL crashes split2 inside mark_label_nuses,
+       which names neither this pattern nor the operand.  Say which.  */
+    gcc_assert (op0_lo && op0_hi && op1_lo && op1_hi);
+
     emit_insn (gen_rtx_SET (op0_lo, gen_rtx_UNSPEC (<X256:HALF>mode, gen_rtvec (1, op1_lo), UNSPEC_XMOVET_LO)));
     emit_insn (gen_rtx_SET (op0_hi, gen_rtx_UNSPEC (<X256:HALF>mode, gen_rtvec (1, op1_hi), UNSPEC_XMOVET_HI)));
     DONE;

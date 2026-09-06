@@ -1018,7 +1018,10 @@ verify_const_bool_arg (rtx arg, const char *name, const char *where)
     }
   error ("%<%s%> expects a boolean immediate in %s argument", name,
 	 where);
-  return 0;
+  /* Diagnosed, so the compilation fails either way -- but the caller
+     passes this into a gen_* that dereferences it, so an error must not
+     become a crash.  Hand back a well-formed constant.  */
+  return const0_rtx;
 }
 
 static rtx
@@ -1034,7 +1037,10 @@ verify_const_ready_arg (rtx arg, const char *name, const char *where)
     return force_not_mem (arg);
   error ("%<%s%> expects a boolean value in %s argument", name,
 	 where);
-  return 0;
+  /* Diagnosed, so the compilation fails either way -- but the caller
+     passes this into a gen_* that dereferences it, so an error must not
+     become a crash.  Hand back a well-formed constant.  */
+  return const0_rtx;
 }
 
 __attribute__ ((unused))
@@ -1051,7 +1057,10 @@ verify_const_int_arg (rtx arg, int bits, const char *name, const char *where)
     }
   error ("%<%s%> expects a %d-bit signed immediate in %s argument",
 	 name, bits, where);
-  return 0;
+  /* Diagnosed, so the compilation fails either way -- but the caller
+     passes this into a gen_* that dereferences it, so an error must not
+     become a crash.  Hand back a well-formed constant.  */
+  return const0_rtx;
 }
 
 static rtx
@@ -1066,8 +1075,16 @@ verify_const_uint_arg (rtx arg, int bits, const char *name,
 	return arg;
     }
   if (strict)
-    error ("%<%s%> expects a %d-bit unsigned immediate "
-	   "in %s argument", name, bits, where);
+    {
+      error ("%<%s%> expects a %d-bit unsigned immediate "
+	     "in %s argument", name, bits, where);
+      /* Diagnosed, and the strict callers -- set, wfxl, wfxm -- use the
+	 result.  A NULL_RTX here reaches a gen_* and crashes.  */
+      return const0_rtx;
+    }
+
+  /* Not strict: this is a probe, and (lvx_expand_builtin_get) tests the
+     NULL_RTX to decide whether the register number was a constant.  */
   return NULL_RTX;
 }
 
@@ -1088,7 +1105,10 @@ verify_const_field_arg (rtx arg, int bits, const char *name, const char *where)
     }
   error ("%<%s%> expects a %d-bit signed or unsigned immediate in %s argument",
 	 name, bits, where);
-  return 0;
+  /* Diagnosed, so the compilation fails either way -- but the caller
+     passes this into a gen_* that dereferences it, so an error must not
+     become a crash.  Hand back a well-formed constant.  */
+  return const0_rtx;
 }
 
 static int
