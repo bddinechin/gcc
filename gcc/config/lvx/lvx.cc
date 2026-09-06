@@ -4577,169 +4577,172 @@ static struct hw_doloop_hooks lvx_doloop_hooks
 
 /* Handling of Hardware Loops }}} */
 
-/* Far Jump Rewrite {{{ */
+/* Long Offset Branches {{{ */
 
-/* Return the UID of the insn that follows the specified label.  */
+/* An LVX branch encodes its destination as a PC-relative immediate scaled by
+   4, and the immediate is narrow: 11 bits for CCB, 17 for CB, 27 for GOTO.
+   Each has an X form spending a second syllable on an immediate extension --
+   CCBX 38 bits, CBX 44, GOTOX 54 -- which no translation unit exhausts.
+
+   Which form a branch needs is not known when the pattern is written, so both
+   forms match the same RTL, are told apart by their condition, and the
+   "pcrel" attribute states how many bits of PC-relative immediate each one
+   encodes.  Non-zero also marks the patterns this pass owns, which is why
+   IGOTO, LOOPDO and the returns need no separate exclusion list.
+
+   The pass measures every direct branch once, and for those that do not fit
+   records the fact on the RTL itself so that it survives to final; the two
+   patterns then split on lvx_jump_long_offset_p, which reads it back.
+
+   Calls are deliberately absent.  A call names a symbol rather than a label
+   in this function, so its distance is not known until link time -- it is
+   never in label2offset below, and could not be measured if it were.  Far
+   calls are the linker's business, which redirects them through a veneer
+   (lvx_type_of_stub in bfd/elfnn-lvx.c).  LOOPDO is absent too: the body of
+   a hardware loop should fit in the i-cache, so a loop spanning more than
+   CB's 17 bits has larger problems than its branch range.  */
+
 static int
-get_dest_uid (rtx_insn *label, int max_uid)
+lvx_insn_uid_cmp (const void *a, const void *b)
 {
-  rtx_insn *dest = next_real_insn (label);
-
-  if (!dest)
-    /* This can happen for an undefined label.  */
-    return 0;
-  int dest_uid = INSN_UID (dest);
-  /* If this is a newly created branch redirection blocking instruction,
-     we cannot index the branch_uid or insn_addresses arrays with its
-     uid.  But then, we won't need to, because the actual destination is
-     the following branch.  */
-  while (dest_uid >= max_uid)
-    {
-      dest = NEXT_INSN (dest);
-      dest_uid = INSN_UID (dest);
-    }
-  if (JUMP_P (dest) && GET_CODE (PATTERN (dest)) == RETURN)
-    return 0;
-  return dest_uid;
+  rtx_insn *insn_a = *(rtx_insn * const *) a;
+  rtx_insn *insn_b = *(rtx_insn * const *) b;
+  return INSN_UID (insn_a) - INSN_UID (insn_b);
 }
 
-/* The LVX instruction set only accepts 17-bit pcrel immediates in conditional
-   branches, and loopdo; and 27-bit pcrel immediates in calls and goto. It can
-   be a problem when the assembly file produced by a TU is gigantic.
+/* Find the LABEL_REF a direct branch jumps to: the source of the SET for an
+   unconditional jump, and the taken arm of the IF_THEN_ELSE for a
+   conditional one.  Only the patterns carrying a non-zero "pcrel" reach
+   here, and all of them put the label in that position.  */
 
-   To overcome this problem we detect far jumps and try to rewrite them.
-   However, we do not attempt at rewriting loopdo. The body of a hardware loop
-   should fit in the i-cache, and if it spans over a region bigger than 17-bit,
-   we have other problems to worry about.  */
+static rtx
+lvx_jump_label_ref (rtx_insn *insn)
+{
+  rtx src = SET_SRC (single_set (insn));
+
+  if (GET_CODE (src) == LABEL_REF)
+    return src;
+  if (GET_CODE (src) == IF_THEN_ELSE && GET_CODE (XEXP (src, 1)) == LABEL_REF)
+    return XEXP (src, 1);
+
+  gcc_unreachable ();
+}
+
+/* Select the long offset form for every direct branch whose destination is
+   out of reach of the immediate its pattern encodes.  */
+
 static void
-lvx_analyze_branches (void)
+lvx_fix_pcreljump_ranges (void)
 {
   rtx_insn *insn;
-  rtx_insn *first = get_insns ();
-  int max_uid = get_max_uid ();
+  long offset = 0;
+  int jump2offset_count = 0;
+  hash_map <rtx_insn *, long> jump2offset;
+  hash_map <rtx_insn *, long> label2offset;
 
-  shorten_branches (first);
-
-  for (insn = first; insn; insn = NEXT_INSN (insn))
-    if (!INSN_P (insn))
-      continue;
-    else if (insn->deleted ())
-      {
-	/* Shorten_branches would split this instruction again,
-	   so transform it into a note.  */
-	SET_INSN_DELETED (insn);
-      }
-    else if (JUMP_P (insn))
-      {
-	rtx src = PATTERN (insn);
-	int max_jump_length = 0;
-	if (GET_CODE (src) != SET)
+  /* Approximate every branch's and every label's address by accumulating
+     instruction lengths.  Bundling does not change the byte count -- a
+     bundle of three syllables is the same twelve bytes as three bundles of
+     one -- and nothing between here and final adds or removes instructions,
+     so the sum is close.  It is still an estimate: a pattern's "length" is a
+     static value that can over-state a template, and alignment padding is
+     not counted at all.  The margin below is what covers the difference, in
+     either direction.  */
+  for (insn = get_insns (); insn; insn = NEXT_INSN (insn))
+    {
+      if (INSN_P (insn) && insn->deleted ())
+	{
+	  SET_INSN_DELETED (insn);
 	  continue;
-	src = SET_SRC (src);
-	rtx olabel_ref = NULL;
-	rtx_insn *olabel_loc = NULL;
+	}
 
-	/* This is a conditional branch.  */
-	if (GET_CODE (src) == IF_THEN_ELSE)
-	  {
-	    /* The taken arm of the IF_THEN_ELSE, which is a LABEL_REF for a
-	       direct branch and something else for an indirect one -- never an
-	       insn, so it must not be run through safe_as_a<rtx_insn *>, whose
-	       checking assertion rejects a LABEL_REF outright.  The goto arm
-	       below takes the operand the same way, without a cast.  */
-	    olabel_ref = XEXP (src, 1);
-	    /* Skip indirect jumps.  */
-	    if (GET_CODE (olabel_ref) != LABEL_REF)
-	      continue;
-	    olabel_loc = label_ref_label (olabel_ref);
-	    max_jump_length = 17;
-	  }
-	/* This is a goto.  */
-	else
-	  {
-	    olabel_ref = src;
-	    /* Skip indirect jumps.  */
-	    if (GET_CODE (olabel_ref) != LABEL_REF)
-	      continue;
-	    olabel_loc = label_ref_label (olabel_ref);
-	    max_jump_length = 27;
-	  }
+      if (simplejump_p (insn) || any_condjump_p (insn))
+	{
+	  jump2offset.put (insn, offset);
+	  jump2offset_count++;
+	}
 
-	int src_addr = INSN_ADDRESSES (INSN_UID (insn));
-	int dest_uid = get_dest_uid (olabel_loc, max_uid);
-	int dst_addr = INSN_ADDRESSES (dest_uid);
-	int length = abs (src_addr - dst_addr);
+      if (LABEL_P (insn))
+	label2offset.put (insn, offset);
 
-	if (length >= (2 << max_jump_length))
-	  {
+      if (NONDEBUG_INSN_P (insn))
+	offset += get_attr_length (insn);
+    }
 
-	    if (max_jump_length == 17)
-	      {
-		/* cb.cond $reg0? L0           cb.!cond $reg? L1
-		   ...                becomes  make $reg1 = L0
-		   ...                         igoto $reg1
-		   ...                         L1:
-		   ...                         ...  */
+  rtx_insn **pcreljumps = XALLOCAVEC (rtx_insn *, jump2offset_count);
 
-		rtx_code_label *skip_label = gen_label_rtx ();
-		invert_jump (as_a < rtx_jump_insn * >(insn), skip_label, 0);
-		rtx_insn *cur = insn;
-		rtx reg = gen_rtx_REG (DImode, 16);
-		cur = emit_insn_after (gen_rtx_SET (reg, olabel_ref), cur);
-		cur = emit_insn_after (gen_indirect_jump (reg), cur);
-		cur = emit_label_after (skip_label, cur);
-		LABEL_NUSES (olabel_loc)++;
-		LABEL_NUSES (skip_label)++;
-	      }
-	    else if (max_jump_length == 27)
-	      {
-		/* goto L0 becomes make $reg1 = L0; igoto $reg1  */
-		rtx reg = gen_rtx_REG (DImode, 16);
-		rtx_insn *cur = insn;
-		cur = emit_insn_after (gen_indirect_jump (reg), cur);
-		delete_insn (insn);
-		LABEL_NUSES (olabel_loc)++;
-	      }
-	    else
-	      gcc_unreachable ();
+  int pcreljump_count = 0;
+  for (hash_map<rtx_insn *, long>::iterator iter = jump2offset.begin ();
+       iter != jump2offset.end (); ++iter)
+    {
+      rtx_insn *insn = (*iter).first;
+      long offset = (*iter).second;
+      int pcrel_bits = get_attr_pcrel (insn);
+      if (!pcrel_bits)
+	continue;
 
-	  }
+      rtx_insn *label = JUMP_LABEL_AS_INSN (insn);
+      unsigned jump_partition = BB_PARTITION (BLOCK_FOR_INSN (insn));
+      unsigned label_partition = BB_PARTITION (BLOCK_FOR_INSN (label));
+      long *_value = label2offset.get (label);
+      if (!_value)
+	gcc_unreachable ();
 
-	if (dump_file)
-	  fprintf (dump_file, "%s: jump_length: %d%s\n",
-		   max_jump_length == 17 ? "cb" : "goto",
-		   length,
-		   length >=
-		   (2 << max_jump_length) ? " (out of range)" : " ");
-      }
-    else if (CALL_P (insn))
-      {
-	rtx src = PATTERN (insn);
-	int max_jump_length = 27;
-	if (GET_CODE (src) == PARALLEL)
-	  continue;
-	src = SET_SRC (src);
-	rtx olabel_ref = src;
-	rtx_insn *olabel_loc = label_ref_label (olabel_ref);
+      /* The immediate is signed and scaled by 4, so PCREL_BITS of it reach
+	 2**(PCREL_BITS + 1) bytes either way; leave one maximum bundle of
+	 slack.  The quarter added to the distance is the margin for this
+	 scan being an estimate -- a branch just inside its range is widened
+	 rather than risked.  A branch to the other partition is always
+	 widened: the hot and cold halves end up in different sections, so
+	 the distance measured here says nothing about the final one.  */
+      long distance = labs (*_value - offset);
+      long range = (2L << pcrel_bits) - LVX_SCHED2_BUNDLE_SIZE;
+      if (jump_partition != label_partition
+	  || distance + (distance >> 2) >= range)
+	pcreljumps[pcreljump_count++] = insn;
+    }
 
-	int src_addr = INSN_ADDRESSES (INSN_UID (insn));
-	int dest_uid = get_dest_uid (olabel_loc, max_uid);
-	int dst_addr = INSN_ADDRESSES (dest_uid);
-	int length = abs (src_addr - dst_addr);
+  /* The hash map iterates in an order that depends on where the insns were
+     allocated, so sort before touching anything: the dump has to be the same
+     from one compilation of the same input to the next.  */
+  if (pcreljump_count > 1)
+    qsort (pcreljumps, pcreljump_count, sizeof (rtx_insn *), lvx_insn_uid_cmp);
 
-	if (length >= (2 << max_jump_length))
-	  {
-	    /* call L0 becomes make $reg1 = L0; icall $reg1  */
-	    rtx reg = gen_rtx_REG (DImode, 16);
-	    rtx_insn *cur = insn;
-	    cur = emit_insn_after (gen_indirect_jump (reg), cur);
-	    delete_insn (insn);
-	    LABEL_NUSES (olabel_loc)++;
-	  }
-      }
+  for (int i = 0; i < pcreljump_count; i++)
+    {
+      rtx_insn *pcreljump = pcreljumps[i];
+
+      if (dump_file)
+	fprintf (dump_file, "LVX FIX PCRELJUMP insn %d\t(%d bits)\n",
+		 INSN_UID (pcreljump), get_attr_pcrel (pcreljump));
+
+      /* Abuse the volatil flag to record the long offset of a PCRELJUMP.
+	 LABEL_REF_NONLOCAL_P means "target of a non-local goto", which is
+	 meaningless for the destination operand of an ordinary branch, so
+	 the bit is free here and, living on the LABEL_REF, travels with the
+	 pattern.  Clearing INSN_CODE forces the insn to be recognised
+	 again, and this time the short form's condition fails.  */
+      LABEL_REF_NONLOCAL_P (lvx_jump_label_ref (pcreljump)) = 1;
+      INSN_CODE (pcreljump) = -1;
+    }
 }
 
-/* Far Jump Rewrite }}} */
+/* Used in insn conditions to select the long offset variant of a branch.  */
+
+bool
+lvx_jump_long_offset_p (rtx_insn *insn)
+{
+  if (!reload_completed)
+    return false;
+
+  if (simplejump_p (insn) || any_condjump_p (insn))
+    /* Abuse the volatil flag to record the long offset of a PCRELJUMP.  */
+    return LABEL_REF_NONLOCAL_P (lvx_jump_label_ref (insn));
+
+  return false;
+}
+
+/* Long Offset Branches }}} */
 
 /* 18 Target Description Macros and Functions {{{ */
 
@@ -9525,8 +9528,7 @@ lvx_machine_dependent_reorg (void)
   if (optimize)
     reorg_loops (true, &lvx_doloop_hooks);
 
-  if (!optimize)
-    lvx_analyze_branches ();
+  lvx_fix_pcreljump_ranges ();
 
   df_analyze ();
 

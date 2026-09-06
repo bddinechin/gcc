@@ -31,6 +31,7 @@ extern enum attr_arch lvx_arch_schedule;
 #endif /* HAVE_ATTR_arch */
 
 extern bool lvx_is_farcall_p (rtx op);
+extern bool lvx_jump_long_offset_p (rtx_insn *insn);
 
 /* Pass management. */
 

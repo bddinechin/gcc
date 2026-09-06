@@ -104,6 +104,8 @@
 (define_insn_reservation "lvx_branch_bcu_brrp2" 1 (and (eq_attr "type" "branch") (eq_attr "issue" "bcu_brrp2") (match_test "TARGET_DUAL_BCU")) "lvx_bcu_brrp2_r")
 (define_insn_reservation "lvx_jump_bcu_xfer" 1 (and (eq_attr "type" "jump") (eq_attr "issue" "bcu_xfer") (match_test "TARGET_DUAL_BCU")) "lvx_bcu_xfer_r")
 (define_insn_reservation "lvx_ijump_bcu_xfer_brrp" 1 (and (eq_attr "type" "ijump") (eq_attr "issue" "bcu_xfer_brrp") (match_test "TARGET_DUAL_BCU")) "lvx_bcu_xfer_brrp_r")
+(define_insn_reservation "lvx_branch_bcu2_x" 1 (and (eq_attr "type" "branch") (eq_attr "issue" "bcu2_x")) "lvx_bcu2_x_r")
+(define_insn_reservation "lvx_jump_bcu2_x" 1 (and (eq_attr "type" "jump") (eq_attr "issue" "bcu2_x")) "lvx_bcu2_x_r")
 (define_insn_reservation "lvx_branch2_bcu2" 1 (and (eq_attr "type" "branch2") (eq_attr "issue" "bcu2")) "lvx_bcu2_r")
 (define_insn_reservation "lvx_sysget_bcu2_tiny_lsu" 1 (and (eq_attr "type" "sysget") (eq_attr "issue" "bcu2_tiny_lsu")) "lvx_bcu2_tiny_lsu_r")
 (define_insn_reservation "lvx_branch_bcu_brrp_nd" 1 (and (eq_attr "type" "branch") (eq_attr "issue" "bcu_brrp") (match_test "!TARGET_DUAL_BCU")) "lvx_bcu_brrp_r + lvx_bcu_x2_u")

@@ -297,10 +297,26 @@
                                        (const_int 0)])
                       (label_ref (match_operand 2 "" ""))
                       (pc)))]
-  ""
+  "!lvx_jump_long_offset_p (insn)"
   "cb.<SIDI:suffix>%0z %1? %2"
   [(set_attr "type" "branch")
-   (set_attr "issue" "bcu_brrp")]
+   (set_attr "issue" "bcu_brrp")
+   (set_attr "pcrel" "17")]
+)
+
+(define_insn "*cbx<mode>"
+  [(set (pc)
+        (if_then_else (match_operator 0 "zero_comparison_operator"
+                                      [(match_operand:SIDI 1 "register_operand" "r")
+                                       (const_int 0)])
+                      (label_ref (match_operand 2 "" ""))
+                      (pc)))]
+  "lvx_jump_long_offset_p (insn)"
+  "cbx.<SIDI:suffix>%0z %1? %2"
+  [(set_attr "type" "branch")
+   (set_attr "issue" "bcu2_x")
+   (set_attr "pcrel" "44")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*cb<mode>.<EQNE:evenodd>"
@@ -310,10 +326,26 @@
                             (const_int 0))
                       (label_ref (match_operand 1))
                       (pc)))]
-  ""
+  "!lvx_jump_long_offset_p (insn)"
   "cb.<EQNE:evenodd> %0? %1"
   [(set_attr "type" "branch")
-   (set_attr "issue" "bcu_brrp")]
+   (set_attr "issue" "bcu_brrp")
+   (set_attr "pcrel" "17")]
+)
+
+(define_insn "*cbx<mode>.<EQNE:evenodd>"
+  [(set (pc)
+        (if_then_else (EQNE (zero_extract:SIDI (match_operand:SIDI 0 "register_operand" "r")
+                                               (const_int 1) (const_int 0))
+                            (const_int 0))
+                      (label_ref (match_operand 1))
+                      (pc)))]
+  "lvx_jump_long_offset_p (insn)"
+  "cbx.<EQNE:evenodd> %0? %1"
+  [(set_attr "type" "branch")
+   (set_attr "issue" "bcu2_x")
+   (set_attr "pcrel" "44")
+   (set_attr "length" "8")]
 )
 
 
@@ -326,14 +358,34 @@
                                        (match_operand:SIDI 2 "register_operand" "r")])
                       (label_ref (match_operand 3 "" ""))
                       (pc)))]
-  ""
+  "!lvx_jump_long_offset_p (insn)"
   {
     if (int_comparison_operator (operands[0], VOIDmode))
       return "ccb.<SIDI:suffix>%0 %1, %2? %3";
     return "ccb.<SIDI:suffix>%S0 %2, %1? %3";
   }
   [(set_attr "type" "branch")
-   (set_attr "issue" "bcu_brrp2")]
+   (set_attr "issue" "bcu_brrp2")
+   (set_attr "pcrel" "11")]
+)
+
+(define_insn "*ccbx<mode>"
+  [(set (pc)
+        (if_then_else (match_operator 0 "ordered_comparison_operator"
+                                      [(match_operand:SIDI 1 "register_operand" "r")
+                                       (match_operand:SIDI 2 "register_operand" "r")])
+                      (label_ref (match_operand 3 "" ""))
+                      (pc)))]
+  "lvx_jump_long_offset_p (insn)"
+  {
+    if (int_comparison_operator (operands[0], VOIDmode))
+      return "ccbx.<SIDI:suffix>%0 %1, %2? %3";
+    return "ccbx.<SIDI:suffix>%S0 %2, %1? %3";
+  }
+  [(set_attr "type" "branch")
+   (set_attr "issue" "bcu2_x")
+   (set_attr "pcrel" "38")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*ccb<mode>.<EQNE:anynone>"
@@ -343,10 +395,26 @@
                             (const_int 0))
                       (label_ref (match_operand 2))
                       (pc)))]
-  ""
+  "!lvx_jump_long_offset_p (insn)"
   "ccb.<SIDI:suffix><EQNE:anynone> %0, %1? %2"
   [(set_attr "type" "branch")
-   (set_attr "issue" "bcu_brrp2")]
+   (set_attr "issue" "bcu_brrp2")
+   (set_attr "pcrel" "11")]
+)
+
+(define_insn "*ccbx<mode>.<EQNE:anynone>"
+  [(set (pc)
+        (if_then_else (EQNE (and:SIDI (match_operand:SIDI 0 "register_operand" "r")
+                                      (match_operand:SIDI 1 "register_operand" "r"))
+                            (const_int 0))
+                      (label_ref (match_operand 2))
+                      (pc)))]
+  "lvx_jump_long_offset_p (insn)"
+  "ccbx.<SIDI:suffix><EQNE:anynone> %0, %1? %2"
+  [(set_attr "type" "branch")
+   (set_attr "issue" "bcu2_x")
+   (set_attr "pcrel" "38")
+   (set_attr "length" "8")]
 )
 
 

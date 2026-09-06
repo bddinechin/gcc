@@ -1,5 +1,14 @@
 (define_attr "length" "" (const_int 4))
 
+;; How many bits of PC-relative immediate a direct branch encodes.  The
+;; immediate is signed and scaled by 4, so N bits reach 2**(N+1) bytes either
+;; way.  Non-zero is what marks the patterns lvx_fix_pcreljump_ranges owns,
+;; which is why IGOTO and the returns need no separate exclusion.  It is
+;; deliberately 0 on the calls, whose 27 bits the pass cannot police: a call
+;; names a symbol rather than a label here, so its distance is the linker's
+;; to know.  See "Long Offset Branches" in lvx.cc.
+(define_attr "pcrel" "" (const_int 0))
+
 (define_attr "predicable" "no,yes"
   (const_string "no"))
 
@@ -309,12 +318,28 @@
 ;; ========================= jump ========================
 ;;
 
-(define_insn "jump"
+(define_expand "jump"
   [(set (pc) (label_ref (match_operand 0)))]
   ""
+)
+
+(define_insn "*goto"
+  [(set (pc) (label_ref (match_operand 0)))]
+  "!lvx_jump_long_offset_p (insn)"
   "goto %0"
   [(set_attr "type" "jump")
-   (set_attr "issue" "bcu_xfer")]
+   (set_attr "issue" "bcu_xfer")
+   (set_attr "pcrel" "27")]
+)
+
+(define_insn "*gotox"
+  [(set (pc) (label_ref (match_operand 0)))]
+  "lvx_jump_long_offset_p (insn)"
+  "gotox %0"
+  [(set_attr "type" "jump")
+   (set_attr "issue" "bcu2_x")
+   (set_attr "pcrel" "54")
+   (set_attr "length" "8")]
 )
 
 (define_expand "indirect_jump"

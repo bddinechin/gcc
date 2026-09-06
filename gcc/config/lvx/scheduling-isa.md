@@ -87,6 +87,7 @@
 (define_reservation "lvx_bcu_brrp_r" "lvx_issue_u + lvx_bcu_u + lvx_brrp_u")
 (define_reservation "lvx_bcu_brrp2_r" "lvx_issue_u + lvx_bcu_u + lvx_brrp_x2_u")
 (define_reservation "lvx_bcu2_r" "lvx_issue_u + lvx_bcu_x2_u")
+(define_reservation "lvx_bcu2_x_r" "lvx_issue_x2_u + lvx_bcu_x2_u")
 (define_reservation "lvx_bcu_xfer_r" "lvx_issue_u + lvx_bcu_u + lvx_xfer_u")
 (define_reservation "lvx_bcu_xfer_brrp_r" "lvx_issue_u + lvx_bcu_u + lvx_brrp_u + lvx_xfer_u")
 (define_reservation "lvx_bcu2_tiny_lsu_r" "lvx_issue_u + lvx_tiny_u + lvx_lsu_u + lvx_bcu_x2_u")
@@ -144,6 +145,7 @@
    bcu_brrp,
    bcu_brrp2,
    bcu2,
+   bcu2_x,
    bcu_xfer,
    bcu_xfer_brrp,
    bcu2_tiny_lsu,
