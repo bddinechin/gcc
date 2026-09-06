@@ -131,7 +131,6 @@ lvx_load_class_p (enum attr_type type)
   switch (type)
     {
     case TYPE_LOAD: case TYPE_XLOAD:
-    case TYPE_LOADU: case TYPE_XLOADU:
     case TYPE_ALOAD: case TYPE_ALOADC: case TYPE_ATOMIC:
       return true;
     default:
@@ -4023,16 +4022,18 @@ lvx_is_farcall_p (rtx op)
 }
 
 /*
- * When IS_LOAD is TRUE, returns TRUE if OP is a load multiple
- * operation and all mems have same address space ADDR_SPACE.
- * When IS_LOAD is FALSE, returns TRUE if OP is a store multiple
- * operation.
+ * When IS_LOAD is TRUE, returns TRUE if OP is a load multiple operation whose
+ * mems all share one address space.  They have to: a single LO issues one
+ * access, so it cannot be half cached, and the variant it prints is read off
+ * that shared address space.
+ * When IS_LOAD is FALSE, returns TRUE if OP is a store multiple operation.
  * Returns FALSE otherwise.
  */
 static bool
-lvx_load_store_multiple_operation_p (rtx op, bool is_uncached, bool is_load)
+lvx_load_store_multiple_operation_p (rtx op, bool is_load)
 {
   int count = XVECLEN (op, 0);
+  addr_space_t addr_space = ADDR_SPACE_GENERIC;
 
   /* Perform a quick check so we don't blow up below.  */
   if (count != 2 && count != 4)
@@ -4050,26 +4051,15 @@ lvx_load_store_multiple_operation_p (rtx op, bool is_uncached, bool is_load)
       if (!REG_P (reg_part) || !MEM_P (mem_part) || MEM_VOLATILE_P (mem_part))
 	return false;
 
-#if 1
-      if (is_load && is_uncached != !!lvx_is_uncached_mem_op_p (mem_part))
-#else
-      if (addr_space < 0)
-	addr_space = MEM_ADDR_SPACE (mem_part);
-
-      if (is_load && addr_space != MEM_ADDR_SPACE (mem_part))
-#endif
-	return false;
+      if (is_load)
+	{
+	  if (i == 0)
+	    addr_space = MEM_ADDR_SPACE (mem_part);
+	  else if (addr_space != MEM_ADDR_SPACE (mem_part))
+	    return false;
+	}
     }
 
-#if 0
-  if (is_uncached && addr_space != LVX_ADDR_SPACE_BYPASS
-      && addr_space != LVX_ADDR_SPACE_PRELOAD)
-    return false;
-  if (!is_uncached && addr_space != ADDR_SPACE_GENERIC
-      && addr_space != LVX_ADDR_SPACE_SPECULATE)
-    return false;
-
-#endif
   rtx first_mem
     = is_load ? SET_SRC (XVECEXP (op, 0, 0)) : SET_DEST (XVECEXP (op, 0, 0));
   rtx first_reg
@@ -4119,13 +4109,12 @@ lvx_load_store_multiple_operation_p (rtx op, bool is_uncached, bool is_load)
 }
 
 /*
- * Returns TRUE if OP is a load multiple operation and all its mems
- * address spaces are LVX_ADDR_SPACE_BYPASS if IS_UNCACHED is true.
+ * Returns TRUE if OP is a load multiple operation.
  */
 bool
-lvx_load_multiple_operation_p (rtx op, bool is_uncached)
+lvx_load_multiple_operation_p (rtx op)
 {
-  return lvx_load_store_multiple_operation_p (op, is_uncached, true);
+  return lvx_load_store_multiple_operation_p (op, true);
 }
 
 /*
@@ -4134,7 +4123,7 @@ lvx_load_multiple_operation_p (rtx op, bool is_uncached)
 bool
 lvx_store_multiple_operation_p (rtx op)
 {
-  return lvx_load_store_multiple_operation_p (op, false, false);
+  return lvx_load_store_multiple_operation_p (op, false);
 }
 
 bool
@@ -4338,27 +4327,128 @@ lvx_has_54bit_immediate_p (rtx x)
   return false;
 }
 
-/* Test whether the memory operand X should be accessed cached or
-   uncached (bypass or preload) based on its memory address space.  */
-bool
-lvx_is_uncached_mem_op_p (rtx x)
-{
-  gcc_assert (MEM_P (x));
-  if (!MEM_P (x))
-    return false;
-
-  /* __convert[_no_sync] addr space should not come here. */
-  gcc_assert (MEM_ADDR_SPACE (x) < LVX_ADDR_SPACE_CONVERT);
-
-#if 1
-  int addr_space = MEM_ADDR_SPACE (x);
-  return addr_space == LVX_ADDR_SPACE_BYPASS
-	 || addr_space == LVX_ADDR_SPACE_PRELOAD;
-#else
-  return MEM_ADDR_SPACE (x);
-#endif
-}
 /* Constraints }}} */
+
+/* Load Variants {{{ */
+
+/* Uncached is not an instruction, it is a modifier: the ISA has one LD, and
+   LD.U is that LD carrying the "variant" modifier.  Everything below exists so
+   that the back end says it once -- one enum, one predicate on the insn, one
+   suffix printer -- instead of once per spelling.  The one thing a variant
+   changes is the latency, which scheduling.md reads off the "variant"
+   attribute whose default is (lvx_insn_variant).  */
+
+/* The variant an address space asks for.  Anything that is not one of the
+   three variant spaces -- the generic space, but also __convert and
+   __syscall -- is a plain cached access.  */
+
+static enum lvx_variant
+lvx_addr_space_variant (addr_space_t as)
+{
+  switch (as)
+    {
+    case LVX_ADDR_SPACE_SPECULATE:
+      return LVX_VARIANT_SPECULATE;
+    case LVX_ADDR_SPACE_BYPASS:
+      return LVX_VARIANT_UNCACHED;
+    case LVX_ADDR_SPACE_PRELOAD:
+      return LVX_VARIANT_PRELOAD;
+    default:
+      return LVX_VARIANT_CACHED;
+    }
+}
+
+/* The variant the memory operand MEM asks for.  Not a MEM is not an error:
+   %V is written on operands that only sometimes are one.  */
+
+enum lvx_variant
+lvx_mem_variant (rtx mem)
+{
+  return MEM_P (mem) ? lvx_addr_space_variant (MEM_ADDR_SPACE (mem))
+		     : LVX_VARIANT_CACHED;
+}
+
+/* The variant spelled by an assembly modifier string, as the builtins pass
+   one.  MOD is a concatenation of dot-separated tokens of which the variant
+   is ".u" or ".us".  Tokens are matched whole, so neither the ".une" of a
+   float comparison nor the ".su" of a wide multiply is mistaken for one.  */
+
+static enum lvx_variant
+lvx_string_variant (const char *mod)
+{
+  for (const char *p = mod; p && (p = strchr (p, '.')) != NULL; p++)
+    {
+      if (p[1] != 'u')
+	continue;
+      if (p[2] == '\0' || p[2] == '.')
+	return LVX_VARIANT_UNCACHED;
+      if (p[2] == 's' && (p[3] == '\0' || p[3] == '.'))
+	return LVX_VARIANT_PRELOAD;
+    }
+
+  return LVX_VARIANT_CACHED;
+}
+
+/* The variant INSN's memory access carries, wherever it is spelled: on the
+   address space of the memory it touches, or in a modifier string operand.
+   This is the default value of the "variant" attribute, so it is asked of
+   every insn and has to be total and cheap.  A pattern whose instruction has
+   no cached form at all does not come here; it sets the attribute itself.  */
+
+enum lvx_variant
+lvx_insn_variant (rtx_insn *insn)
+{
+  enum lvx_variant variant = LVX_VARIANT_CACHED;
+  bool has_mem = false;
+
+  subrtx_iterator::array_type array;
+  FOR_EACH_SUBRTX (iter, array, PATTERN (insn), ALL)
+    {
+      const_rtx x = *iter;
+
+      if (MEM_P (x))
+	{
+	  enum lvx_variant v = lvx_addr_space_variant (MEM_ADDR_SPACE (x));
+	  if (v != LVX_VARIANT_CACHED)
+	    return v;
+	  has_mem = true;
+	}
+      else if (GET_CODE (x) == CONST_STRING && variant == LVX_VARIANT_CACHED)
+	variant = lvx_string_variant (XSTR (x, 0));
+    }
+
+  /* Only a memory access has a variant: the modifier string of, say, a wide
+     multiply is none of our business.  */
+  return has_mem ? variant : LVX_VARIANT_CACHED;
+}
+
+/* Whether VARIANT bypasses the cache, and so pays the long load latency.  */
+
+bool
+lvx_uncached_variant_p (enum lvx_variant variant)
+{
+  return variant == LVX_VARIANT_UNCACHED || variant == LVX_VARIANT_PRELOAD;
+}
+
+/* The assembly suffix for VARIANT, as MDS's "variant" modifier spells it.  */
+
+const char *
+lvx_variant_suffix (enum lvx_variant variant)
+{
+  switch (variant)
+    {
+    case LVX_VARIANT_SPECULATE:
+      return ".s";
+    case LVX_VARIANT_UNCACHED:
+      return ".u";
+    case LVX_VARIANT_PRELOAD:
+      return ".us";
+    default:
+      return "";
+    }
+}
+
+/* Load Variants }}} */
 
 /* Handling of Hardware Loops {{{ */
 
@@ -8097,7 +8187,6 @@ lvx_print_operand (FILE *file, rtx x, int code)
   bool float_compare = false;
   bool reverse_compare = false;
   bool swap_compare = false;
-  int addr_space = 0;
 
   lvx_print_offset_zero = true;
   switch (code)
@@ -8173,14 +8262,8 @@ lvx_print_operand (FILE *file, rtx x, int code)
       fprintf (file, ")");
       return;
 
-    case 'V': /* Print '.u' or '.us' or '.s' variant for memory load. */
-      addr_space = MEM_ADDR_SPACE (x);
-      if (addr_space == LVX_ADDR_SPACE_PRELOAD)
-	fprintf (file, ".us");
-      else if (addr_space == LVX_ADDR_SPACE_BYPASS)
-	fprintf (file, ".u");
-      else if (addr_space == LVX_ADDR_SPACE_SPECULATE)
-	fprintf (file, ".s");
+    case 'V': /* Print the load variant: '.s', '.u' or '.us'.  */
+      fputs (lvx_variant_suffix (lvx_mem_variant (x)), file);
       addr_mode = true;
       break;
 

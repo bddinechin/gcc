@@ -77,12 +77,30 @@ extern void lvx_print_operand_address (FILE *file, rtx x);
 extern bool lvx_print_punct_valid_p (unsigned char code);
 
 extern bool lvx_syscall_addrspace_p (rtx op);
-extern bool lvx_is_uncached_mem_op_p (rtx op);
+
+/* The four load variants of the ISA.  These mirror, one for one and in order,
+   the members of the MDS "variant" modifier (lvx-mds Modifier.yml: members
+   [ ., .S, .U, .US ]).  An uncached load is LD.U -- an LD carrying a variant --
+   not an "LDU": the variant changes the latency, not the instruction.  That is
+   why "variant" is an attribute of its own rather than two extra values of the
+   "type" attribute, which says what an instruction IS.  */
+enum lvx_variant
+{
+  LVX_VARIANT_CACHED,		/* ""    -- generic address space  */
+  LVX_VARIANT_SPECULATE,	/* ".s"  -- __speculate            */
+  LVX_VARIANT_UNCACHED,		/* ".u"  -- __bypass               */
+  LVX_VARIANT_PRELOAD		/* ".us" -- __preload              */
+};
+
+extern enum lvx_variant lvx_mem_variant (rtx mem);
+extern enum lvx_variant lvx_insn_variant (rtx_insn *insn);
+extern bool lvx_uncached_variant_p (enum lvx_variant variant);
+extern const char *lvx_variant_suffix (enum lvx_variant variant);
 
 extern bool lvx_expand_load_multiple (rtx operands[]);
 extern bool lvx_expand_store_multiple (rtx operands[]);
 
-extern bool lvx_load_multiple_operation_p (rtx op, bool is_uncached);
+extern bool lvx_load_multiple_operation_p (rtx op);
 extern bool lvx_expand_unpack (rtx op0, rtx op1, bool signed_p, bool hi_p);
 
 extern bool lvx_store_multiple_operation_p (rtx op);

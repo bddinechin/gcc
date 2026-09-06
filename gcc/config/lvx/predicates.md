@@ -279,17 +279,6 @@
   return inner_mode == HFmode;
 })
 
-(define_predicate "uncached_modifier"
-  (match_code "const_string")
-{
-  const char *modifier = XSTR (op, 0);
-  if (modifier[0] == '.' && modifier[1] == 'u')
-    return true;
-  for (modifier++; *modifier; modifier++)
-    if (*modifier == '.') break;
-  return modifier[0] == '.' && modifier[1] == 'u';
-})
-
 (define_predicate "masked_modifier"
   (match_code "const_string")
 {
@@ -308,9 +297,5 @@
 ;; Return 1 if OP is a load multiple operation, known to be a PARALLEL.
 (define_predicate "load_multiple_operation"
   (and (match_code "parallel")
-       (match_test "lvx_load_multiple_operation_p (op, false)")))
-
-(define_predicate "load_multiple_operation_uncached"
-  (and (match_code "parallel")
-       (match_test "lvx_load_multiple_operation_p (op, true)")))
+       (match_test "lvx_load_multiple_operation_p (op)")))
 

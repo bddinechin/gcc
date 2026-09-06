@@ -40,7 +40,6 @@
         UNSPEC_STSU
         UNSPEC_SBMM8D
         UNSPEC_SBMMT8D
-        UNSPEC_LOADU
         UNSPEC_WAITIT
         UNSPEC_WFXL
         UNSPEC_WFXM

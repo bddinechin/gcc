@@ -489,14 +489,6 @@ LVX_BUILTIN_DIRECT   (sbmmt8dp, V2DI_FTYPE_V2DI_V2DI,, true) // Vector
 LVX_BUILTIN_DIRECT   (sbmmt8dq, V4DI_FTYPE_V4DI_V4DI,, true) // Vector
 LVX_BUILTIN_DIRECT   (sbmmt8do, V8DI_FTYPE_V8DI_V8DI,, true) // Vector
 
-LVX_BUILTIN_INDIRECT (lbzu, UINT8_FTYPE_CVPTR,, true, (LOADU, QImode, QImode)) // Deprecated
-LVX_BUILTIN_INDIRECT (lbsu, INT8_FTYPE_CVPTR,, true, (LOADU, QImode, QImode)) // Deprecated
-LVX_BUILTIN_INDIRECT (lhzu, UINT16_FTYPE_CVPTR,, true, (LOADU, HImode, HImode)) // Deprecated
-LVX_BUILTIN_INDIRECT (lhsu, INT16_FTYPE_CVPTR,, true, (LOADU, HImode, HImode)) // Deprecated
-LVX_BUILTIN_INDIRECT (lwzu, UINT32_FTYPE_CVPTR,, true, (LOADU, SImode, SImode)) // Deprecated
-LVX_BUILTIN_INDIRECT (lwsu, INT32_FTYPE_CVPTR,, true, (LOADU, SImode, SImode)) // Deprecated
-LVX_BUILTIN_INDIRECT (ldu, UINT64_FTYPE_CVPTR,, true, (LOADU, DImode, DImode)) // Deprecated
-LVX_BUILTIN_INDIRECT (lqu, UINT128_FTYPE_CVPTR,, true, (LOADU, TImode, TImode)) // Deprecated
 
 LVX_BUILTIN_INDIRECT (d1inval, VOID_FTYPE,, true, (0_VOID,)) // Memory
 LVX_BUILTIN_INDIRECT (i1inval, VOID_FTYPE,, true, (0_VOID,)) // Memory

@@ -155,7 +155,7 @@
      FAIL;
  })
 
-(define_insn "*lo_multiple_cached"
+(define_insn "*lo_multiple"
   [(match_parallel 0 "load_multiple_operation"
     [(set (match_operand:DI 1 "register_operand" "=r,r,r")
           (mem:DI (plus:P (match_operand:P 2 "register_operand" "r,r,r")
@@ -167,29 +167,18 @@
      (set (match_operand:DI 8 "register_operand" "=r,r,r")
           (mem:DI (plus:P (match_dup 2) (match_operand 9 "const_int_operand" "I10,I37,i"))))])]
   "(XVECLEN (operands[0], 0) == 4)"
-  "lo %o1 = %3[%2]"
+  {
+    /* The mems share one address space, so one suffix covers the bundle.  */
+    static char buf[32];
+    snprintf (buf, sizeof buf, "lo%s %%o1 = %%3[%%2]",
+	      lvx_variant_suffix (lvx_insn_variant (insn)));
+    return buf;
+  }
   [(set_attr "type" "load, load, load")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length" "4,8,12")])
 
-(define_insn "*lo_multiple_uncached"
-  [(match_parallel 0 "load_multiple_operation_uncached"
-    [(set (match_operand:DI 1 "register_operand" "=r,r,r")
-          (mem:DI (plus:P (match_operand:P 2 "register_operand" "r,r,r")
-                          (match_operand 3 "const_int_operand" ""))))
-     (set (match_operand:DI 4 "register_operand" "=r,r,r")
-          (mem:DI (plus:P (match_dup 2) (match_operand 5 "const_int_operand" "I10,I37,i"))))
-     (set (match_operand:DI 6 "register_operand" "=r,r,r")
-          (mem:DI (plus:P (match_dup 2) (match_operand 7 "const_int_operand" "I10,I37,i"))))
-     (set (match_operand:DI 8 "register_operand" "=r,r,r")
-          (mem:DI (plus:P (match_dup 2) (match_operand 9 "const_int_operand" "I10,I37,i"))))])]
-  "(XVECLEN (operands[0], 0) == 4)"
-  "lo.u %o1 = %3[%2]"
-  [(set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
-   (set_attr "length" "4,8,12")])
-
-(define_insn "*lq_multiple_cached"
+(define_insn "*lq_multiple"
   [(match_parallel 0 "load_multiple_operation"
     [(set (match_operand:DI 1 "register_operand" "=r,r,r")
           (mem:DI (plus:P (match_operand:P 2 "register_operand" "r,r,r")
@@ -197,21 +186,14 @@
      (set (match_operand:DI 4 "register_operand" "=r,r,r")
           (mem:DI (plus:P (match_dup 2) (match_operand 5 "const_int_operand" "I10,I37,i"))))])]
   "(XVECLEN (operands[0], 0) == 2)"
-  "lq %q1 = %3[%2]"
+  {
+    /* The mems share one address space, so one suffix covers the bundle.  */
+    static char buf[32];
+    snprintf (buf, sizeof buf, "lq%s %%q1 = %%3[%%2]",
+	      lvx_variant_suffix (lvx_insn_variant (insn)));
+    return buf;
+  }
   [(set_attr "type" "load, load, load")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
-   (set_attr "length" "4,8,12")])
-
-(define_insn "*lq_multiple_uncached"
-  [(match_parallel 0 "load_multiple_operation_uncached"
-    [(set (match_operand:DI 1 "register_operand" "=r,r,r")
-          (mem:DI (plus:P (match_operand:P 2 "register_operand" "r,r,r")
-                          (match_operand 3 "const_int_operand" "I10,I37,i"))))
-     (set (match_operand:DI 4 "register_operand" "=r,r,r")
-          (mem:DI (plus:P (match_dup 2) (match_operand 5 "const_int_operand" "I10,I37,i"))))])]
-  "(XVECLEN (operands[0], 0) == 2)"
-  "lq.u %q1 = %3[%2]"
-  [(set_attr "type" "loadu, loadu, loadu")
    (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length" "4,8,12")])
 
@@ -273,33 +255,33 @@
 
 ;; FIXME AUTO: refine set insn to bundle it when possible. T7808
 (define_insn "*mov<mode>_all"
-    [(set (match_operand:ALLIF 0 "nonimmediate_operand" "=r,      r,      r,  r, a, b, m,  r,  r,  r,  r,  r,  r, r, SFR,   r,   r")
-          (match_operand:ALLIF 1 "general_operand"       "r, I16H16, I43H43, nF, r, r, r, Ca, Cb, Cm, Za, Zb, Zm, SFR, r,  Cp, SYM"))]
+    [(set (match_operand:ALLIF 0 "nonimmediate_operand" "=r,      r,      r,  r, a, b, m, r, r, r,   r, SFR,  r,   r")
+          (match_operand:ALLIF 1 "general_operand"       "r, I16H16, I43H43, nF, r, r, r, a, b, m, SFR,   r, Cp, SYM"))]
   "register_operand (operands[0], <MODE>mode) || register_operand (operands[1], <MODE>mode)"
 {
   switch (which_alternative)
     {
     case 0:
       return "copy<ALLIF:copyx> %0 = %1";
-    case 1: case 2: case 3: case 16:
+    case 1: case 2: case 3: case 13:
       return "maked %0 = %1";
     case 4: case 5: case 6:
       return "s<ALLIF:lsusize>%X0 %0 = %1";
-    case 7: case 8: case 9: case 10: case 11: case 12:
+    case 7: case 8: case 9:
       return "l<lsusizezx>%V1 %0 = %1";
-    case 13:
+    case 10:
       return "get %0 = %1";
-    case 14:
+    case 11:
       return "set %0 = %1";
-    case 15:
+    case 12:
       return "pcrel %0 = %T1";
     default:
       gcc_unreachable ();
     }
 }
-  [(set_attr "type" "alu, alu, alu, alu, store, store, store, load, load, load, loadu, loadu, loadu, sysget, all, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, bcu2_tiny_lsu, all, full_x, tiny_x2")
-   (set_attr "length"      "4,        4,          8,         12,          4,            8,           12,         4,           8,          12,                  4,                    8,                   12,       4,   4,          8,         12")]
+  [(set_attr "type" "alu, alu, alu, alu, store, store, store, load, load, load, sysget, all, alu, alu")
+   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, bcu2_tiny_lsu, all, full_x, tiny_x2")
+   (set_attr "length"      "4,        4,          8,         12,          4,            8,           12,         4,           8,          12,       4,   4,          8,         12")]
 )
 
 (define_insn "add_pcrel_<mode>"
@@ -751,119 +733,21 @@
    (set_attr "issue" "lsu2_memw")]
 )
 
-;; Uncached Loads (Deprecated)
-
-(define_insn "lvx_lbzu"
-   [(set (match_operand:QI 0 "register_operand" "=r,r,r")
-         (unspec:QI [(match_operand:QI 1 "memory_operand" "a,b,m")] UNSPEC_LOADU))
-    (clobber (mem:BLK (scratch)))
-   ]
-   ""
-   "lbz.u%X1 %0 = %1"
-  [(set_attr "length" "4,8,12")
-   (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
-)
-
-(define_insn "lvx_lbsu"
-   [(set (match_operand:QI 0 "register_operand"           "=r, r, r")
-         (unspec:QI [(match_operand:QI 1 "memory_operand" " a, b, m")] UNSPEC_LOADU))
-    (clobber (mem:BLK (scratch)))
-   ]
-   ""
-   "lbs.u%X1 %0 = %1"
-  [(set_attr "length" "4,8,12")
-   (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
-)
-
-(define_insn "lvx_lhzu"
-   [(set (match_operand:HI 0 "register_operand" "=r,r,r")
-         (unspec:HI [(match_operand:HI 1 "memory_operand" "a,b,m")] UNSPEC_LOADU))
-    (clobber (mem:BLK (scratch)))
-   ]
-   ""
-   "lhz.u%X1 %0 = %1"
-  [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
-)
-
-(define_insn "lvx_lhsu"
-   [(set (match_operand:HI 0 "register_operand" "=r,r,r")
-         (unspec:HI [(match_operand:HI 1 "memory_operand" "a,b,m")] UNSPEC_LOADU))
-    (clobber (mem:BLK (scratch)))
-   ]
-   ""
-   "lhs.u%X1 %0 = %1"
-  [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
-)
-
-(define_insn "lvx_lwzu"
-   [(set (match_operand:SI 0 "register_operand" "=r,r,r")
-         (unspec:SI [(match_operand:SI 1 "memory_operand" "a,b,m")] UNSPEC_LOADU))
-    (clobber (mem:BLK (scratch)))
-   ]
-   ""
-   "lwz.u%X1 %0 = %1"
-  [(set_attr "length" "4,8,12")
-   (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
-)
-
-(define_insn "lvx_lwsu"
-   [(set (match_operand:SI 0 "register_operand" "=r,r,r")
-         (unspec:SI [(match_operand:SI 1 "memory_operand" "a,b,m")] UNSPEC_LOADU))
-    (clobber (mem:BLK (scratch)))
-   ]
-   ""
-   "lws.u%X1 %0 = %1"
-  [(set_attr "length" "4,8,12")
-   (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
-)
-
-(define_insn "lvx_ldu"
-   [(set (match_operand:DI 0 "register_operand" "=r,r,r")
-         (unspec:DI [(match_operand:DI 1 "memory_operand" "a,b,m")] UNSPEC_LOADU))
-    (clobber (mem:BLK (scratch)))
-   ]
-   ""
-   "ld.u%X1 %0 = %1"
-  [(set_attr "length" "4, 8, 12")
-   (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
-)
-
-(define_insn "lvx_lqu"
-   [(set (match_operand:TI 0 "register_operand" "=r,r,r")
-         (unspec:TI [(match_operand:TI 1 "memory_operand" "a,b,m")] UNSPEC_LOADU))
-    (clobber (mem:BLK (scratch)))
-   ]
-   ""
-   "lq.u%X1 %0 = %1"
-  [(set_attr "length" "4, 8, 12")
-   (set_attr "type"   "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
-)
-
 ;; FIXME AUTO: add size info for 'reg[reg]' addressing (currently falling back to lsu.x)
 (define_insn "*l<mode><ANY_EXTEND:lsux>"
-   [(set (match_operand:DI 0 "register_operand"                 "=r,  r,  r,  r,  r,  r")
-         (ANY_EXTEND:DI (match_operand:SHORT 1 "memory_operand" "Ca, Cb, Cm, Za, Zb, Zm")))]
+   [(set (match_operand:DI 0 "register_operand"                 "=r,  r,  r")
+         (ANY_EXTEND:DI (match_operand:SHORT 1 "memory_operand" " a,  b,  m")))]
    ""
    "l<SHORT:lsusize><ANY_EXTEND:lsux>%V1 %0 = %1"
-  [(set_attr "length" "            4,               8,              12,                      4,                        8,                       12")
-   (set_attr "type"   "load, load, load, loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
+  [(set_attr "length" "4, 8, 12")
+   (set_attr "type"   "load, load, load")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
 )
 
 ;; FIXME AUTO: add size info for 'reg[reg]' addressing (currently falling back to lsu.x)
 (define_insn "extend<mode>di2"
-  [(set (match_operand:DI 0 "register_operand"                        "=r,  r,  r,  r,  r,  r,  r")
-        (sign_extend:DI (match_operand:SHORT 1 "nonimmediate_operand" " r, Ca, Cb, Cm, Za, Zb, Zm")))]
+  [(set (match_operand:DI 0 "register_operand"                        "=r,  r,  r,  r")
+        (sign_extend:DI (match_operand:SHORT 1 "nonimmediate_operand" " r,  a,  b,  m")))]
   ""
 {
  switch (which_alternative)
@@ -871,20 +755,18 @@
    case 0:
      return "sx<lsusize>d %0 = %1";
    case 1: case 2: case 3:
-     return "l<lsusize>s%X1 %0 = %1";
-   case 4: case 5: case 6:
-     return "l<lsusize>s%X1.u %0 = %1";
+     return "l<lsusize>s%V1 %0 = %1";
    default:
      gcc_unreachable ();
    }
 }
-  [(set_attr "type"   "alu, load, load, load, loadu, loadu, loadu")
-   (set_attr "issue" "lite, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
-   (set_attr "length" "       4,             4,               8,              12,                      4,                        8,                       12")])
+  [(set_attr "type"   "alu, load, load, load")
+   (set_attr "issue" "lite, lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
+   (set_attr "length"    "4,        4,          8,          12")])
 
 (define_insn "zero_extend<mode>di2"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r,r,r,r")
-        (zero_extend:DI (match_operand:SHORT 1 "nonimmediate_operand" "r,Ca,Cb,Cm,Za,Zb,Zm")))]
+  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
+        (zero_extend:DI (match_operand:SHORT 1 "nonimmediate_operand" "r,a,b,m")))]
   ""
 {
  switch (which_alternative)
@@ -892,16 +774,14 @@
      case 0:
        return "zx<lsusize>d %0 = %1";
      case 1: case 2: case 3:
-       return "l<lsusize>z%X1 %0 = %1";
-     case 4: case 5: case 6:
-       return "l<lsusize>z%X1.u %0 = %1";
+       return "l<lsusize>z%V1 %0 = %1";
      default:
        gcc_unreachable ();
    }
 }
-  [(set_attr "type"   "alu, load, load, load, loadu, loadu, loadu")
-   (set_attr "issue" "lite, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
-   (set_attr "length" "       4,             4,               8,              12,                      4,                        8,                       12")])
+  [(set_attr "type"   "alu, load, load, load")
+   (set_attr "issue" "lite, lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
+   (set_attr "length"    "4,        4,          8,          12")])
 
 (define_insn "*icall_<mode>"
   [(call (mem:P (match_operand:P 0 "register_operand" "r"))

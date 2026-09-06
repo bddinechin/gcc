@@ -143,37 +143,41 @@
         gcc_unreachable ();
       }
   }
-  [(set_attr "type" "xcopy, xloadu, xloadu, xloadu, xstore, xstore, xstore, xmovef, xmoveto, copy")
+  ;; XLO has no cached form on this core, so its .u is part of the mnemonic
+  ;; rather than a variant read off the operand: say so, since nothing in the
+  ;; RTL does.  Only the xload alternatives consult "variant".
+  [(set_attr "variant" "uncached")
+   (set_attr "type" "xcopy, xload, xload, xload, xstore, xstore, xstore, xmovef, xmoveto, copy")
    (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_x2, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2, ext_misc_auxw, lite2_misc, lsu_auxr_auxw")
    (set_attr "length"                "4,                4,                  8,                 12,             4,               8,              12,                 4,                    8,            4")]
 )
 
 (define_insn "*mov<mode>"
-  [(set (match_operand:X256 0 "nonimmediate_operand" "=x, x, x, x, x, x, x,a,b,m,r,x,r")
-        (match_operand:X256 1 "nonimmediate_operand"  "x,Ca,Cb,Cm,Za,Zb,Zm,x,x,x,x,r,r"))]
+  [(set (match_operand:X256 0 "nonimmediate_operand" "=x,x,x,x,a,b,m,r,x,r")
+        (match_operand:X256 1 "nonimmediate_operand"  "x,a,b,m,x,x,x,x,r,r"))]
   "LVX_2 && (HAVE_LVX_EXT_CACHED_LOAD)"
   {
     switch (which_alternative)
       {
       case 0:
         return "xcopyo %0 = %1";
-      case 1: case 2: case 3: case 4: case 5: case 6:
+      case 1: case 2: case 3:
         return "xlo%V1 %0 = %1";
-      case 7: case 8: case 9:
+      case 4: case 5: case 6:
         return "xso%X0 %0 = %1";
-      case 10:
+      case 7:
         return "xmovefo %0 = %1";
-      case 11:
+      case 8:
         return "#";
-      case 12:
+      case 9:
         return "copyo %0 = %1";
       default:
         gcc_unreachable ();
       }
   }
-  [(set_attr "type" "xcopy, xload, xload, xload, xloadu, xloadu, xloadu, xstore, xstore, xstore, xmovef, xmoveto, copy")
-   (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_x2, lsu, lsu_x, lsu_x2, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2, ext_misc_auxw, lite2_misc, lsu_auxr_auxw")
-   (set_attr "length"                "4,       4,         8,        12,                4,                  8,                 12,             4,               8,              12,                 4,                    8,            4")]
+  [(set_attr "type" "xcopy, xload, xload, xload, xstore, xstore, xstore, xmovef, xmoveto, copy")
+   (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_x2, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2, ext_misc_auxw, lite2_misc, lsu_auxr_auxw")
+   (set_attr "length"                "4,       4,         8,        12,             4,               8,              12,                 4,                    8,            4")]
 )
 
 (define_insn "*xmovef<mode>"
@@ -263,7 +267,7 @@
                         (match_operand 2 "" "")] UNSPEC_XLOAD))]
   ""
   "xlo%2%X1 %0 = %1"
-  [(set (attr "type") (if_then_else (match_operand 2 "uncached_modifier") (const_string "xloadu") (const_string "xload")))
+  [(set_attr "type" "xload")
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
@@ -319,7 +323,7 @@
                        (match_operand 3 "" "")] UNSPEC_XLOADQ0))]
   ""
   "xlo%3%X2.q0 %0 = %2"
-  [(set (attr "type") (if_then_else (match_operand 3 "uncached_modifier") (const_string "xloadu") (const_string "xload")))
+  [(set_attr "type" "xload")
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
@@ -334,7 +338,7 @@
                        (match_operand 3 "" "")] UNSPEC_XLOADQ1))]
   ""
   "xlo%3%X2.q1 %0 = %2"
-  [(set (attr "type") (if_then_else (match_operand 3 "uncached_modifier") (const_string "xloadu") (const_string "xload")))
+  [(set_attr "type" "xload")
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
@@ -349,7 +353,7 @@
                        (match_operand 3 "" "")] UNSPEC_XLOADQ2))]
   ""
   "xlo%3%X2.q2 %0 = %2"
-  [(set (attr "type") (if_then_else (match_operand 3 "uncached_modifier") (const_string "xloadu") (const_string "xload")))
+  [(set_attr "type" "xload")
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
@@ -364,7 +368,7 @@
                        (match_operand 3 "" "")] UNSPEC_XLOADQ3))]
   ""
   "xlo%3%X2.q3 %0 = %2"
-  [(set (attr "type") (if_then_else (match_operand 3 "uncached_modifier") (const_string "xloadu") (const_string "xload")))
+  [(set_attr "type" "xload")
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
@@ -381,7 +385,7 @@
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ0))]
   ""
   "guard%5%X2.q0 %3? xlo%4 %0 = %2"
-  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "xloadu") (const_string "xload")))
+  [(set_attr "type" "xload")
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
@@ -398,7 +402,7 @@
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ1))]
   ""
   "guard%5%X2.q1 %3? xlo%4 %0 = %2"
-  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "xloadu") (const_string "xload")))
+  [(set_attr "type" "xload")
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
@@ -415,7 +419,7 @@
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ2))]
   ""
   "guard%5%X2.q2 %3? xlo%4 %0 = %2"
-  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "xloadu") (const_string "xload")))
+  [(set_attr "type" "xload")
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
@@ -432,7 +436,7 @@
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ3))]
   ""
   "guard%5%X2.q3 %3? xlo%4 %0 = %2"
-  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "xloadu") (const_string "xload")))
+  [(set_attr "type" "xload")
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
@@ -575,7 +579,7 @@
                       (match_operand 5 "" "")] UNSPEC_XLOADC))]
   ""
   "guard%5%X2 %3? xlo%4 %0 = %2"
-  [(set (attr "type") (if_then_else (match_operand 4 "uncached_modifier") (const_string "xloadu") (const_string "xload")))
+  [(set_attr "type" "xload")
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
@@ -591,7 +595,7 @@
                       (match_operand 4 "" "")] UNSPEC_XLOADC))]
   ""
   "guard%4%X1 %2? xlo%3 %0 = %1"
-  [(set (attr "type") (if_then_else (match_operand 3 "uncached_modifier") (const_string "xloadu") (const_string "xload")))
+  [(set_attr "type" "xload")
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")

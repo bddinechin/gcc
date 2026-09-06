@@ -22,8 +22,6 @@
   fdiv,
   load,
   xload,
-  loadu,
-  xloadu,
   store,
   xstore,
   aload,
@@ -44,3 +42,24 @@
   ext_int,
   ext_float"
   (const_string "alu"))
+
+;; Which variant of a memory access this is, in the MDS sense: LD, LD.S, LD.U
+;; and LD.US are one instruction carrying the "variant" modifier, not four
+;; instructions -- which is why the variant is an attribute of its own and not
+;; two more values of "type" above.
+;;
+;; The default reads the variant off the RTL, from the address space of the
+;; memory touched or from the modifier string a builtin passed, so no pattern
+;; has to state it.  A pattern whose instruction has no cached form at all
+;; overrides it.
+;;
+;; Nothing but the load latency in scheduling.md keys on this.
+
+(define_attr "variant" "cached,speculate,uncached,preload"
+  (cond [(match_test "lvx_insn_variant (insn) == LVX_VARIANT_SPECULATE")
+	   (const_string "speculate")
+	 (match_test "lvx_insn_variant (insn) == LVX_VARIANT_UNCACHED")
+	   (const_string "uncached")
+	 (match_test "lvx_insn_variant (insn) == LVX_VARIANT_PRELOAD")
+	   (const_string "preload")]
+	(const_string "cached")))

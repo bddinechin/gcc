@@ -37,25 +37,25 @@
 )
 
 (define_insn "*mov<mode>"
-  [(set (match_operand:ALL128 0 "nonimmediate_operand" "=r, r, r, r, r, r, r,a,b,m")
-        (match_operand:ALL128 1 "nonimmediate_operand"  "r,Ca,Cb,Cm,Za,Zb,Zm,r,r,r"))]
+  [(set (match_operand:ALL128 0 "nonimmediate_operand" "=r,r,r,r,a,b,m")
+        (match_operand:ALL128 1 "nonimmediate_operand"  "r,a,b,m,r,r,r"))]
   "lvx_hardreg_aligned_p (operands[0], <MODE>mode) && lvx_hardreg_aligned_p (operands[1], <MODE>mode)"
   {
     switch (which_alternative)
       {
       case 0:
         return "#";
-      case 1: case 2: case 3: case 4: case 5: case 6:
+      case 1: case 2: case 3:
         return "lq%V1 %0 = %1";
-      case 7: case 8: case 9:
+      case 4: case 5: case 6:
         return "sq%X0 %0 = %1";
       default:
         gcc_unreachable ();
       }
   }
-  [(set_attr "type" "alu, load, load, load, loadu, loadu, loadu, store, store, store")
-   (set_attr "issue" "tiny2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"         "8,             4,             8,             12,                     4,                       8,                      12,             4,               8,              12")]
+  [(set_attr "type" "alu, load, load, load, store, store, store")
+   (set_attr "issue" "tiny2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
+   (set_attr "length"         "8,             4,             8,             12,             4,               8,              12")]
 )
 
 (define_split
@@ -119,25 +119,25 @@
 )
 
 (define_insn "*mov<mode>"
-  [(set (match_operand:ALL256 0 "nonimmediate_operand" "=r, r, r, r, r, r, r,a,b,m")
-        (match_operand:ALL256 1 "nonimmediate_operand"  "r,Ca,Cb,Cm,Za,Zb,Zm,r,r,r"))]
+  [(set (match_operand:ALL256 0 "nonimmediate_operand" "=r,r,r,r,a,b,m")
+        (match_operand:ALL256 1 "nonimmediate_operand"  "r,a,b,m,r,r,r"))]
   "lvx_hardreg_aligned_p (operands[0], <MODE>mode) && lvx_hardreg_aligned_p (operands[1], <MODE>mode)"
   {
     switch (which_alternative)
       {
       case 0:
         return "#";
-      case 1: case 2: case 3: case 4: case 5: case 6:
+      case 1: case 2: case 3:
         return "lo%V1 %0 = %1";
-      case 7: case 8: case 9:
+      case 4: case 5: case 6:
         return "so%X0 %0 = %1";
       default:
         gcc_unreachable ();
       }
   }
-  [(set_attr "type" "alu, load, load, load, loadu, loadu, loadu, store, store, store")
-   (set_attr "issue" "tiny4, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"        "16,            4,              8,             12,                     4,                       8,                      12,             4,               8,              12")]
+  [(set_attr "type" "alu, load, load, load, store, store, store")
+   (set_attr "issue" "tiny4, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
+   (set_attr "length"        "16,            4,              8,             12,             4,               8,              12")]
 )
 
 (define_split

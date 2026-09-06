@@ -2247,25 +2247,25 @@
 )
 
 (define_insn "*load<ALLIFV:mode>"
-  [(set (match_operand:ALLIFV 0 "register_operand" "=r,r,r,r,r,r")
-        (match_operand:ALLIFV 1 "memory_operand" "Ca,Cb,Cm,Za,Zb,Zm"))]
+  [(set (match_operand:ALLIFV 0 "register_operand" "=r,r,r")
+        (match_operand:ALLIFV 1 "memory_operand" "a,b,m"))]
   "lvx_hardreg_aligned_p (operands[0], <MODE>mode)"
   "l<ALLIFV:lsusizezx>%V1 %0 = %1"
-  [(set_attr "type" "load, load, load, loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
-   (set_attr "length"       "4,           8,           12,                 4,                    8,                   12")
-   (set_attr "predicable"  "yes,         yes,         yes,               yes,                  yes,                  yes")]
+  [(set_attr "type" "load, load, load")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
+   (set_attr "length"       "4,           8,           12")
+   (set_attr "predicable"  "yes,         yes,         yes")]
 )
 
 (define_insn "*load<SHORT:mode><ANY_EXTEND:lsux>"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r,r,r")
-        (ANY_EXTEND:DI (match_operand:SHORT 1 "memory_operand" "Ca,Cb,Cm,Za,Zb,Zm")))]
+  [(set (match_operand:DI 0 "register_operand" "=r,r,r")
+        (ANY_EXTEND:DI (match_operand:SHORT 1 "memory_operand" "a,b,m")))]
   "lvx_hardreg_aligned_p (operands[0], <MODE>mode)"
   "l<SHORT:lsusize><ANY_EXTEND:lsux>%V1 %0 = %1"
-  [(set_attr "type" "load, load, load, loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
-   (set_attr "length"       "4,           8,          12,                  4,                    8,                   12")
-   (set_attr "predicable"  "yes,         yes,         yes,               yes,                  yes,                  yes")]
+  [(set_attr "type" "load, load, load")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
+   (set_attr "length"       "4,           8,          12")
+   (set_attr "predicable"  "yes,         yes,         yes")]
 )
 
 

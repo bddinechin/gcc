@@ -1425,19 +1425,6 @@ lvx_expand_builtin_fmuldc (rtx operands[], int lanes)
 }
 
 
-#define LVX_EXPAND_BUILTIN_LOADU(name, name2, tmode, mmode)                    \
-  static rtx lvx_expand_builtin_##name (rtx target, tree args)                 \
-  {                                                                            \
-    rtx arg1 = expand_normal (CALL_EXPR_ARG (args, 0));                        \
-    arg1 = gen_rtx_MEM (mmode, force_reg (Pmode, arg1));                       \
-    if (!target)                                                               \
-      target = gen_reg_rtx (tmode);                                            \
-    else                                                                       \
-      target = force_reg (tmode, target);                                      \
-    emit_insn (gen_##name2 (target, arg1));                                    \
-    return target;                                                             \
-  }
-
 static rtx
 lvx_expand_builtin_fence (rtx ARG_UNUSED (target), tree args)
 {
