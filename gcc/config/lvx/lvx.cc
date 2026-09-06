@@ -7572,6 +7572,20 @@ lvx_sched_dfa_new_cycle (FILE *, int, rtx_insn *insn, int last_clock,
 
   if (INSN_CODE (insn) >= 0)
     {
+      /* Would this insn overflow the bundle being built?  Then it does not
+	 issue on this cycle, which is what a nonzero result means and what
+	 every capacity check below does when a slot is taken.  The scheduler
+	 starts a new cycle and the last_clock != clock above resets the size.
+
+	 This used to assert instead, so a bundle one syllable too full
+	 crashed the compiler rather than being split -- reachable from five
+	 builtins, and from any sequence long enough.  Asking before the BCU
+	 bookkeeping below rather than after it also leaves bcu_use[]
+	 untouched for an insn that is not going to issue here.  */
+      if (lvx_sched2->bundle_size + get_attr_length (insn)
+	  > LVX_SCHED2_BUNDLE_SIZE)
+	return 1;
+
       enum attr_bcu_used bcu_used = get_attr_bcu_used (insn);
       if (bcu_used == BCU_USED_YES)
 	{
@@ -7630,14 +7644,6 @@ lvx_sched_dfa_new_cycle (FILE *, int, rtx_insn *insn, int last_clock,
 	}
 
       lvx_sched2->bundle_size += get_attr_length (insn);
-      if (lvx_sched2->bundle_size > LVX_SCHED2_BUNDLE_SIZE)
-	{
-	  fprintf (stderr, "LVXDBG overflow size=%d uid=%d type=%d len=%d\n",
-		   lvx_sched2->bundle_size, INSN_UID (insn),
-		   (int) get_attr_type (insn), (int) get_attr_length (insn));
-	  debug_rtx (insn);
-	  gcc_unreachable ();
-	}
     }
 
   // Use this hook to record the cycle and flags of INSN in SCHED2.
