@@ -3,7 +3,7 @@
 (define_insn_and_split "lvx_xundef256"
   [(set (match_operand:X256 0 "register_operand" "=x")
         (unspec:X256 [(match_operand 1 "" "")] UNSPEC_DEF))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(use (const_int 0))]
@@ -12,7 +12,7 @@
 (define_insn_and_split "lvx_xundef<bitsize>"
   [(set (match_operand:XBUFF 0 "register_operand" "=x")
         (unspec:XBUFF [(match_operand 1 "" "")] UNSPEC_DEF))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(use (const_int 0))]
@@ -82,7 +82,7 @@
                       (match_operand:V2DI 2 "register_operand" "r")
                       (match_operand 3 "" "")]
                      UNSPEC_XMOVET))]
-  "HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V2DI"
+  "LVX_2 && (HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V2DI)"
   "xputdq %0%3 = %x2, %y2"
   [(set_attr "type" "xmoveto")
    (set_attr "issue" "lite_misc")
@@ -105,7 +105,7 @@
 (define_expand "mov<mode>"
   [(set (match_operand:X256 0 "nonimmediate_operand" "")
         (match_operand:X256 1 "general_operand" ""))]
-  ""
+  "LVX_2"
   {
     if (MEM_P(operands[0]))
       operands[1] = force_reg (<MODE>mode, operands[1]);
@@ -194,7 +194,7 @@
   [(set (match_operand:ALL128 0 "register_operand" "=x")
         (unspec:ALL128 [(match_operand:ALL128 1 "register_operand" "r")]
                        UNSPEC_XMOVET_LO))]
-  ""
+  "LVX_2"
   "xputdq %0.lo = %x1, %y1"
   [(set_attr "type" "xmoveto")
    (set_attr "issue" "lite_misc")
@@ -205,7 +205,7 @@
   [(set (match_operand:ALL128 0 "register_operand" "=x")
         (unspec:ALL128 [(match_operand:ALL128 1 "register_operand" "r")]
                        UNSPEC_XMOVET_HI))]
-  ""
+  "LVX_2"
   "xputdq %0.hi = %x1, %y1"
   [(set_attr "type" "xmoveto")
    (set_attr "issue" "lite_misc")
@@ -248,14 +248,14 @@
 (define_insn "lvx_xlow<hbitsize>"
   [(set (match_operand:<HALF> 0 "register_operand" "=x")
         (subreg:<HALF> (match_operand:XCATM 1 "register_operand" "x") 0))]
-  ""
+  "LVX_2"
   "#"
 )
 
 (define_insn "lvx_xhigh<hbitsize>"
   [(set (match_operand:<HALF> 0 "register_operand" "=x")
         (subreg:<HALF> (match_operand:XCATM 1 "register_operand" "x") <hbytesize>))]
-  ""
+  "LVX_2"
   "#"
 )
 
@@ -265,7 +265,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x,x,x")
         (unspec:X256 [(match_operand:X256 1 "memory_operand" "a,b,m")
                         (match_operand 2 "" "")] UNSPEC_XLOAD))]
-  ""
+  "LVX_2"
   "xlo%2%X1 %0 = %1"
   [(set_attr "type" "xload")
    (set_attr_alternative "issue"
@@ -279,7 +279,7 @@
   [(set (match_operand:X512 0 "register_operand" "=x,x,x")
         (unspec:X512 [(match_operand:X512 1 "memsimple_operand" "c,d,e")
                         (match_operand 2 "" "")] UNSPEC_XLOAD))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:<CHUNK> (match_dup 0) 0)
@@ -295,7 +295,7 @@
   [(set (match_operand:X1024 0 "register_operand" "=x,x,x")
         (unspec:X1024 [(match_operand:X1024 1 "memsimple_operand" "c,d,e")
                          (match_operand 2 "" "")] UNSPEC_XLOAD))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:<CHUNK> (match_dup 0) 0)
@@ -321,7 +321,7 @@
         (unspec:X1024 [(match_operand:X1024 1 "register_operand" "0,0,0")
                        (match_operand:<CHUNK> 2 "memory_operand" "a,b,m")
                        (match_operand 3 "" "")] UNSPEC_XLOADQ0))]
-  ""
+  "LVX_2"
   "xlo%3%X2.q0 %0 = %2"
   [(set_attr "type" "xload")
    (set_attr_alternative "issue"
@@ -336,7 +336,7 @@
         (unspec:X1024 [(match_operand:X1024 1 "register_operand" "0,0,0")
                        (match_operand:<CHUNK> 2 "memory_operand" "a,b,m")
                        (match_operand 3 "" "")] UNSPEC_XLOADQ1))]
-  ""
+  "LVX_2"
   "xlo%3%X2.q1 %0 = %2"
   [(set_attr "type" "xload")
    (set_attr_alternative "issue"
@@ -351,7 +351,7 @@
         (unspec:X1024 [(match_operand:X1024 1 "register_operand" "0,0,0")
                        (match_operand:<CHUNK> 2 "memory_operand" "a,b,m")
                        (match_operand 3 "" "")] UNSPEC_XLOADQ2))]
-  ""
+  "LVX_2"
   "xlo%3%X2.q2 %0 = %2"
   [(set_attr "type" "xload")
    (set_attr_alternative "issue"
@@ -366,7 +366,7 @@
         (unspec:X1024 [(match_operand:X1024 1 "register_operand" "0,0,0")
                        (match_operand:<CHUNK> 2 "memory_operand" "a,b,m")
                        (match_operand 3 "" "")] UNSPEC_XLOADQ3))]
-  ""
+  "LVX_2"
   "xlo%3%X2.q3 %0 = %2"
   [(set_attr "type" "xload")
    (set_attr_alternative "issue"
@@ -383,7 +383,7 @@
                        (match_operand:DI 3 "register_operand" "r,r,r")
                        (match_operand 4 "" "")
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ0))]
-  ""
+  "LVX_2"
   "guard%5%X2.q0 %3? xlo%4 %0 = %2"
   [(set_attr "type" "xload")
    (set_attr_alternative "issue"
@@ -400,7 +400,7 @@
                        (match_operand:DI 3 "register_operand" "r,r,r")
                        (match_operand 4 "" "")
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ1))]
-  ""
+  "LVX_2"
   "guard%5%X2.q1 %3? xlo%4 %0 = %2"
   [(set_attr "type" "xload")
    (set_attr_alternative "issue"
@@ -417,7 +417,7 @@
                        (match_operand:DI 3 "register_operand" "r,r,r")
                        (match_operand 4 "" "")
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ2))]
-  ""
+  "LVX_2"
   "guard%5%X2.q2 %3? xlo%4 %0 = %2"
   [(set_attr "type" "xload")
    (set_attr_alternative "issue"
@@ -434,7 +434,7 @@
                        (match_operand:DI 3 "register_operand" "r,r,r")
                        (match_operand 4 "" "")
                        (match_operand 5 "" "")] UNSPEC_XLOADCQ3))]
-  ""
+  "LVX_2"
   "guard%5%X2.q3 %3? xlo%4 %0 = %2"
   [(set_attr "type" "xload")
    (set_attr_alternative "issue"
@@ -451,7 +451,7 @@
   [(set (match_operand:X256 1 "memory_operand"  "=a,b,m")
         (unspec:X256 [(match_operand:X1024 0 "register_operand" "x,x,x")] UNSPEC_XSTOREQ0))
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
-  ""
+  "LVX_2"
   "xso.q0%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
@@ -462,7 +462,7 @@
   [(set (match_operand:X256 1 "memory_operand"  "=a,b,m")
         (unspec:X256 [(match_operand:X1024 0 "register_operand" "x,x,x")] UNSPEC_XSTOREQ1))
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
-  ""
+  "LVX_2"
   "xso.q1%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
@@ -473,7 +473,7 @@
   [(set (match_operand:X256 1 "memory_operand"  "=a,b,m")
         (unspec:X256 [(match_operand:X1024 0 "register_operand" "x,x,x")] UNSPEC_XSTOREQ2))
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
-  ""
+  "LVX_2"
   "xso.q2%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
@@ -484,7 +484,7 @@
   [(set (match_operand:X256 1 "memory_operand"  "=a,b,m")
         (unspec:X256 [(match_operand:X1024 0 "register_operand" "x,x,x")] UNSPEC_XSTOREQ3))
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
-  ""
+  "LVX_2"
   "xso.q3%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
@@ -498,7 +498,7 @@
                       (match_operand 3 "" "")] UNSPEC_XSTORECQ0))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
-  ""
+  "LVX_2"
   "guard%3 %2? xso.q0%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
@@ -513,7 +513,7 @@
                       (match_operand 3 "" "")] UNSPEC_XSTORECQ1))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
-  ""
+  "LVX_2"
   "guard%3 %2? xso.q1%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
@@ -528,7 +528,7 @@
                       (match_operand 3 "" "")] UNSPEC_XSTORECQ2))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
-  ""
+  "LVX_2"
   "guard%3 %2? xso.q2%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
@@ -543,7 +543,7 @@
                       (match_operand 3 "" "")] UNSPEC_XSTORECQ3))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
-  ""
+  "LVX_2"
   "guard%3 %2? xso.q3%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
@@ -560,7 +560,7 @@
    (match_operand:DI 3 "register_operand" "")
    (match_operand 4 "" "")
    (match_operand 5 "" "")]
-  ""
+  "LVX_2"
   {
     if (!const_zero_operand (operands[1], <MODE>mode))
       emit_insn (gen_lvx_xloadc_ (operands[0], operands[1], operands[2], operands[3], operands[4], operands[5]));
@@ -577,7 +577,7 @@
                       (match_operand:DI 3 "register_operand" "r,r,r")
                       (match_operand 4 "" "")
                       (match_operand 5 "" "")] UNSPEC_XLOADC))]
-  ""
+  "LVX_2"
   "guard%5%X2 %3? xlo%4 %0 = %2"
   [(set_attr "type" "xload")
    (set_attr_alternative "issue"
@@ -593,7 +593,7 @@
                       (match_operand:DI 2 "register_operand" "r,r,r")
                       (match_operand 3 "" "")
                       (match_operand 4 "" "")] UNSPEC_XLOADC))]
-  ""
+  "LVX_2"
   "guard%4%X1 %2? xlo%3 %0 = %1"
   [(set_attr "type" "xload")
    (set_attr_alternative "issue"
@@ -610,7 +610,7 @@
    (match_operand:DI 3 "register_operand" "")
    (match_operand 4 "" "")
    (match_operand 5 "" "")]
-  ""
+  "LVX_2"
   {
     rtx masks[2];
     masks[0] = masks[1] = operands[3];
@@ -645,7 +645,7 @@
    (match_operand:TI 3 "register_operand" "")
    (match_operand 4 "" "")
    (match_operand 5 "" "")]
-  ""
+  "LVX_2"
   {
     rtx masks[4];
     rtx mask = simplify_gen_subreg (DImode, operands[3], TImode, 0);
@@ -684,7 +684,7 @@
   [(set (match_operand:X256 1 "memory_operand"  "=a,b,m")
         (unspec:X256 [(match_operand:X256 0 "register_operand" "x,x,x")] UNSPEC_XSTORE))
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
-  ""
+  "LVX_2"
   "xso%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
@@ -695,7 +695,7 @@
   [(set (match_operand:X512 1 "memsimple_operand" "=c,d,e")
         (unspec:X512 [(match_operand:X512 0 "register_operand" "x,x,x")] UNSPEC_XSTORE))
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(parallel
@@ -713,7 +713,7 @@
   [(set (match_operand:X1024 1 "memsimple_operand" "=c,d,e")
         (unspec:X1024 [(match_operand:X1024 0 "register_operand" "x,x,x")] UNSPEC_XSTORE))
    (use (match_operand:SI 2 "nonmemory_operand" ""))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(parallel
@@ -745,7 +745,7 @@
                       (match_operand 3 "" "")] UNSPEC_XSTOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
-  ""
+  "LVX_2"
   "guard%3 %2? xso%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
@@ -759,7 +759,7 @@
    (match_operand:DI 2 "register_operand" "")
    (match_operand 3 "" "")
    (match_operand:SI 4 "nonmemory_operand" "")]
-  ""
+  "LVX_2"
   {
     rtx masks[2];
     masks[0] = masks[1] = operands[2];
@@ -784,7 +784,7 @@
    (match_operand:TI 2 "register_operand" "")
    (match_operand 3 "" "")
    (match_operand:SI 4 "nonmemory_operand" "")]
-  ""
+  "LVX_2"
   {
     rtx masks[4];
     rtx mask = simplify_gen_subreg (DImode, operands[2], TImode, 0);
@@ -816,7 +816,7 @@
                        (match_operand:OI 2 "memsimple_operand" "c,d,e")
                        (match_operand:DI 3 "register_operand" "r,r,r")
                        (match_operand 4 "" "")] UNSPEC_XPRELOAD))]
-  "HAVE_LVX_EXT_BUFFER_PRELOAD_<MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_BUFFER_PRELOAD_<MODE>)"
   "xplo%4%X2 %b0, %3 = %O2"
   [(set_attr "type" "prefetch, prefetch, prefetch")
    (set_attr "issue" "lsu, lsu_x, lsu_x2")
@@ -829,7 +829,7 @@
                        (match_operand:AI 2 "memsimple_operand" "c,d,e")
                        (match_operand:DI 3 "register_operand" "r,r,r")
                        (match_operand 4 "" "")] UNSPEC_XPRELOAD))]
-  "HAVE_LVX_EXT_BUFFER_PRELOAD_<XBUFF:MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_BUFFER_PRELOAD_<XBUFF:MODE>)"
   "xpl<AI:lsusize>%4%X2 %b0, %3 = %O2"
   [(set_attr "type" "prefetch, prefetch, prefetch")
    (set_attr "issue" "lsu, lsu_x, lsu_x2")
@@ -865,7 +865,7 @@
   [(set (match_operand:XCOPYM 0 "register_operand" "=x")
         (unspec:XCOPYM [(match_operand:XCOPYM 1 "register_operand" "x")
                         (match_operand 2 "" "")] UNSPEC_XCOPY))]
-  "HAVE_LVX_EXT_COPY_<MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_COPY_<MODE>)"
   "xcopy<suffix>%2 %0 = %1"
   [(set (attr "type")
         (if_then_else (match_test "GET_MODE (operands[0]) == V1OImode")
@@ -887,7 +887,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (and:X256 (match_operand:X256 1 "register_operand" "x")
                   (match_operand:X256 2 "register_operand" "x")))]
-  "HAVE_LVX_EXT_AND_<MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_AND_<MODE>)"
   "xando %0 = %1, %2"
   [(set_attr "type" "ext_int")
    (set_attr "issue" "ext")]
@@ -897,7 +897,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (ior:X256 (not:X256 (match_operand:X256 1 "register_operand" "x"))
                   (not:X256 (match_operand:X256 2 "register_operand" "x"))))]
-  "HAVE_LVX_EXT_NAND_<MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_NAND_<MODE>)"
   "xnando %0 = %1, %2"
   [(set_attr "type" "ext_int")
    (set_attr "issue" "ext")]
@@ -907,7 +907,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (and:X256 (not:X256 (match_operand:X256 1 "register_operand" "x"))
                   (match_operand:X256 2 "register_operand" "x")))]
-  "HAVE_LVX_EXT_ANDN_<MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_ANDN_<MODE>)"
   "xandno %0 = %1, %2"
   [(set_attr "type" "ext_int")
    (set_attr "issue" "ext")]
@@ -917,7 +917,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (ior:X256 (match_operand:X256 1 "register_operand" "x")
                   (match_operand:X256 2 "register_operand" "x")))]
-  "HAVE_LVX_EXT_IOR_<MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_IOR_<MODE>)"
   "xioro %0 = %1, %2"
   [(set_attr "type" "ext_int")
    (set_attr "issue" "ext")]
@@ -927,7 +927,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (and:X256 (not:X256 (match_operand:X256 1 "register_operand" "x"))
                   (not:X256 (match_operand:X256 2 "register_operand" "x"))))]
-  "HAVE_LVX_EXT_NIOR_<MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_NIOR_<MODE>)"
   "xnioro %0 = %1, %2"
   [(set_attr "type" "ext_int")
    (set_attr "issue" "ext")]
@@ -937,7 +937,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (ior:X256 (not:X256 (match_operand:X256 1 "register_operand" "x"))
                   (match_operand:X256 2 "register_operand" "x")))]
-  "HAVE_LVX_EXT_IORN_<MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_IORN_<MODE>)"
   "xiorno %0 = %1, %2"
   [(set_attr "type" "ext_int")
    (set_attr "issue" "ext")]
@@ -947,7 +947,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (xor:X256 (match_operand:X256 1 "register_operand" "x")
                   (match_operand:X256 2 "register_operand" "x")))]
-  "HAVE_LVX_EXT_EOR_<MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_EOR_<MODE>)"
   "xeoro %0 = %1, %2"
   [(set_attr "type" "ext_int")
    (set_attr "issue" "ext")]
@@ -957,7 +957,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (not:X256 (xor:X256 (match_operand:X256 1 "register_operand" "x")
                             (match_operand:X256 2 "register_operand" "x"))))]
-  "HAVE_LVX_EXT_NEOR_<MODE>"
+  "LVX_2 && (HAVE_LVX_EXT_NEOR_<MODE>)"
   "xneoro %0 = %1, %2"
   [(set_attr "type" "ext_int")
    (set_attr "issue" "ext")]
@@ -967,7 +967,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (unspec:X256 [(match_operand:X256 1 "register_operand" "x")
                       (match_operand:X256 2 "register_operand" "x")] UNSPEC_SBMM8D))]
-  "HAVE_LVX_EXT_SBMM8_V1OI"
+  "LVX_2 && (HAVE_LVX_EXT_SBMM8_V1OI)"
   "xsbmm8dq %0 = %1, %2"
   [(set_attr "type" "ext_int")
    (set_attr "issue" "ext")]
@@ -977,7 +977,7 @@
   [(set (match_operand:X256 0 "register_operand" "=x")
         (unspec:X256 [(match_operand:X256 1 "register_operand" "x")
                       (match_operand:X256 2 "register_operand" "x")] UNSPEC_SBMMT8D))]
-  "HAVE_LVX_EXT_SBMMT8_V1OI"
+  "LVX_2 && (HAVE_LVX_EXT_SBMMT8_V1OI)"
   "xsbmmt8dq %0 = %1, %2"
   [(set_attr "type" "ext_int")
    (set_attr "issue" "ext")]

@@ -987,6 +987,7 @@ struct lvx_builtin_desc
 
 AVAIL (true, true)
 AVAIL (lvx_1, LVX_1)
+AVAIL (lvx_2, LVX_2)
 
 static inline const char *
 lvx_tree_string_constant (tree arg, const char *name)
