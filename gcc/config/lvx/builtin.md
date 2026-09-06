@@ -2650,7 +2650,7 @@
         (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "r")
                       (match_operand:V8SF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FADD))]
-  ""
+  "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
@@ -2678,7 +2678,7 @@
         (unspec:V4DF [(match_operand:V4DF 1 "register_operand" "r")
                       (match_operand:V4DF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FADD))]
-  ""
+  "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
@@ -2947,7 +2947,7 @@
         (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "r")
                       (match_operand:V8SF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
-  ""
+  "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
@@ -2975,7 +2975,7 @@
         (unspec:V4DF [(match_operand:V4DF 1 "register_operand" "r")
                       (match_operand:V4DF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FSBF))]
-  ""
+  "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
@@ -3085,7 +3085,7 @@
         (unspec:V2DF [(match_operand:V2DF 1 "register_operand" "r")
                       (match_operand:V2DF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FMUL))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -3134,7 +3134,7 @@
         (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "r")
                       (match_operand:V8SF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FMUL))]
-  ""
+  "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
@@ -3162,7 +3162,7 @@
         (unspec:V4DF [(match_operand:V4DF 1 "register_operand" "r")
                       (match_operand:V4DF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FMUL))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -3191,7 +3191,7 @@
         (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "r")
                       (match_operand:V8SF 2 "register_operand" "r")
                       (match_operand 3 "" "")] UNSPEC_FMULC))]
-  ""
+  "LVX_2"
   "#"
 )
 
@@ -3217,7 +3217,7 @@
         (unspec:V2DF [(match_operand:V2DF 1 "register_operand")
                       (match_operand:V2DF 2 "register_operand")
                       (match_operand 3 "" "")] UNSPEC_FMULC))]
-  ""
+  "LVX_2"
   {
     lvx_expand_builtin_fmuldc (operands, 1);
     DONE;
@@ -3229,7 +3229,7 @@
         (unspec:V4DF [(match_operand:V4DF 1 "register_operand" "")
                       (match_operand:V4DF 2 "register_operand" "")
                       (match_operand 3 "" "")] UNSPEC_FMULC))]
-  ""
+  "LVX_2"
   {
     lvx_expand_builtin_fmuldc (operands, 2);
     DONE;
@@ -3241,7 +3241,7 @@
         (unspec:V8DF [(match_operand:V8DF 1 "register_operand" "")
                       (match_operand:V8DF 2 "register_operand" "")
                       (match_operand 3 "" "")] UNSPEC_FMULC))]
-  ""
+  "LVX_2"
   {
     lvx_expand_builtin_fmuldc (operands, 4);
     DONE;
@@ -3297,7 +3297,7 @@
    (match_operand:V2DF 1 "register_operand")
    (match_operand:V2DF 2 "register_operand")
    (match_operand 3 "" "")]
-  ""
+  "LVX_2"
   {
      bool conjugate = lvx_modifier_enabled_p (".c", operands[3]);
      rtx rnd = lvx_modifier_rounding (operands[3]);
@@ -3332,7 +3332,7 @@
    (match_operand:V4DF 1 "register_operand")
    (match_operand:V4DF 2 "register_operand")
    (match_operand 3 "" "")]
-  ""
+  "LVX_2"
   {
      rtx high1 = simplify_gen_subreg (V2DFmode, operands[1], V4DFmode, 0);
      rtx high2 = simplify_gen_subreg (V2DFmode, operands[2], V4DFmode, 0);
@@ -3354,7 +3354,7 @@
    (match_operand:V8DF 1 "register_operand")
    (match_operand:V8DF 2 "register_operand")
    (match_operand 3 "" "")]
-  ""
+  "LVX_2"
   {
      rtx high1 = simplify_gen_subreg (V4DFmode, operands[1], V8DFmode, 0);
      rtx high2 = simplify_gen_subreg (V4DFmode, operands[2], V8DFmode, 0);
@@ -3460,7 +3460,7 @@
                       (match_operand:V2DF 2 "register_operand" "r")
                       (match_operand:V2DF 3 "register_operand" "0")
                       (match_operand 4 "" "")] UNSPEC_FFMA))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -3544,7 +3544,7 @@
                       (match_operand:V4DF 2 "register_operand" "r")
                       (match_operand:V4DF 3 "register_operand" "0")
                       (match_operand 4 "" "")] UNSPEC_FFMA))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -3590,7 +3590,7 @@
                       (match_operand:V2DF 2 "register_operand")
                       (match_operand:V2DF 3 "register_operand")
                       (match_operand 4 "" "")] UNSPEC_FFMAC))]
-  ""
+  "LVX_2"
   {
     rtx product = gen_reg_rtx (V2DFmode);
     emit_insn (gen_lvx_fmuldc (product, operands[2], operands[1], operands[4]));
@@ -3629,7 +3629,7 @@
                       (match_operand:V4DF 2 "register_operand")
                       (match_operand:V4DF 3 "register_operand")
                       (match_operand 4 "" "")] UNSPEC_FFMAC))]
-  ""
+  "LVX_2"
   {
     rtx product = gen_reg_rtx (V4DFmode);
     emit_insn (gen_lvx_fmuldcp (product, operands[2], operands[1], operands[4]));
@@ -3644,7 +3644,7 @@
                       (match_operand:V8DF 2 "register_operand")
                       (match_operand:V8DF 3 "register_operand")
                       (match_operand 4 "" "")] UNSPEC_FFMAC))]
-  ""
+  "LVX_2"
   {
     rtx product = gen_reg_rtx (V8DFmode);
     emit_insn (gen_lvx_fmuldcq (product, operands[2], operands[1], operands[4]));
@@ -3792,7 +3792,7 @@
                       (match_operand:V2DF 2 "register_operand" "r")
                       (match_operand:V2DF 3 "register_operand" "0")
                       (match_operand 4 "" "")] UNSPEC_FFMS))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -3876,7 +3876,7 @@
                       (match_operand:V4DF 2 "register_operand" "r")
                       (match_operand:V4DF 3 "register_operand" "0")
                       (match_operand 4 "" "")] UNSPEC_FFMS))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -3922,7 +3922,7 @@
                       (match_operand:V2DF 2 "register_operand")
                       (match_operand:V2DF 3 "register_operand")
                       (match_operand 4 "" "")] UNSPEC_FFMSC))]
-  ""
+  "LVX_2"
   {
     rtx product = gen_reg_rtx (V2DFmode);
     emit_insn (gen_lvx_fmuldc (product, operands[2], operands[1], operands[4]));
@@ -3961,7 +3961,7 @@
                       (match_operand:V4DF 2 "register_operand")
                       (match_operand:V4DF 3 "register_operand")
                       (match_operand 4 "" "")] UNSPEC_FFMSC))]
-  ""
+  "LVX_2"
   {
     rtx product = gen_reg_rtx (V4DFmode);
     emit_insn (gen_lvx_fmuldcp (product, operands[2], operands[1], operands[4]));
@@ -3976,7 +3976,7 @@
                       (match_operand:V8DF 2 "register_operand")
                       (match_operand:V8DF 3 "register_operand")
                       (match_operand 4 "" "")] UNSPEC_FFMSC))]
-  ""
+  "LVX_2"
   {
     rtx product = gen_reg_rtx (V8DFmode);
     emit_insn (gen_lvx_fmuldcq (product, operands[2], operands[1], operands[4]));
@@ -4177,7 +4177,7 @@
         (unspec:V2DF [(match_operand:V2DI 1 "register_operand" "r")
                       (match_operand 2 "sixbits_unsigned_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FLOAT))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -4198,7 +4198,7 @@
         (unspec:V4DF [(match_operand:V4DI 1 "register_operand" "r")
                       (match_operand 2 "sixbits_unsigned_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FLOAT))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -4260,7 +4260,7 @@
         (unspec:V2DF [(match_operand:V2DI 1 "register_operand" "r")
                       (match_operand 2 "sixbits_unsigned_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FLOATU))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -4281,7 +4281,7 @@
         (unspec:V4DF [(match_operand:V4DI 1 "register_operand" "r")
                       (match_operand 2 "sixbits_unsigned_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FLOATU))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -4358,7 +4358,7 @@
         (unspec:V2DI [(match_operand:V2DF 1 "register_operand" "r")
                       (match_operand 2 "sixbits_unsigned_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FIXED))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DI (match_dup 0) 0)
@@ -4379,7 +4379,7 @@
         (unspec:V4DI [(match_operand:V4DF 1 "register_operand" "r")
                       (match_operand 2 "sixbits_unsigned_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FIXED))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DI (match_dup 0) 0)
@@ -4456,7 +4456,7 @@
         (unspec:V2DI [(match_operand:V2DF 1 "register_operand" "r")
                       (match_operand 2 "sixbits_unsigned_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FIXEDU))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DI (match_dup 0) 0)
@@ -4477,7 +4477,7 @@
         (unspec:V4DI [(match_operand:V4DF 1 "register_operand" "r")
                       (match_operand 2 "sixbits_unsigned_operand" "i")
                       (match_operand 3 "" "")] UNSPEC_FIXEDU))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DI (match_dup 0) 0)
@@ -4616,7 +4616,7 @@
 (define_insn "lvx_fconjdc"
   [(set (match_operand:V2DF 0 "register_operand" "=r")
         (unspec:V2DF [(match_operand:V2DF 1 "register_operand" "r")] UNSPEC_FCONJ))]
-  ""
+  "LVX_2"
   "copyd %x0 = %x1\n\tfnegd %y0 = %y1"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny__lite")
@@ -4636,7 +4636,7 @@
 (define_insn_and_split "lvx_fconjdcq"
   [(set (match_operand:V8DF 0 "register_operand" "=r")
         (unspec:V8DF [(match_operand:V8DF 1 "register_operand" "r")] UNSPEC_FCONJ))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:V4DF (match_dup 0) 0)
@@ -4830,7 +4830,7 @@
 (define_expand "lvx_fsrecwo"
   [(match_operand:V8SF 0 "register_operand" "")
    (match_operand:V8SF 1 "register_operand" "")]
-  ""
+  "LVX_2"
   {
     /* No fsrecwo in the ISA: 256 bits is two 128-bit fsrecwq.  */
     for (int i = 0; i < 2; i++)
@@ -4845,7 +4845,7 @@
 (define_expand "lvx_fsrsrwo"
   [(match_operand:V8SF 0 "register_operand" "")
    (match_operand:V8SF 1 "register_operand" "")]
-  ""
+  "LVX_2"
   {
     /* No fsrsrwo in the ISA: 256 bits is two 128-bit fsrsrwq.  */
     for (int i = 0; i < 2; i++)
@@ -4902,7 +4902,7 @@
 (define_expand "lvx_fsrecdq"
   [(match_operand:V4DF 0 "register_operand" "")
    (match_operand:V4DF 1 "register_operand" "")]
-  ""
+  "LVX_2"
   {
     for (int i = 0; i < 4; i++)
       {
@@ -4947,7 +4947,7 @@
 (define_expand "lvx_fsrsrdp"
   [(match_operand:V2DF 0 "register_operand" "")
    (match_operand:V2DF 1 "register_operand" "")]
-  ""
+  "LVX_2"
   {
     for (int i = 0; i < 2; i++)
       {
@@ -4962,7 +4962,7 @@
 (define_expand "lvx_fsrsrdq"
   [(match_operand:V4DF 0 "register_operand" "")
    (match_operand:V4DF 1 "register_operand" "")]
-  ""
+  "LVX_2"
   {
     for (int i = 0; i < 4; i++)
       {

@@ -5451,7 +5451,12 @@ lvx_vector_mode_supported_p (enum machine_mode mode)
      operate on, so an explicit vector_size type ICEs with "unrecognizable
      insn" instead of being lowered element-wise.  */
   if (!LVX_2)
-    return false;
+    /* V2SF is the exception, and it is not really SIMD: two floats is one
+       `float complex`, 64 bits, which lives in a general register rather than
+       across a SIMD pair.  FADDWC, FSBFWC, FMULWC, FFMAWC and FCONJWC are
+       lvx-1 instructions operating on exactly that, so the mode has to exist
+       on lvx-1 or their builtins cannot be called there.  */
+    return mode == V2SFmode;
 
   // In core, support up to 64-byte vectors (8 registers).
   unsigned size = GET_MODE_SIZE (mode);
