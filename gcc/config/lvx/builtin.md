@@ -314,7 +314,7 @@
                       (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8))))]
   ""
   [(set_attr "type" "imul")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_mulu<widenx>"
@@ -332,7 +332,7 @@
                       (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8))))]
   ""
   [(set_attr "type" "imul")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_mulsu<widenx>"
@@ -350,7 +350,7 @@
                       (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8))))]
   ""
   [(set_attr "type" "imul")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 
@@ -395,7 +395,7 @@
                       (subreg:<HWIDE> (match_dup 3) 16)))]
   ""
   [(set_attr "type" "imadd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_maddu<widenx>"
@@ -416,7 +416,7 @@
                       (subreg:<HWIDE> (match_dup 3) 16)))]
   ""
   [(set_attr "type" "imadd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_maddsu<widenx>"
@@ -437,7 +437,7 @@
                       (subreg:<HWIDE> (match_dup 3) 16)))]
   ""
   [(set_attr "type" "imadd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 
@@ -482,7 +482,7 @@
                                      (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))))]
   ""
   [(set_attr "type" "imadd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_msbfu<widenx>"
@@ -503,7 +503,7 @@
                                      (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))))]
   ""
   [(set_attr "type" "imadd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_msbfsu<widenx>"
@@ -524,7 +524,7 @@
                                      (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))))]
   ""
   [(set_attr "type" "imadd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 ;; SHL*
@@ -755,7 +755,7 @@
   ""
   "widens<wchunkx>%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_widenz<wchunkx>"
@@ -765,7 +765,7 @@
   "LVX_2"
   "widenz<wchunkx>%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_widenq<wchunkx>"
@@ -775,7 +775,7 @@
   "LVX_2"
   "widenq<wchunkx>%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "lvx_sx<widenx>"
@@ -880,7 +880,7 @@
   ""
   "andq %0 = %1, 0x00FF00FF.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite_x")
+   (set_attr "issue" "lite_x")
    (set_attr "length"           "8")]
 )
 
@@ -892,7 +892,7 @@
     return "andq %L0 = %L1, 0x00FF00FF.@\n\tandq %M0 = %M1, 0x00FF00FF.@";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"          "32")]
 )
 
@@ -915,7 +915,7 @@
   ""
   "andq %0 = %1, 0x0000FFFF.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite_x")
+   (set_attr "issue" "lite_x")
    (set_attr "length"           "8")]
 )
 
@@ -927,7 +927,7 @@
     return "andq %L0 = %L1, 0x0000FFFF.@\n\tandq %M0 = %M1, 0x0000FFFF.@";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"          "32")]
 )
 
@@ -937,7 +937,7 @@
   ""
   "zxwd %x0 = %x1\n\tzxwd %y0 = %y1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"         "8")]
 )
 
@@ -950,7 +950,7 @@
            "zxwd %z0 = %z1\n\tzxwd %t0 = %t1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x4_alu_tiny")
+   (set_attr "issue" "tiny4")
    (set_attr "length"        "16")]
 )
 
@@ -960,7 +960,7 @@
   "LVX_2"
   "sllho %0 = %1, 8"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
 
@@ -1000,7 +1000,7 @@
   "LVX_2"
   "sllwq %0 = %1, 16"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
 
@@ -1023,7 +1023,7 @@
   "LVX_2"
   "slldp %0 = %1, 32"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
 
@@ -1035,7 +1035,7 @@
     return "slldp %L0 = %L1, 32\n\tslldp %M0 = %M1, 32";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length" "8")]
 )
 
@@ -1073,7 +1073,7 @@
   "LVX_2"
   "srlho %0 = %1, 8"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
 
@@ -1113,7 +1113,7 @@
   "LVX_2"
   "srlwq %0 = %1, 16"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
 
@@ -1136,7 +1136,7 @@
   "LVX_2"
   "srldp %0 = %1, 32"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
 
@@ -1148,7 +1148,7 @@
     return "srldp %L0 = %L1, 32\n\tsrldp %M0 = %M1, 32";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length" "8")]
 )
 
@@ -1158,7 +1158,7 @@
   ""
   "andq %0 = %1, 0xFF00FF00.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite_x")
+   (set_attr "issue" "lite_x")
    (set_attr "length"           "8")]
 )
 
@@ -1170,7 +1170,7 @@
     return "andq %L0 = %L1, 0xFF00FF00.@\n\tandq %M0 = %M1, 0xFF00FF00.@";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"          "32")]
 )
 
@@ -1193,7 +1193,7 @@
   ""
   "andq %0 = %1, 0xFFFF0000.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite_x")
+   (set_attr "issue" "lite_x")
    (set_attr "length"           "8")]
 )
 
@@ -1205,7 +1205,7 @@
     return "andq %L0 = %L1, 0xFFFF0000.@\n\tandq %M0 = %M1, 0xFFFF0000.@";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"          "32")]
 )
 
@@ -1364,7 +1364,7 @@
   ""
   "copyd %x0 = %x1\n\tcopyd %y0 = %y1\n\tcopyd %z0 = %x1\n\tcopyd %t0 = %y1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "x4_alu_tiny")
+   (set_attr "issue" "tiny4")
    (set_attr "length"        "16")]
 )
 
@@ -1375,7 +1375,7 @@
   ""
   "compd.ne %0 = %1, 0"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_tiny")
+   (set_attr "issue" "tiny")
    (set_attr "length"      "4")]
 )
 
@@ -1441,7 +1441,7 @@
   ""
   "cmoved%4 %3? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length"      "4")]
 )
 
@@ -1454,7 +1454,7 @@
   ""
   "cmoved%4 %3? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length"      "4")]
 )
 
@@ -1467,7 +1467,7 @@
   ""
   "cmoved%4 %3? %x0 = %x1\n\tcmoved%4 %3? %y0 = %y1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_lite")
+   (set_attr "issue" "lite2")
    (set_attr "length"         "8")]
 )
 
@@ -1502,7 +1502,7 @@
                         (match_dup 4)] UNSPEC_SELECT))]
   ""
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_lite")]
+   (set_attr "issue" "lite2")]
 )
 
 (define_insn "lvx_select256s_2"
@@ -1517,7 +1517,7 @@
            "cmoved%4 %3? %z0 = %z1\n\tcmoved%4 %3? %t0 = %t1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x4_alu_tiny")
+   (set_attr "issue" "tiny4")
    (set_attr "length"        "16")]
 )
 
@@ -1667,7 +1667,7 @@
   "LVX_2"
   "cmove<suffix>%4 %3? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length"      "4")]
 )
 
@@ -1702,7 +1702,7 @@
                         (match_dup 4)] UNSPEC_SELECT))]
   ""
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_lite")]
+   (set_attr "issue" "lite2")]
 )
 
 (define_insn "lvx_select<suffix>_2"
@@ -1717,7 +1717,7 @@
            "cmove<hsuffix>%4 %M3? %M0 = %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_lite")
+   (set_attr "issue" "lite2")
    (set_attr "length"         "8")]
 )
 
@@ -1797,7 +1797,7 @@
   ""
   "cmoved%4 %3? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length"      "4")]
 )
 
@@ -1810,7 +1810,7 @@
   ""
   "cmoved%4 %3? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length"      "4")]
 )
 
@@ -1823,7 +1823,7 @@
   "LVX_2"
   "cmove<suffix>%4 %3? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length"      "4")]
 )
 
@@ -1858,7 +1858,7 @@
                         (match_dup 4)] UNSPEC_SELECT))]
   ""
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_lite")]
+   (set_attr "issue" "lite2")]
 )
 
 (define_insn "lvx_selectf<suffix>_2"
@@ -1873,7 +1873,7 @@
            "cmove<hsuffix>%4 %M3? %M0 = %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_lite")
+   (set_attr "issue" "lite2")
    (set_attr "length"         "8")]
 )
 
@@ -1884,7 +1884,7 @@
   "LVX_2 && (HAVE_LVX_STSU_V4HI)"
   "stsuho %0 = %1, %2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
 
@@ -1897,7 +1897,7 @@
     return "stsuho %L0 = %L1, %L2\n\tstsuho %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length" "8")]
 )
 
@@ -1916,7 +1916,7 @@
                        (subreg:V16HI (match_dup 2) 32)] UNSPEC_STSU))]
   ""
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_full")]
+   (set_attr "issue" "full")]
 )
 
 (define_insn "lvx_stsuwq"
@@ -1926,7 +1926,7 @@
   "LVX_2 && (HAVE_LVX_STSU_V2SI)"
   "stsuwq %0 = %1, %2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
 
@@ -1939,7 +1939,7 @@
     return "stsuwq %L0 = %L1, %L2\n\tstsuwq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length" "8")]
 )
 
@@ -1958,7 +1958,7 @@
                       (subreg:V8SI (match_dup 2) 32)] UNSPEC_STSU))]
   ""
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_full")]
+   (set_attr "issue" "full")]
 )
 
 (define_insn "lvx_stsud"
@@ -1968,7 +1968,7 @@
   "HAVE_LVX_STSU_DI"
   "stsud %0 = %1, %2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_tiny")
+   (set_attr "issue" "tiny")
    (set_attr "length" "4")]
 )
 
@@ -1979,7 +1979,7 @@
   "LVX_2 && (HAVE_LVX_STSU_V2DI)"
   "stsudp %0 = %1, %2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
 
@@ -2006,7 +2006,7 @@
                       (subreg:V2DI (match_dup 2) 16)] UNSPEC_STSU))]
   ""
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_lite")]
+   (set_attr "issue" "lite2")]
 )
 
 (define_insn "lvx_stsudq_2"
@@ -2018,7 +2018,7 @@
     return "stsudp %L0 = %L1, %L2\n\tstsudp %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length" "8")]
 )
 
@@ -2037,7 +2037,7 @@
                       (subreg:V4DI (match_dup 2) 32)] UNSPEC_STSU))]
   ""
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_full")]
+   (set_attr "issue" "full")]
 )
 
 
@@ -2050,7 +2050,7 @@
   "HAVE_LVX_SBMM8_DI"
   "sbmm8d %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
+   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
    (set_attr "length" "4,4,8,12")]
 )
 
@@ -2061,7 +2061,7 @@
   "LVX_2 && (HAVE_LVX_SBMM8_V2DI)"
   "sbmm8dp %0 = %1, %2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
 
@@ -2072,7 +2072,7 @@
   "HAVE_LVX_SBMM8_<ALL128:MODE>"
   "sbmm8d %x0 = %1, %x2\n\tsbmm8d %y0 = %1, %y2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"         "8")]
 )
 
@@ -2083,7 +2083,7 @@
   "HAVE_LVX_SBMM8_<ALL128:MODE>"
   "sbmm8d %x0 = %x1, %2\n\tsbmm8d %y0 = %y1, %2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"         "8")]
 )
 
@@ -2095,7 +2095,7 @@
   "HAVE_LVX_SBMM8_<ALL128:MODE>"
   "sbmm8d %x0 = %x1, %2\n\tsbmm8d %y0 = %y1, %3"
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"         "8")]
 )
 
@@ -2164,7 +2164,7 @@
     return "sbmm8dp %L0 = %L1, %L2\n\tsbmm8dp %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length" "8")]
 )
 
@@ -2177,7 +2177,7 @@
     return "sbmm8dp %L0 = %1, %L2\n\tsbmm8dp %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length" "8")]
 )
 
@@ -2190,7 +2190,7 @@
     return "sbmm8dp %L0 = %L1, %2\n\tsbmm8dp %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length" "8")]
 )
 
@@ -2248,7 +2248,7 @@
   "HAVE_LVX_TSBMM8_DI"
   "sbmmt8 %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y")
+   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
    (set_attr "length" "4,4,8,12")]
 )
 
@@ -2259,7 +2259,7 @@
   "HAVE_LVX_TSBMM8_V2DI"
   "sbmmt8 %x0 = %x1, %x2\n\tsbmmt8 %y0 = %y1, %y2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"         "8")]
 )
 
@@ -2270,7 +2270,7 @@
   "HAVE_LVX_TSBMM8_<ALL128:MODE>"
   "sbmmt8 %x0 = %1, %x2\n\tsbmmt8 %y0 = %1, %y2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"         "8")]
 )
 
@@ -2281,7 +2281,7 @@
   "HAVE_LVX_TSBMM8_<ALL128:MODE>"
   "sbmmt8 %x0 = %x1, %2\n\tsbmmt8 %y0 = %y1, %2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"         "8")]
 )
 
@@ -2351,7 +2351,7 @@
            "sbmmt8 %z0 = %z1, %z2\n\tsbmmt8 %t0 = %t1, %t2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x4_alu_tiny")
+   (set_attr "issue" "tiny4")
    (set_attr "length"        "16")]
 )
 
@@ -2365,7 +2365,7 @@
            "sbmmt8 %z0 = %1, %z2\n\tsbmmt8 %t0 = %1, %t2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x4_alu_tiny")
+   (set_attr "issue" "tiny4")
    (set_attr "length"        "16")]
 )
 
@@ -2379,7 +2379,7 @@
            "sbmmt8 %z0 = %z1, %2\n\tsbmmt8 %t0 = %t1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "x4_alu_tiny")
+   (set_attr "issue" "tiny4")
    (set_attr "length"        "16")]
 )
 
@@ -2437,7 +2437,7 @@
   "HAVE_LVX_CPLX_PLUS_V4SF"
   "faddwcp%3 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fadddc"
@@ -2448,7 +2448,7 @@
   "HAVE_LVX_CPLX_PLUS_V2DF"
   "fadddc%3 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fadddcp"
@@ -2459,7 +2459,7 @@
   "HAVE_LVX_CPLX_PLUS_V2DF"
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -2530,7 +2530,7 @@
                       (match_dup 3)] UNSPEC_FADD))]
   ""
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_faddwcq"
@@ -2541,7 +2541,7 @@
   "HAVE_LVX_CPLX_PLUS_V4SF"
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -2571,7 +2571,7 @@
   ""
   "faddh%3 %0 = %1, %2"
   [(set_attr "type" "fmuls")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_faddw"
@@ -2582,7 +2582,7 @@
   ""
   "faddw%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_faddd"
@@ -2593,7 +2593,7 @@
   ""
   "faddd%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_fadddp"
@@ -2614,7 +2614,7 @@
                     (match_dup 3)] UNSPEC_FADD))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_faddhx"
@@ -2625,7 +2625,7 @@
   "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -2653,7 +2653,7 @@
   ""
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -2681,7 +2681,7 @@
   ""
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -2734,7 +2734,7 @@
   "HAVE_LVX_CPLX_MINUS_V4SF"
   "fsbfwcp%3 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsbfdc"
@@ -2745,7 +2745,7 @@
   "HAVE_LVX_CPLX_MINUS_V2DF"
   "fsbfdc%3 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsbfdcp"
@@ -2756,7 +2756,7 @@
   ""
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -2827,7 +2827,7 @@
                       (match_dup 3)] UNSPEC_FSBF))]
   ""
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsbfwcq"
@@ -2838,7 +2838,7 @@
   ""
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -2868,7 +2868,7 @@
   ""
   "fsbfh%3 %0 = %1, %2"
   [(set_attr "type" "fmuls")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsbfw"
@@ -2879,7 +2879,7 @@
   ""
   "fsbfw%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsbfd"
@@ -2890,7 +2890,7 @@
   ""
   "fsbfd%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_fsbfdp"
@@ -2911,7 +2911,7 @@
                     (match_dup 3)] UNSPEC_FSBF))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsbfhx"
@@ -2922,7 +2922,7 @@
   "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -2950,7 +2950,7 @@
   ""
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -2978,7 +2978,7 @@
   ""
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -3033,7 +3033,7 @@
   ""
   "fmulh%3 %0 = %1, %2"
   [(set_attr "type" "fmuls")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fmulw"
@@ -3044,7 +3044,7 @@
   ""
   "fmulw%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fmuld"
@@ -3055,7 +3055,7 @@
   ""
   "fmuld%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fdivw"
@@ -3066,7 +3066,7 @@
   ""
   "fdivw%3 %0 = %1, %2"
   [(set_attr "type" "fdiv")
-   (set_attr "issue" "alu_full")]
+   (set_attr "issue" "full")]
 )
 
 (define_insn "lvx_fdivd"
@@ -3077,7 +3077,7 @@
   ""
   "fdivd%3 %0 = %1, %2"
   [(set_attr "type" "fdiv")
-   (set_attr "issue" "alu_full")]
+   (set_attr "issue" "full")]
 )
 
 (define_insn_and_split "lvx_fmuldp"
@@ -3098,7 +3098,7 @@
                     (match_dup 3)] UNSPEC_FMUL))]
   ""
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn"lvx_fmulhx"
@@ -3109,7 +3109,7 @@
   ""
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -3137,7 +3137,7 @@
   ""
   "#"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_split
@@ -3183,7 +3183,7 @@
                     (match_dup 3)] UNSPEC_FMUL))]
   ""
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fmulwcq"
@@ -3259,7 +3259,7 @@
   "HAVE_LVX_MULT_SF_HF_HF"
   "fmulhw%3 %0 = %1, %2"
   [(set_attr "type" "fmuls")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fmulxwd"
@@ -3270,7 +3270,7 @@
   "HAVE_LVX_MULT_DF_SF_SF"
   "fmulwd%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_fmulx<widenx>"
@@ -3382,7 +3382,7 @@
   ""
   "ffmah%4 %0 = %1, %2"
   [(set_attr "type" "fmadds")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffmaw"
@@ -3394,7 +3394,7 @@
   ""
   "ffmaw%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffmad"
@@ -3406,7 +3406,7 @@
   ""
   "ffmad%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "lvx_ffma<suffix>"
@@ -3451,7 +3451,7 @@
   "ffma<suffix>%4 %0 = %1, %2"
   [(set (attr "type")
      (if_then_else (match_operand 1 "float16_inner_mode") (const_string "fmadds") (const_string "fmaddd")))
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_ffmadp"
@@ -3475,7 +3475,7 @@
                     (match_dup 4)] UNSPEC_FFMA))]
   ""
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffma<suffix>"
@@ -3569,7 +3569,7 @@
                     (match_dup 4)] UNSPEC_FFMA))]
   ""
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffmawcp_2"
@@ -3581,7 +3581,7 @@
   "HAVE_LVX_CPLX_FMA_V4SF_V4SF_V4SF"
   "ffmawcp%4 %0 = %1, %2"
   [(set_attr "type" "fdmda")
-   (set_attr "issue" "alu_full")]
+   (set_attr "issue" "full")]
 )
 
 (define_expand "lvx_ffmadc"
@@ -3620,7 +3620,7 @@
                       (match_dup 4)] UNSPEC_FFMAC))]
   ""
   [(set_attr "type" "fdmda")
-   (set_attr "issue" "alu_full")]
+   (set_attr "issue" "full")]
 )
 
 (define_expand "lvx_ffmadcp"
@@ -3665,7 +3665,7 @@
   "HAVE_LVX_FMA_SF_HF_HF"
   "ffmahw%4 %0 = %1, %2"
   [(set_attr "type" "fmadds")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffmaxwd"
@@ -3677,7 +3677,7 @@
   "HAVE_LVX_FMA_DF_SF_SF"
   "ffmawd%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_ffmax<widenx>"
@@ -3714,7 +3714,7 @@
   ""
   "ffmsh%4 %0 = %1, %2"
   [(set_attr "type" "fmadds")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffmsw"
@@ -3726,7 +3726,7 @@
   ""
   "ffmsw%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffmsd"
@@ -3738,7 +3738,7 @@
   ""
   "ffmsd%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "lvx_ffms<suffix>"
@@ -3783,7 +3783,7 @@
   "ffms<suffix>%4 %0 = %1, %2"
   [(set (attr "type")
      (if_then_else (match_operand 1 "float16_inner_mode") (const_string "fmadds") (const_string "fmaddd")))
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_ffmsdp"
@@ -3807,7 +3807,7 @@
                     (match_dup 4)] UNSPEC_FFMS))]
   ""
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffms<suffix>"
@@ -3901,7 +3901,7 @@
                     (match_dup 4)] UNSPEC_FFMS))]
   ""
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffmswcp_2"
@@ -3913,7 +3913,7 @@
   "HAVE_LVX_CPLX_FMS_V4SF_V4SF_V4SF"
   "ffmswcp%4 %0 = %1, %2"
   [(set_attr "type" "fdmda")
-   (set_attr "issue" "alu_full")]
+   (set_attr "issue" "full")]
 )
 
 (define_expand "lvx_ffmsdc"
@@ -3952,7 +3952,7 @@
                       (match_dup 4)] UNSPEC_FFMSC))]
   ""
   [(set_attr "type" "fdmda")
-   (set_attr "issue" "alu_full")]
+   (set_attr "issue" "full")]
 )
 
 (define_expand "lvx_ffmsdcp"
@@ -3997,7 +3997,7 @@
   "HAVE_LVX_FMS_SF_HF_HF"
   "ffmshw%4 %0 = %1, %2"
   [(set_attr "type" "fmadds")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffmsxwd"
@@ -4009,7 +4009,7 @@
   "HAVE_LVX_FMS_DF_SF_SF"
   "ffmswd%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_ffmsx<widenx>"
@@ -4042,7 +4042,7 @@
   "HAVE_LVX_MULT_M2x2_SF_M2x2_SF_M2x2_SF"
   "fmm222w%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fmma222w_2"
@@ -4054,7 +4054,7 @@
   "HAVE_LVX_MA_M2x2_SF_M2x2_SF_M2x2_SF"
   "fmma222w%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fmms222w_2"
@@ -4066,7 +4066,7 @@
   "HAVE_LVX_MS_M2x2_SF_M2x2_SF_M2x2_SF"
   "fmms222w%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffdmawq_2"
@@ -4077,7 +4077,7 @@
   "HAVE_LVX_FDMA_V4SF_V8SF_V8SF"
   "ffdmawq%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffdmswq_2"
@@ -4088,7 +4088,7 @@
   "HAVE_LVX_FDMS_V4SF_V8SF_V8SF"
   "ffdmswq%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffdmdawq_2"
@@ -4100,7 +4100,7 @@
   "HAVE_LVX_FDMDA_V4SF_V8SF_V8SF"
   "ffdmdawq%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffdmsawq_2"
@@ -4112,7 +4112,7 @@
   "HAVE_LVX_FDMSA_V4SF_V8SF_V8SF"
   "ffdmsawq%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffdmdswq_2"
@@ -4124,7 +4124,7 @@
   "HAVE_LVX_FDMDS_V4SF_V8SF_V8SF"
   "ffdmdswq%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_ffdmaswq_2"
@@ -4136,7 +4136,7 @@
   "HAVE_LVX_FDMAS_V4SF_V8SF_V8SF"
   "ffdmaswq%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 
@@ -4154,7 +4154,7 @@
     return "floatw%3 %0 = %1";
   }
   [(set_attr "type" "fcvt")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_floatd"
@@ -4169,7 +4169,7 @@
     return "floatd%3 %0 = %1";
   }
   [(set_attr "type" "fcvt")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_floatdp"
@@ -4190,7 +4190,7 @@
                     (match_dup 3)] UNSPEC_FLOAT))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_floatdq"
@@ -4219,7 +4219,7 @@
                     (match_dup 3)] UNSPEC_FLOAT))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 
@@ -4237,7 +4237,7 @@
     return "floatuw%3 %0 = %1";
   }
   [(set_attr "type" "fcvt")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_floatud"
@@ -4252,7 +4252,7 @@
     return "floatud%3 %0 = %1";
   }
   [(set_attr "type" "fcvt")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_floatudp"
@@ -4273,7 +4273,7 @@
                     (match_operand 3 "" "")] UNSPEC_FLOATU))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_floatudq"
@@ -4302,7 +4302,7 @@
                     (match_operand 3 "" "")] UNSPEC_FLOATU))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 
@@ -4320,7 +4320,7 @@
     return "fixedw%3 %0 = %1";
   }
   [(set_attr "type" "fcvt")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 ;; zero-extend version of lvx_fixedw
 (define_insn "*lvx_fixedw_zext"
@@ -4335,7 +4335,7 @@
     return "fixedw%3 %0 = %1";
   }
   [(set_attr "type" "fcvt")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fixedd"
@@ -4350,7 +4350,7 @@
     return "fixedd%3 %0 = %1";
   }
   [(set_attr "type" "fcvt")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_fixeddp"
@@ -4371,7 +4371,7 @@
                     (match_dup 3)] UNSPEC_FIXED))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_fixeddq"
@@ -4400,7 +4400,7 @@
                     (match_dup 3)] UNSPEC_FIXED))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 
@@ -4418,7 +4418,7 @@
     return "fixeduw%3 %0 = %1";
   }
   [(set_attr "type" "fcvt")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 ;; zero-extend version of lvx_fixeduw
 (define_insn "*lvx_fixeduw_zext"
@@ -4433,7 +4433,7 @@
     return "fixeduw%3 %0 = %1";
   }
   [(set_attr "type" "fcvt")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fixedud"
@@ -4448,7 +4448,7 @@
     return "fixedud%3 %0 = %1";
   }
   [(set_attr "type" "fcvt")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_fixedudp"
@@ -4469,7 +4469,7 @@
                     (match_dup 3)] UNSPEC_FIXEDU))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "lvx_fixedudq"
@@ -4498,7 +4498,7 @@
                     (match_dup 3)] UNSPEC_FIXEDU))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 
@@ -4511,7 +4511,7 @@
   ""
   "fwidenhw%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fwidenhwq"
@@ -4521,7 +4521,7 @@
   "LVX_2"
   "fwidenhwq%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fwidenwdp"
@@ -4531,7 +4531,7 @@
   "LVX_2"
   "fwidenwdp%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fwidenwd"
@@ -4542,7 +4542,7 @@
   ""
   "fwidenwd%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "lvx_fwiden<widenx>"
@@ -4571,7 +4571,7 @@
   ""
   "fnarrowwh%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fnarrowdw"
@@ -4581,7 +4581,7 @@
   ""
   "fnarrowdw%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fconjwc"
@@ -4590,7 +4590,7 @@
   ""
   "fnegd %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fconjwcp"
@@ -4599,7 +4599,7 @@
   "LVX_2"
   "fnegdp %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
 
@@ -4609,7 +4609,7 @@
   "LVX_2"
   "fnegdp %x0 = %x1\n\tfnegdp %y0 = %y1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_lite")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4619,7 +4619,7 @@
   ""
   "copyd %x0 = %x1\n\tfnegd %y0 = %y1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_tiny__alu_lite")
+   (set_attr "issue" "tiny__lite")
    (set_attr "length"         "8")]
 )
 
@@ -4629,7 +4629,7 @@
   "LVX_2"
   "copyd %x0 = %x1\n\tfnegd %y0 = %y1\n\tcopyd %z0 = %z1\n\tfnegd %t0 = %t1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_tiny__x2_alu_lite")
+   (set_attr "issue" "tiny2__lite2")
    (set_attr "length"        "16")]
 )
 
@@ -4645,7 +4645,7 @@
         (unspec:V4DF [(subreg:V4DF (match_dup 1) 32)] UNSPEC_FCONJ))]
   ""
   [(set_attr "type" "alu")
-   (set_attr "issue" "x2_alu_lite")]
+   (set_attr "issue" "lite2")]
 )
 
 
@@ -4673,7 +4673,7 @@
   "HAVE_LVX_FCDIV_SF"
   "fcdivw%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "lvx_fcdivd"
@@ -4697,7 +4697,7 @@
   "HAVE_LVX_FCDIV_DF"
   "fcdivd%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")
+   (set_attr "issue" "lite")
 ])
 
 
@@ -4725,7 +4725,7 @@
   "HAVE_LVX_FSDIV_SF"
   "fsdivw%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "lvx_fsdivd"
@@ -4749,7 +4749,7 @@
   "HAVE_LVX_FSDIV_DF"
   "fsdivd%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "lvx_fsdivdp"
@@ -4866,7 +4866,7 @@
   ""
   "fsrecw %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsrecd"
@@ -4876,7 +4876,7 @@
   ""
   "fsrecd %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsrecwq"
@@ -4886,7 +4886,7 @@
   "LVX_2"
   "fsrecwq %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "lvx_fsrecdp"
@@ -4930,7 +4930,7 @@
   ""
   "fsrsrw %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsrsrd"
@@ -4939,7 +4939,7 @@
   ""
   "fsrsrd %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsrsrwq"
@@ -4948,7 +4948,7 @@
   "LVX_2"
   "fsrsrwq %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "lvx_fsrsrdp"
@@ -4990,7 +4990,7 @@
   ""
   "iord %0 = %1, %1"
   [(set_attr "type" "ghost")
-   (set_attr "issue" "alu_tiny")
+   (set_attr "issue" "tiny")
    (set_attr "length"          "4")]
 )
 
@@ -5001,7 +5001,7 @@
   ""
   "iord %0 = %1, %2"
   [(set_attr "type" "ghost")
-   (set_attr "issue" "alu_tiny")
+   (set_attr "issue" "tiny")
    (set_attr "length"          "4")]
 )
 
@@ -5013,7 +5013,7 @@
   ""
   "iord %0 = %1, %2\n\tiord %0 = %3, %3"
   [(set_attr "type" "ghost")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"             "8")]
 )
 
@@ -5026,7 +5026,7 @@
   ""
   "iord %0 = %1, %2\n\tiord %0 = %3, %4"
   [(set_attr "type" "ghost")
-   (set_attr "issue" "x2_alu_tiny")
+   (set_attr "issue" "tiny2")
    (set_attr "length"             "8")]
 )
 
@@ -5043,7 +5043,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5057,7 +5057,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5071,7 +5071,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5085,7 +5085,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5099,7 +5099,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5114,7 +5114,7 @@
   ""
   "lbz%2%X1 %0 = %1"
   [(set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length"                    "4,                       8,                      12")]
 )
 
@@ -5126,7 +5126,7 @@
   ""
   "lbs%2%X1 %0 = %1"
   [(set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length"                    "4,                       8,                      12")]
 )
 
@@ -5138,7 +5138,7 @@
   ""
   "lhz%2%X1 %0 = %1"
   [(set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length"                    "4,                       8,                      12")]
 )
 
@@ -5150,7 +5150,7 @@
   ""
   "lhs%2%X1 %0 = %1"
   [(set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length"                    "4,                       8,                      12")]
 )
 
@@ -5162,7 +5162,7 @@
   ""
   "lwz%2%X1 %0 = %1"
   [(set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length"                    "4,                       8,                      12")]
 )
 
@@ -5174,7 +5174,7 @@
   ""
   "lws%2%X1 %0 = %1"
   [(set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length"                    "4,                       8,                      12")]
 )
 
@@ -5186,7 +5186,7 @@
   ""
   "lhz%2%X1 %0 = %1"
   [(set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length"                    "4,                       8,                      12")]
 )
 
@@ -5198,7 +5198,7 @@
   ""
   "lwz%2%X1 %0 = %1"
   [(set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length"                    "4,                       8,                      12")]
 )
 
@@ -5215,7 +5215,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5229,7 +5229,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5243,7 +5243,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5257,7 +5257,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5271,7 +5271,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5285,7 +5285,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5299,7 +5299,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5313,7 +5313,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5327,7 +5327,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5341,7 +5341,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5377,7 +5377,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5394,7 +5394,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5411,7 +5411,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5428,7 +5428,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5445,7 +5445,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5462,7 +5462,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5479,7 +5479,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5496,7 +5496,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5543,7 +5543,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5577,7 +5577,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5593,7 +5593,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_y")])
+     (const_string "lsu_auxw_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -5607,7 +5607,7 @@
   ""
   "sb%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 (define_insn "*lvx_storeb"
@@ -5617,7 +5617,7 @@
   ""
   "sb%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5628,7 +5628,7 @@
   ""
   "sh%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 (define_insn "*lvx_storeh"
@@ -5638,7 +5638,7 @@
   ""
   "sh%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5649,7 +5649,7 @@
   ""
   "sw%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 (define_insn "*lvx_storew"
@@ -5659,7 +5659,7 @@
   ""
   "sw%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5670,7 +5670,7 @@
   ""
   "sd%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5681,7 +5681,7 @@
   ""
   "sq%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5692,7 +5692,7 @@
   ""
   "sh%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5703,7 +5703,7 @@
   ""
   "sw%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5714,7 +5714,7 @@
   ""
   "sd%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5725,7 +5725,7 @@
   ""
   "sq%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5736,7 +5736,7 @@
   ""
   "so%X1 %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5771,7 +5771,7 @@
   ""
   "guard%3%X1 %2? sb %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 (define_insn "*lvx_storecb"
@@ -5784,7 +5784,7 @@
   ""
   "guard%3%X1 %2? sb %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5798,7 +5798,7 @@
   ""
   "guard%3%X1 %2? sh %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 (define_insn "*lvx_storech"
@@ -5811,7 +5811,7 @@
   ""
   "guard%3%X1 %2? sh %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5825,7 +5825,7 @@
   ""
   "guard%3%X1 %2? sw %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 (define_insn "*lvx_storecw"
@@ -5838,7 +5838,7 @@
   ""
   "guard%3%X1 %2? sw %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5852,7 +5852,7 @@
   ""
   "guard%3%X1 %2? sd %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5866,7 +5866,7 @@
   ""
  "guard%3%X1 %2? sq %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5880,7 +5880,7 @@
   ""
   "guard%3%X1 %2? sh %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5894,7 +5894,7 @@
   ""
   "guard%3%X1 %2? sw %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5908,7 +5908,7 @@
   ""
   "guard%3%X1 %2? sd %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5955,7 +5955,7 @@
   ""
   "guard%3%X1 %2? sq %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -5969,7 +5969,7 @@
   ""
   "guard%3%X1 %2? so %1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -6014,7 +6014,7 @@
   "LVX_2"
   "faddho%3 %0 = %1, %2"
   [(set_attr "type" "fmadds")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_faddwq"
@@ -6025,7 +6025,7 @@
   "LVX_2"
   "faddwq%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsbfho"
@@ -6036,7 +6036,7 @@
   "LVX_2"
   "fsbfho%3 %0 = %2, %1"
   [(set_attr "type" "fmuls")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fsbfwq"
@@ -6047,7 +6047,7 @@
   "LVX_2"
   "fsbfwq%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fmulho"
@@ -6058,7 +6058,7 @@
   "LVX_2"
   "fmulho%3 %0 = %1, %2"
   [(set_attr "type" "fmuls")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fmulwq"
@@ -6069,7 +6069,7 @@
   "LVX_2"
   "fmulwq%3 %0 = %1, %2"
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 ;; ---- Narrowing: LVX's trunc/fract, 128-bit destination ---------------------
@@ -6082,7 +6082,7 @@
   "LVX_2"
   "trunc<truncx> %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lvx_fract<truncx>"
@@ -6092,7 +6092,7 @@
   "LVX_2"
   "fract<truncx> %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_lite")]
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "trunc<wide><mode>2"

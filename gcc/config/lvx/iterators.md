@@ -461,7 +461,7 @@
 ;; pointer modes: SI or DI. Anything else is an error.
 ;; Values 999 are used for modes where the alternative must be disabled.
 (define_mode_attr symlen1 [
-  (SI "_x") (DI "_y") (QI "") (HI "") (HF "") (SF "") (DF "")])
+  (SI "_x") (DI "_x2") (QI "") (HI "") (HF "") (SF "") (DF "")])
 (define_mode_attr symlen2 [
   (SI "8") (DI "12") (QI "999") (HI "999") (HF "999") (SF "999") (DF "999")])
 

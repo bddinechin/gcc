@@ -12,6 +12,9 @@
 (automata_option "ndfa")
 (automata_option "v")
 
+;; Shadowed by a composite spelling and therefore unnameable here: ALU_LITE2.
+;; A pattern needing one wants a different naming convention, not a workaround.
+
 ;; One automaton per resource.  Every alternation below stays inside a
 ;; single unit bank and no exclusion/presence/absence set is emitted, so
 ;; the partition is exact and each automaton minimises to its counter.
@@ -71,15 +74,15 @@
 (define_reservation "lvx_accr_u" "lvx_accr0_u")
 
 (define_reservation "lvx_all_r" "lvx_issue_x8_u")
-(define_reservation "lvx_alu_tiny_r" "lvx_issue_u + lvx_tiny_u")
-(define_reservation "lvx_alu_tiny_x_r" "lvx_issue_x2_u + lvx_tiny_u")
-(define_reservation "lvx_alu_tiny_y_r" "lvx_issue_x3_u + lvx_tiny_u")
-(define_reservation "lvx_alu_lite_r" "lvx_issue_u + lvx_tiny_u + lvx_lite_u")
-(define_reservation "lvx_alu_lite_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lite_u")
-(define_reservation "lvx_alu_lite_y_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lite_u")
-(define_reservation "lvx_alu_lite_misc_r" "lvx_issue_u + lvx_tiny_u + lvx_lite_u + lvx_misc_u")
-(define_reservation "lvx_alu_full_r" "lvx_issue_u + lvx_tiny_u + lvx_lite_u + lvx_full_u")
-(define_reservation "lvx_alu_full_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lite_u + lvx_full_u")
+(define_reservation "lvx_tiny_r" "lvx_issue_u + lvx_tiny_u")
+(define_reservation "lvx_tiny_x_r" "lvx_issue_x2_u + lvx_tiny_u")
+(define_reservation "lvx_tiny_x2_r" "lvx_issue_x3_u + lvx_tiny_u")
+(define_reservation "lvx_lite_r" "lvx_issue_u + lvx_tiny_u + lvx_lite_u")
+(define_reservation "lvx_lite_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lite_u")
+(define_reservation "lvx_lite_x2_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lite_u")
+(define_reservation "lvx_lite_misc_r" "lvx_issue_u + lvx_tiny_u + lvx_lite_u + lvx_misc_u")
+(define_reservation "lvx_full_r" "lvx_issue_u + lvx_tiny_u + lvx_lite_u + lvx_full_u")
+(define_reservation "lvx_full_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lite_u + lvx_full_u")
 (define_reservation "lvx_bcu_brrp_r" "lvx_issue_u + lvx_bcu_u + lvx_brrp_u")
 (define_reservation "lvx_bcu2_r" "lvx_issue_u + lvx_bcu_x2_u")
 (define_reservation "lvx_bcu_xfer_r" "lvx_issue_u + lvx_bcu_u + lvx_xfer_u")
@@ -87,55 +90,55 @@
 (define_reservation "lvx_bcu2_tiny_lsu_r" "lvx_issue_u + lvx_tiny_u + lvx_lsu_u + lvx_bcu_x2_u")
 (define_reservation "lvx_lsu_r" "lvx_issue_u + lvx_tiny_u + lvx_lsu_u")
 (define_reservation "lvx_lsu_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lsu_u")
-(define_reservation "lvx_lsu_y_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_u")
+(define_reservation "lvx_lsu_x2_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_u")
 (define_reservation "lvx_lsu_memw_accr_r" "lvx_issue_u + lvx_tiny_u + lvx_lsu_u + lvx_memw_u + lvx_accr_u")
 (define_reservation "lvx_lsu_memw_accr_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lsu_u + lvx_memw_u + lvx_accr_u")
-(define_reservation "lvx_lsu_memw_accr_y_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_u + lvx_memw_u + lvx_accr_u")
+(define_reservation "lvx_lsu_memw_accr_x2_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_u + lvx_memw_u + lvx_accr_u")
 (define_reservation "lvx_lsu2_memw_r" "lvx_issue_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_memw_u")
 (define_reservation "lvx_lsu2_memw_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_memw_u")
-(define_reservation "lvx_lsu2_memw_y_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_memw_u")
+(define_reservation "lvx_lsu2_memw_x2_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_memw_u")
 (define_reservation "lvx_lsu_memw_auxr_r" "lvx_issue_u + lvx_tiny_u + lvx_lsu_u + lvx_auxr_u + lvx_memw_u")
 (define_reservation "lvx_lsu_memw_auxr_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lsu_u + lvx_auxr_u + lvx_memw_u")
-(define_reservation "lvx_lsu_memw_auxr_y_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_u + lvx_auxr_u + lvx_memw_u")
+(define_reservation "lvx_lsu_memw_auxr_x2_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_u + lvx_auxr_u + lvx_memw_u")
 (define_reservation "lvx_lsu_memw_auxw_r" "lvx_issue_u + lvx_tiny_u + lvx_lsu_u + lvx_auxw_u + lvx_memw_u")
 (define_reservation "lvx_lsu_memw_auxw_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lsu_u + lvx_auxw_u + lvx_memw_u")
-(define_reservation "lvx_lsu_memw_auxw_y_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_u + lvx_auxw_u + lvx_memw_u")
+(define_reservation "lvx_lsu_memw_auxw_x2_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_u + lvx_auxw_u + lvx_memw_u")
 (define_reservation "lvx_lsu2_memw_auxw_r" "lvx_issue_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_auxw_u + lvx_memw_u")
 (define_reservation "lvx_lsu2_memw_auxw_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_auxw_u + lvx_memw_u")
-(define_reservation "lvx_lsu2_memw_auxw_y_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_auxw_u + lvx_memw_u")
+(define_reservation "lvx_lsu2_memw_auxw_x2_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_auxw_u + lvx_memw_u")
 (define_reservation "lvx_lsu_auxw_r" "lvx_issue_u + lvx_tiny_u + lvx_lsu_u + lvx_auxw_u")
 (define_reservation "lvx_lsu_auxw_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lsu_u + lvx_auxw_u")
-(define_reservation "lvx_lsu_auxw_y_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_u + lvx_auxw_u")
+(define_reservation "lvx_lsu_auxw_x2_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_u + lvx_auxw_u")
 (define_reservation "lvx_lsu_auxr_auxw_r" "lvx_issue_u + lvx_tiny_u + lvx_lsu_u + lvx_auxr_u + lvx_auxw_u")
 (define_reservation "lvx_lsu2_memw_auxr_auxw_r" "lvx_issue_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_auxr_u + lvx_auxw_u + lvx_memw_u")
 (define_reservation "lvx_lsu2_memw_auxr_auxw_x_r" "lvx_issue_x2_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_auxr_u + lvx_auxw_u + lvx_memw_u")
-(define_reservation "lvx_lsu2_memw_auxr_auxw_y_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_auxr_u + lvx_auxw_u + lvx_memw_u")
+(define_reservation "lvx_lsu2_memw_auxr_auxw_x2_r" "lvx_issue_x3_u + lvx_tiny_u + lvx_lsu_x2_u + lvx_auxr_u + lvx_auxw_u + lvx_memw_u")
 (define_reservation "lvx_ext_r" "lvx_issue_u + lvx_ext_u")
 (define_reservation "lvx_ext_misc_auxw_r" "lvx_issue_u + lvx_ext_u + lvx_auxw_u + lvx_misc_u")
 
-(define_reservation "lvx_alu_tiny__alu_lite_r" "lvx_issue_x2_u + lvx_tiny_x2_u + lvx_lite_u")
-(define_reservation "lvx_x2_alu_lite_r" "lvx_issue_x2_u + lvx_tiny_x2_u + lvx_lite_x2_u")
-(define_reservation "lvx_x2_alu_lite_misc_r" "lvx_issue_x2_u + lvx_tiny_x2_u + lvx_lite_x2_u + lvx_misc_x2_u")
-(define_reservation "lvx_x2_alu_lite_x_r" "lvx_issue_x4_u + lvx_tiny_x2_u + lvx_lite_x2_u")
-(define_reservation "lvx_x2_alu_tiny_r" "lvx_issue_x2_u + lvx_tiny_x2_u")
-(define_reservation "lvx_x2_alu_tiny__x2_alu_lite_r" "lvx_issue_x4_u + lvx_tiny_x4_u + lvx_lite_x2_u")
-(define_reservation "lvx_x4_alu_tiny_r" "lvx_issue_x4_u + lvx_tiny_x4_u")
-(define_reservation "lvx_x4_alu_tiny_x_r" "lvx_issue_x8_u + lvx_tiny_x4_u")
+(define_reservation "lvx_lite2_r" "lvx_issue_x2_u + lvx_tiny_x2_u + lvx_lite_x2_u")
+(define_reservation "lvx_lite2_misc_r" "lvx_issue_x2_u + lvx_tiny_x2_u + lvx_lite_x2_u + lvx_misc_x2_u")
+(define_reservation "lvx_lite2_x2_r" "lvx_issue_x4_u + lvx_tiny_x2_u + lvx_lite_x2_u")
+(define_reservation "lvx_tiny2_r" "lvx_issue_x2_u + lvx_tiny_x2_u")
+(define_reservation "lvx_tiny2__lite2_r" "lvx_issue_x4_u + lvx_tiny_x4_u + lvx_lite_x2_u")
+(define_reservation "lvx_tiny4_r" "lvx_issue_x4_u + lvx_tiny_x4_u")
+(define_reservation "lvx_tiny4_x4_r" "lvx_issue_x8_u + lvx_tiny_x4_u")
+(define_reservation "lvx_tiny__lite_r" "lvx_issue_x2_u + lvx_tiny_x2_u + lvx_lite_u")
 
 ;; Which slot class a pattern's instructions occupy, summed when its
 ;; template emits more than one.  A pattern states this; the reservation
 ;; each value stands for is above.
 (define_attr "issue"
   "all,
-   alu_tiny,
-   alu_tiny_x,
-   alu_tiny_y,
-   alu_lite,
-   alu_lite_x,
-   alu_lite_y,
-   alu_lite_misc,
-   alu_full,
-   alu_full_x,
+   tiny,
+   tiny_x,
+   tiny_x2,
+   lite,
+   lite_x,
+   lite_x2,
+   lite_misc,
+   full,
+   full_x,
    bcu_brrp,
    bcu2,
    bcu_xfer,
@@ -143,37 +146,37 @@
    bcu2_tiny_lsu,
    lsu,
    lsu_x,
-   lsu_y,
+   lsu_x2,
    lsu_memw_accr,
    lsu_memw_accr_x,
-   lsu_memw_accr_y,
+   lsu_memw_accr_x2,
    lsu2_memw,
    lsu2_memw_x,
-   lsu2_memw_y,
+   lsu2_memw_x2,
    lsu_memw_auxr,
    lsu_memw_auxr_x,
-   lsu_memw_auxr_y,
+   lsu_memw_auxr_x2,
    lsu_memw_auxw,
    lsu_memw_auxw_x,
-   lsu_memw_auxw_y,
+   lsu_memw_auxw_x2,
    lsu2_memw_auxw,
    lsu2_memw_auxw_x,
-   lsu2_memw_auxw_y,
+   lsu2_memw_auxw_x2,
    lsu_auxw,
    lsu_auxw_x,
-   lsu_auxw_y,
+   lsu_auxw_x2,
    lsu_auxr_auxw,
    lsu2_memw_auxr_auxw,
    lsu2_memw_auxr_auxw_x,
-   lsu2_memw_auxr_auxw_y,
+   lsu2_memw_auxr_auxw_x2,
    ext,
    ext_misc_auxw,
-   alu_tiny__alu_lite,
-   x2_alu_lite,
-   x2_alu_lite_misc,
-   x2_alu_lite_x,
-   x2_alu_tiny,
-   x2_alu_tiny__x2_alu_lite,
-   x4_alu_tiny,
-   x4_alu_tiny_x"
+   lite2,
+   lite2_misc,
+   lite2_x2,
+   tiny2,
+   tiny2__lite2,
+   tiny4,
+   tiny4_x4,
+   tiny__lite"
   (const_string "all"))

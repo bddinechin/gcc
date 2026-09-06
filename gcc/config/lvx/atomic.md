@@ -209,7 +209,7 @@
   "HAVE_LVX_ATOMIC_LOAD_<MODE>"
   "al<lsusize>%2%X1 %0 = %O1"
   [(set_attr "type" "aload, aload, aload")
-   (set_attr "issue" "lsu_memw_auxw, lsu_memw_auxw_x, lsu_memw_auxw_y")
+   (set_attr "issue" "lsu_memw_auxw, lsu_memw_auxw_x, lsu_memw_auxw_x2")
    (set_attr "length"             "4,                8,               12")]
 )
 
@@ -222,7 +222,7 @@
   "HAVE_LVX_ATOMIC_STORE_<MODE>"
   "as<lsusize>%2%X1 %O1 = %0"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length"            "4,               8,              12")]
 )
 
@@ -243,7 +243,7 @@
   "HAVE_LVX_ATOMIC_CV1_LIKE_LOAD_CLEAR_<MODE>"
   "alclr<lsusize>%2%X1 %0 = %1"
   [(set_attr "type" "aloadc, aloadc, aloadc")
-   (set_attr "issue" "lsu2_memw_auxw, lsu2_memw_auxw_x, lsu2_memw_auxw_y")
+   (set_attr "issue" "lsu2_memw_auxw, lsu2_memw_auxw_x, lsu2_memw_auxw_x2")
    (set_attr "length"             "4,                8,               12")]
 )
 
@@ -254,7 +254,7 @@
   "HAVE_LVX_ATOMIC_CV2_LIKE_LOAD_CLEAR_<MODE>"
   "alclr<lsusize>%2%X1 %0 = %O1"
   [(set_attr "type" "aloadc, aloadc, aloadc")
-   (set_attr "issue" "lsu2_memw_auxw, lsu2_memw_auxw_x, lsu2_memw_auxw_y")
+   (set_attr "issue" "lsu2_memw_auxw, lsu2_memw_auxw_x, lsu2_memw_auxw_x2")
    (set_attr "length"             "4,                8,               12")]
 )
 
@@ -282,7 +282,7 @@
   "HAVE_LVX_ATOMIC_CV1_LIKE_LOAD_PLUS_<MODE>"
   "aladd<lsusize>%3%X1 %1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
-   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_y")
+   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
    (set_attr "length"                  "4,                     8,                    12")]
 )
 
@@ -296,7 +296,7 @@
   "HAVE_LVX_ATOMIC_CV2_LIKE_LOAD_PLUS_<MODE>"
   "aladd<lsusize>%3%X1 %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
-   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_y")
+   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
    (set_attr "length"                  "4,                     8,                    12")]
 )
 
@@ -330,7 +330,7 @@
   "!HAVE_LVX_ATOMIC_VALUED_CSWAP_<MODE>"
   "acswap<lsusize>%2%X1 %1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
-   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_y")
+   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
    (set_attr "length"                  "4,                     8,                    12")]
 )
 
@@ -345,7 +345,7 @@
   "HAVE_LVX_ATOMIC_VALUED_CSWAP_<MODE>"
   "acswap<lsusize>%2%X1 %<acswap_reg>0, %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
-   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_y")
+   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
    (set_attr "length"                  "4,                     8,                    12")]
 )
 

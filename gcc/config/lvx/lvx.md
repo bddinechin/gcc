@@ -160,7 +160,7 @@
   "(XVECLEN (operands[0], 0) == 4)"
   "lo %o1 = %3[%2]"
   [(set_attr "type" "load, load, load")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length" "4,8,12")])
 
 (define_insn "*lo_multiple_uncached"
@@ -177,7 +177,7 @@
   "(XVECLEN (operands[0], 0) == 4)"
   "lo.u %o1 = %3[%2]"
   [(set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length" "4,8,12")])
 
 (define_insn "*lq_multiple_cached"
@@ -190,7 +190,7 @@
   "(XVECLEN (operands[0], 0) == 2)"
   "lq %q1 = %3[%2]"
   [(set_attr "type" "load, load, load")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length" "4,8,12")])
 
 (define_insn "*lq_multiple_uncached"
@@ -203,7 +203,7 @@
   "(XVECLEN (operands[0], 0) == 2)"
   "lq.u %q1 = %3[%2]"
   [(set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length" "4,8,12")])
 
 (define_insn "*sq_multiple"
@@ -217,7 +217,7 @@
   "(XVECLEN (operands[0], 0) == 2)"
   "sq %2[%1] = %q3"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length" "4,8,12")])
 
 (define_insn "*so_multiple"
@@ -237,7 +237,7 @@
   "(XVECLEN (operands[0], 0) == 4)"
   "so %2[%1] = %o3"
   [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
    (set_attr "length" "4,8,12")])
 
 
@@ -289,7 +289,7 @@
     }
 }
   [(set_attr "type" "alu, alu, alu, alu, store, store, store, load, load, load, loadu, loadu, loadu, sysget, all, alu, alu")
-   (set_attr "issue" "alu_tiny, alu_tiny, alu_tiny_x, alu_tiny_y, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y, bcu2_tiny_lsu, all, alu_full_x, alu_tiny_y")
+   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, bcu2_tiny_lsu, all, full_x, tiny_x2")
    (set_attr "length"      "4,        4,          8,         12,          4,            8,           12,         4,           8,          12,                  4,                    8,                   12,       4,   4,          8,         12")]
 )
 
@@ -302,7 +302,7 @@
   ""
   "pcrel %0 = %T1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_tiny_y")
+   (set_attr "issue" "tiny_x2")
    (set_attr "length" "12")]
 )
 
@@ -425,7 +425,7 @@
    ""
    "pcrel %0 = @gotaddr()"
   [(set_attr "type" "alu")
-   (set_attr "issue" "alu_tiny<symlen1>")
+   (set_attr "issue" "tiny<symlen1>")
    (set_attr "length" "<symlen2>")]
 )
 
@@ -587,7 +587,7 @@
   "dinvall%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_y")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
 )
 
 (define_insn "lvx_dtouchl"
@@ -598,7 +598,7 @@
   "dtouchl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_y")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
 )
 
 (define_insn "lvx_dpurgel"
@@ -608,7 +608,7 @@
   "dpurgel%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_y")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
 )
 
 (define_insn "lvx_dflushl"
@@ -618,7 +618,7 @@
   "dflushl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_y")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
 )
 
 (define_insn "lvx_i1invals"
@@ -628,7 +628,7 @@
   "i1invals%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu2_memw, lsu2_memw_x, lsu2_memw_y")]
+   (set_attr "issue" "lsu2_memw, lsu2_memw_x, lsu2_memw_x2")]
 )
 
 (define_insn "lvx_dinvalsw"
@@ -672,7 +672,7 @@
   "dtouchl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_y")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
 )
 
 (define_insn "lvx_tlbdinval"
@@ -737,7 +737,7 @@
    "lbz.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
    (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
 )
 
 (define_insn "lvx_lbsu"
@@ -749,7 +749,7 @@
    "lbs.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
    (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
 )
 
 (define_insn "lvx_lhzu"
@@ -761,7 +761,7 @@
    "lhz.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
    (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
 )
 
 (define_insn "lvx_lhsu"
@@ -773,7 +773,7 @@
    "lhs.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
    (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
 )
 
 (define_insn "lvx_lwzu"
@@ -785,7 +785,7 @@
    "lwz.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
    (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
 )
 
 (define_insn "lvx_lwsu"
@@ -797,7 +797,7 @@
    "lws.u%X1 %0 = %1"
   [(set_attr "length" "4,8,12")
    (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
 )
 
 (define_insn "lvx_ldu"
@@ -809,7 +809,7 @@
    "ld.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
    (set_attr "type" "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
 )
 
 (define_insn "lvx_lqu"
@@ -821,7 +821,7 @@
    "lq.u%X1 %0 = %1"
   [(set_attr "length" "4, 8, 12")
    (set_attr "type"   "loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
 )
 
 ;; FIXME AUTO: add size info for 'reg[reg]' addressing (currently falling back to lsu.x)
@@ -832,7 +832,7 @@
    "l<SHORT:lsusize><ANY_EXTEND:lsux>%V1 %0 = %1"
   [(set_attr "length" "            4,               8,              12,                      4,                        8,                       12")
    (set_attr "type"   "load, load, load, loadu, loadu, loadu")
-   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")]
+   (set_attr "issue" "lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2")]
 )
 
 ;; FIXME AUTO: add size info for 'reg[reg]' addressing (currently falling back to lsu.x)
@@ -854,7 +854,7 @@
    }
 }
   [(set_attr "type"   "alu, load, load, load, loadu, loadu, loadu")
-   (set_attr "issue" "alu_lite, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lite, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length" "       4,             4,               8,              12,                      4,                        8,                       12")])
 
 (define_insn "zero_extend<mode>di2"
@@ -875,7 +875,7 @@
    }
 }
   [(set_attr "type"   "alu, load, load, load, loadu, loadu, loadu")
-   (set_attr "issue" "alu_lite, lsu_auxw, lsu_auxw_x, lsu_auxw_y, lsu_auxw, lsu_auxw_x, lsu_auxw_y")
+   (set_attr "issue" "lite, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2")
    (set_attr "length" "       4,             4,               8,              12,                      4,                        8,                       12")])
 
 (define_insn "*icall_<mode>"

@@ -72,7 +72,7 @@
     DONE;
   }
   [(set_attr "type" "xmoveto")
-   (set_attr "issue" "x2_alu_lite_misc")
+   (set_attr "issue" "lite2_misc")
    (set_attr "length" "8")]
 )
 
@@ -85,7 +85,7 @@
   "HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V2DI"
   "xputdq %0%3 = %x2, %y2"
   [(set_attr "type" "xmoveto")
-   (set_attr "issue" "alu_lite_misc")
+   (set_attr "issue" "lite_misc")
    (set_attr "length" "4")]
 )
 
@@ -98,7 +98,7 @@
   "LVX_2 && (HAVE_LVX_MOV_FROM_EXT_V1OI_TO_CORE_V1DI)"
   "xmovetd %0%3 = %2"
   [(set_attr "type" "xmoveto")
-   (set_attr "issue" "alu_lite_misc")
+   (set_attr "issue" "lite_misc")
    (set_attr "length" "4")]
 )
 
@@ -144,7 +144,7 @@
       }
   }
   [(set_attr "type" "xcopy, xloadu, xloadu, xloadu, xstore, xstore, xstore, xmovef, xmoveto, copy")
-   (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_y, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y, ext_misc_auxw, x2_alu_lite_misc, lsu_auxr_auxw")
+   (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_x2, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2, ext_misc_auxw, lite2_misc, lsu_auxr_auxw")
    (set_attr "length"                "4,                4,                  8,                 12,             4,               8,              12,                 4,                    8,            4")]
 )
 
@@ -172,7 +172,7 @@
       }
   }
   [(set_attr "type" "xcopy, xload, xload, xload, xloadu, xloadu, xloadu, xstore, xstore, xstore, xmovef, xmoveto, copy")
-   (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_y, lsu, lsu_x, lsu_y, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y, ext_misc_auxw, x2_alu_lite_misc, lsu_auxr_auxw")
+   (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_x2, lsu, lsu_x, lsu_x2, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2, ext_misc_auxw, lite2_misc, lsu_auxr_auxw")
    (set_attr "length"                "4,       4,         8,        12,                4,                  8,                 12,             4,               8,              12,                 4,                    8,            4")]
 )
 
@@ -193,7 +193,7 @@
   ""
   "xputdq %0.lo = %x1, %y1"
   [(set_attr "type" "xmoveto")
-   (set_attr "issue" "alu_lite_misc")
+   (set_attr "issue" "lite_misc")
    (set_attr "length" "4")]
 )
 
@@ -204,7 +204,7 @@
   ""
   "xputdq %0.hi = %x1, %y1"
   [(set_attr "type" "xmoveto")
-   (set_attr "issue" "alu_lite_misc")
+   (set_attr "issue" "lite_misc")
    (set_attr "length" "4")]
 )
 
@@ -267,7 +267,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
-     (const_string "lsu_y")])
+     (const_string "lsu_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -323,7 +323,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
-     (const_string "lsu_y")])
+     (const_string "lsu_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -338,7 +338,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
-     (const_string "lsu_y")])
+     (const_string "lsu_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -353,7 +353,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
-     (const_string "lsu_y")])
+     (const_string "lsu_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -368,7 +368,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
-     (const_string "lsu_y")])
+     (const_string "lsu_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -385,7 +385,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
-     (const_string "lsu_y")])
+     (const_string "lsu_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -402,7 +402,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
-     (const_string "lsu_y")])
+     (const_string "lsu_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -419,7 +419,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
-     (const_string "lsu_y")])
+     (const_string "lsu_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -436,7 +436,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
-     (const_string "lsu_y")])
+     (const_string "lsu_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -450,7 +450,7 @@
   ""
   "xso.q0%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
-   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
    (set_attr "length"       "4,          8,         12")]
 )
 
@@ -461,7 +461,7 @@
   ""
   "xso.q1%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
-   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
    (set_attr "length"       "4,          8,         12")]
 )
 
@@ -472,7 +472,7 @@
   ""
   "xso.q2%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
-   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
    (set_attr "length"       "4,          8,         12")]
 )
 
@@ -483,7 +483,7 @@
   ""
   "xso.q3%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
-   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
    (set_attr "length"       "4,          8,         12")]
 )
 
@@ -497,7 +497,7 @@
   ""
   "guard%3 %2? xso.q0%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
-   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
    (set_attr "bcu_used" "yes")
    (set_attr "length"       "8,         12,         16")]
 )
@@ -512,7 +512,7 @@
   ""
   "guard%3 %2? xso.q1%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
-   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
    (set_attr "bcu_used" "yes")
    (set_attr "length"       "8,         12,         16")]
 )
@@ -527,7 +527,7 @@
   ""
   "guard%3 %2? xso.q2%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
-   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
    (set_attr "bcu_used" "yes")
    (set_attr "length"       "8,         12,         16")]
 )
@@ -542,7 +542,7 @@
   ""
   "guard%3 %2? xso.q3%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
-   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
    (set_attr "bcu_used" "yes")
    (set_attr "length"       "8,         12,         16")]
 )
@@ -579,7 +579,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
-     (const_string "lsu_y")])
+     (const_string "lsu_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -595,7 +595,7 @@
    (set_attr_alternative "issue"
     [(const_string "lsu")
      (const_string "lsu_x")
-     (const_string "lsu_y")])
+     (const_string "lsu_x2")])
    (set_attr "length" "4, 8, 12")]
 )
 
@@ -683,7 +683,7 @@
   ""
   "xso%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
-   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
    (set_attr "length"       "4,          8,         12")]
 )
 
@@ -744,7 +744,7 @@
   ""
   "guard%3 %2? xso%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
-   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_y")
+   (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
    (set_attr "bcu_used" "yes")
    (set_attr "length"       "8,         12,         16")]
 )
@@ -815,7 +815,7 @@
   "HAVE_LVX_EXT_BUFFER_PRELOAD_<MODE>"
   "xplo%4%X2 %b0, %3 = %O2"
   [(set_attr "type" "prefetch, prefetch, prefetch")
-   (set_attr "issue" "lsu, lsu_x, lsu_y")
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")
    (set_attr "length" "4,   8,   12")]
 )
 
@@ -828,7 +828,7 @@
   "HAVE_LVX_EXT_BUFFER_PRELOAD_<XBUFF:MODE>"
   "xpl<AI:lsusize>%4%X2 %b0, %3 = %O2"
   [(set_attr "type" "prefetch, prefetch, prefetch")
-   (set_attr "issue" "lsu, lsu_x, lsu_y")
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")
    (set_attr "length" "4,   8,   12")]
 )
 
