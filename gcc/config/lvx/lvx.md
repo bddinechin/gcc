@@ -306,7 +306,7 @@
   [(set (pc) (match_operand:P 0 "address_operand" "r"))]
   ""
   "igoto %0"
-  [(set_attr "type" "bcu_xfer")]
+  [(set_attr "type" "bcu_xfer_brrp")]
 )
 
 ;; Restore the frame and jump, for __builtin_longjmp and nonlocal goto.
@@ -376,7 +376,7 @@
   )]
   "<MODE>mode == Pmode"
   "igoto %0"
-  [(set_attr "type" "bcu_xfer")]
+  [(set_attr "type" "bcu_xfer_brrp")]
 )
 
 (define_insn "nop"
@@ -818,7 +818,7 @@
    (clobber (reg:DI LVX_RA_REGNO))]
   ""
   "icall %0"
-  [(set_attr "type" "bcu_xfer")]
+  [(set_attr "type" "bcu_xfer_brrp")]
 )
 
 (define_expand "call"
@@ -951,7 +951,7 @@
    (clobber (reg:DI LVX_RA_REGNO))]
   ""
   "icall %1"
-  [(set_attr "type" "bcu_xfer")]
+  [(set_attr "type" "bcu_xfer_brrp")]
 )
 
 (define_code_iterator gt_comp [gt gtu])

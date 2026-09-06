@@ -87,6 +87,7 @@
   bcu,
   bcu2,
   bcu_xfer,
+  bcu_xfer_brrp,
   bcu_get,
   movef_ext,
   copy_ext,

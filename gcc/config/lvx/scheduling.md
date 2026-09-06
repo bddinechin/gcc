@@ -23,6 +23,9 @@
 (define_automaton "lvx_memw")
 (define_automaton "lvx_auxr")
 (define_automaton "lvx_auxw")
+(define_automaton "lvx_brrp")
+(define_automaton "lvx_misc")
+(define_automaton "lvx_accr")
 
 (define_cpu_unit
   "lvx_issue0_u,
@@ -48,12 +51,20 @@
 (define_cpu_unit "lvx_full_u"                 "lvx_full")
 
 (define_cpu_unit "lvx_lsu0_u, lvx_lsu1_u"     "lvx_lsu")
-(define_cpu_unit "lvx_ext0_u, lvx_ext1_u"     "lvx_ext")
+(define_cpu_unit "lvx_ext0_u, lvx_ext1_u, lvx_ext2_u, lvx_ext3_u" "lvx_ext")
 (define_cpu_unit "lvx_bcu0_u, lvx_bcu1_u"     "lvx_bcu")
 (define_cpu_unit "lvx_xfer_u"                 "lvx_xfer")
 (define_cpu_unit "lvx_memw_u"                 "lvx_memw")
 (define_cpu_unit "lvx_auxr0_u, lvx_auxr1_u"   "lvx_auxr")
 (define_cpu_unit "lvx_auxw0_u, lvx_auxw1_u"   "lvx_auxw")
+
+;; Resource-lvx-OUTW and Resource-lvx-COMP are deliberately absent: no
+;; reservation GCC emits requires either, and genautomata rejects a unit
+;; nothing uses.  The rule for the generator is the same -- declare a unit bank
+;; only when some emitted reservation names it.
+(define_cpu_unit "lvx_brrp0_u, lvx_brrp1_u"   "lvx_brrp")
+(define_cpu_unit "lvx_misc0_u, lvx_misc1_u"   "lvx_misc")
+(define_cpu_unit "lvx_accr_u"                 "lvx_accr")
 
 ;; No absence_set, exclusion_set or presence_set.  That LITE units are two of
 ;; the four ALU slots is stated the way the machine description states it: an
@@ -154,6 +165,24 @@
    |lvx_auxw1_u)"
 )
 
+(define_reservation "lvx_ext_u"
+  "(lvx_ext0_u
+   |lvx_ext1_u
+   |lvx_ext2_u
+   |lvx_ext3_u)"
+)
+
+(define_reservation "lvx_brrp_u"
+  "(lvx_brrp0_u
+   |lvx_brrp1_u)"
+)
+
+(define_reservation "lvx_misc_u"
+  "(lvx_misc0_u
+   |lvx_misc1_u)"
+)
+(define_reservation "lvx_misc_x2_u" "(lvx_misc0_u+lvx_misc1_u)")
+
 ;;
 ;;
 
@@ -174,8 +203,9 @@
 (define_reservation "lvx_v1_alu_tiny_x2_y_r" "lvx_tiny_x2_u + lvx_issue_x6_u")
 (define_reservation "lvx_v1_alu_tiny_x4_r" "lvx_tiny_x4_u + lvx_issue_x4_u")
 (define_reservation "lvx_v1_alu_tiny_x4_x_r" "lvx_tiny_x4_u + lvx_issue_x8_u")
-(define_reservation "lvx_v1_bcu_r" "lvx_bcu_u + lvx_issue_u")
+(define_reservation "lvx_v1_bcu_r" "lvx_bcu_u + lvx_brrp_u + lvx_issue_u")
 (define_reservation "lvx_v1_bcu_xfer_r" "lvx_bcu_u + lvx_xfer_u + lvx_issue_u")
+(define_reservation "lvx_v1_bcu_xfer_brrp_r" "lvx_bcu_u + lvx_xfer_u + lvx_brrp_u + lvx_issue_u")
 (define_reservation "lvx_v1_bcu2_r" "lvx_bcu_x2_u + lvx_issue_u")
 (define_reservation "lvx_v1_bcu2_tiny_lsu_r" "lvx_bcu_x2_u + lvx_tiny_u + lvx_lsu_u + lvx_issue_u")
 
@@ -204,13 +234,15 @@
 (define_reservation "lvx_v1_lsu_x2_memw_r" "lvx_lsu_x2_u + lvx_tiny_u + lvx_memw_u + lvx_issue_u")
 (define_reservation "lvx_v1_lsu_x2_memw_x_r" "lvx_lsu_x2_u + lvx_tiny_u + lvx_memw_u + lvx_issue_x2_u")
 (define_reservation "lvx_v1_lsu_x2_memw_y_r" "lvx_lsu_x2_u + lvx_tiny_u + lvx_memw_u + lvx_issue_x3_u")
-(define_reservation "lvx_v1_lsu_memw_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_issue_u")
-(define_reservation "lvx_v1_lsu_memw_x_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_issue_x2_u")
-(define_reservation "lvx_v1_lsu_memw_y_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_issue_x3_u")
+(define_reservation "lvx_v1_lsu_memw_accr_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_accr_u + lvx_issue_u")
+(define_reservation "lvx_v1_lsu_memw_accr_x_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_accr_u + lvx_issue_x2_u")
+(define_reservation "lvx_v1_lsu_memw_accr_y_r" "lvx_lsu_u + lvx_tiny_u + lvx_memw_u + lvx_accr_u + lvx_issue_x3_u")
+(define_reservation "lvx_v1_alu_lite_misc_r" "lvx_lite_u + lvx_tiny_u + lvx_misc_u + lvx_issue_u")
+(define_reservation "lvx_v1_alu_lite_misc_x2_r" "lvx_lite_x2_u + lvx_tiny_x2_u + lvx_misc_x2_u + lvx_issue_x2_u")
 (define_reservation "lvx_v1_alu_tiny_lite_x2_r" "lvx_tiny_x2_u + lvx_lite_u + lvx_issue_x2_u")
 (define_reservation "lvx_v1_alu_tiny_lite_x4_r" "lvx_tiny_x4_u + lvx_lite_x2_u + lvx_issue_x4_u")
-(define_reservation "lvx_v1_ext_r" "(lvx_ext0_u | lvx_ext1_u) + lvx_issue_u")
-(define_reservation "lvx_v1_ext_auxw_r" "(lvx_ext0_u | lvx_ext1_u) + lvx_auxw_u + lvx_issue_u")
+(define_reservation "lvx_v1_ext_r" "lvx_ext_u + lvx_issue_u")
+(define_reservation "lvx_v1_ext_auxw_r" "lvx_ext_u + lvx_misc_u + lvx_auxw_u + lvx_issue_u")
 (define_reservation "lvx_v1_nop_r" "lvx_tiny_u + lvx_issue_u")
 
 
@@ -233,7 +265,7 @@
 (define_insn_reservation "lvx_v1_alu_lite_w" 1 (eq_attr "type" "alu_lite_w") "lvx_v1_alu_lite_x_r")
 ;; LITE counterparts of alu_tiny_recv / alu_full_sfu, for mnemonics the MDS
 ;; schedules as ALU_LITE (xmovetd, fsrsrw).
-(define_insn_reservation "lvx_v1_alu_lite_recv" 1 (eq_attr "type" "alu_lite_recv") "lvx_v1_alu_lite_r")
+(define_insn_reservation "lvx_v1_alu_lite_recv" 1 (eq_attr "type" "alu_lite_recv") "lvx_v1_alu_lite_misc_r")
 (define_insn_reservation "lvx_v1_alu_lite_sfu" 15 (eq_attr "type" "alu_lite_sfu") "lvx_v1_alu_lite_r")
 (define_insn_reservation "lvx_v1_alu_lite_x" 1 (eq_attr "type" "alu_lite_x") "lvx_v1_alu_lite_x_r")
 (define_insn_reservation "lvx_v1_alu_lite_y" 1 (eq_attr "type" "alu_lite_y") "lvx_v1_alu_lite_y_r")
@@ -255,9 +287,9 @@
 (define_insn_reservation "lvx_v1_alu_tiny_w" 1 (eq_attr "type" "alu_tiny_w") "lvx_v1_alu_tiny_x_r")
 ;; movet_ext* emit xputdq, which the MDS schedules as ALU_LITE_MISC at
 ;; latency 1 -- one LITE unit, and no auxiliary read port.
-(define_insn_reservation "lvx_v1_movet_ext_v2" 1 (eq_attr "type" "movet_ext") "lvx_v1_alu_lite_x2_r")
-(define_insn_reservation "lvx_v1_movet_ext_lo_v2" 1 (eq_attr "type" "movet_ext_lo") "lvx_v1_alu_lite_r")
-(define_insn_reservation "lvx_v1_movet_ext_hi_v2" 1 (eq_attr "type" "movet_ext_hi") "lvx_v1_alu_lite_r")
+(define_insn_reservation "lvx_v1_movet_ext_v2" 1 (eq_attr "type" "movet_ext") "lvx_v1_alu_lite_misc_x2_r")
+(define_insn_reservation "lvx_v1_movet_ext_lo_v2" 1 (eq_attr "type" "movet_ext_lo") "lvx_v1_alu_lite_misc_r")
+(define_insn_reservation "lvx_v1_movet_ext_hi_v2" 1 (eq_attr "type" "movet_ext_hi") "lvx_v1_alu_lite_misc_r")
 ;; A template mixing a TINY and a LITE mnemonic (copyd + fnegd, for the complex
 ;; conjugate) needs the SUM of the two, and alu_tiny_x2 is not it: that reserves
 ;; any two TINY units, which may be tiny2+tiny3, leaving both LITE units free
@@ -307,9 +339,9 @@
 (define_insn_reservation "lvx_v1_store_core" 1 (eq_attr "type" "store_core") "lvx_v1_lsu_auxr_memw_r")
 (define_insn_reservation "lvx_v1_store_core_x" 1 (eq_attr "type" "store_core_x") "lvx_v1_lsu_auxr_memw_x_r")
 (define_insn_reservation "lvx_v1_store_core_y" 1 (eq_attr "type" "store_core_y") "lvx_v1_lsu_auxr_memw_y_r")
-(define_insn_reservation "lvx_v1_store_ext" 1 (eq_attr "type" "store_ext") "lvx_v1_lsu_memw_r")
-(define_insn_reservation "lvx_v1_store_ext_x" 1 (eq_attr "type" "store_ext_x") "lvx_v1_lsu_memw_x_r")
-(define_insn_reservation "lvx_v1_store_ext_y" 1 (eq_attr "type" "store_ext_y") "lvx_v1_lsu_memw_y_r")
+(define_insn_reservation "lvx_v1_store_ext" 1 (eq_attr "type" "store_ext") "lvx_v1_lsu_memw_accr_r")
+(define_insn_reservation "lvx_v1_store_ext_x" 1 (eq_attr "type" "store_ext_x") "lvx_v1_lsu_memw_accr_x_r")
+(define_insn_reservation "lvx_v1_store_ext_y" 1 (eq_attr "type" "store_ext_y") "lvx_v1_lsu_memw_accr_y_r")
 (define_insn_reservation "lvx_v1_aload_core" 24 (eq_attr "type" "aload_core") "lvx_v1_lsu_auxw_memw_r")
 (define_insn_reservation "lvx_v1_aload_core_x" 24 (eq_attr "type" "aload_core_x") "lvx_v1_lsu_auxw_memw_x_r")
 (define_insn_reservation "lvx_v1_aload_core_y" 24 (eq_attr "type" "aload_core_y") "lvx_v1_lsu_auxw_memw_y_r")
@@ -339,13 +371,15 @@
 
 (define_insn_reservation "lvx_v1_bcu" 1 (and (eq_attr "type" "bcu") (match_test "TARGET_DUAL_BCU")) "lvx_v1_bcu_r")
 (define_insn_reservation "lvx_v1_bcu_xfer" 1 (and (eq_attr "type" "bcu_xfer") (match_test "TARGET_DUAL_BCU")) "lvx_v1_bcu_xfer_r")
+(define_insn_reservation "lvx_v1_bcu_xfer_brrp" 1 (and (eq_attr "type" "bcu_xfer_brrp") (match_test "TARGET_DUAL_BCU")) "lvx_v1_bcu_xfer_brrp_r")
 (define_insn_reservation "lvx_v1_bcu2" 1 (eq_attr "type" "bcu2") "lvx_v1_bcu2_r")
 (define_insn_reservation "lvx_v1_bcu_get" 1 (eq_attr "type" "bcu_get") "lvx_v1_bcu2_tiny_lsu_r")
 (define_insn_reservation "lvx_v1_bcu_" 1 (and (eq_attr "type" "bcu") (match_test "!TARGET_DUAL_BCU")) "lvx_v1_bcu_r + lvx_bcu_x2_u")
 (define_insn_reservation "lvx_v1_bcu_xfer_" 1 (and (eq_attr "type" "bcu_xfer") (match_test "!TARGET_DUAL_BCU")) "lvx_v1_bcu_xfer_r + lvx_bcu_x2_u")
+(define_insn_reservation "lvx_v1_bcu_xfer_brrp_" 1 (and (eq_attr "type" "bcu_xfer_brrp") (match_test "!TARGET_DUAL_BCU")) "lvx_v1_bcu_xfer_brrp_r + lvx_bcu_x2_u")
 
 (define_insn_reservation "lvx_v1_movef_ext" 3 (eq_attr "type" "movef_ext") "lvx_v1_ext_auxw_r")
-(define_insn_reservation "lvx_v1_copy_ext" 1 (eq_attr "type" "copy_ext") "lvx_v1_ext_r")
+(define_insn_reservation "lvx_v1_copy_ext" 1 (eq_attr "type" "copy_ext") "lvx_v1_ext_auxw_r")
 (define_insn_reservation "lvx_v1_ext" 1 (eq_attr "type" "ext") "lvx_v1_ext_r")
 (define_insn_reservation "lvx_v1_ext_int" 3 (eq_attr "type" "ext_int") "lvx_v1_ext_r")
 (define_insn_reservation "lvx_v1_ext_float" 4 (eq_attr "type" "ext_float") "lvx_v1_ext_r")
