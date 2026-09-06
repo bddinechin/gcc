@@ -42,8 +42,5 @@
   copy_ext,
   ext,
   ext_int,
-  ext_float,
-  ext_send,
-  ext_recv,
-  ext_sendrecv"
+  ext_float"
   (const_string "alu"))
