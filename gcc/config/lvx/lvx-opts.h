@@ -361,12 +361,12 @@ enum lvx_arch_type
 #define HAVE_LVX_UMAX_DI (0)
 
 #define HAVE_LVX_MINUS_V16QI (1)
-#define HAVE_LVX_MINUS_V2DF (0)
+#define HAVE_LVX_MINUS_V2DF (1) // fsbfdp
 #define HAVE_LVX_MINUS_V2SF (1)
 #define HAVE_LVX_MINUS_V32QI (1)
 #define HAVE_LVX_MINUS_V4HI (1)
-#define HAVE_LVX_MINUS_V4SF (0)
-#define HAVE_LVX_MINUS_V8HF (0)
+#define HAVE_LVX_MINUS_V4SF (1) // fsbfwq
+#define HAVE_LVX_MINUS_V8HF (1) // fsbfho
 #define HAVE_LVX_MINUS_V8QI (1)
 
 #define HAVE_LVX_MOD_V16QI (1)
@@ -388,13 +388,13 @@ enum lvx_arch_type
 #define HAVE_LVX_MULT_M2x2_SF_M2x2_SF_M2x2_SF (0) // fmm222w -- removed from the ISA
 #define HAVE_LVX_MULT_SF_HF_HF (0)
 #define HAVE_LVX_MULT_V16QI (1)
-#define HAVE_LVX_MULT_V2DF (0)
+#define HAVE_LVX_MULT_V2DF (1) // fmuldp
 #define HAVE_LVX_MULT_V2DF_V2SF_V2SF (0)
 #define HAVE_LVX_MULT_V2SF (1)
 #define HAVE_LVX_MULT_V32QI (1)
-#define HAVE_LVX_MULT_V4SF (0)
+#define HAVE_LVX_MULT_V4SF (1) // fmulwq
 #define HAVE_LVX_MULT_V4SF_V4HF_V4HF (0)
-#define HAVE_LVX_MULT_V8HF (0)
+#define HAVE_LVX_MULT_V8HF (1) // fmulho
 #define HAVE_LVX_MULT_V8QI (1)
 
 #define HAVE_LVX_CMP_SF (1)
@@ -439,11 +439,11 @@ enum lvx_arch_type
 #define HAVE_LVX_NEG_V8QI (1)
 
 #define HAVE_LVX_PLUS_V16QI (1)
-#define HAVE_LVX_PLUS_V2DF (0)
+#define HAVE_LVX_PLUS_V2DF (1) // fadddp
 #define HAVE_LVX_PLUS_V2SF (1)
 #define HAVE_LVX_PLUS_V32QI (1)
-#define HAVE_LVX_PLUS_V4SF (0)
-#define HAVE_LVX_PLUS_V8HF (0)
+#define HAVE_LVX_PLUS_V4SF (1) // faddwq
+#define HAVE_LVX_PLUS_V8HF (1) // faddho
 #define HAVE_LVX_PLUS_V8QI (1)
 
 #define HAVE_LVX_SBMM8_DI (1)

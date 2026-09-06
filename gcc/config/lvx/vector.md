@@ -6324,7 +6324,7 @@
   [(set (match_operand:V16HF 0 "register_operand" "=r")
         (plus:V16HF (match_operand:V16HF 1 "register_operand" "r")
                    (match_operand:V16HF 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   "#"
 )
 
@@ -6346,7 +6346,7 @@
   [(set (match_operand:V16HF 0 "register_operand" "=r")
         (minus:V16HF (match_operand:V16HF 1 "register_operand" "r")
                     (match_operand:V16HF 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   "#"
 )
 
@@ -6368,7 +6368,7 @@
   [(set (match_operand:V16HF 0 "register_operand" "=r")
         (mult:V16HF (match_operand:V16HF 1 "register_operand" "r")
                    (match_operand:V16HF 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   "#"
 )
 
@@ -6393,7 +6393,7 @@
   [(set (match_operand:V8SF 0 "register_operand" "=r")
         (plus:V8SF (match_operand:V8SF 1 "register_operand" "r")
                    (match_operand:V8SF 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
@@ -6417,7 +6417,7 @@
   [(set (match_operand:V8SF 0 "register_operand" "=r")
         (minus:V8SF (match_operand:V8SF 1 "register_operand" "r")
                     (match_operand:V8SF 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
@@ -6441,7 +6441,7 @@
   [(set (match_operand:V8SF 0 "register_operand" "=r")
         (mult:V8SF (match_operand:V8SF 1 "register_operand" "r")
                    (match_operand:V8SF 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
@@ -6520,7 +6520,7 @@
   [(set (match_operand:V4DF 0 "register_operand" "=r")
         (plus:V4DF (match_operand:V4DF 1 "register_operand" "r")
                    (match_operand:V4DF 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
@@ -6564,7 +6564,7 @@
   [(set (match_operand:V4DF 0 "register_operand" "=r")
         (minus:V4DF (match_operand:V4DF 1 "register_operand" "r")
                     (match_operand:V4DF 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
@@ -6608,7 +6608,7 @@
   [(set (match_operand:V4DF 0 "register_operand" "=r")
         (mult:V4DF (match_operand:V4DF 1 "register_operand" "r")
                    (match_operand:V4DF 2 "register_operand" "r")))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -6633,7 +6633,7 @@
         (fma:V4DF (match_operand:V4DF 1 "register_operand" "r")
                   (match_operand:V4DF 2 "register_operand" "r")
                   (match_operand:V4DF 3 "register_operand" "0")))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
@@ -6662,7 +6662,7 @@
         (fma:V4DF (neg:V4DF (match_operand:V4DF 1 "register_operand" "r"))
                   (match_operand:V4DF 2 "register_operand" "r")
                   (match_operand:V4DF 3 "register_operand" "0")))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:DF (match_dup 0) 0)

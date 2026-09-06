@@ -293,11 +293,15 @@ const struct lvx_modmap lvx_modmap_coherency_all = {
 };
 const struct lvx_modmap *lvx_modmap_coherency = &lvx_modmap_coherency_all;
 
+/* MDS Modifier.yml, ID: conjugate -- members [ ., .C ].  This used to hold
+   the rounding modes, which belong to the floatmode modifier: the assembler
+   takes either on FMULWC, so the mistake was invisible, but it made ".c" --
+   the whole point of a conjugate builtin -- "modifier not recognized".  */
 const char *lvx_mod_conjugate_lvx_1_in[] = {
- "", ".rn", ".ru", ".rd", ".rz", NULL
+ "", ".c", NULL
 };
 const char *lvx_mod_conjugate_lvx_1_out[] = {
- "", ".rn", ".ru", ".rd", ".rz", NULL
+ "", ".c", NULL
 };
 const struct lvx_modmap lvx_modmap_conjugate_lvx_1 = {
   lvx_mod_conjugate_lvx_1_in, lvx_mod_conjugate_lvx_1_out

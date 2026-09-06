@@ -3186,6 +3186,22 @@
    (set_attr "issue" "lite")]
 )
 
+;; FMULWC is the only complex FP multiply the ISA has, and it is 64-bit --
+;; one complex float pair, on lvx_v1.  There is no fmulwcp, so
+;; HAVE_LVX_CPLX_MULT_V4SF is correctly (0) and the 256-bit aggregate has to
+;; come down in four pieces rather than two.
+
+(define_insn "lvx_fmulwc"
+  [(set (match_operand:V2SF 0 "register_operand" "=r")
+        (unspec:V2SF [(match_operand:V2SF 1 "register_operand" "r")
+                      (match_operand:V2SF 2 "register_operand" "r")
+                      (match_operand 3 "" "")] UNSPEC_FMULC))]
+  "HAVE_LVX_CPLX_MULT_V2SF"
+  "fmulwc%3 %0 = %1, %2"
+  [(set_attr "type" "fmuld")
+   (set_attr "issue" "lite")]
+)
+
 (define_insn "lvx_fmulwcq"
   [(set (match_operand:V8SF 0 "register_operand" "=r")
         (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "r")
@@ -3200,14 +3216,22 @@
         (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "")
                       (match_operand:V8SF 2 "register_operand" "")
                       (match_operand 3 "" "")] UNSPEC_FMULC))]
-  "HAVE_LVX_CPLX_MULT_V4SF && reload_completed"
-  [(set (subreg:V4SF (match_dup 0) 0)
-        (unspec:V4SF [(subreg:V4SF (match_dup 1) 0)
-                      (subreg:V4SF (match_dup 2) 0)
+  "HAVE_LVX_CPLX_MULT_V2SF && reload_completed"
+  [(set (subreg:V2SF (match_dup 0) 0)
+        (unspec:V2SF [(subreg:V2SF (match_dup 1) 0)
+                      (subreg:V2SF (match_dup 2) 0)
                       (match_dup 3)] UNSPEC_FMULC))
-   (set (subreg:V4SF (match_dup 0) 16)
-        (unspec:V4SF [(subreg:V4SF (match_dup 1) 16)
-                      (subreg:V4SF (match_dup 2) 16)
+   (set (subreg:V2SF (match_dup 0) 8)
+        (unspec:V2SF [(subreg:V2SF (match_dup 1) 8)
+                      (subreg:V2SF (match_dup 2) 8)
+                      (match_dup 3)] UNSPEC_FMULC))
+   (set (subreg:V2SF (match_dup 0) 16)
+        (unspec:V2SF [(subreg:V2SF (match_dup 1) 16)
+                      (subreg:V2SF (match_dup 2) 16)
+                      (match_dup 3)] UNSPEC_FMULC))
+   (set (subreg:V2SF (match_dup 0) 24)
+        (unspec:V2SF [(subreg:V2SF (match_dup 1) 24)
+                      (subreg:V2SF (match_dup 2) 24)
                       (match_dup 3)] UNSPEC_FMULC))]
   ""
 )
