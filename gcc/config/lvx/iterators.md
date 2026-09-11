@@ -1394,8 +1394,10 @@
 ])
 
 ;; Iterator V128I.
+;; The integer multiply-add widths.  V4SI was conditioned out of both of
+;; these while the ISA had no MADDWQ/MSBFWQ; it has since 2026-09-11.
 (define_mode_iterator V128M [
-  V8HI (V4SI "0") V2DI
+  V8HI V4SI V2DI
 ])
 
 ;; Iterator V128K excluding VV128KDI.
@@ -1478,7 +1480,7 @@
 
 ;; Iterator V256I.
 (define_mode_iterator V256M [
-  V16HI (V8SI "0") V4DI
+  V16HI V8SI V4DI
 ])
 
 ;; Iterator V256L excluding V4DI.

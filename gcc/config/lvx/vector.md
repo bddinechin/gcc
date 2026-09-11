@@ -1484,59 +1484,16 @@
 
 ;; V128I (V8HI V2DI)
 
-(define_insn_and_split "mul<mode>3"
+(define_insn "mul<mode>3"
   [(set (match_operand:V128I 0 "register_operand" "=r")
         (mult:V128I (match_operand:V128I 1 "register_operand" "r")
                     (match_operand:V128I 2 "register_operand" "r")))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (mult:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                     (subreg:<HALF> (match_dup 2) 0)))
-   (set (subreg:<HALF> (match_dup 0) 8)
-        (mult:<HALF> (subreg:<HALF> (match_dup 1) 8)
-                     (subreg:<HALF> (match_dup 2) 8)))]
-  ""
-  [(set_attr "type" "imadd")
+  "LVX_2"
+  "mul<suffix> %0 = %1, %2"
+  [(set_attr "type" "imul")
    (set_attr "issue" "lite")]
 )
 
-(define_insn_and_split "*mul<mode>3_s1"
-  [(set (match_operand:V128I 0 "register_operand" "=&r")
-        (mult:V128I (vec_duplicate:V128I (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V128I 2 "register_operand" "r")))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (mult:<HALF> (match_dup 1)
-                     (subreg:<HALF> (match_dup 2) 0)))
-   (set (subreg:<HALF> (match_dup 0) 8)
-        (mult:<HALF> (match_dup 1)
-                     (subreg:<HALF> (match_dup 2) 8)))]
-  ""
-  [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn_and_split "*mul<mode>3_s2"
-  [(set (match_operand:V128I 0 "register_operand" "=&r")
-        (mult:V128I (match_operand:V128I 1 "register_operand" "r")
-                    (vec_duplicate:V128I (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (mult:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                     (match_dup 2)))
-   (set (subreg:<HALF> (match_dup 0) 8)
-        (mult:<HALF> (subreg:<HALF> (match_dup 1) 8)
-                     (match_dup 2)))]
-  ""
-  [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
-)
 
 (define_insn_and_split "rotl<mode>3"
   [(set (match_operand:V128I 0 "register_operand" "=r")
@@ -2228,49 +2185,28 @@
    (set_attr "length" "4")]
 )
 
-(define_insn_and_split "madd<mode><mode>4"
+(define_insn "madd<mode><mode>4"
   [(set (match_operand:V128M 0 "register_operand" "=r")
         (plus:V128M (mult:V128M (match_operand:V128M 1 "register_operand" "r")
                                 (match_operand:V128M 2 "register_operand" "r"))
                     (match_operand:V128M 3 "register_operand" "0")))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (plus:<HALF> (mult:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                  (subreg:<HALF> (match_dup 2) 0))
-                     (subreg:<HALF> (match_dup 3) 0)))
-   (set (subreg:<HALF> (match_dup 0) 8)
-        (plus:<HALF> (mult:<HALF> (subreg:<HALF> (match_dup 1) 8)
-                                  (subreg:<HALF> (match_dup 2) 8))
-                     (subreg:<HALF> (match_dup 3) 8)))]
-  ""
+  "LVX_2"
+  "madd<suffix> %0 = %1, %2"
   [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")
-   (set_attr "length"      "8")]
+   (set_attr "issue" "lite")]
 )
 
-(define_insn_and_split "msub<mode><mode>4"
+(define_insn "msub<mode><mode>4"
   [(set (match_operand:V128M 0 "register_operand" "=r")
         (minus:V128M (match_operand:V128M 3 "register_operand" "0")
-                    (mult:V128M (match_operand:V128M 1 "register_operand" "r")
-                                (match_operand:V128M 2 "register_operand" "r"))))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (minus:<HALF> (subreg:<HALF> (match_dup 3) 0)
-                      (mult:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                   (subreg:<HALF> (match_dup 2) 0))))
-   (set (subreg:<HALF> (match_dup 0) 8)
-        (minus:<HALF> (subreg:<HALF> (match_dup 3) 8)
-                      (mult:<HALF> (subreg:<HALF> (match_dup 1) 8)
-                                   (subreg:<HALF> (match_dup 2) 8))))]
-  ""
+                     (mult:V128M (match_operand:V128M 1 "register_operand" "r")
+                                 (match_operand:V128M 2 "register_operand" "r"))))]
+  "LVX_2"
+  "msbf<suffix> %0 = %1, %2"
   [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")
-   (set_attr "length"      "8")]
+   (set_attr "issue" "lite")]
 )
+
 
 
 ;; V128J (V8HI V4SI V2DI)
@@ -3224,77 +3160,6 @@
 
 ;; V256I (V16HI V4DI)
 
-(define_insn_and_split "mul<mode>3"
-  [(set (match_operand:V256I 0 "register_operand" "=r")
-        (mult:V256I (match_operand:V256I 1 "register_operand" "r")
-                    (match_operand:V256I 2 "register_operand" "r")))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 0)
-                      (subreg:<CHUNK> (match_dup 2) 0)))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 8)
-                      (subreg:<CHUNK> (match_dup 2) 8)))
-   (set (subreg:<CHUNK> (match_dup 0) 16)
-        (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 16)
-                      (subreg:<CHUNK> (match_dup 2) 16)))
-   (set (subreg:<CHUNK> (match_dup 0) 24)
-        (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 24)
-                      (subreg:<CHUNK> (match_dup 2) 24)))]
-  ""
-  [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn_and_split "*mul<mode>3_s1"
-  [(set (match_operand:V256I 0 "register_operand" "=&r")
-        (mult:V256I (vec_duplicate:V256I (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V256I 2 "register_operand" "r")))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (mult:<CHUNK> (match_dup 1)
-                      (subreg:<CHUNK> (match_dup 2) 0)))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (mult:<CHUNK> (match_dup 1)
-                      (subreg:<CHUNK> (match_dup 2) 8)))
-   (set (subreg:<CHUNK> (match_dup 0) 16)
-        (mult:<CHUNK> (match_dup 1)
-                      (subreg:<CHUNK> (match_dup 2) 16)))
-   (set (subreg:<CHUNK> (match_dup 0) 24)
-        (mult:<CHUNK> (match_dup 1)
-                      (subreg:<CHUNK> (match_dup 2) 24)))]
-  ""
-  [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn_and_split "*mul<mode>3_s2"
-  [(set (match_operand:V256I 0 "register_operand" "=&r")
-        (mult:V256I (match_operand:V256I 1 "register_operand" "r")
-                    (vec_duplicate:V256I (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 0)
-                      (match_dup 2)))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 8)
-                      (match_dup 2)))
-   (set (subreg:<CHUNK> (match_dup 0) 16)
-        (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 16)
-                      (match_dup 2)))
-   (set (subreg:<CHUNK> (match_dup 0) 24)
-        (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 24)
-                      (match_dup 2)))]
-  ""
-  [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
-)
 
 
 ;; V256J (V16HI V8SI V4DI)
@@ -4421,25 +4286,17 @@
         (plus:V256M (mult:V256M (match_operand:V256M 1 "register_operand" "r")
                                 (match_operand:V256M 2 "register_operand" "r"))
                     (match_operand:V256M 3 "register_operand" "0")))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (plus:<CHUNK> (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 0)
-                                    (subreg:<CHUNK> (match_dup 2) 0))
-                      (subreg:<CHUNK> (match_dup 3) 0)))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (plus:<CHUNK> (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 8)
-                                    (subreg:<CHUNK> (match_dup 2) 8))
-                      (subreg:<CHUNK> (match_dup 3) 8)))
-   (set (subreg:<CHUNK> (match_dup 0) 16)
-        (plus:<CHUNK> (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 16)
-                                    (subreg:<CHUNK> (match_dup 2) 16))
-                      (subreg:<CHUNK> (match_dup 3) 16)))
-   (set (subreg:<CHUNK> (match_dup 0) 24)
-        (plus:<CHUNK> (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 24)
-                                    (subreg:<CHUNK> (match_dup 2) 24))
-                      (subreg:<CHUNK> (match_dup 3) 24)))]
+  [(set (subreg:<HALF> (match_dup 0) 0)
+        (plus:<HALF> (mult:<HALF> (subreg:<HALF> (match_dup 1) 0)
+                                  (subreg:<HALF> (match_dup 2) 0))
+                     (subreg:<HALF> (match_dup 3) 0)))
+   (set (subreg:<HALF> (match_dup 0) 16)
+        (plus:<HALF> (mult:<HALF> (subreg:<HALF> (match_dup 1) 16)
+                                  (subreg:<HALF> (match_dup 2) 16))
+                     (subreg:<HALF> (match_dup 3) 16)))]
   ""
   [(set_attr "type" "imadd")
    (set_attr "issue" "lite")]
@@ -4450,30 +4307,22 @@
         (minus:V256M (match_operand:V256M 3 "register_operand" "0")
                      (mult:V256M (match_operand:V256M 1 "register_operand" "r")
                                  (match_operand:V256M 2 "register_operand" "r"))))]
-  ""
+  "LVX_2"
   "#"
   "reload_completed"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (minus:<CHUNK> (subreg:<CHUNK> (match_dup 3) 0)
-                       (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 0)
-                                     (subreg:<CHUNK> (match_dup 2) 0))))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (minus:<CHUNK> (subreg:<CHUNK> (match_dup 3) 8)
-                       (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 8)
-                                     (subreg:<CHUNK> (match_dup 2) 8))))
-   (set (subreg:<CHUNK> (match_dup 0) 16)
-        (minus:<CHUNK> (subreg:<CHUNK> (match_dup 3) 16)
-                       (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 16)
-                                     (subreg:<CHUNK> (match_dup 2) 16))))
-   (set (subreg:<CHUNK> (match_dup 0) 24)
-        (minus:<CHUNK> (subreg:<CHUNK> (match_dup 3) 24)
-                       (mult:<CHUNK> (subreg:<CHUNK> (match_dup 1) 24)
-                                     (subreg:<CHUNK> (match_dup 2) 24))))]
+  [(set (subreg:<HALF> (match_dup 0) 0)
+        (minus:<HALF> (subreg:<HALF> (match_dup 3) 0)
+                      (mult:<HALF> (subreg:<HALF> (match_dup 1) 0)
+                                   (subreg:<HALF> (match_dup 2) 0))))
+   (set (subreg:<HALF> (match_dup 0) 16)
+        (minus:<HALF> (subreg:<HALF> (match_dup 3) 16)
+                      (mult:<HALF> (subreg:<HALF> (match_dup 1) 16)
+                                   (subreg:<HALF> (match_dup 2) 16))))]
   ""
   [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")
-   (set_attr "length"      "8")]
+   (set_attr "issue" "lite")]
 )
+
 
 
 ;; V256J (V16HI V8SI V4DI)
@@ -4998,79 +4847,24 @@
 
 ;; V8SI
 
-(define_insn_and_split "mulv8si3"
-  [(set (match_operand:V8SI 0 "register_operand" "=r")
-        (mult:V8SI (match_operand:V8SI 1 "register_operand" "r")
-                    (match_operand:V8SI 2 "register_operand" "r")))]
-  ""
+(define_insn_and_split "mul<mode>3"
+  [(set (match_operand:V256J 0 "register_operand" "=r")
+        (mult:V256J (match_operand:V256J 1 "register_operand" "r")
+                    (match_operand:V256J 2 "register_operand" "r")))]
+  "LVX_2"
   "#"
   "reload_completed"
-  [(set (subreg:V4SI (match_dup 0) 0)
-        (mult:V4SI (subreg:V4SI (match_dup 1) 0)
-                   (subreg:V4SI (match_dup 2) 0)))
-   (set (subreg:V4SI (match_dup 0) 16)
-        (mult:V4SI (subreg:V4SI (match_dup 1) 16)
-                   (subreg:V4SI (match_dup 2) 16)))]
+  [(set (subreg:<HALF> (match_dup 0) 0)
+        (mult:<HALF> (subreg:<HALF> (match_dup 1) 0)
+                     (subreg:<HALF> (match_dup 2) 0)))
+   (set (subreg:<HALF> (match_dup 0) 16)
+        (mult:<HALF> (subreg:<HALF> (match_dup 1) 16)
+                     (subreg:<HALF> (match_dup 2) 16)))]
   ""
-  [(set_attr "type" "imadd")
+  [(set_attr "type" "imul")
    (set_attr "issue" "lite")]
 )
 
-(define_insn "maddv8siv8si4_2"
-  [(set (match_operand:V8SI 0 "register_operand" "=r")
-        (plus:V8SI (mult:V8SI (match_operand:V8SI 1 "register_operand" "r")
-                              (match_operand:V8SI 2 "register_operand" "r"))
-                   (match_operand:V8SI 3 "register_operand" "0")))]
-  "HAVE_LVX_FMA_V4SI || HAVE_LVX_FMA_V2SI"
-  "#"
-  [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
-)
-
-(define_split
-  [(set (match_operand:V8SI 0 "register_operand" "")
-        (plus:V8SI (mult:V8SI (match_operand:V8SI 1 "register_operand" "")
-                              (match_operand:V8SI 2 "register_operand" ""))
-                   (match_operand:V8SI 3 "register_operand" "")))]
-  "HAVE_LVX_FMA_V4SI && reload_completed"
-  [(set (subreg:V4SI (match_dup 0) 0)
-        (plus:V4SI (mult:V4SI (subreg:V4SI (match_dup 1) 0)
-                              (subreg:V4SI (match_dup 2) 0))
-                   (subreg:V4SI (match_dup 3) 0)))
-   (set (subreg:V4SI (match_dup 0) 16)
-        (plus:V4SI (mult:V4SI (subreg:V4SI (match_dup 1) 16)
-                              (subreg:V4SI (match_dup 2) 16))
-                   (subreg:V4SI (match_dup 3) 16)))]
-  ""
-)
-
-(define_insn "msubv8siv8si4_2"
-  [(set (match_operand:V8SI 0 "register_operand" "=r")
-        (minus:V8SI (match_operand:V8SI 3 "register_operand" "0")
-                    (mult:V8SI (match_operand:V8SI 1 "register_operand" "r")
-                               (match_operand:V8SI 2 "register_operand" "r"))))]
-  "HAVE_LVX_FMS_V4SI || HAVE_LVX_FMS_V2SI"
-  "#"
-  [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
-)
-
-(define_split
-  [(set (match_operand:V8SI 0 "register_operand" "")
-        (minus:V8SI (match_operand:V8SI 3 "register_operand" "")
-                    (mult:V8SI (match_operand:V8SI 1 "register_operand" "")
-                               (match_operand:V8SI 2 "register_operand" ""))))]
-  "HAVE_LVX_FMS_V4SI && reload_completed"
-  [(set (subreg:V4SI (match_dup 0) 0)
-        (minus:V4SI (subreg:V4SI (match_dup 3) 0)
-                    (mult:V4SI (subreg:V4SI (match_dup 1) 0)
-                               (subreg:V4SI (match_dup 2) 0))))
-   (set (subreg:V4SI (match_dup 0) 16)
-        (minus:V4SI (subreg:V4SI (match_dup 3) 16)
-                    (mult:V4SI (subreg:V4SI (match_dup 1) 16)
-                               (subreg:V4SI (match_dup 2) 16))))]
-  ""
-)
 
 
 ;; V4DI
