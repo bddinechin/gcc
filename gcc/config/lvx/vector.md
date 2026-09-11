@@ -488,6 +488,32 @@
    (set_attr "length" "8")]
 )
 
+;; A scalar broadcast into a 128-bit vector in ONE instruction: SPLAT{B,H,W}Q
+;; write the low element of a GPR across every lane of the pair.  This is the
+;; canonical vec_duplicate-of-an-element RTL, so it matches whatever the middle
+;; end produces for `v = {x,x,x,x}` and for the scalar operand of `v * s`.
+;;
+;; Before it, a splat went through lvx_expand_chunk_splat: materialise a magic
+;; constant (LVX_SBMM8D_SPLATW0D), sbmm8d it against the value to fill a 64-bit
+;; chunk, then *dup128 to copy the chunk into both halves -- three instructions
+;; and a register, and in fact none of it, since UNSPEC_SBMM8D had no pattern
+;; and every splat was an unrecognizable insn.
+;;
+;; V2DI and V2DF are deliberately absent: their duplicate is *dup128 below, a
+;; single copyd that is `tiny` where splatdq is `lite`, so the ISA's D form
+;; buys nothing here.
+(define_mode_iterator SPLAT128 [V16QI V8HI V8HF V4SI V4SF])
+(define_mode_attr splat [(V16QI "b") (V8HI "h") (V8HF "h") (V4SI "w") (V4SF "w")])
+
+(define_insn "*splat128<mode>"
+  [(set (match_operand:SPLAT128 0 "register_operand" "=r")
+        (vec_duplicate:SPLAT128 (match_operand:<INNER> 1 "register_operand" "r")))]
+  ""
+  "splat<splat>q %0 = %1"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
 (define_insn_and_split "*dup128"
   [(set (match_operand:SIMD128 0 "register_operand" "=r")
         (vec_duplicate:SIMD128 (match_operand:<CHUNK> 1 "nonmemory_operand" "r")))]

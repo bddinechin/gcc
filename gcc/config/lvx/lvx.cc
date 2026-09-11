@@ -2525,18 +2525,20 @@ lvx_expand_vector_extract (rtx target, rtx source, rtx where)
   gcc_unreachable ();
 }
 
-#define LVX_SBMM8D_SPLATB0D 0x0101010101010101ULL
-#define LVX_SBMM8D_SPLATH0D 0x0201020102010201ULL
-#define LVX_SBMM8D_SPLATW0D 0x0804020108040201ULL
 #define LVX_SBMM8D_IDENTITY 0x8040201008040201ULL
 
 /* Splat a value of mode smaller than a word into a word size vector chunk.
  * This is used both for initializing a vector from a scalar, and for the
- * vector arithmetic patterns that operate a vector with a scalar.  */
+ * vector arithmetic patterns that operate a vector with a scalar.
+ *
+ * SPLAT{B,H,W}Q broadcast the low element of a GPR across a 128-bit pair, so
+ * the chunk is the low half of one of those.  It replaces an sbmm8d against a
+ * magic constant, which cost a maked and a register
+ * before the multiply -- and which had no insn pattern at all, so every splat
+ * that reached here was an unrecognizable insn.  */
 void
 lvx_expand_chunk_splat (rtx target, rtx source, machine_mode inner_mode)
 {
-  HOST_WIDE_INT constant = 0;
   machine_mode chunk_mode = GET_MODE (target);
   unsigned inner_size = GET_MODE_SIZE (inner_mode);
 
@@ -2546,97 +2548,118 @@ lvx_expand_chunk_splat (rtx target, rtx source, machine_mode inner_mode)
       return;
     }
 
-  if (!REG_P (source) && !SUBREG_P (source))
-    source = force_reg (inner_mode, source);
-
-  switch (inner_size)
+  machine_mode vmode;
+  switch (inner_mode)
     {
-    case 1:
-      constant = LVX_SBMM8D_SPLATB0D;
-      break;
-    case 2:
-      constant = LVX_SBMM8D_SPLATH0D;
-      break;
-    case 4:
-      constant = LVX_SBMM8D_SPLATW0D;
-      break;
-    default:
-      gcc_unreachable ();
+    case E_QImode: vmode = V16QImode; break;
+    case E_HImode: vmode = V8HImode;  break;
+    case E_HFmode: vmode = V8HFmode;  break;
+    case E_SImode: vmode = V4SImode;  break;
+    case E_SFmode: vmode = V4SFmode;  break;
+    default: gcc_unreachable ();
     }
-  rtx op2 = force_reg (DImode, GEN_INT (constant));
-  rtx op1 = gen_lowpart (inner_mode, source);
-  rtx sbmm8d = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (2, op1, op2), UNSPEC_SBMM8D);
-  emit_insn (gen_rtx_SET (target, sbmm8d));
+
+  if (GET_MODE (source) != inner_mode)
+    source = gen_lowpart (inner_mode, source);
+  source = force_reg (inner_mode, source);
+
+  rtx pair = gen_reg_rtx (vmode);
+  emit_insn (gen_rtx_SET (pair, gen_rtx_VEC_DUPLICATE (vmode, source)));
+  emit_move_insn (target, simplify_gen_subreg (chunk_mode, pair, vmode, 0));
+}
+
+/* The integer value of a constant lane, or NULL_RTX for a variable one.  A
+   float lane arrives as a CONST_DOUBLE, and its bits are what goes in the
+   chunk, so it folds too.  */
+static rtx
+lvx_lane_const (rtx x, machine_mode inner_mode, scalar_int_mode int_inner)
+{
+  if (CONST_INT_P (x))
+    return x;
+  if (!CONSTANT_P (x))
+    return NULL_RTX;
+  rtx c = simplify_subreg (int_inner, x, inner_mode, 0);
+  return (c && CONST_INT_P (c)) ? c : NULL_RTX;
 }
 
 /* Helper function for lvx_expand_vector_init () in case inner mode size < 64 bits.
  * The init source has been partioned into 64-bit chunks, which are inserted into
  * the corresponding 64-bit chunks of the target.
- */
-static rtx
+ *
+ * A 128-bit vector is a GPR pair, so a lane is a bit-field at a known offset of
+ * a known half -- and LVX has a bit-field insert, insf, which the insv pattern
+ * spells.  So a chunk is built with the scalar instructions the ISA already
+ * has: the constant lanes fold into ONE immediate (a maked covers every constant
+ * in the chunk at once), and each variable lane is one insf.  The first lane of
+ * an all-variable chunk is a zero-extend rather than an insf into a zero: same
+ * result, one instruction fewer.
+ *
+ * This used to emit UNSPEC_INITX4A..D / UNSPEC_INITX8A..H and VEC_CONCAT on the
+ * 64-bit chunk, the departed 64-bit SIMD family, and none of those had a
+ * pattern -- `v4si v = {a,b,c,d}` was an unrecognizable insn at every level.  */
+static void
 lvx_expand_chunk_insert (rtx target, rtx source, int index,
 			 machine_mode inner_mode)
 {
+  /* The driver hands the chunk over as a 64-bit VECTOR subreg of the target
+     (V2SI for a V4SI, and so on), which is the right shape for a vector move
+     and the wrong one for what happens here: a maked wants an integer
+     immediate and insf a zero_extract on an integer.  So work on the DImode
+     view of the same bits, which simplify_gen_subreg folds through the vector
+     subreg to a DI subreg of the vector itself.  */
   machine_mode chunk_mode = GET_MODE (target);
-  unsigned inner_size = GET_MODE_SIZE (inner_mode);
-
-  switch (inner_size)
+  if (chunk_mode != DImode)
     {
-    case 4:
-      {
-	rtx op1 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx op2 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	emit_insn (gen_rtx_SET (target, gen_rtx_VEC_CONCAT (chunk_mode, op1, op2)));
-      }
-      break;
-    case 2:
-      {
-	rtx op1 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx op2 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx op3 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx op4 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx initx4a = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (1, op1), UNSPEC_INITX4A);
-	rtx initx4b = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (2, op2, target), UNSPEC_INITX4B);
-	rtx initx4c = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (2, op3, target), UNSPEC_INITX4C);
-	rtx initx4d = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (2, op4, target), UNSPEC_INITX4D);
-	emit_insn (gen_rtx_SET (target, initx4a));
-	emit_insn (gen_rtx_SET (target, initx4b));
-	emit_insn (gen_rtx_SET (target, initx4c));
-	emit_insn (gen_rtx_SET (target, initx4d));
-      }
-      break;
-    case 1:
-      {
-	rtx op1 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx op2 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx op3 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx op4 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx op5 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx op6 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx op7 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx op8 = copy_to_mode_reg (inner_mode, XVECEXP (source, 0, index++));
-	rtx initx8a = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (1, op1), UNSPEC_INITX8A);
-	rtx initx8b = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (2, op2, target), UNSPEC_INITX8B);
-	rtx initx8c = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (2, op3, target), UNSPEC_INITX8C);
-	rtx initx8d = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (2, op4, target), UNSPEC_INITX8D);
-	rtx initx8e = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (2, op5, target), UNSPEC_INITX8E);
-	rtx initx8f = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (2, op6, target), UNSPEC_INITX8F);
-	rtx initx8g = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (2, op7, target), UNSPEC_INITX8G);
-	rtx initx8h = gen_rtx_UNSPEC (chunk_mode, gen_rtvec (2, op8, target), UNSPEC_INITX8H);
-	emit_insn (gen_rtx_SET (target, initx8a));
-	emit_insn (gen_rtx_SET (target, initx8b));
-	emit_insn (gen_rtx_SET (target, initx8c));
-	emit_insn (gen_rtx_SET (target, initx8d));
-	emit_insn (gen_rtx_SET (target, initx8e));
-	emit_insn (gen_rtx_SET (target, initx8f));
-	emit_insn (gen_rtx_SET (target, initx8g));
-	emit_insn (gen_rtx_SET (target, initx8h));
-      }
-      break;
-    default:
-      gcc_unreachable ();
+      target = simplify_gen_subreg (DImode, target, chunk_mode, 0);
+      chunk_mode = DImode;
     }
-  return target;
+  unsigned inner_bits = GET_MODE_BITSIZE (inner_mode);
+  int nlanes = GET_MODE_BITSIZE (chunk_mode) / inner_bits;
+  scalar_int_mode int_inner = int_mode_for_mode (inner_mode).require ();
+  unsigned HOST_WIDE_INT lane_mask
+    = inner_bits >= HOST_BITS_PER_WIDE_INT
+      ? HOST_WIDE_INT_M1U : (HOST_WIDE_INT_1U << inner_bits) - 1;
+
+  unsigned HOST_WIDE_INT bits = 0;
+  bool any_const = false;
+  for (int i = 0; i < nlanes; i++)
+    {
+      rtx c = lvx_lane_const (XVECEXP (source, 0, index + i), inner_mode, int_inner);
+      if (c)
+	{
+	  bits |= (UINTVAL (c) & lane_mask) << (i * inner_bits);
+	  any_const = true;
+	}
+    }
+
+  bool seeded = false;
+  if (any_const)
+    {
+      emit_move_insn (target, gen_int_mode (bits, chunk_mode));
+      seeded = true;
+    }
+
+  for (int i = 0; i < nlanes; i++)
+    {
+      rtx x = XVECEXP (source, 0, index + i);
+      if (lvx_lane_const (x, inner_mode, int_inner))
+	continue;
+      rtx val = force_reg (inner_mode, x);
+      if (!seeded)
+	{
+	  /* No constants, so this is lane 0 of an all-variable chunk.  */
+	  gcc_assert (i == 0);
+	  emit_insn (gen_rtx_SET (target,
+				  gen_rtx_ZERO_EXTEND (chunk_mode,
+						       gen_lowpart (int_inner, val))));
+	  seeded = true;
+	  continue;
+	}
+      rtx field = gen_rtx_ZERO_EXTRACT (chunk_mode, target,
+					GEN_INT (inner_bits),
+					GEN_INT (i * inner_bits));
+      emit_insn (gen_rtx_SET (field, gen_lowpart (chunk_mode, val)));
+    }
 }
 
 /* Called by the vec_duplicate<mode> standard pattern and by
@@ -2647,11 +2670,28 @@ lvx_expand_vector_duplicate (rtx target, rtx source)
   machine_mode vector_mode = GET_MODE (target);
   machine_mode inner_mode = GET_MODE_INNER (vector_mode);
   machine_mode chunk_mode = lvx_get_chunk_mode (vector_mode);
+  unsigned vector_size = GET_MODE_SIZE (vector_mode);
+  unsigned inner_size = GET_MODE_SIZE (inner_mode);
+
+  /* A 128-bit vector of sub-word lanes is exactly one SPLAT{B,H,W}Q, so emit
+     the canonical vec_duplicate and let *splat128 match it.  Going through the
+     chunk below would splat into a temporary pair, take its low half, and then
+     *dup128 that half back into both halves -- three instructions for one.
+     Double-word lanes stay on the chunk route: *dup128 makes those a single
+     copyd, which is tiny where splatdq is lite.  */
+  if (vector_size == 2 * UNITS_PER_WORD && inner_size < UNITS_PER_WORD)
+    {
+      if (GET_MODE (source) != inner_mode)
+	source = gen_lowpart (inner_mode, source);
+      source = force_reg (inner_mode, source);
+      emit_insn (gen_rtx_SET (target,
+			      gen_rtx_VEC_DUPLICATE (vector_mode, source)));
+      return;
+    }
 
   rtx chunk = gen_reg_rtx (chunk_mode);
   lvx_expand_chunk_splat (chunk, source, inner_mode);
 
-  unsigned vector_size = GET_MODE_SIZE (vector_mode);
   if (vector_size > UNITS_PER_WORD)
     emit_insn (gen_rtx_SET (target,
 			    gen_rtx_VEC_DUPLICATE (vector_mode, chunk)));
