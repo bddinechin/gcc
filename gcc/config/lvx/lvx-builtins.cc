@@ -872,7 +872,7 @@ tree lvx_builtin_types[LVX_BTI_MAX];
 /* Classifies the prototype of a built-in function.  */
 enum lvx_function_type {
 #define DEF_LVX_FTYPE(NARGS, LIST) LVX_FTYPE_NAME##NARGS LIST,
-#include "config/lvx/lvx-ftypes.def"
+#include "lvx-ftypes.def"
 #undef DEF_LVX_FTYPE
   LVX_MAX_FTYPE_MAX
 };
@@ -885,7 +885,7 @@ lvx_get_modifiers (enum lvx_function_type type)
 #define DEF_LVX_FTYPE(NUM, ARGS)					\
   case LVX_FTYPE_NAME##NUM ARGS:					\
     return LVX_FTYPE_MOD##NUM ARGS;
-#include "config/lvx/lvx-ftypes.def"
+#include "lvx-ftypes.def"
 #undef DEF_LVX_FTYPE
   default:
     return NULL;
@@ -911,7 +911,7 @@ lvx_build_function_type (enum lvx_function_type type, int variadic_p)
 	: build_function_type_list (LVX_FTYPE_ATYPES##NUM ARGS,         \
 					    NULL_TREE);                 \
     break;
-#include "config/lvx/lvx-ftypes.def"
+#include "lvx-ftypes.def"
 #undef DEF_LVX_FTYPE
       default:
 	gcc_unreachable ();

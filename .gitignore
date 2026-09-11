@@ -71,3 +71,6 @@ stamp-*
 /gmp*
 /isl*
 /gettext*
+
+# Generated into the build directory by config/lvx/t-lvx from lvx-builtins.def.
+/gcc/config/lvx/lvx-ftypes.def

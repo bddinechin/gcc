@@ -1,7 +1,18 @@
 # Disable pedantic due to unwanted behavior of ISO C++11 with respect
 # to variadic macros called with empty argument list.
+# lvx-ftypes.def is a function of lvx-builtins.def alone -- every
+# DEF_LVX_FTYPE exists because some builtin asks for that signature -- so it
+# is generated here, into the build directory, rather than checked in.  It
+# used to be an MDS BE/GCC product, which put a file whose only input is in
+# this tree on the other side of a copy step that had to be remembered.
+lvx-ftypes.def: $(srcdir)/config/lvx/lvx-builtins.def \
+  $(srcdir)/config/lvx/gen-ftypes.awk
+	LC_ALL=C $(AWK) -f $(srcdir)/config/lvx/gen-ftypes.awk \
+	  $(srcdir)/config/lvx/lvx-builtins.def > tmp-lvx-ftypes.def
+	$(SHELL) $(srcdir)/../move-if-change tmp-lvx-ftypes.def lvx-ftypes.def
+
 lvx-builtins.o: $(srcdir)/config/lvx/lvx-builtins.cc \
-  $(srcdir)/config/lvx/lvx-builtins.def $(CONFIG_H) \
+  $(srcdir)/config/lvx/lvx-builtins.def lvx-ftypes.def $(CONFIG_H) \
   $(SYSTEM_H) coretypes.h $(TM_H) $(RTL_H) $(TREE_H) $(RECOG_H) langhooks.h \
   $(DIAGNOSTIC_CORE_H) $(OPTABS_H) $(srcdir)/config/lvx/lvx-modes.def
 	$(COMPILER) -c $(ALL_COMPILERFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
