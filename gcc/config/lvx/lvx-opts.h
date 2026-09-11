@@ -35,18 +35,15 @@ enum lvx_arch_type
 #define LVX_1 (lvx_arch_name == LVX_ARCH_LVX_1)
 #define LVX_2 (lvx_arch_name == LVX_ARCH_LVX_2)
 
-/* FNARROWWHO and FNARROWDWQ, the vector narrowings.  Their formats used to
-   declare a 64-bit singleReg destination for a 128-bit result, and the two
-   shared an encoding; both fixed in lvx-mds 10b4516, and gas now takes
-   "fnarrowwho $r0r1 = $r0r1r2r3" as itself.  What still holds this at (0)
-   is FNARROWWHO's execution block, which converts lanes 0..3 only --
-   argument2.32[0..3] into result1.16[0..3] -- while its description says
-   eight, so the ISS (and any hardware built from the description) leaves
-   lanes 4..7 zero.  validation/tests/micro/simdfp.c's round trip scores
-   170 against 186 with this at (1).  FNARROWDWQ is genuinely four lanes and
-   is correct.  At (0) trunc<wide><mode>2 narrows one lane at a time with the
-   scalar FNARROWWH / FNARROWDW; flip once lanes 4..7 are added.  */
-#define HAVE_LVX_FP_NARROW_VECTOR (0) // fnarrowwho, fnarrowdwq
+/* FNARROWWHO and FNARROWDWQ, the vector narrowings: one instruction for a
+   128-bit result, where the scalar FNARROWWH / FNARROWDW take one per lane.
+   Three ISA-description bugs held this at (0) until 2026-09-11 -- a 64-bit
+   destination class for a 128-bit result, a shared encoding, and an
+   execution block that converted lanes 0..3 of eight -- each found by
+   validation/tests/micro/simdfp.c's narrow/widen round trip on the ISS, and
+   each fixed in lvx-mds.  Put this back to (0) and the lane-at-a-time path
+   in trunc<wide><mode>2 takes over.  */
+#define HAVE_LVX_FP_NARROW_VECTOR (1) // fnarrowwho, fnarrowdwq
 
 #define HAVE_LVX_FP_CONV_WITH_SHIFT (0)
 #define HAVE_LVX_SILENT_FP_OPS (0)
