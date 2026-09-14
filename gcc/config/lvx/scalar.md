@@ -1796,6 +1796,133 @@
   }
 )
 
+;; 128-bit (TImode) native operations.  The ISA has quadword ALU instructions
+;; on register pairs (GPR128) -- addq/sbfq/negq and the full and/ior/xor family
+;; with their fused-not forms -- so __int128 add, subtract, negate and the
+;; bitwise operators are one instruction rather than the two-doubleword-plus-
+;; carry sequence GCC would otherwise synthesise (addq carries across bit 63,
+;; verified in the ISS).  Register operands only: a 128-bit literal has no
+;; short encoding worth a constraint, so the middle end loads it first.
+
+(define_insn "addti3"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (plus:TI (match_operand:TI 1 "register_operand" "r")
+                 (match_operand:TI 2 "register_operand" "r")))]
+  ""
+  "addq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "subti3"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (minus:TI (match_operand:TI 1 "register_operand" "r")
+                  (match_operand:TI 2 "register_operand" "r")))]
+  ""
+  "sbfq %0 = %2, %1"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "negti2"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (neg:TI (match_operand:TI 1 "register_operand" "r")))]
+  ""
+  "negq %0 = %1"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "andti3"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (and:TI (match_operand:TI 1 "register_operand" "r")
+                (match_operand:TI 2 "register_operand" "r")))]
+  ""
+  "andq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "iorti3"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (ior:TI (match_operand:TI 1 "register_operand" "r")
+                (match_operand:TI 2 "register_operand" "r")))]
+  ""
+  "iorq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "xorti3"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (xor:TI (match_operand:TI 1 "register_operand" "r")
+                (match_operand:TI 2 "register_operand" "r")))]
+  ""
+  "eorq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "one_cmplti2"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (not:TI (match_operand:TI 1 "register_operand" "r")))]
+  ""
+  "notq %0 = %1"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+;; Fused not-logic (reached by combine), mirroring the doubleword forms.
+(define_insn "*nandq"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (ior:TI (not:TI (match_operand:TI 1 "register_operand" "r"))
+                (not:TI (match_operand:TI 2 "register_operand" "r"))))]
+  ""
+  "nandq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "*andnq"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (and:TI (not:TI (match_operand:TI 1 "register_operand" "r"))
+                (match_operand:TI 2 "register_operand" "r")))]
+  ""
+  "andnq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "*norq"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (and:TI (not:TI (match_operand:TI 1 "register_operand" "r"))
+                (not:TI (match_operand:TI 2 "register_operand" "r"))))]
+  ""
+  "niorq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "*ornq"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (ior:TI (not:TI (match_operand:TI 1 "register_operand" "r"))
+                (match_operand:TI 2 "register_operand" "r")))]
+  ""
+  "iornq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "*nxorq"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (not:TI (xor:TI (match_operand:TI 1 "register_operand" "r")
+                        (match_operand:TI 2 "register_operand" "r"))))]
+  ""
+  "neorq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
 (define_insn "mulditi3"
   [(set (match_operand:TI 0 "register_operand" "=r")
         (mult:TI (sign_extend:TI (match_operand:DI 1 "register_operand" "r"))
