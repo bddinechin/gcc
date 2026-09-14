@@ -2462,65 +2462,6 @@
   }
 )
 
-(define_insn_and_split "ashlti3"
-  [(set (match_operand:TI 0 "register_operand" "=&r")
-        (ashift:TI (match_operand:TI 1 "register_operand" "r")
-                   (match_operand:SI 2 "const_ge64_operand" "i")))]
-  ""
-  "#"
-  "reload_completed"
-  ;; "maked %x0 = 0\n\tslld %y0 = %x1, (%2 & 63)"
-  [(set (subreg:DI (match_dup 0) 0)
-        (const_int 0))
-   (set (subreg:DI (match_dup 0) 8)
-        (ashift:DI (subreg:DI (match_dup 1) 0) (match_dup 2)))]
-  {
-    gcc_checking_assert (CONST_INT_P (operands[2]));
-    operands[2] = GEN_INT (INTVAL (operands[2]) & 63);
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")]
-)
-
-(define_insn_and_split "ashrti3"
-  [(set (match_operand:TI 0 "register_operand" "=&r")
-        (ashiftrt:TI (match_operand:TI 1 "register_operand" "r")
-                     (match_operand:SI 2 "const_ge64_operand" "i")))]
-  ""
-  "#"
-  "reload_completed"
-  ;; "srad %x0 = %y1, (%2 & 63)\n\tsrad %y0 = %y1, 63"
-  [(set (subreg:DI (match_dup 0) 0)
-        (ashiftrt:DI (subreg:DI (match_dup 1) 8) (match_dup 2)))
-   (set (subreg:DI (match_dup 0) 8)
-        (ashiftrt:DI (subreg:DI (match_dup 1) 8) (const_int 63)))]
-  {
-    gcc_checking_assert (CONST_INT_P (operands[2]));
-    operands[2] = GEN_INT (INTVAL (operands[2]) & 63);
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")]
-)
-
-(define_insn_and_split "lshrti3"
-  [(set (match_operand:TI 0 "register_operand" "=&r")
-        (lshiftrt:TI (match_operand:TI 1 "register_operand" "r")
-                     (match_operand:SI 2 "const_ge64_operand" "i")))]
-  ""
-  "#"
-  "reload_completed"
-  ;; "srld %x0 = %y1, (%2 & 63)\n\tmaked %y0 = 0"
-  [(set (subreg:DI (match_dup 0) 0)
-        (lshiftrt:DI (subreg:DI (match_dup 1) 8) (match_dup 2)))
-   (set (subreg:DI (match_dup 0) 8) (const_int 0))]
-  {
-    gcc_checking_assert (CONST_INT_P (operands[2]));
-    operands[2] = GEN_INT (INTVAL (operands[2]) & 63);
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")]
-)
-
 
 ;; OI
 

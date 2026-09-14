@@ -73,12 +73,6 @@
          && (__builtin_ctzll (INTVAL (op)) < 64);
 })
 
-(define_predicate "const_ge64_operand"
-  (match_code "const_int")
-{
-  return (INTVAL (op) >= 64);
-})
-
 (define_predicate "const_pos32_operand"
   (and (match_code "const_int")
        (match_test "satisfies_constraint_I32(op)"))
