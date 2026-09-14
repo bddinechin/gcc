@@ -5068,47 +5068,75 @@
   }
 )
 
+; V8HF <-> V8HI, 128 bits, in one instruction: FIXEDHO/FLOATHO convert eight
+;; f16 <-> i16 lanes at once, where this used to promote each 128-bit chunk to
+;; V8SF and go f16->f32->i32->i16 (three instructions per chunk).  The "octuple"
+;; is eight 16-bit lanes in 128 bits, not a 256-bit datum.
+(define_insn "floatv8hiv8hf2"
+  [(set (match_operand:V8HF 0 "register_operand" "=r")
+        (float:V8HF (match_operand:V8HI 1 "register_operand" "r")))]
+  ""
+  "floatho.rn %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "floatunsv8hiv8hf2"
+  [(set (match_operand:V8HF 0 "register_operand" "=r")
+        (unsigned_float:V8HF (match_operand:V8HI 1 "register_operand" "r")))]
+  ""
+  "floatuho.rn %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "fix_truncv8hfv8hi2"
+  [(set (match_operand:V8HI 0 "register_operand" "=r")
+        (fix:V8HI (match_operand:V8HF 1 "register_operand" "r")))]
+  ""
+  "fixedho.rz %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "fixuns_truncv8hfv8hi2"
+  [(set (match_operand:V8HI 0 "register_operand" "=r")
+        (unsigned_fix:V8HI (match_operand:V8HF 1 "register_operand" "r")))]
+  ""
+  "fixeduho.rz %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
+)
+
+;; Wider HF conversions (V16HF, V32HF) split into 128-bit V8HF chunks -- one
+;; fixedho/floatho each, dual-issued by the VLIW.
 (define_expand "float<mask><mode>2"
-  [(set (match_operand:VXHF 0 "register_operand" "")
-        (float:VXHF (match_operand:<MASK> 1 "register_operand" "")))]
+  [(set (match_operand:VXHFW 0 "register_operand" "")
+        (float:VXHFW (match_operand:<MASK> 1 "register_operand" "")))]
   ""
   {
-    /* 128-bit chunks, not 64-bit: the V4HF/V4HI half-register views this
-       used to step through are gone with 64-bit SIMD, so each iteration now
-       handles a V8HF chunk promoted to V8SF -- half as many iterations.  */
     unsigned mode_size = GET_MODE_SIZE (<MODE>mode);
     for (unsigned offset = 0; offset < mode_size; offset += 16)
       {
-        rtx temp0 = gen_reg_rtx (V8SFmode);
-        rtx temp1 = gen_reg_rtx (V8SImode);
         rtx op0 = simplify_gen_subreg (V8HFmode, operands[0], <MODE>mode, offset);
         rtx op1 = simplify_gen_subreg (V8HImode, operands[1], <MASK>mode, offset);
-        emit_insn (gen_extendv8hiv8si2 (temp1, op1));
-        emit_insn (gen_floatv8siv8sf2 (temp0, temp1));
-        emit_insn (gen_truncv8sfv8hf2 (op0, temp0));
+        emit_insn (gen_floatv8hiv8hf2 (op0, op1));
       }
     DONE;
   }
 )
 
 (define_expand "floatuns<mask><mode>2"
-  [(set (match_operand:VXHF 0 "register_operand" "")
-        (unsigned_float:VXHF (match_operand:<MASK> 1 "register_operand" "")))]
+  [(set (match_operand:VXHFW 0 "register_operand" "")
+        (unsigned_float:VXHFW (match_operand:<MASK> 1 "register_operand" "")))]
   ""
   {
-    /* 128-bit chunks, not 64-bit: the V4HF/V4HI half-register views this
-       used to step through are gone with 64-bit SIMD, so each iteration now
-       handles a V8HF chunk promoted to V8SF -- half as many iterations.  */
     unsigned mode_size = GET_MODE_SIZE (<MODE>mode);
     for (unsigned offset = 0; offset < mode_size; offset += 16)
       {
-        rtx temp0 = gen_reg_rtx (V8SFmode);
-        rtx temp1 = gen_reg_rtx (V8SImode);
         rtx op0 = simplify_gen_subreg (V8HFmode, operands[0], <MODE>mode, offset);
         rtx op1 = simplify_gen_subreg (V8HImode, operands[1], <MASK>mode, offset);
-        emit_insn (gen_zero_extendv8hiv8si2 (temp1, op1));
-        emit_insn (gen_floatunsv8siv8sf2 (temp0, temp1));
-        emit_insn (gen_truncv8sfv8hf2 (op0, temp0));
+        emit_insn (gen_floatunsv8hiv8hf2 (op0, op1));
       }
     DONE;
   }
@@ -5116,22 +5144,15 @@
 
 (define_expand "fix_trunc<mode><mask>2"
   [(set (match_operand:<MASK> 0 "register_operand" "")
-        (fix:<MASK> (match_operand:VXHF 1 "register_operand" "")))]
+        (fix:<MASK> (match_operand:VXHFW 1 "register_operand" "")))]
   ""
   {
-    /* 128-bit chunks, not 64-bit: the V4HF/V4HI half-register views this
-       used to step through are gone with 64-bit SIMD, so each iteration now
-       handles a V8HF chunk promoted to V8SF -- half as many iterations.  */
     unsigned mode_size = GET_MODE_SIZE (<MODE>mode);
     for (unsigned offset = 0; offset < mode_size; offset += 16)
       {
-        rtx temp0 = gen_reg_rtx (V8SImode);
-        rtx temp1 = gen_reg_rtx (V8SFmode);
         rtx op0 = simplify_gen_subreg (V8HImode, operands[0], <MASK>mode, offset);
         rtx op1 = simplify_gen_subreg (V8HFmode, operands[1], <MODE>mode, offset);
-        emit_insn (gen_extendv8hfv8sf2 (temp1, op1));
-        emit_insn (gen_fix_truncv8sfv8si2 (temp0, temp1));
-        emit_insn (gen_truncv8siv8hi2 (op0, temp0));
+        emit_insn (gen_fix_truncv8hfv8hi2 (op0, op1));
       }
     DONE;
   }
@@ -5139,22 +5160,15 @@
 
 (define_expand "fixuns_trunc<mode><mask>2"
   [(set (match_operand:<MASK> 0 "register_operand" "")
-        (unsigned_fix:<MASK> (match_operand:VXHF 1 "register_operand" "")))]
+        (unsigned_fix:<MASK> (match_operand:VXHFW 1 "register_operand" "")))]
   ""
   {
-    /* 128-bit chunks, not 64-bit: the V4HF/V4HI half-register views this
-       used to step through are gone with 64-bit SIMD, so each iteration now
-       handles a V8HF chunk promoted to V8SF -- half as many iterations.  */
     unsigned mode_size = GET_MODE_SIZE (<MODE>mode);
     for (unsigned offset = 0; offset < mode_size; offset += 16)
       {
-        rtx temp0 = gen_reg_rtx (V8SImode);
-        rtx temp1 = gen_reg_rtx (V8SFmode);
         rtx op0 = simplify_gen_subreg (V8HImode, operands[0], <MASK>mode, offset);
         rtx op1 = simplify_gen_subreg (V8HFmode, operands[1], <MODE>mode, offset);
-        emit_insn (gen_extendv8hfv8sf2 (temp1, op1));
-        emit_insn (gen_fixuns_truncv8sfv8si2 (temp0, temp1));
-        emit_insn (gen_truncv8siv8hi2 (op0, temp0));
+        emit_insn (gen_fixuns_truncv8hfv8hi2 (op0, op1));
       }
     DONE;
   }
@@ -5515,56 +5529,48 @@
 
 ;; V128G (V4SF V2DF)
 
-(define_insn_and_split "float<mask><mode>2"
+; The 128-bit float<->int conversions in one instruction each: FIXEDWQ/FLOATWQ
+;; for V4SF<->V4SI, FIXEDDP/FLOATDP for V2DF<->V2DI.  These used to split into
+;; two 64-bit halves (a pair of fixedwp), before the ISA's word-quadruple and
+;; double-pair forms were used; the wider 256/512-bit conversions below still
+;; split, but now into these single 128-bit instructions, which the VLIW can
+;; dual-issue in one bundle.
+(define_mode_attr fcvt128 [(V4SF "wq") (V2DF "dp")])
+
+(define_insn "float<mask><mode>2"
   [(set (match_operand:V128G 0 "register_operand" "=r")
         (float:V128G (match_operand:<MASK> 1 "register_operand" "r")))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (float:<HALF> (subreg:<HMASK> (match_dup 1) 0)))
-   (set (subreg:<HALF> (match_dup 0) 8)
-        (float:<HALF> (subreg:<HMASK> (match_dup 1) 8)))]
-  ""
+  "float<fcvt128>.rn %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
 )
 
-(define_insn_and_split "floatuns<mask><mode>2"
+(define_insn "floatuns<mask><mode>2"
   [(set (match_operand:V128G 0 "register_operand" "=r")
         (unsigned_float:V128G (match_operand:<MASK> 1 "register_operand" "r")))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (unsigned_float:<HALF> (subreg:<HMASK> (match_dup 1) 0)))
-   (set (subreg:<HALF> (match_dup 0) 8)
-        (unsigned_float:<HALF> (subreg:<HMASK> (match_dup 1) 8)))]
-  ""
+  "floatu<fcvt128>.rn %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
 )
 
-(define_insn_and_split "fix_trunc<mode><mask>2"
+(define_insn "fix_trunc<mode><mask>2"
   [(set (match_operand:<MASK> 0 "register_operand" "=r")
         (fix:<MASK> (match_operand:V128G 1 "register_operand" "r")))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HMASK> (match_dup 0) 0)
-        (fix:<HMASK> (subreg:<HALF> (match_dup 1) 0)))
-   (set (subreg:<HMASK> (match_dup 0) 8)
-        (fix:<HMASK> (subreg:<HALF> (match_dup 1) 8)))]
-  ""
+  "fixed<fcvt128>.rz %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
 )
 
-(define_insn_and_split "fixuns_trunc<mode><mask>2"
+(define_insn "fixuns_trunc<mode><mask>2"
   [(set (match_operand:<MASK> 0 "register_operand" "=r")
         (unsigned_fix:<MASK> (match_operand:V128G 1 "register_operand" "r")))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HMASK> (match_dup 0) 0)
-        (unsigned_fix:<HMASK> (subreg:<HALF> (match_dup 1) 0)))
-   (set (subreg:<HMASK> (match_dup 0) 8)
-        (unsigned_fix:<HMASK> (subreg:<HALF> (match_dup 1) 8)))]
-  ""
+  "fixedu<fcvt128>.rz %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
 )
 
 ;;(define_insn "truncv8sfv8hf2"
@@ -6136,71 +6142,56 @@
 
 ;; V256G (V8SF V4DF)
 
+;; The 256-bit conversions split into two 128-bit halves -- one fixedwq/
+;; floatwq (V4SF) or fixeddp/floatdp (V2DF) per half -- which the VLIW dual-
+;; issues.  They used to split into four 64-bit pieces (fixedwp), before the
+;; 128-bit word-quadruple and double-pair forms were used.
 (define_insn_and_split "float<mask><mode>2"
   [(set (match_operand:V256G 0 "register_operand" "=r")
         (float:V256G (match_operand:<MASK> 1 "register_operand" "r")))]
   ""
   "#"
   "reload_completed"
-  [(set (subreg:<QUART> (match_dup 0) 0)
-        (float:<QUART> (subreg:<QMASK> (match_dup 1) 0)))
-   (set (subreg:<QUART> (match_dup 0) 8)
-        (float:<QUART> (subreg:<QMASK> (match_dup 1) 8)))
-   (set (subreg:<QUART> (match_dup 0) 16)
-        (float:<QUART> (subreg:<QMASK> (match_dup 1) 16)))
-   (set (subreg:<QUART> (match_dup 0) 24)
-        (float:<QUART> (subreg:<QMASK> (match_dup 1) 24)))]
+  [(set (subreg:<HALF> (match_dup 0) 0)
+        (float:<HALF> (subreg:<HMASK> (match_dup 1) 0)))
+   (set (subreg:<HALF> (match_dup 0) 16)
+        (float:<HALF> (subreg:<HMASK> (match_dup 1) 16)))]
   ""
 )
-
 (define_insn_and_split "floatuns<mask><mode>2"
   [(set (match_operand:V256G 0 "register_operand" "=r")
         (unsigned_float:V256G (match_operand:<MASK> 1 "register_operand" "r")))]
   ""
   "#"
   "reload_completed"
-  [(set (subreg:<QUART> (match_dup 0) 0)
-        (unsigned_float:<QUART> (subreg:<QMASK> (match_dup 1) 0)))
-   (set (subreg:<QUART> (match_dup 0) 8)
-        (unsigned_float:<QUART> (subreg:<QMASK> (match_dup 1) 8)))
-   (set (subreg:<QUART> (match_dup 0) 16)
-        (unsigned_float:<QUART> (subreg:<QMASK> (match_dup 1) 16)))
-   (set (subreg:<QUART> (match_dup 0) 24)
-        (unsigned_float:<QUART> (subreg:<QMASK> (match_dup 1) 24)))]
+  [(set (subreg:<HALF> (match_dup 0) 0)
+        (unsigned_float:<HALF> (subreg:<HMASK> (match_dup 1) 0)))
+   (set (subreg:<HALF> (match_dup 0) 16)
+        (unsigned_float:<HALF> (subreg:<HMASK> (match_dup 1) 16)))]
   ""
 )
-
 (define_insn_and_split "fix_trunc<mode><mask>2"
   [(set (match_operand:<MASK> 0 "register_operand" "=r")
         (fix:<MASK> (match_operand:V256G 1 "register_operand" "r")))]
   ""
   "#"
   "reload_completed"
-  [(set (subreg:<QMASK> (match_dup 0) 0)
-        (fix:<QMASK> (subreg:<QUART> (match_dup 1) 0)))
-   (set (subreg:<QMASK> (match_dup 0) 8)
-        (fix:<QMASK> (subreg:<QUART> (match_dup 1) 8)))
-   (set (subreg:<QMASK> (match_dup 0) 16)
-        (fix:<QMASK> (subreg:<QUART> (match_dup 1) 16)))
-   (set (subreg:<QMASK> (match_dup 0) 24)
-        (fix:<QMASK> (subreg:<QUART> (match_dup 1) 24)))]
+  [(set (subreg:<HMASK> (match_dup 0) 0)
+        (fix:<HMASK> (subreg:<HALF> (match_dup 1) 0)))
+   (set (subreg:<HMASK> (match_dup 0) 16)
+        (fix:<HMASK> (subreg:<HALF> (match_dup 1) 16)))]
   ""
 )
-
 (define_insn_and_split "fixuns_trunc<mode><mask>2"
   [(set (match_operand:<MASK> 0 "register_operand" "=r")
         (unsigned_fix:<MASK> (match_operand:V256G 1 "register_operand" "r")))]
   ""
   "#"
   "reload_completed"
-  [(set (subreg:<QMASK> (match_dup 0) 0)
-        (unsigned_fix:<QMASK> (subreg:<QUART> (match_dup 1) 0)))
-   (set (subreg:<QMASK> (match_dup 0) 8)
-        (unsigned_fix:<QMASK> (subreg:<QUART> (match_dup 1) 8)))
-   (set (subreg:<QMASK> (match_dup 0) 16)
-        (unsigned_fix:<QMASK> (subreg:<QUART> (match_dup 1) 16)))
-   (set (subreg:<QMASK> (match_dup 0) 24)
-        (unsigned_fix:<QMASK> (subreg:<QUART> (match_dup 1) 24)))]
+  [(set (subreg:<HMASK> (match_dup 0) 0)
+        (unsigned_fix:<HMASK> (subreg:<HALF> (match_dup 1) 0)))
+   (set (subreg:<HMASK> (match_dup 0) 16)
+        (unsigned_fix:<HMASK> (subreg:<HALF> (match_dup 1) 16)))]
   ""
 )
 

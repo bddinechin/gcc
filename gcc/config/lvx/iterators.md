@@ -1527,6 +1527,13 @@
   V32HF
 ])
 
+;; The wider HF modes only -- V8HF is the single-instruction case (FIXEDHO/
+;; FLOATHO), so the split expands cover just these, one V8HF chunk each.
+(define_mode_iterator VXHFW [
+  V16HF
+  V32HF
+])
+
 ;; Iterator for the vector SF modes.
 (define_mode_iterator VXSF [
   V4SF
