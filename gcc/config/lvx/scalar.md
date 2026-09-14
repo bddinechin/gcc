@@ -3012,6 +3012,50 @@
    (set_attr "issue" "lite")]
 )
 
+;; V2SF <-> V2SI, the word-pair conversions.  V2SF is the "not really SIMD"
+;; 64-bit mode that lives in one GPR (see lvx_vector_mode_supported_p), so
+;; these are exactly the scalar fixedw/floatw done on both lanes at once:
+;; FIXEDWP/FLOATWP and their unsigned forms, present on both cores.  Without
+;; them a V2SF<->V2SI cast is an unrecognizable insn that reaches split2 and
+;; ICEs -- the gap the vector dividers' test tripped over.  The pair form takes
+;; no shift operand, so unlike the scalar ones there is no ", 0" variant.
+
+(define_insn "fix_truncv2sfv2si2"
+  [(set (match_operand:V2SI 0 "register_operand" "=r")
+        (fix:V2SI (match_operand:V2SF 1 "register_operand" "r")))]
+  ""
+  "fixedwp.rz %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "fixuns_truncv2sfv2si2"
+  [(set (match_operand:V2SI 0 "register_operand" "=r")
+        (unsigned_fix:V2SI (match_operand:V2SF 1 "register_operand" "r")))]
+  ""
+  "fixeduwp.rz %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "floatv2siv2sf2"
+  [(set (match_operand:V2SF 0 "register_operand" "=r")
+        (float:V2SF (match_operand:V2SI 1 "register_operand" "r")))]
+  ""
+  "floatwp.rn %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "floatunsv2siv2sf2"
+  [(set (match_operand:V2SF 0 "register_operand" "=r")
+        (unsigned_float:V2SF (match_operand:V2SI 1 "register_operand" "r")))]
+  ""
+  "floatuwp.rn %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
+)
+
 (define_insn "truncsfhf2"
   [(set (match_operand:HF 0 "register_operand" "=r")
         (float_truncate:HF (match_operand:SF 1 "register_operand" "r")))]
