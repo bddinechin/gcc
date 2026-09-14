@@ -19,7 +19,6 @@
 ;; lvx-1 at all and is ALU_LITE on lvx-2, so the guard removed the reservation
 ;; on precisely the core that has the instruction.
 
-(define_insn_reservation "lvx_nop_tiny" 1 (and (eq_attr "type" "nop") (eq_attr "issue" "tiny")) "lvx_tiny_r")
 (define_insn_reservation "lvx_all_all" 1 (and (eq_attr "type" "all") (eq_attr "issue" "all")) "lvx_all_r")
 (define_insn_reservation "lvx_alu_full" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "full")) "lvx_full_r")
 (define_insn_reservation "lvx_alu_full_x" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "full_x")) "lvx_full_x_r")
@@ -96,19 +95,14 @@
 (define_insn_reservation "lvx_copy_lsu_auxr_auxw" 3 (and (eq_attr "type" "copy") (eq_attr "issue" "lsu_auxr_auxw")) "lvx_lsu_auxr_auxw_r")
 (define_insn_reservation "lvx_imul_lite" 2 (and (eq_attr "type" "imul") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_imul_lite_x" 2 (and (eq_attr "type" "imul") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
-(define_insn_reservation "lvx_imul_lite_x2" 2 (and (eq_attr "type" "imul") (eq_attr "issue" "lite_x2")) "lvx_lite_x2_r")
 (define_insn_reservation "lvx_imul_lite2" 2 (and (eq_attr "type" "imul") (eq_attr "issue" "lite2")) "lvx_lite2_r")
 (define_insn_reservation "lvx_fmuls_lite" 3 (and (eq_attr "type" "fmuls") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_fmuld_lite" 4 (and (eq_attr "type" "fmuld") (eq_attr "issue" "lite")) "lvx_lite_r")
-(define_insn_reservation "lvx_fdotp_full" 4 (and (eq_attr "type" "fdotp") (eq_attr "issue" "full")) "lvx_full_r")
 (define_insn_reservation "lvx_fcvt_lite" 4 (and (eq_attr "type" "fcvt") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_imadd_lite" 2 (and (eq_attr "type" "imadd") (eq_attr "issue" "lite")) "lvx_lite_r")
-(define_insn_reservation "lvx_imadd_lite_x" 2 (and (eq_attr "type" "imadd") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
-(define_insn_reservation "lvx_imadd_lite_x2" 2 (and (eq_attr "type" "imadd") (eq_attr "issue" "lite_x2")) "lvx_lite_x2_r")
 (define_insn_reservation "lvx_imadd_lite2" 2 (and (eq_attr "type" "imadd") (eq_attr "issue" "lite2")) "lvx_lite2_r")
 (define_insn_reservation "lvx_fmadds_lite" 3 (and (eq_attr "type" "fmadds") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_fmaddd_lite" 4 (and (eq_attr "type" "fmaddd") (eq_attr "issue" "lite")) "lvx_lite_r")
-(define_insn_reservation "lvx_fdmda_full" 4 (and (eq_attr "type" "fdmda") (eq_attr "issue" "full")) "lvx_full_r")
 (define_insn_reservation "lvx_branch_bcu_brrp" 1 (and (eq_attr "type" "branch") (eq_attr "issue" "bcu_brrp") (match_test "TARGET_DUAL_BCU")) "lvx_bcu_brrp_r")
 (define_insn_reservation "lvx_branch_bcu_brrp2" 1 (and (eq_attr "type" "branch") (eq_attr "issue" "bcu_brrp2") (match_test "TARGET_DUAL_BCU")) "lvx_bcu_brrp2_r")
 (define_insn_reservation "lvx_jump_bcu_xfer" 1 (and (eq_attr "type" "jump") (eq_attr "issue" "bcu_xfer") (match_test "TARGET_DUAL_BCU")) "lvx_bcu_xfer_r")
@@ -123,9 +117,7 @@
 (define_insn_reservation "lvx_ijump_bcu_xfer_brrp_nd" 1 (and (eq_attr "type" "ijump") (eq_attr "issue" "bcu_xfer_brrp") (match_test "!TARGET_DUAL_BCU")) "lvx_bcu_xfer_brrp_r + lvx_bcu_x2_u")
 (define_insn_reservation "lvx_xmovef_ext_misc_auxw" 3 (and (eq_attr "type" "xmovef") (eq_attr "issue" "ext_misc_auxw")) "lvx_ext_misc_auxw_r")
 (define_insn_reservation "lvx_xcopy_ext_misc_auxw" 1 (and (eq_attr "type" "xcopy") (eq_attr "issue" "ext_misc_auxw")) "lvx_ext_misc_auxw_r")
-(define_insn_reservation "lvx_ext_ext" 1 (and (eq_attr "type" "ext") (eq_attr "issue" "ext")) "lvx_ext_r")
 (define_insn_reservation "lvx_ext_int_ext" 3 (and (eq_attr "type" "ext_int") (eq_attr "issue" "ext")) "lvx_ext_r")
-(define_insn_reservation "lvx_ext_float_ext" 4 (and (eq_attr "type" "ext_float") (eq_attr "issue" "ext")) "lvx_ext_r")
 
 ;; Bypasses.
 ;;
@@ -148,7 +140,7 @@
 (define_bypass 2 "lvx_fmuls_*,lvx_fmadds_*"
                  "lvx_store_*,lvx_xstore_*"
                  "lvx_stored_value_bypass_p")
-(define_bypass 3 "lvx_fmuld_*,lvx_fmaddd_*,lvx_fcvt_*,lvx_fdotp_*,lvx_fdmda_*"
+(define_bypass 3 "lvx_fmuld_*,lvx_fmaddd_*,lvx_fcvt_*"
                  "lvx_store_*,lvx_xstore_*"
                  "lvx_stored_value_bypass_p")
 (define_bypass 2 "lvx_load_*,lvx_xload_*"
