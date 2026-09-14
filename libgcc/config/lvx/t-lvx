@@ -43,7 +43,16 @@ softfp_exclude_libgcc2 := n
 # __builtin_lvx_frec*, which no longer exists (LVX has only the seed form,
 # fsrec*).  The div/mod expanders no longer call out to them: their
 # optimize_size paths, the only ones that did, are gone.
+# The lane-wise vector dividers (divv.c: __divv{4sf,8sf,2df,4df,4si}3).  The
+# middle end lowers a vector `a / b` to a __div<mode>3 call and LVX has no
+# vector divide, so on lvx-2 these are link-time undefined without this; there
+# is no source for the floating-point ones anywhere else.  Built for BOTH
+# multilibs: on lvx-1 they lower to scalar fdiv/divmod just the same (a vector
+# type declared by attribute still works there), so the file is core-agnostic
+# -- unlike the elaborate divmodvx*.c, which use lvx-2-only SIMD builtins and
+# stay excluded (queue item: reinstate against current builtin names).
 lvx-libgcc-funcs := \
+  divv \
   $(softfp_func_exclude)
 
 lvx-libgcc-c := $(addsuffix .c,$(lvx-libgcc-funcs))
