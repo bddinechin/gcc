@@ -299,58 +299,44 @@
   }
 )
 
-(define_insn_and_split "lvx_mul<widenx>"
+;; A 256-bit widening multiply/add/subtract is issued as two 128-bit
+;; instructions the VLIW dual-issues -- mulx/maddx/msbfx<hwidenx>, whose
+;; result is a 128-bit register pair (%L0/%M0, the low/high half of the
+;; 256-bit destination) and whose sources are 64-bit (%x/%y, the low/high
+;; register of each 128-bit source).  .u is both operands unsigned; .su is
+;; signed-times-unsigned, the sign-extended source printed first.
+
+(define_insn "lvx_mul<widenx>"
   [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
         (mult:<WIDE> (sign_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r"))
                      (sign_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r"))))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HWIDE> (match_dup 0) 0)
-        (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 0))
-                      (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 0))))
-   (set (subreg:<HWIDE> (match_dup 0) 16)
-        (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
-                      (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8))))]
-  ""
+  "mulx<hwidenx> %L0 = %x1, %x2\n\tmulx<hwidenx> %M0 = %y1, %y2"
   [(set_attr "type" "imul")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
-(define_insn_and_split "lvx_mulu<widenx>"
+(define_insn "lvx_mulu<widenx>"
   [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
         (mult:<WIDE> (zero_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r"))
                      (zero_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r"))))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HWIDE> (match_dup 0) 0)
-        (mult:<HWIDE> (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 0))
-                      (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 0))))
-   (set (subreg:<HWIDE> (match_dup 0) 16)
-        (mult:<HWIDE> (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
-                      (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8))))]
-  ""
+  "mulx<hwidenx>.u %L0 = %x1, %x2\n\tmulx<hwidenx>.u %M0 = %y1, %y2"
   [(set_attr "type" "imul")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
-(define_insn_and_split "lvx_mulsu<widenx>"
+(define_insn "lvx_mulsu<widenx>"
   [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
         (mult:<WIDE> (sign_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r"))
                      (zero_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r"))))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HWIDE> (match_dup 0) 0)
-        (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 0))
-                      (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 0))))
-   (set (subreg:<HWIDE> (match_dup 0) 16)
-        (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
-                      (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8))))]
-  ""
+  "mulx<hwidenx>.su %L0 = %x1, %x2\n\tmulx<hwidenx>.su %M0 = %y1, %y2"
   [(set_attr "type" "imul")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
 
@@ -377,67 +363,40 @@
   }
 )
 
-(define_insn_and_split "lvx_madd<widenx>"
+(define_insn "lvx_madd<widenx>"
   [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
         (plus:<WIDE> (mult:<WIDE> (sign_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r"))
                                   (sign_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r")))
                       (match_operand:<WIDE> 3 "register_operand" "0")))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HWIDE> (match_dup 0) 0)
-        (plus:<HWIDE> (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 0))
-                                    (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 0)))
-                      (subreg:<HWIDE> (match_dup 3) 0)))
-   (set (subreg:<HWIDE> (match_dup 0) 16)
-        (plus:<HWIDE> (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
-                                    (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))
-                      (subreg:<HWIDE> (match_dup 3) 16)))]
-  ""
+  "maddx<hwidenx> %L0 = %x1, %x2\n\tmaddx<hwidenx> %M0 = %y1, %y2"
   [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
-(define_insn_and_split "lvx_maddu<widenx>"
+(define_insn "lvx_maddu<widenx>"
   [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
         (plus:<WIDE> (mult:<WIDE> (zero_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r"))
                                   (zero_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r")))
                      (match_operand:<WIDE> 3 "register_operand" "0")))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HWIDE> (match_dup 0) 0)
-        (plus:<HWIDE> (mult:<HWIDE> (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 0))
-                                    (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 0)))
-                      (subreg:<HWIDE> (match_dup 3) 0)))
-   (set (subreg:<HWIDE> (match_dup 0) 16)
-        (plus:<HWIDE> (mult:<HWIDE> (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
-                                    (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))
-                      (subreg:<HWIDE> (match_dup 3) 16)))]
-  ""
+  "maddx<hwidenx>.u %L0 = %x1, %x2\n\tmaddx<hwidenx>.u %M0 = %y1, %y2"
   [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
-(define_insn_and_split "lvx_maddsu<widenx>"
+(define_insn "lvx_maddsu<widenx>"
   [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
         (plus:<WIDE> (mult:<WIDE> (sign_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r"))
                                   (zero_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r")))
                      (match_operand:<WIDE> 3 "register_operand" "0")))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HWIDE> (match_dup 0) 0)
-        (plus:<HWIDE> (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 0))
-                                    (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 0)))
-                      (subreg:<HWIDE> (match_dup 3) 0)))
-   (set (subreg:<HWIDE> (match_dup 0) 16)
-        (plus:<HWIDE> (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
-                                    (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))
-                      (subreg:<HWIDE> (match_dup 3) 16)))]
-  ""
+  "maddx<hwidenx>.su %L0 = %x1, %x2\n\tmaddx<hwidenx>.su %M0 = %y1, %y2"
   [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
 
@@ -464,67 +423,40 @@
   }
 )
 
-(define_insn_and_split "lvx_msbf<widenx>"
+(define_insn "lvx_msbf<widenx>"
   [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
         (minus:<WIDE> (match_operand:<WIDE> 3 "register_operand" "0")
                       (mult:<WIDE> (sign_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r"))
                                    (sign_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r")))))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HWIDE> (match_dup 0) 0)
-        (minus:<HWIDE> (subreg:<HWIDE> (match_dup 3) 0)
-                       (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 0))
-                                     (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 0)))))
-   (set (subreg:<HWIDE> (match_dup 0) 16)
-        (minus:<HWIDE> (subreg:<HWIDE> (match_dup 3) 16)
-                       (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
-                                     (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))))]
-  ""
+  "msbfx<hwidenx> %L0 = %x1, %x2\n\tmsbfx<hwidenx> %M0 = %y1, %y2"
   [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
-(define_insn_and_split "lvx_msbfu<widenx>"
+(define_insn "lvx_msbfu<widenx>"
   [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
         (minus:<WIDE> (match_operand:<WIDE> 3 "register_operand" "0")
                       (mult:<WIDE> (zero_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r"))
                                    (zero_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r")))))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HWIDE> (match_dup 0) 0)
-        (minus:<HWIDE> (subreg:<HWIDE> (match_dup 3) 0)
-                       (mult:<HWIDE> (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 0))
-                                     (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 0)))))
-   (set (subreg:<HWIDE> (match_dup 0) 16)
-        (minus:<HWIDE> (subreg:<HWIDE> (match_dup 3) 16)
-                       (mult:<HWIDE> (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
-                                     (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))))]
-  ""
+  "msbfx<hwidenx>.u %L0 = %x1, %x2\n\tmsbfx<hwidenx>.u %M0 = %y1, %y2"
   [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
-(define_insn_and_split "lvx_msbfsu<widenx>"
+(define_insn "lvx_msbfsu<widenx>"
   [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
         (minus:<WIDE> (match_operand:<WIDE> 3 "register_operand" "0")
                       (mult:<WIDE> (sign_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r"))
                                    (zero_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r")))))]
   ""
-  "#"
-  "reload_completed"
-  [(set (subreg:<HWIDE> (match_dup 0) 0)
-        (minus:<HWIDE> (subreg:<HWIDE> (match_dup 3) 0)
-                       (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 0))
-                                     (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 0)))))
-   (set (subreg:<HWIDE> (match_dup 0) 16)
-        (minus:<HWIDE> (subreg:<HWIDE> (match_dup 3) 16)
-                       (mult:<HWIDE> (sign_extend:<HWIDE> (subreg:<HALF> (match_dup 1) 8))
-                                     (zero_extend:<HWIDE> (subreg:<HALF> (match_dup 2) 8)))))]
-  ""
+  "msbfx<hwidenx>.su %L0 = %x1, %x2\n\tmsbfx<hwidenx>.su %M0 = %y1, %y2"
   [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
 ;; SHL*
