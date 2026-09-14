@@ -31,6 +31,13 @@ typedef double v2df __attribute__ ((vector_size (16)));
 typedef double v4df __attribute__ ((vector_size (32)));
 typedef int    v4si __attribute__ ((vector_size (16)));
 
+/* libgcc builds with -Wmissing-prototypes -Werror; declare before defining. */
+v4sf __divv4sf3 (v4sf, v4sf);
+v8sf __divv8sf3 (v8sf, v8sf);
+v2df __divv2df3 (v2df, v2df);
+v4df __divv4df3 (v4df, v4df);
+v4si __divv4si3 (v4si, v4si);
+
 v4sf
 __divv4sf3 (v4sf a, v4sf b)
 {
