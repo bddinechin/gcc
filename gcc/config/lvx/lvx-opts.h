@@ -175,14 +175,18 @@ enum lvx_arch_type
 #define HAVE_LVX_CEIL_UAVG_V16HI (1)
 #define HAVE_LVX_CEIL_UAVG_V32QI (1)
 
-#define HAVE_LVX_COND_MOV_OI (1)
-#define HAVE_LVX_COND_MOV_V32QI (1)
-#define HAVE_LVX_COND_MOV_V16HI (1)
-#define HAVE_LVX_COND_MOV_V16HF (1)
-#define HAVE_LVX_COND_MOV_V8SI (1)
-#define HAVE_LVX_COND_MOV_V8SF (1)
-#define HAVE_LVX_COND_MOV_V4DI (1)
-#define HAVE_LVX_COND_MOV_V4DF (1)
+/* 256-bit conditional move: the single-insn form emits four cmoved, but cmoved is
+   LITE and a bundle has only two ALU/LITE slots, so it overflows on both cores.
+   Force the split into two 128-bit cmoves (each two cmoved = one bundle).  OImode
+   is also the only ALL256 mode reachable on lvx-1 at all, where it ICEd. */
+#define HAVE_LVX_COND_MOV_OI (0)
+#define HAVE_LVX_COND_MOV_V32QI (0)
+#define HAVE_LVX_COND_MOV_V16HI (0)
+#define HAVE_LVX_COND_MOV_V16HF (0)
+#define HAVE_LVX_COND_MOV_V8SI (0)
+#define HAVE_LVX_COND_MOV_V8SF (0)
+#define HAVE_LVX_COND_MOV_V4DI (0)
+#define HAVE_LVX_COND_MOV_V4DF (0)
 
 
 #define HAVE_LVX_CPLX_FMA_V2SF (1)
