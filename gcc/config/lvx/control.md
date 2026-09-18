@@ -438,7 +438,7 @@
 ;; writing 0/1 into its own 64-bit lane.  That is not a missed optimisation:
 ;; LVX has no single instruction producing a 0/1-per-lane vector.
 ;;
-;; The packed form is the mask operand BLEND wants, and wiring that up needs the
+;; The packed form is the mask operand MASKS wants, and wiring that up needs the
 ;; port to model vector masks as scalar bit-masks (TARGET_VECTORIZE_GET_MASK_MODE)
 ;; rather than same-size vector modes.  Nothing does that yet, so COMP* has no
 ;; pattern at all for now rather than a wrong one.
@@ -1615,7 +1615,7 @@
                             (match_operand:V128B 1 "register_operand" "r")
                             (match_operand:V128B 4 "register_operand" "0")))]
   "LVX_2"
-  "cmove<suffix>.%2z %3? %0 = %1"
+  "lanes<suffix>.%2z %3? %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")
    (set_attr "length"      "4")]
@@ -1630,7 +1630,7 @@
                             (match_operand:V128B 1 "register_operand" "r")
                             (match_operand:V128B 4 "register_operand" "0")))]
   "LVX_2"
-  "cmove<suffix>.%2z %3? %0 = %1"
+  "lanes<suffix>.%2z %3? %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")
    (set_attr "length"      "4")]
@@ -1650,7 +1650,7 @@
 ;;   {
 ;;     if (GET_MODE_SIZE (GET_MODE_INNER (<MODE>mode)) == UNITS_PER_WORD)
 ;;       return "cmoved.d%R2z %x3? %x0 = %x1\n\tcmoved.d%R2z %y3? %y0 = %y1";
-;;     return "cmove<chunkx>.%R2z %x3? %x0 = %x1\n\tcmove<chunkx>.%R2z %y3? %y0 = %y1";
+;;     return "lanes<chunkx>.%R2z %x3? %x0 = %x1\n\tlanes<chunkx>.%R2z %y3? %y0 = %y1";
 ;;   }
 ;;   [(set_attr "type" "alu")
 ;;    (set_attr "length"         "8")]
@@ -1692,8 +1692,8 @@
                             (match_operand:V256B 4 "register_operand" "0")))]
   "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>)"
   {
-    return "cmove<hsuffix>.%2z %L3? %L0 = %L1\n\t"
-           "cmove<hsuffix>.%2z %M3? %M0 = %M1";
+    return "lanes<hsuffix>.%2z %L3? %L0 = %L1\n\t"
+           "lanes<hsuffix>.%2z %M3? %M0 = %M1";
   }
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2")
@@ -1738,8 +1738,8 @@
                             (match_operand:V256B 4 "register_operand" "0")))]
   "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>)"
   {
-    return "cmove<hsuffix>.%2z %L3? %L0 = %L1\n\t"
-           "cmove<hsuffix>.%2z %M3? %M0 = %M1";
+    return "lanes<hsuffix>.%2z %L3? %L0 = %L1\n\t"
+           "lanes<hsuffix>.%2z %M3? %M0 = %M1";
   }
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2")
@@ -1790,8 +1790,8 @@
                             (match_operand:V256B 4 "register_operand" "0")))]
   "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>)"
   {
-    return "cmove<hsuffix>.%R2z %L3? %L0 = %L1\n\t"
-           "cmove<hsuffix>.%R2z %M3? %M0 = %M1";
+    return "lanes<hsuffix>.%R2z %L3? %L0 = %L1\n\t"
+           "lanes<hsuffix>.%R2z %M3? %M0 = %M1";
   }
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2")

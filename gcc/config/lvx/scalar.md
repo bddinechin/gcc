@@ -2170,6 +2170,40 @@
    (set_attr "issue" "tiny")]
 )
 
+;; 128-bit (TImode) shifts.  SLLQ/SRAQ/SRLQ shift a register pair by a count in
+;; a GPR (0..127) or a 6-bit immediate (0..63); a constant >= 64 does not fit
+;; U06 so it lands in the register alternative, which the hardware masks to 7
+;; bits -- so one instruction covers the whole range, no split.
+(define_insn "ashlti3"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (ashift:TI (match_operand:TI 1 "register_operand" "r")
+                   (match_operand:SI 2 "reg_shift_operand" "rU06")))]
+  ""
+  "sllq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
+(define_insn "ashrti3"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (ashiftrt:TI (match_operand:TI 1 "register_operand" "r")
+                     (match_operand:SI 2 "reg_shift_operand" "rU06")))]
+  ""
+  "sraq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
+(define_insn "lshrti3"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (lshiftrt:TI (match_operand:TI 1 "register_operand" "r")
+                     (match_operand:SI 2 "reg_shift_operand" "rU06")))]
+  ""
+  "srlq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
 (define_insn "sshrdi3"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (unspec:DI [(match_operand:DI 1 "register_operand" "r")

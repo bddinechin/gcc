@@ -1597,7 +1597,7 @@
                        (match_operand:<MASK> 3 "register_operand" "r")
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
   "LVX_2"
-  "cmove<suffix>%4 %3? %0 = %1"
+  "lanes<suffix>%4 %3? %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")
    (set_attr "length"      "4")]
@@ -1645,8 +1645,8 @@
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
   "LVX_2 && (HAVE_LVX_SELECT_<MODE>)"
   {
-    return "cmove<hsuffix>%4 %L3? %L0 = %L1\n\t"
-           "cmove<hsuffix>%4 %M3? %M0 = %M1";
+    return "lanes<hsuffix>%4 %L3? %L0 = %L1\n\t"
+           "lanes<hsuffix>%4 %M3? %M0 = %M1";
   }
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2")
@@ -1753,7 +1753,7 @@
                        (match_operand:<MASK> 3 "register_operand" "r")
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
   "LVX_2"
-  "cmove<suffix>%4 %3? %0 = %1"
+  "lanes<suffix>%4 %3? %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")
    (set_attr "length"      "4")]
@@ -1801,8 +1801,8 @@
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
   "LVX_2 && (HAVE_LVX_SELECT_<MODE>)"
   {
-    return "cmove<hsuffix>%4 %L3? %L0 = %L1\n\t"
-           "cmove<hsuffix>%4 %M3? %M0 = %M1";
+    return "lanes<hsuffix>%4 %L3? %L0 = %L1\n\t"
+           "lanes<hsuffix>%4 %M3? %M0 = %M1";
   }
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2")
