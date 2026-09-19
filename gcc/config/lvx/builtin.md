@@ -2177,7 +2177,7 @@
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (unspec:DI [(match_operand:DI 1 "register_operand" "r,r,r,r")
                     (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")] UNSPEC_SBMMT8D))]
-  "HAVE_LVX_TSBMM8_DI"
+  "HAVE_LVX_SBMMT8_DI"
   "sbmmt8d %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
@@ -2188,7 +2188,7 @@
   [(set (match_operand:V2DI 0 "register_operand" "=r")
         (unspec:V2DI [(match_operand:V2DI 1 "register_operand" "r")
                       (match_operand:V2DI 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
-  "LVX_2 && (HAVE_LVX_TSBMM8_V2DI)"
+  "LVX_2 && (HAVE_LVX_SBMMT8_V2DI)"
   "sbmmt8 %x0 = %x1, %x2\n\tsbmmt8 %y0 = %y1, %y2"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny2")
@@ -2199,7 +2199,7 @@
   [(set (match_operand:ALL128 0 "register_operand" "=r")
         (unspec:ALL128 [(vec_duplicate:V2DI (match_operand:DI 1 "register_operand" "r"))
                         (match_operand:SIMD128 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
-  "HAVE_LVX_TSBMM8_<ALL128:MODE>"
+  "HAVE_LVX_SBMMT8_<ALL128:MODE>"
   "sbmmt8 %x0 = %1, %x2\n\tsbmmt8 %y0 = %1, %y2"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny2")
@@ -2210,7 +2210,7 @@
   [(set (match_operand:ALL128 0 "register_operand" "=r")
         (unspec:ALL128 [(match_operand:SIMD128 1 "register_operand" "r")
                         (vec_duplicate:V2DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMMT8D))]
-  "HAVE_LVX_TSBMM8_<ALL128:MODE>"
+  "HAVE_LVX_SBMMT8_<ALL128:MODE>"
   "sbmmt8 %x0 = %x1, %2\n\tsbmmt8 %y0 = %y1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny2")
@@ -2229,9 +2229,9 @@
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V4DI 1 "register_operand" "r")
                       (match_operand:V4DI 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
-  "!HAVE_LVX_TSBMM8_V4DI"
+  "!HAVE_LVX_SBMMT8_V4DI"
   "#"
-  "!HAVE_LVX_TSBMM8_V4DI && reload_completed"
+  "!HAVE_LVX_SBMMT8_V4DI && reload_completed"
   [(set (subreg:V2DI (match_dup 0) 0)
         (unspec:V2DI [(subreg:V2DI (match_dup 1) 0)
                       (subreg:V2DI (match_dup 2) 0)] UNSPEC_SBMMT8D))
@@ -2245,9 +2245,9 @@
   [(set (match_operand:ALL256 0 "register_operand" "=&r")
         (unspec:ALL256 [(vec_duplicate:V4DI (match_operand:DI 1 "register_operand" "r"))
                         (match_operand:SIMD256 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
-  "!HAVE_LVX_TSBMM8_V4DI"
+  "!HAVE_LVX_SBMMT8_V4DI"
   "#"
-  "!HAVE_LVX_TSBMM8_V4DI && reload_completed"
+  "!HAVE_LVX_SBMMT8_V4DI && reload_completed"
   [(set (subreg:<ALL256:HALF> (match_dup 0) 0)
         (unspec:<ALL256:HALF> [(vec_duplicate:V2DI (match_dup 1))
                                (subreg:<SIMD256:HALF> (match_dup 2) 0)] UNSPEC_SBMMT8D))
@@ -2261,9 +2261,9 @@
   [(set (match_operand:ALL256 0 "register_operand" "=&r")
         (unspec:ALL256 [(match_operand:SIMD256 1 "register_operand" "r")
                         (vec_duplicate:V4DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMMT8D))]
-  "!HAVE_LVX_TSBMM8_V4DI"
+  "!HAVE_LVX_SBMMT8_V4DI"
   "#"
-  "!HAVE_LVX_TSBMM8_V4DI && reload_completed"
+  "!HAVE_LVX_SBMMT8_V4DI && reload_completed"
   [(set (subreg:<ALL256:HALF> (match_dup 0) 0)
         (unspec:<ALL256:HALF> [(subreg:<SIMD256:HALF> (match_dup 1) 0)
                                (vec_duplicate:V2DI (match_dup 2))] UNSPEC_SBMMT8D))
@@ -2277,7 +2277,7 @@
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V4DI 1 "register_operand" "r")
                       (match_operand:V4DI 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
-  "LVX_2 && (HAVE_LVX_TSBMM8_V4DI)"
+  "LVX_2 && (HAVE_LVX_SBMMT8_V4DI)"
   {
     return "sbmmt8 %x0 = %x1, %x2\n\tsbmmt8 %y0 = %y1, %y2\n\t"
            "sbmmt8 %z0 = %z1, %z2\n\tsbmmt8 %t0 = %t1, %t2";
@@ -2291,7 +2291,7 @@
   [(set (match_operand:ALL256 0 "register_operand" "=r")
         (unspec:ALL256 [(vec_duplicate:V4DI (match_operand:DI 1 "register_operand" "r"))
                         (match_operand:SIMD256 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
-  "LVX_2 && (HAVE_LVX_TSBMM8_V4DI)"
+  "LVX_2 && (HAVE_LVX_SBMMT8_V4DI)"
   {
     return "sbmmt8 %x0 = %1, %x2\n\tsbmmt8 %y0 = %1, %y2\n\t"
            "sbmmt8 %z0 = %1, %z2\n\tsbmmt8 %t0 = %1, %t2";
@@ -2305,7 +2305,7 @@
   [(set (match_operand:ALL256 0 "register_operand" "=r")
         (unspec:ALL256 [(match_operand:SIMD256 1 "register_operand" "r")
                         (vec_duplicate:V4DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMMT8D))]
-  "LVX_2 && (HAVE_LVX_TSBMM8_V4DI)"
+  "LVX_2 && (HAVE_LVX_SBMMT8_V4DI)"
   {
     return "sbmmt8 %x0 = %x1, %2\n\tsbmmt8 %y0 = %y1, %2\n\t"
            "sbmmt8 %z0 = %z1, %2\n\tsbmmt8 %t0 = %t1, %2";
