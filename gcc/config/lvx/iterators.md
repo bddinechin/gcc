@@ -1589,6 +1589,12 @@
 (define_mode_iterator FLOATM [HF SF DF])
 (define_mode_attr fmode [(HF "h") (SF "w") (DF "d")])
 
+;; The lane letter of a load-and-splat (lbso/lhso/lwso/ldso): the width of one
+;; element of the 256-bit vector, whatever the element's type.
+(define_mode_attr lsplat [
+  (V32QI "b") (V16HI "h") (V16HF "h") (V8SI "w") (V8SF "w") (V4DI "d") (V4DF "d")
+])
+
 (define_mode_attr hsuffix [
   (V32QI   "bx")
   (V16HI   "ho")

@@ -5305,6 +5305,30 @@
 )
 
 
+;; LVX_LBSO, LVX_LHSO, LVX_LWSO, LVX_LDSO (lvx-2)
+;;
+;; Load one lane -- a byte, half word, word or double word -- and splat it
+;; across the 256-bit register quadruple.  The memory operand is the lane,
+;; not the vector, so the address modes are the scalar loads' and the builtin
+;; passes the lane's mode as the memory mode.  One pattern per vector mode,
+;; named by the mode since two modes share a mnemonic (V16HI and V16HF are
+;; both lhso); the builtins name the pattern explicitly.
+
+(define_insn "lvx_lso<mode>"
+  [(set (match_operand:SIMD256 0 "register_operand" "=r,r,r")
+        (vec_duplicate:SIMD256
+          (unspec:<INNER> [(match_operand:<INNER> 1 "memory_operand" "a,b,m")
+                           (match_operand 2 "" "")] UNSPEC_LOAD)))]
+  "LVX_2"
+  "l<lsplat>so%2%X1 %0 = %1"
+  [(set_attr "type" "load")
+   (set_attr_alternative "issue"
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_x2")])
+   (set_attr "length" "4, 8, 12")]
+)
+
 ;; LVX_LOAD*
 
 (define_insn "lvx_loadbz"
