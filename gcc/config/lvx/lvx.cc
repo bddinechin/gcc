@@ -6492,6 +6492,33 @@ lvx_vectorize_preferred_simd_mode (scalar_mode mode)
 #undef TARGET_VECTORIZE_PREFERRED_SIMD_MODE
 #define TARGET_VECTORIZE_PREFERRED_SIMD_MODE lvx_vectorize_preferred_simd_mode
 
+/* Implements TARGET_VECTORIZE_AUTOVECTORIZE_VECTOR_MODES.
+
+   The pair (128 bits) stays the preferred width: lvx-2's SIMD arithmetic
+   is 128-bit, and a 256-bit operation is two LITE halves that dual-issue
+   in one bundle, so the quad buys no ALU throughput.  What it buys is on
+   the memory side and in loop overhead -- one lo/so per 32 bytes instead
+   of two lq/sq, one L*SO broadcast, half the iterations: 1.07x-1.29x on
+   streaming loops on the ISS, nothing on reductions, at the price of
+   quad-aligned register groups and 32-byte epilogues.  So the quad is
+   offered as an alternative, not imposed: with VECT_COMPARE_COSTS the
+   vectorizer costs both widths per loop and takes the cheaper, and
+   vectorises the epilogue of a 256-bit loop at 128 bits.  The first entry
+   must be the preferred mode; lvx-1 has no SIMD at all.  */
+static unsigned int
+lvx_autovectorize_vector_modes (vector_modes *modes, bool)
+{
+  if (!LVX_2)
+    return 0;
+  modes->safe_push (V16QImode);
+  modes->safe_push (V32QImode);
+  return VECT_COMPARE_COSTS;
+}
+
+#undef TARGET_VECTORIZE_AUTOVECTORIZE_VECTOR_MODES
+#define TARGET_VECTORIZE_AUTOVECTORIZE_VECTOR_MODES \
+  lvx_autovectorize_vector_modes
+
 /* Return 1 if TRAIT NAME is present in the OpenMP context's
    device trait set, return 0 if not present in any OpenMP context in the
    whole translation unit, or -1 if not present in the current OpenMP context
