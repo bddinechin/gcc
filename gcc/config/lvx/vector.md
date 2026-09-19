@@ -5574,45 +5574,6 @@
    (set_attr "length" "4")]
 )
 
-(define_expand "copysign<mode>3"
-  [(match_operand:V128F 0 "register_operand")
-   (match_operand:V128F 1 "register_operand")
-   (match_operand:V128F 2 "register_operand")]
-  "LVX_2"
-  {
-    rtx fabs1 = gen_reg_rtx (<MODE>mode);
-    emit_insn (gen_abs<mode>2 (fabs1, operands[1]));
-    rtx fneg1 = gen_reg_rtx (<MODE>mode);
-    emit_insn (gen_neg<mode>2 (fneg1, fabs1));
-    rtx sign2 = gen_reg_rtx (<MASK>mode);
-    convert_move (sign2, operands[2], 0);
-    scalar_mode inner_mode = GET_MODE_INNER (<MODE>mode);
-    rtx ltz = GET_MODE_SIZE (inner_mode) == UNITS_PER_WORD
-            ? gen_rtx_CONST_STRING (VOIDmode, ".dltz")
-            : gen_rtx_CONST_STRING (VOIDmode, ".ltz");
-    emit_insn (gen_lvx_selectf<suffix> (operands[0], fneg1, fabs1, sign2, ltz));
-    DONE;
-  }
-)
-
-(define_expand "xorsign<mode>3"
-  [(match_operand:V128F 0 "register_operand")
-   (match_operand:V128F 1 "register_operand")
-   (match_operand:V128F 2 "register_operand")]
-  "LVX_2"
-  {
-    rtx maskv8hf __attribute__((unused)) = GEN_INT (0x8000800080008000);
-    rtx maskv4sf __attribute__((unused)) = GEN_INT (0x8000000080000000);
-    rtx maskv2df __attribute__((unused)) = GEN_INT (0x8000000000000000);
-    rtx mask = gen_reg_rtx (DImode);
-    emit_move_insn (mask, mask<mode>);
-    rtx sign2 = gen_reg_rtx (<MODE>mode);
-    emit_insn (gen_rtx_SET (sign2, gen_rtx_UNSPEC (<MODE>mode, gen_rtvec (2, operands[2], mask), UNSPEC_ANDD)));
-    emit_insn (gen_rtx_SET (operands[0], gen_rtx_UNSPEC (<MODE>mode, gen_rtvec (2, operands[1], sign2), UNSPEC_XORD)));
-    DONE;
-  }
-)
-
 
 ;; V128G (V4SF V2DF)
 
@@ -6189,41 +6150,6 @@
   ""
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2")]
-)
-
-(define_expand "copysign<mode>3"
-  [(match_operand:V256F 0 "register_operand")
-   (match_operand:V256F 1 "register_operand")
-   (match_operand:V256F 2 "register_operand")]
-  "LVX_2"
-  {
-    for (int i = 0; i < 2; i++)
-      {
-        rtx opnd0 = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode, i*16);
-        rtx opnd1 = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode, i*16);
-        rtx opnd2 = simplify_gen_subreg (<HALF>mode, operands[2], <MODE>mode, i*16);
-        emit_insn (gen_copysign<half>3 (opnd0, opnd1, opnd2));
-      }
-    DONE;
-  }
-)
-
-(define_expand "xorsign<mode>3"
-  [(match_operand:V256F 0 "register_operand")
-   (match_operand:V256F 1 "register_operand")
-   (match_operand:V256F 2 "register_operand")]
-  "LVX_2"
-  {
-    rtx maskv16hf __attribute__((unused)) = GEN_INT (0x8000800080008000);
-    rtx maskv8sf __attribute__((unused)) = GEN_INT (0x8000000080000000);
-    rtx maskv4df __attribute__((unused)) = GEN_INT (0x8000000000000000);
-    rtx mask = gen_reg_rtx (DImode);
-    emit_move_insn (mask, mask<mode>);
-    rtx sign2 = gen_reg_rtx (<MODE>mode);
-    emit_insn (gen_rtx_SET (sign2, gen_rtx_UNSPEC (<MODE>mode, gen_rtvec (2, operands[2], mask), UNSPEC_ANDD)));
-    emit_insn (gen_rtx_SET (operands[0], gen_rtx_UNSPEC (<MODE>mode, gen_rtvec (2, operands[1], sign2), UNSPEC_XORD)));
-    DONE;
-  }
 )
 
 

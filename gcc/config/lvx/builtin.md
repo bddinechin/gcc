@@ -5125,6 +5125,143 @@
   }
 )
 
+;; FSIGN, FSIGNM, FSIGNN: copysign and xorsign are one instruction each.
+;;
+;; copysign(a, b) is (a & ~sign) | (b & sign), which is FSIGN{H,W,D} and, at 128
+;; bits, FSIGN{HO,WQ,DP}; xorsign(a, b) is a ^ (b & sign), FSIGNM*.  They used
+;; to be spelled out: the scalars as an extfs/insf pair (two cycles, dependent),
+;; xorsign as a maked/andd/eord chain, and the vector copysign as
+;; fabs/fneg/lanes.ltz -- three instructions and three cycles for what the ISA
+;; does in one.  copysign is an RTL code, so the standard name is the insn and
+;; combine can see through it; xorsign has none, so it is an unspec.  FSIGNN,
+;; a with the NEGATED sign of b, is copysign(a, -b), which combine reaches
+;; through (copysign a (neg b)).  256 bits split in two halves as the
+;; min/max families do.
+
+(define_insn "copysign<mode>3"
+  [(set (match_operand:FLOATM 0 "register_operand" "=r")
+        (copysign:FLOATM (match_operand:FLOATM 1 "register_operand" "r")
+                         (match_operand:FLOATM 2 "register_operand" "r")))]
+  ""
+  "fsign<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "copysign<mode>3"
+  [(set (match_operand:V128F 0 "register_operand" "=r")
+        (copysign:V128F (match_operand:V128F 1 "register_operand" "r")
+                        (match_operand:V128F 2 "register_operand" "r")))]
+  "LVX_2"
+  "fsign<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_expand "copysign<mode>3"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (copysign:V256F (match_operand:V256F 1 "register_operand" "")
+                        (match_operand:V256F 2 "register_operand" "")))]
+  "LVX_2"
+  {
+    for (int half = 0; half < 2; half++)
+      {
+	unsigned off = half * 16;
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode, off);
+	rtx a = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode, off);
+	rtx b = simplify_gen_subreg (<HALF>mode, operands[2], <MODE>mode, off);
+	gcc_assert (d && a && b);
+	emit_insn (gen_copysign<half>3 (d, a, b));
+      }
+    DONE;
+  }
+)
+
+(define_insn "*fsignn<suffix>"
+  [(set (match_operand:FLOATM 0 "register_operand" "=r")
+        (copysign:FLOATM (match_operand:FLOATM 1 "register_operand" "r")
+                         (neg:FLOATM (match_operand:FLOATM 2 "register_operand" "r"))))]
+  ""
+  "fsignn<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "*fsignn<suffix>"
+  [(set (match_operand:V128F 0 "register_operand" "=r")
+        (copysign:V128F (match_operand:V128F 1 "register_operand" "r")
+                        (neg:V128F (match_operand:V128F 2 "register_operand" "r"))))]
+  "LVX_2"
+  "fsignn<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+;; -copysign(a, b) is copysign(a, -b) too: negating flips the sign, and the
+;; sign is all that b contributes.
+
+(define_insn "*fsignn<suffix>_neg"
+  [(set (match_operand:FLOATM 0 "register_operand" "=r")
+        (neg:FLOATM (copysign:FLOATM (match_operand:FLOATM 1 "register_operand" "r")
+                                     (match_operand:FLOATM 2 "register_operand" "r"))))]
+  ""
+  "fsignn<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "*fsignn<suffix>_neg"
+  [(set (match_operand:V128F 0 "register_operand" "=r")
+        (neg:V128F (copysign:V128F (match_operand:V128F 1 "register_operand" "r")
+                                   (match_operand:V128F 2 "register_operand" "r"))))]
+  "LVX_2"
+  "fsignn<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "xorsign<mode>3"
+  [(set (match_operand:FLOATM 0 "register_operand" "=r")
+        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
+                        (match_operand:FLOATM 2 "register_operand" "r")]
+                       UNSPEC_XORSIGN))]
+  ""
+  "fsignm<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "xorsign<mode>3"
+  [(set (match_operand:V128F 0 "register_operand" "=r")
+        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
+                       (match_operand:V128F 2 "register_operand" "r")]
+                      UNSPEC_XORSIGN))]
+  "LVX_2"
+  "fsignm<suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_expand "xorsign<mode>3"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (unspec:V256F [(match_operand:V256F 1 "register_operand" "")
+                       (match_operand:V256F 2 "register_operand" "")]
+                      UNSPEC_XORSIGN))]
+  "LVX_2"
+  {
+    for (int half = 0; half < 2; half++)
+      {
+	unsigned off = half * 16;
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode, off);
+	rtx a = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode, off);
+	rtx b = simplify_gen_subreg (<HALF>mode, operands[2], <MODE>mode, off);
+	gcc_assert (d && a && b);
+	emit_insn (gen_xorsign<half>3 (d, a, b));
+      }
+    DONE;
+  }
+)
+
 ;; C's fmin and fmax are 754-2008 minNum and maxNum, and fmin<mode>3 /
 ;; fmax<mode>3 are GCC's standard names for them: md.texi requires the other
 ;; operand to be returned when one is a quiet NaN.  The RTL codes smin and smax

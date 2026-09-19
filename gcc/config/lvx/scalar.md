@@ -2677,52 +2677,6 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "lvx_getsignh"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (unspec:DI  [(match_operand:HF 1 "register_operand" "r")] UNSPEC_GETSIGN))]
-  ""
-  "extfs %0 = %1, 15, 15"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
-(define_insn "lvx_setsignh"
-  [(set (match_operand:HF 0 "register_operand" "=r")
-        (unspec:HF [(match_operand:HF 1 "register_operand" "0")
-                    (match_operand:DI 2 "register_operand" "r")] UNSPEC_SETSIGN))]
-  ""
-  "insf %0 = %2, 15, 15"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
-(define_expand "copysignhf3"
-  [(match_operand:HF 0 "register_operand")
-   (match_operand:HF 1 "register_operand")
-   (match_operand:HF 2 "register_operand")]
-  ""
-  {
-    rtx sign2 = gen_reg_rtx (DImode);
-    emit_insn (gen_lvx_getsignh (sign2, operands[2]));
-    emit_insn (gen_lvx_setsignh (operands[0], operands[1], sign2));
-    DONE;
-  }
-)
-
-(define_expand "xorsignhf3"
-  [(match_operand:HF 0 "register_operand")
-   (match_operand:HF 1 "register_operand")
-   (match_operand:HF 2 "register_operand")]
-  ""
-  {
-    rtx mask = GEN_INT (0x8000);
-    rtx sign2 = gen_reg_rtx (HFmode);
-    emit_insn (gen_rtx_SET (sign2, gen_rtx_UNSPEC (HFmode, gen_rtvec (2, operands[2], mask), UNSPEC_ANDD)));
-    emit_insn (gen_rtx_SET (operands[0], gen_rtx_UNSPEC (HFmode, gen_rtvec (2, operands[1], sign2), UNSPEC_XORD)));
-    DONE;
-  }
-)
-
 (define_expand "floatsihf2"
   [(set (match_operand:HF 0 "register_operand" "")
         (float:HF (match_operand:SI 1 "register_operand" "")))]
@@ -2942,52 +2896,6 @@
   "fabsw %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_getsignw"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (unspec:DI  [(match_operand:SF 1 "register_operand" "r")] UNSPEC_GETSIGN))]
-  ""
-  "extfs %0 = %1, 31, 31"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
-(define_insn "lvx_setsignw"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (unspec:SF [(match_operand:SF 1 "register_operand" "0")
-                    (match_operand:DI 2 "register_operand" "r")] UNSPEC_SETSIGN))]
-  ""
-  "insf %0 = %2, 31, 31"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
-(define_expand "copysignsf3"
-  [(match_operand:SF 0 "register_operand")
-   (match_operand:SF 1 "register_operand")
-   (match_operand:SF 2 "register_operand")]
-  ""
-  {
-    rtx sign2 = gen_reg_rtx (DImode);
-    emit_insn (gen_lvx_getsignw (sign2, operands[2]));
-    emit_insn (gen_lvx_setsignw (operands[0], operands[1], sign2));
-    DONE;
-  }
-)
-
-(define_expand "xorsignsf3"
-  [(match_operand:SF 0 "register_operand")
-   (match_operand:SF 1 "register_operand")
-   (match_operand:SF 2 "register_operand")]
-  ""
-  {
-    rtx mask = GEN_INT (0x80000000);
-    rtx sign2 = gen_reg_rtx (SFmode);
-    emit_insn (gen_rtx_SET (sign2, gen_rtx_UNSPEC (SFmode, gen_rtvec (2, operands[2], mask), UNSPEC_ANDD)));
-    emit_insn (gen_rtx_SET (operands[0], gen_rtx_UNSPEC (SFmode, gen_rtvec (2, operands[1], sign2), UNSPEC_XORD)));
-    DONE;
-  }
 )
 
 (define_insn "floatsisf2"
@@ -3311,52 +3219,6 @@
   "fabsd %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_getsignd"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (unspec:DI  [(match_operand:DF 1 "register_operand" "r")] UNSPEC_GETSIGN))]
-  ""
-  "extfs %0 = %1, 63, 63"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
-(define_insn "lvx_setsignd"
-  [(set (match_operand:DF 0 "register_operand" "=r")
-        (unspec:DF [(match_operand:DF 1 "register_operand" "0")
-                    (match_operand:DI 2 "register_operand" "r")] UNSPEC_SETSIGN))]
-  ""
-  "insf %0 = %2, 63, 63"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
-(define_expand "copysigndf3"
-  [(match_operand:DF 0 "register_operand")
-   (match_operand:DF 1 "register_operand")
-   (match_operand:DF 2 "register_operand")]
-  ""
-  {
-    rtx sign2 = gen_reg_rtx (DImode);
-    emit_insn (gen_lvx_getsignd (sign2, operands[2]));
-    emit_insn (gen_lvx_setsignd (operands[0], operands[1], sign2));
-    DONE;
-  }
-)
-
-(define_expand "xorsigndf3"
-  [(match_operand:DF 0 "register_operand")
-   (match_operand:DF 1 "register_operand")
-   (match_operand:DF 2 "register_operand")]
-  ""
-  {
-    rtx mask = GEN_INT (0x8000000000000000);
-    rtx sign2 = gen_reg_rtx (DFmode);
-    emit_insn (gen_rtx_SET (sign2, gen_rtx_UNSPEC (DFmode, gen_rtvec (2, operands[2], mask), UNSPEC_ANDD)));
-    emit_insn (gen_rtx_SET (operands[0], gen_rtx_UNSPEC (DFmode, gen_rtvec (2, operands[1], sign2), UNSPEC_XORD)));
-    DONE;
-  }
 )
 
 (define_insn "floatdidf2"

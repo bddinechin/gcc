@@ -100,8 +100,7 @@
 
         UNSPEC_SELECT
 
-        UNSPEC_GETSIGN
-        UNSPEC_SETSIGN
+        UNSPEC_XORSIGN
 
         UNSPEC_FREC
         UNSPEC_FLOW
