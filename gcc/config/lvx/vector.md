@@ -391,7 +391,7 @@
     return "adddp %L0 = %L1, %2\n\tadddp %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -426,7 +426,7 @@
     return "andq %L0 = %L1, %2\n\tandq %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -450,7 +450,7 @@
     return "andq %L0 = %L1, %L2\n\tandq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -484,7 +484,7 @@
     return "eorq %L0 = %L1, %L2\n\teorq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -668,7 +668,7 @@
     return "iorq %L0 = %L1, %L2\n\tiorq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -793,7 +793,7 @@
     return "<stem>bx %L0 = %L1\n\t<stem>bx %M0 = %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length"          "32")]
 )
 
@@ -848,7 +848,7 @@
     return "<stem>bx %L0 = %L1, %L2\n\t<stem>bx %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 (define_insn "*<prefix>v16qi3_2"
@@ -870,7 +870,7 @@
     return "<stem>bx %L0 = %L2, %L1\n\t<stem>bx %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -1176,7 +1176,7 @@
     return "<stem>bx %L0 = %L1, %2\n\t<stem>bx %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 (define_insn "*<prefix>v16qi3_2"
@@ -2916,7 +2916,7 @@
     return "sll<hsuffix> %L0 = %L1, %2\n\tsll<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3033,7 +3033,7 @@
     return "sra<hsuffix> %L0 = %L1, %2\n\tsra<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3072,7 +3072,7 @@
     return "srl<hsuffix> %L0 = %L1, %2\n\tsrl<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3129,7 +3129,7 @@
     return "avg<hsuffix> %L0 = %L1, %L2\n\tavg<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3168,7 +3168,7 @@
     return "avgr<hsuffix> %L0 = %L1, %L2\n\tavgr<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3207,7 +3207,7 @@
     return "avgu<hsuffix> %L0 = %L1, %L2\n\tavgu<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3246,7 +3246,7 @@
     return "avgru<hsuffix> %L0 = %L1, %L2\n\tavgru<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3286,7 +3286,7 @@
     return "add<hsuffix> %L0 = %L1, %L2\n\tadd<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3299,7 +3299,7 @@
     return "add<hsuffix> %L0 = %1, %L2\n\tadd<hsuffix> %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3312,7 +3312,7 @@
     return "add<hsuffix> %L0 = %L1, %2\n\tadd<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3351,7 +3351,7 @@
     return "adds<hsuffix> %L0 = %L1, %L2\n\tadds<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3382,7 +3382,7 @@
     return "adds<hsuffix> %L0 = %1, %L2\n\tadds<hsuffix> %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3413,7 +3413,7 @@
     return "adds<hsuffix> %L0 = %L1, %2\n\tadds<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3465,7 +3465,7 @@
     return "addus<hsuffix> %L0 = %L1, %L2\n\taddus<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3498,7 +3498,7 @@
     return "addus<hsuffix> %L0 = %1, %L2\n\taddus<hsuffix> %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3531,7 +3531,7 @@
     return "addus<hsuffix> %L0 = %L1, %2\n\taddus<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3566,7 +3566,7 @@
     return "addx2<hsuffix> %L0 = %L1, %L2\n\taddx2<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3601,7 +3601,7 @@
     return "addx4<hsuffix> %L0 = %L1, %L2\n\taddx4<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3636,7 +3636,7 @@
     return "addx8<hsuffix> %L0 = %L1, %L2\n\taddx8<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3671,7 +3671,7 @@
     return "addx16<hsuffix> %L0 = %L1, %L2\n\taddx16<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3684,7 +3684,7 @@
     return "sbf<hsuffix> %L0 = %L2, %L1\n\tsbf<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3697,7 +3697,7 @@
     return "sbf<hsuffix> %L0 = %L2, %1\n\tsbf<hsuffix> %M0 = %M2, %1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3710,7 +3710,7 @@
     return "sbf<hsuffix> %L0 = %2, %L1\n\tsbf<hsuffix> %M0 = %2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3749,7 +3749,7 @@
     return "sbfs<hsuffix> %L0 = %L2, %L1\n\tsbfs<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3780,7 +3780,7 @@
     return "sbfs<hsuffix> %L0 = %L2, %1\n\tsbfs<hsuffix> %M0 = %M2, %1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3811,7 +3811,7 @@
     return "sbfs<hsuffix> %L0 = %2, %L1\n\tsbfs<hsuffix> %M0 = %2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3858,7 +3858,7 @@
     return "sbfus<hsuffix> %L0 = %L2, %L1\n\tsbfus<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3891,7 +3891,7 @@
     return "sbfus<hsuffix> %L0 = %L2, %1\n\tsbfus<hsuffix> %M0 = %M2, %1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3924,7 +3924,7 @@
     return "sbfus<hsuffix> %L0 = %2, %L1\n\tsbfus<hsuffix> %M0 = %2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3959,7 +3959,7 @@
     return "sbfx2<hsuffix> %L0 = %L2, %L1\n\tsbfx2<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -3994,7 +3994,7 @@
     return "sbfx4<hsuffix> %L0 = %L2, %L1\n\tsbfx4<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4029,7 +4029,7 @@
     return "sbfx8<hsuffix> %L0 = %L2, %L1\n\tsbfx8<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4064,7 +4064,7 @@
     return "sbfx16<hsuffix> %L0 = %L2, %L1\n\tsbfx16<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4137,7 +4137,7 @@
     return "min<hsuffix> %L0 = %L1, %L2\n\tmin<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4150,7 +4150,7 @@
     return "min<hsuffix> %L0 = %1, %L2\n\tmin<hsuffix> %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4163,7 +4163,7 @@
     return "min<hsuffix> %L0 = %L1, %2\n\tmin<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4176,7 +4176,7 @@
     return "max<hsuffix> %L0 = %L1, %L2\n\tmax<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4189,7 +4189,7 @@
     return "max<hsuffix> %L0 = %1, %L2\n\tmax<hsuffix> %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4202,7 +4202,7 @@
     return "max<hsuffix> %L0 = %L1, %2\n\tmax<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4215,7 +4215,7 @@
     return "minu<hsuffix> %L0 = %L1, %L2\n\tminu<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4228,7 +4228,7 @@
     return "minu<hsuffix> %L0 = %1, %L2\n\tminu<hsuffix> %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4241,7 +4241,7 @@
     return "minu<hsuffix> %L0 = %L1, %2\n\tminu<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4254,7 +4254,7 @@
     return "maxu<hsuffix> %L0 = %L1, %L2\n\tmaxu<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4267,7 +4267,7 @@
     return "maxu<hsuffix> %L0 = %1, %L2\n\tmaxu<hsuffix> %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4280,7 +4280,7 @@
     return "maxu<hsuffix> %L0 = %L1, %2\n\tmaxu<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4296,7 +4296,7 @@
     return "andq %L0 = %L1, %L2\n\tandq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4309,7 +4309,7 @@
     return "nandq %L0 = %L1, %L2\n\tnandq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4322,7 +4322,7 @@
     return "andnq %L0 = %L1, %L2\n\tandnq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4335,7 +4335,7 @@
     return "iorq %L0 = %L1, %L2\n\tiorq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4348,7 +4348,7 @@
     return "niorq %L0 = %L1, %L2\n\tniorq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4361,7 +4361,7 @@
     return "iornq %L0 = %L1, %L2\n\tiornq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4374,7 +4374,7 @@
     return "eorq %L0 = %L1, %L2\n\teorq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4387,7 +4387,7 @@
     return "neorq %L0 = %L1, %L2\n\tneorq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4496,7 +4496,7 @@
     return "neg<hsuffix> %L0 = %L1\n\tneg<hsuffix> %M0 = %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length"          "32")]
 )
 
@@ -4530,7 +4530,7 @@
     return "negs<hsuffix> %L0 = %L1\n\tnegs<hsuffix> %M0 = %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length"          "32")]
 )
 
@@ -4564,7 +4564,7 @@
     return "abs<hsuffix> %L0 = %L1\n\tabs<hsuffix> %M0 = %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length"          "32")]
 )
 
@@ -4596,7 +4596,7 @@
     return "abss<hsuffix> %L0 = %L1\n\tabss<hsuffix> %M0 = %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length"          "32")]
 )
 
@@ -4668,7 +4668,7 @@
     return "notq %L0 = %L1\n\tnotq %M0 = %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4719,7 +4719,7 @@
     return "abd<hsuffix> %L0 = %L1, %L2\n\tabd<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4756,7 +4756,7 @@
     return "abd<hsuffix> %L0 = %1, %L2\n\tabd<hsuffix> %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4793,7 +4793,7 @@
     return "abd<hsuffix> %L0 = %L1, %2\n\tabd<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4845,7 +4845,7 @@
     return "abds<hsuffix> %L0 = %L1, %L2\n\tabds<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4859,7 +4859,7 @@
     return "abds<hsuffix> %L0 = %1, %L2\n\tabds<hsuffix> %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4873,7 +4873,7 @@
     return "abds<hsuffix> %L0 = %L1, %2\n\tabds<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4925,7 +4925,7 @@
     return "abdu<hsuffix> %L0 = %L1, %L2\n\tabdu<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4939,7 +4939,7 @@
     return "abdu<hsuffix> %L0 = %1, %L2\n\tabdu<hsuffix> %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4953,7 +4953,7 @@
     return "abdu<hsuffix> %L0 = %L1, %2\n\tabdu<hsuffix> %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -4991,7 +4991,7 @@
     return "slldp %L0 = %L1, %2\n\tslldp %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -5082,7 +5082,7 @@
     return "sradp %L0 = %L1, %2\n\tsradp %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -5095,7 +5095,7 @@
     return "srldp %L0 = %L1, %2\n\tsrldp %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
