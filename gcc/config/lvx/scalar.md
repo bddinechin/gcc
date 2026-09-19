@@ -3016,50 +3016,30 @@
    (set_attr "issue" "lite")]
 )
 
-(define_expand "floatdisf2"
-  [(set (match_operand:SF 0 "register_operand" "")
-        (float:SF (match_operand:DI 1 "register_operand" "")))]
+(define_insn "floatdisf2"
+  [(set (match_operand:SF 0 "register_operand" "=r")
+        (float:SF (match_operand:DI 1 "register_operand" "r")))]
   ""
   {
-    if (!flag_unsafe_math_optimizations)
-      {
-        rtx dest = emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "__floatdisf"),
-                                            operands[0], LCT_CONST, SFmode,
-                                            operands[1], DImode);
-        if (dest != operands[0])
-          emit_move_insn (operands[0], dest);
-      }
-    else
-      {
-        rtx temp = gen_reg_rtx (DFmode);
-        emit_insn (gen_rtx_SET (temp, gen_rtx_FLOAT (DFmode, operands[1])));
-        emit_insn (gen_rtx_SET (operands[0], gen_rtx_FLOAT_TRUNCATE (SFmode, temp)));
-      }
-    DONE;
+    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
+      return "floatdw.rn %0 = %1, 0";
+    return "floatdw.rn %0 = %1";
   }
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
 )
 
-(define_expand "floatunsdisf2"
-  [(set (match_operand:SF 0 "register_operand" "")
-        (unsigned_float:SF (match_operand:DI 1 "register_operand" "")))]
+(define_insn "floatunsdisf2"
+  [(set (match_operand:SF 0 "register_operand" "=r")
+        (unsigned_float:SF (match_operand:DI 1 "register_operand" "r")))]
   ""
   {
-    if (!flag_unsafe_math_optimizations)
-      {
-        rtx dest = emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "__floatundisf"),
-                                            operands[0], LCT_CONST, SFmode,
-                                            operands[1], DImode);
-        if (dest != operands[0])
-          emit_move_insn (operands[0], dest);
-      }
-    else
-      {
-        rtx temp = gen_reg_rtx (DFmode);
-        emit_insn (gen_rtx_SET (temp, gen_rtx_UNSIGNED_FLOAT (DFmode, operands[1])));
-        emit_insn (gen_rtx_SET (operands[0], gen_rtx_FLOAT_TRUNCATE (SFmode, temp)));
-      }
-    DONE;
+    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
+      return "floatudw.rn %0 = %1, 0";
+    return "floatudw.rn %0 = %1";
   }
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "fix_truncsfsi2"
