@@ -5134,8 +5134,9 @@
 ;; fabs/fneg/lanes.ltz -- three instructions and three cycles for what the ISA
 ;; does in one.  copysign is an RTL code, so the standard name is the insn and
 ;; combine can see through it; xorsign has none, so it is an unspec.  FSIGNN,
-;; a with the NEGATED sign of b, is copysign(a, -b), which combine reaches
-;; through (copysign a (neg b)).  256 bits split in two halves as the
+;; a with the NEGATED sign of b, is copysign(a, -b): combine reaches it
+;; through (copysign a (neg b)) and (neg (copysign a b)), and
+;; __builtin_lvx_copysignn* names it.  256 bits split in two halves as the
 ;; min/max families do.
 
 (define_insn "copysign<mode>3"
@@ -5177,7 +5178,7 @@
   }
 )
 
-(define_insn "*fsignn<suffix>"
+(define_insn "lvx_fsignn<suffix>"
   [(set (match_operand:FLOATM 0 "register_operand" "=r")
         (copysign:FLOATM (match_operand:FLOATM 1 "register_operand" "r")
                          (neg:FLOATM (match_operand:FLOATM 2 "register_operand" "r"))))]
@@ -5187,7 +5188,7 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "*fsignn<suffix>"
+(define_insn "lvx_fsignn<suffix>"
   [(set (match_operand:V128F 0 "register_operand" "=r")
         (copysign:V128F (match_operand:V128F 1 "register_operand" "r")
                         (neg:V128F (match_operand:V128F 2 "register_operand" "r"))))]
@@ -5195,6 +5196,26 @@
   "fsignn<suffix> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
+)
+
+(define_expand "lvx_fsignn<suffix>"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (copysign:V256F (match_operand:V256F 1 "register_operand" "")
+                        (neg:V256F (match_operand:V256F 2 "register_operand" ""))))]
+  "LVX_2"
+  {
+    for (int half = 0; half < 2; half++)
+      {
+	unsigned off = half * 16;
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode, off);
+	rtx a = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode, off);
+	rtx b = simplify_gen_subreg (<HALF>mode, operands[2], <MODE>mode, off);
+	gcc_assert (d && a && b);
+	emit_insn (gen_rtx_SET (d, gen_rtx_COPYSIGN (<HALF>mode, a,
+				 gen_rtx_NEG (<HALF>mode, b))));
+      }
+    DONE;
+  }
 )
 
 ;; -copysign(a, b) is copysign(a, -b) too: negating flips the sign, and the

@@ -248,24 +248,34 @@ LVX_BUILTIN_DIRECT   (select256s, V256_FTYPE_V256_V256_UINT64_MOVECOND,, lvx_2) 
 LVX_BUILTIN_DIRECT   (select512s, V512_FTYPE_V512_V512_UINT64_MOVECOND,, lvx_2) // Vector
 
 LVX_BUILTIN_DIRECT   (copysignh, copysignhf3, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
-LVX_BUILTIN_DIRECT   (copysignho, copysignv8hf3, V8HF_FTYPE_V8HF_V8HF,, true) // Vector
-LVX_BUILTIN_DIRECT   (copysignhx, copysignv16hf3, V16HF_FTYPE_V16HF_V16HF,, true) // Vector
+LVX_BUILTIN_DIRECT   (copysignho, copysignv8hf3, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (copysignhx, copysignv16hf3, V16HF_FTYPE_V16HF_V16HF,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (copysignw, copysignsf3, FLOAT32_FTYPE_FLOAT32_FLOAT32,, true) // Scalar
-LVX_BUILTIN_DIRECT   (copysignwq, copysignv4sf3, V4SF_FTYPE_V4SF_V4SF,, true) // Vector
-LVX_BUILTIN_DIRECT   (copysignwo, copysignv8sf3, V8SF_FTYPE_V8SF_V8SF,, true) // Vector
+LVX_BUILTIN_DIRECT   (copysignwq, copysignv4sf3, V4SF_FTYPE_V4SF_V4SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (copysignwo, copysignv8sf3, V8SF_FTYPE_V8SF_V8SF,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (copysignd, copysigndf3, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
-LVX_BUILTIN_DIRECT   (copysigndp, copysignv2df3, V2DF_FTYPE_V2DF_V2DF,, true) // Vector
-LVX_BUILTIN_DIRECT   (copysigndq, copysignv4df3, V4DF_FTYPE_V4DF_V4DF,, true) // Vector
+LVX_BUILTIN_DIRECT   (copysigndp, copysignv2df3, V2DF_FTYPE_V2DF_V2DF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (copysigndq, copysignv4df3, V4DF_FTYPE_V4DF_V4DF,, lvx_2) // Vector
+
+LVX_BUILTIN_DIRECT   (copysignnh, lvx_fsignnh, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
+LVX_BUILTIN_DIRECT   (copysignnho, lvx_fsignnho, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (copysignnhx, lvx_fsignnhx, V16HF_FTYPE_V16HF_V16HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (copysignnw, lvx_fsignnw, FLOAT32_FTYPE_FLOAT32_FLOAT32,, true) // Scalar
+LVX_BUILTIN_DIRECT   (copysignnwq, lvx_fsignnwq, V4SF_FTYPE_V4SF_V4SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (copysignnwo, lvx_fsignnwo, V8SF_FTYPE_V8SF_V8SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (copysignnd, lvx_fsignnd, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
+LVX_BUILTIN_DIRECT   (copysignndp, lvx_fsignndp, V2DF_FTYPE_V2DF_V2DF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (copysignndq, lvx_fsignndq, V4DF_FTYPE_V4DF_V4DF,, lvx_2) // Vector
 
 LVX_BUILTIN_DIRECT   (xorsignh, xorsignhf3, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
-LVX_BUILTIN_DIRECT   (xorsignho, xorsignv8hf3, V8HF_FTYPE_V8HF_V8HF,, true) // Vector
-LVX_BUILTIN_DIRECT   (xorsignhx, xorsignv16hf3, V16HF_FTYPE_V16HF_V16HF,, true) // Vector
+LVX_BUILTIN_DIRECT   (xorsignho, xorsignv8hf3, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (xorsignhx, xorsignv16hf3, V16HF_FTYPE_V16HF_V16HF,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (xorsignw, xorsignsf3, FLOAT32_FTYPE_FLOAT32_FLOAT32,, true) // Scalar
-LVX_BUILTIN_DIRECT   (xorsignwq, xorsignv4sf3, V4SF_FTYPE_V4SF_V4SF,, true) // Vector
-LVX_BUILTIN_DIRECT   (xorsignwo, xorsignv8sf3, V8SF_FTYPE_V8SF_V8SF,, true) // Vector
+LVX_BUILTIN_DIRECT   (xorsignwq, xorsignv4sf3, V4SF_FTYPE_V4SF_V4SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (xorsignwo, xorsignv8sf3, V8SF_FTYPE_V8SF_V8SF,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (xorsignd, xorsigndf3, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
-LVX_BUILTIN_DIRECT   (xorsigndp, xorsignv2df3, V2DF_FTYPE_V2DF_V2DF,, true) // Vector
-LVX_BUILTIN_DIRECT   (xorsigndq, xorsignv4df3, V4DF_FTYPE_V4DF_V4DF,, true) // Vector
+LVX_BUILTIN_DIRECT   (xorsigndp, xorsignv2df3, V2DF_FTYPE_V2DF_V2DF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (xorsigndq, xorsignv4df3, V4DF_FTYPE_V4DF_V4DF,, lvx_2) // Vector
 
 // fmin*: the NaN-propagating family (754-2019 minimum/maximum);
 // fminn*: the numeric one (754-2008 minNum/maxNum), which is what C uses
