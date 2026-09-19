@@ -2679,10 +2679,32 @@ lvx_expand_vector_duplicate (rtx target, rtx source)
      *dup128 that half back into both halves -- three instructions for one.
      Double-word lanes stay on the chunk route: *dup128 makes those a single
      copyd, which is tiny where splatdq is lite.  */
+  if (GET_MODE (source) != inner_mode)
+    source = gen_lowpart (inner_mode, source);
+
+  /* A lane in memory splatted across a 256-bit quad is one L{B,H,W,D}SO
+     (*lso<mode>), whatever the lane: keep the MEM so the insn can take it.  */
+  if (vector_size == 4 * UNITS_PER_WORD && MEM_P (source))
+    {
+      emit_insn (gen_rtx_SET (target,
+			      gen_rtx_VEC_DUPLICATE (vector_mode, source)));
+      return;
+    }
+
+  /* A 256- or 512-bit vector of sub-word lanes is a SPLAT{B,H,W}Q into the
+     low pair and copies of that pair (*splat256, *splat512).  The chunk route
+     below cannot express it: its *dup256 split moves the chunk in a 64-bit
+     vector mode, which has no mov pattern.  */
+  if (vector_size > 2 * UNITS_PER_WORD && inner_size < UNITS_PER_WORD)
+    {
+      source = force_reg (inner_mode, source);
+      emit_insn (gen_rtx_SET (target,
+			      gen_rtx_VEC_DUPLICATE (vector_mode, source)));
+      return;
+    }
+
   if (vector_size == 2 * UNITS_PER_WORD && inner_size < UNITS_PER_WORD)
     {
-      if (GET_MODE (source) != inner_mode)
-	source = gen_lowpart (inner_mode, source);
       source = force_reg (inner_mode, source);
       emit_insn (gen_rtx_SET (target,
 			      gen_rtx_VEC_DUPLICATE (vector_mode, source)));

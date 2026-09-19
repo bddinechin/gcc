@@ -503,6 +503,8 @@
 ;; single copyd that is `tiny` where splatdq is `lite`, so the ISA's D form
 ;; buys nothing here.
 (define_mode_iterator SPLAT128 [V16QI V8HI V8HF V4SI V4SF])
+(define_mode_iterator SPLAT256 [V32QI V16HI V16HF V8SI V8SF])
+(define_mode_iterator SPLAT512 [V64QI V32HI V32HF V16SI V16SF])
 (define_mode_attr splat [(V16QI "b") (V8HI "h") (V8HF "h") (V4SI "w") (V4SF "w")])
 
 (define_insn "*splat128<mode>"
@@ -512,6 +514,91 @@
   "splat<splat>q %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
+)
+
+;; A 256-bit vector of sub-word lanes: SPLAT{B,H,W}Q fills the low pair, and
+;; the high pair is a copy of it -- three syllables, the last two tiny.
+;; Split after reload so the splat is the *splat128 above and the copy is
+;; the pair move, and the bundler can place them; a single template would
+;; put the copies in the splat's own bundle, where they read the pair's
+;; old value.  This replaces the chunk route (*dup256 on a 64-bit vector
+;; chunk), whose split needed a move in a 64-bit vector mode that has no
+;; mov pattern: (v8si){k,k,k,k,k,k,k,k} was an unrecognizable insn.
+;; The 512-bit form splats the low half and copies it up; its first insn
+;; is a *splat256 and splits again.
+(define_insn_and_split "*splat256<mode>"
+  [(set (match_operand:SPLAT256 0 "register_operand" "=r")
+        (vec_duplicate:SPLAT256 (match_operand:<INNER> 1 "register_operand" "r")))]
+  "LVX_2"
+  "#"
+  "&& reload_completed"
+  [(set (match_dup 2) (vec_duplicate:<HALF> (match_dup 1)))
+   (set (match_dup 3) (match_dup 2))]
+  {
+    operands[2] = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode, 0);
+    operands[3] = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode, 16);
+  }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "12")]
+)
+
+(define_insn_and_split "*splat512<mode>"
+  [(set (match_operand:SPLAT512 0 "register_operand" "=r")
+        (vec_duplicate:SPLAT512 (match_operand:<INNER> 1 "register_operand" "r")))]
+  "LVX_2"
+  "#"
+  "&& reload_completed"
+  [(set (match_dup 2) (vec_duplicate:<HALF> (match_dup 1)))
+   (set (match_dup 3) (match_dup 2))]
+  {
+    operands[2] = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode, 0);
+    operands[3] = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode, 32);
+  }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "28")]
+)
+
+;; A lane in memory splatted across a quad is one L{B,H,W,D}SO, whatever the
+;; lane type: it loads and splats in the LSU, with no ALU op after the load.
+;; This is the plain form; lvx_lso<mode> in builtin.md is the builtin's,
+;; whose UNSPEC_LOAD carries the variant string and which generic RTL never
+;; matches.  Reached from vec_duplicate<mode> with a memory source, and by
+;; combine when a scalar load feeds a vec_duplicate.
+(define_insn "*lso<mode>"
+  [(set (match_operand:SIMD256 0 "register_operand" "=r,r,r")
+        (vec_duplicate:SIMD256 (match_operand:<INNER> 1 "memory_operand" "a,b,m")))]
+  "LVX_2"
+  "l<lsplat>so%X1 %0 = %1"
+  [(set_attr "type" "load")
+   (set_attr_alternative "issue"
+    [(const_string "lsu_auxw")
+     (const_string "lsu_auxw_x")
+     (const_string "lsu_auxw_x2")])
+   (set_attr "length" "4, 8, 12")]
+)
+
+;; The same instruction for a 128-bit vector: L*SO writes a quad, and the
+;; pair wanted is its low half.  The middle end cannot say so -- the lane is
+;; loaded into a scalar and only that scalar reaches vec_duplicate -- but
+;; combine can fuse the load into the splat given an insn with the pair as
+;; destination, which is this one.  It exists only before allocation: the
+;; split gives it a fresh quad to load into and copies the low pair out,
+;; and the allocator, seeing a lowpart copy, puts the pair on the quad's
+;; low half and the copy disappears (a copyd pair at worst).
+(define_insn_and_split "*lso128<mode>"
+  [(set (match_operand:SIMD128 0 "register_operand" "=r")
+        (vec_duplicate:SIMD128 (match_operand:<INNER> 1 "memory_operand" "m")))]
+  "LVX_2 && can_create_pseudo_p ()"
+  "#"
+  "&& 1"
+  [(set (match_dup 2) (vec_duplicate:<QUAD> (match_dup 1)))
+   (set (match_dup 0) (match_dup 3))]
+  {
+    operands[2] = gen_reg_rtx (<QUAD>mode);
+    operands[3] = gen_lowpart (<MODE>mode, operands[2]);
+  }
 )
 
 (define_insn_and_split "*dup128"

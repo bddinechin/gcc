@@ -816,6 +816,16 @@
 ])
 
 ;; Attribute to get the wide MODE of a vector mode.
+(define_mode_attr QUAD [
+  (V16QI   "V32QI")
+  (V8HI    "V16HI")
+  (V8HF    "V16HF")
+  (V4SI    "V8SI")
+  (V4SF    "V8SF")
+  (V2DI    "V4DI")
+  (V2DF    "V4DF")
+])
+
 (define_mode_attr WIDE [
   (V8QI    "V8HI")
   (V4HI    "V4SI")
