@@ -10281,6 +10281,13 @@ fold_builtin_bit_query (location_t loc, enum built_in_function fcode,
   tree arg0_type = TREE_TYPE (arg0);
   tree cast_type = NULL_TREE;
   int addend = 0;
+  /* The widest argument the expansion below handles, by splitting it into
+     two long long halves: __int128 on LP64 targets.  This is a property of
+     long long, not of MAX_FIXED_MODE_SIZE -- a target whose widest integer
+     mode is wider than TImode (LVX: OImode, for its 256-bit loads and
+     stores) would otherwise be asked to split a 256-bit type into halves
+     that long long cannot hold.  */
+  const int wide_prec = 2 * TYPE_PRECISION (long_long_unsigned_type_node);
 
   switch (fcode)
     {
@@ -10350,13 +10357,12 @@ fold_builtin_bit_query (location_t loc, enum built_in_function fcode,
 	  fcodei = fcodell;
 	}
     }
-  else if (TYPE_PRECISION (arg0_type) <= MAX_FIXED_MODE_SIZE)
+  else if (TYPE_PRECISION (arg0_type) <= wide_prec
+	   && wide_prec <= MAX_FIXED_MODE_SIZE)
     {
       cast_type
-	= build_nonstandard_integer_type (MAX_FIXED_MODE_SIZE,
+	= build_nonstandard_integer_type (wide_prec,
 					  TYPE_UNSIGNED (arg0_type));
-      gcc_assert (TYPE_PRECISION (cast_type)
-		  == 2 * TYPE_PRECISION (long_long_unsigned_type_node));
       fcodei = END_BUILTINS;
     }
   else
@@ -10387,9 +10393,7 @@ fold_builtin_bit_query (location_t loc, enum built_in_function fcode,
       arg2 = NULL_TREE;
     }
   tree call = NULL_TREE, tem;
-  if (TYPE_PRECISION (arg0_type) == MAX_FIXED_MODE_SIZE
-      && (TYPE_PRECISION (arg0_type)
-	  == 2 * TYPE_PRECISION (long_long_unsigned_type_node))
+  if (TYPE_PRECISION (arg0_type) == wide_prec
       /* If the target supports the optab, then don't do the expansion. */
       && !direct_internal_fn_supported_p (ifn, arg0_type, OPTIMIZE_FOR_BOTH))
     {
@@ -10400,7 +10404,7 @@ fold_builtin_bit_query (location_t loc, enum built_in_function fcode,
 		   : long_long_integer_type_node);
       tree hi = fold_build2 (RSHIFT_EXPR, arg0_type, arg0,
 			     build_int_cst (integer_type_node,
-					    MAX_FIXED_MODE_SIZE / 2));
+					    wide_prec / 2));
       hi = fold_convert (type, hi);
       tree lo = fold_convert (type, arg0);
       switch (fcode)
@@ -10409,7 +10413,7 @@ fold_builtin_bit_query (location_t loc, enum built_in_function fcode,
 	  call = fold_builtin_bit_query (loc, fcode, lo, NULL_TREE);
 	  call = fold_build2 (PLUS_EXPR, integer_type_node, call,
 			      build_int_cst (integer_type_node,
-					     MAX_FIXED_MODE_SIZE / 2));
+					     wide_prec / 2));
 	  if (arg2)
 	    call = fold_build3 (COND_EXPR, integer_type_node,
 				fold_build2 (NE_EXPR, boolean_type_node,
@@ -10426,7 +10430,7 @@ fold_builtin_bit_query (location_t loc, enum built_in_function fcode,
 	  call = fold_builtin_bit_query (loc, fcode, hi, NULL_TREE);
 	  call = fold_build2 (PLUS_EXPR, integer_type_node, call,
 			      build_int_cst (integer_type_node,
-					     MAX_FIXED_MODE_SIZE / 2));
+					     wide_prec / 2));
 	  if (arg2)
 	    call = fold_build3 (COND_EXPR, integer_type_node,
 				fold_build2 (NE_EXPR, boolean_type_node,
@@ -10443,14 +10447,14 @@ fold_builtin_bit_query (location_t loc, enum built_in_function fcode,
 	  tem = fold_builtin_bit_query (loc, fcode, lo, NULL_TREE);
 	  tem = fold_build2 (PLUS_EXPR, integer_type_node, tem,
 			     build_int_cst (integer_type_node,
-					    MAX_FIXED_MODE_SIZE / 2));
+					    wide_prec / 2));
 	  tem = fold_build3 (COND_EXPR, integer_type_node,
 			     fold_build2 (LT_EXPR, boolean_type_node,
 					  fold_build2 (BIT_XOR_EXPR, type,
 						       lo, hi),
 					  build_zero_cst (type)),
 			     build_int_cst (integer_type_node,
-					    MAX_FIXED_MODE_SIZE / 2 - 1),
+					    wide_prec / 2 - 1),
 			     tem);
 	  call = fold_builtin_bit_query (loc, fcode, hi, NULL_TREE);
 	  call = save_expr (call);
@@ -10458,7 +10462,7 @@ fold_builtin_bit_query (location_t loc, enum built_in_function fcode,
 			      fold_build2 (NE_EXPR, boolean_type_node,
 					   call,
 					   build_int_cst (integer_type_node,
-							  MAX_FIXED_MODE_SIZE
+							  wide_prec
 							  / 2 - 1)),
 			      call, tem);
 	  break;
@@ -10466,7 +10470,7 @@ fold_builtin_bit_query (location_t loc, enum built_in_function fcode,
 	  call = fold_builtin_bit_query (loc, fcode, hi, NULL_TREE);
 	  call = fold_build2 (PLUS_EXPR, integer_type_node, call,
 			      build_int_cst (integer_type_node,
-					     MAX_FIXED_MODE_SIZE / 2));
+					     wide_prec / 2));
 	  call = fold_build3 (COND_EXPR, integer_type_node,
 			      fold_build2 (NE_EXPR, boolean_type_node,
 					   hi, build_zero_cst (type)),
