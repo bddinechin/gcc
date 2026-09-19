@@ -2178,7 +2178,7 @@
         (unspec:DI [(match_operand:DI 1 "register_operand" "r,r,r,r")
                     (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")] UNSPEC_SBMMT8D))]
   "HAVE_LVX_TSBMM8_DI"
-  "sbmmt8 %0 = %1, %2"
+  "sbmmt8d %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
    (set_attr "length" "4,4,8,12")]
