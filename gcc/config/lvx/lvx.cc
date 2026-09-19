@@ -6426,8 +6426,17 @@ lvx_vectorize_vec_perm_const (machine_mode vmode, machine_mode op_mode,
   if (vmode == E_V2QImode || vmode == E_V2HImode)
     return false;		// TODO Allow vec perm for these modes.
 
+  /* The selector is a vector of lane indices in the integer mode of the
+     same shape.  There need not be one: on lvx-1, V2SF exists for float
+     complex while every integer vector mode is lvx-2-only, so
+     related_int_vector_mode (V2SFmode) is empty, and handing its VOIDmode
+     to vec_perm_indices_to_rtx is an ICE from a query
+     (can_vec_perm_const_p, match.pd's VEC_PERM_EXPR folding).  Such a
+     permute is not ours to do; the middle end scalarises it.  */
   opt_machine_mode smode = related_int_vector_mode (vmode);
-  rtx sel_rtx = vec_perm_indices_to_rtx (smode.else_void (), sel);
+  if (!smode.exists ())
+    return false;
+  rtx sel_rtx = vec_perm_indices_to_rtx (smode.require (), sel);
   return target
     ? lvx_expand_vec_perm_const (target, op0, op1, sel_rtx)
     : true;
