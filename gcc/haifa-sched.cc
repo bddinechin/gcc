@@ -1134,9 +1134,30 @@ cond_clobbered_p (rtx_insn *insn, HARD_REG_SET set_regs)
     {
       sd_iterator_def sd_it;
       dep_t dep;
+      int tick = INSN_TICK (insn);
       haifa_change_pattern (insn, ORIG_PAT (insn));
       FOR_EACH_DEP (insn, SD_LIST_BACK, sd_it, dep)
 	DEP_STATUS (dep) &= ~DEP_CANCELLED;
+      /* The control dependence the predication broke may already be
+	 resolved: its jump was scheduled earlier in this cycle, and on an
+	 exposed pipeline the pattern restore that triggers is deferred to
+	 the next cycle (restore_pattern), which leaves TODO_SPEC at
+	 DEP_CONTROL meanwhile.  Such an insn has nothing left to wait for,
+	 so it must keep its place in the queue, and its tick, which the
+	 pattern change invalidated: nothing would ever try_ready it again,
+	 and dropping it leaves the ready list empty with the insn
+	 unscheduled.  */
+      if (sd_lists_empty_p (insn, SD_LIST_BACK))
+	{
+	  INSN_TICK (insn) = tick;
+	  TODO_SPEC (insn) = 0;
+	  if (sched_verbose >= 2)
+	    fprintf (sched_dump,
+		     ";;\t\tunpredicate insn %s because of clobbered "
+		     "condition\n",
+		     (*current_sched_info->print_insn) (insn, 0));
+	  return false;
+	}
       TODO_SPEC (insn) = HARD_DEP;
       if (sched_verbose >= 2)
 	fprintf (sched_dump,
