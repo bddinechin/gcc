@@ -9399,6 +9399,22 @@ lvx_ifcvt_ce2_candidate_ce3 (basic_block block, rtx reg_cond)
 }
 
 
+/* The hard registers INSN reads, into GEN_REGS: what note_uses finds in its
+   pattern, plus, for a call, the argument registers of its
+   CALL_INSN_FUNCTION_USAGE -- which the pattern does not mention, and which
+   is exactly what a value computed just before the call is live for.
+   Missing a use here speculates a write over a live register.  */
+static void
+lvx_ifcvt_record_uses (rtx_insn *insn, HARD_REG_SET *gen_regs)
+{
+  note_uses (&PATTERN (insn), record_hard_reg_uses, gen_regs);
+  if (CALL_P (insn))
+    for (rtx link = CALL_INSN_FUNCTION_USAGE (insn); link;
+	 link = XEXP (link, 1))
+      if (GET_CODE (XEXP (link, 0)) == USE)
+	note_uses (&XEXP (link, 0), record_hard_reg_uses, gen_regs);
+}
+
 /* Fill USED_REGS the set of registers that are in use at BLOCK boundaries so
    must not be written by a speculated insn of the other block.
 
@@ -9462,7 +9478,7 @@ lvx_ifcvt_ce3_compute_used_regs (basic_block block, bool with_used_in,
 	  CLEAR_HARD_REG_SET (kill_regs);
 	  CLEAR_HARD_REG_SET (gen_regs);
 	  note_stores (insn, record_hard_reg_sets, &kill_regs);
-	  note_uses (&PATTERN (insn), record_hard_reg_uses, &gen_regs);
+	  lvx_ifcvt_record_uses (insn, &gen_regs);
 	  live_regs &= ~kill_regs;
 	  live_regs |= gen_regs;
 
@@ -9556,7 +9572,7 @@ lvx_ifcvt_ce3_speculate (ce_if_block *ce_info, basic_block block)
 	CLEAR_HARD_REG_SET (kill_regs);
 	CLEAR_HARD_REG_SET (gen_regs);
 	note_stores (insn, record_hard_reg_sets, &kill_regs);
-	note_uses (&PATTERN (insn), record_hard_reg_uses, &gen_regs);
+	lvx_ifcvt_record_uses (insn, &gen_regs);
 	live_regs &= ~kill_regs;
 	live_regs |= gen_regs;
 
