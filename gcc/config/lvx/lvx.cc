@@ -3245,7 +3245,10 @@ lvx_expand_unpack (rtx op0, rtx op1, bool signed_p, bool hi_p)
 bool
 lvx_expand_memset_mul (rtx *operands, machine_mode mode)
 {
-  if (GET_MODE_SIZE (mode) <= UNITS_PER_WORD
+  /* The splat below is SPLATBQ, an lvx-2 instruction: on lvx-1 the
+     multiply stays a multiply (umulditi3 + madddidi4 in multi3).  */
+  if (!LVX_2
+      || GET_MODE_SIZE (mode) <= UNITS_PER_WORD
       || !currently_expanding_gimple_stmt
       || !gimple_call_builtin_p (currently_expanding_gimple_stmt,
 				 BUILT_IN_MEMSET))
