@@ -3180,13 +3180,19 @@ init_rtx_reader_args_cb (int argc, const char **argv,
   if (define_attr_queue != NULL)
     check_define_attr_duplicates ();
 
+  /* Process define_subst patterns, then define_cond_exec ones: a
+     define_subst does not match the COND_EXEC body of a predicated
+     variant, so the other way round the variant of a substituted pattern
+     (addsi3_zx from addsi3, say) came out with the subst attribute set
+     but the original, unsubstituted body -- a wrong pattern, and no
+     predicated form of the substituted one.  Substituting first gives
+     every generated pattern its own variant.  */
+  if (define_subst_queue != NULL)
+    process_define_subst ();
+
   /* Process define_cond_exec patterns.  */
   if (define_cond_exec_queue != NULL)
     process_define_cond_exec ();
-
-  /* Process define_subst patterns.  */
-  if (define_subst_queue != NULL)
-    process_define_subst ();
 
   if (define_attr_queue != NULL)
     gen_mnemonic_attr ();
