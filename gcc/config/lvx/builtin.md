@@ -1996,6 +1996,32 @@
    (set_attr "issue" "lite")
    (set_attr "length" "4")]
 )
+;; The accumulating forms: %0 ^= sbmm8 (%2, %3), one word or a pair.  The
+;; matrix is a register here (no immediate form), which is what the
+;; permutation expander wants: it builds each matrix once and reuses it.
+(define_insn "lvx_sbmm8eord"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (unspec:DI [(match_operand:DI 1 "register_operand" "0")
+                    (match_operand:DI 2 "register_operand" "r")
+                    (match_operand:DI 3 "register_operand" "r")] UNSPEC_SBMM8EORD))]
+  "HAVE_LVX_SBMM8_DI"
+  "sbmm8eord %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
+)
+
+(define_insn "lvx_sbmm8eordp"
+  [(set (match_operand:V2DI 0 "register_operand" "=r")
+        (unspec:V2DI [(match_operand:V2DI 1 "register_operand" "0")
+                      (match_operand:V2DI 2 "register_operand" "r")
+                      (match_operand:V2DI 3 "register_operand" "r")] UNSPEC_SBMM8EORD))]
+  "LVX_2 && (HAVE_LVX_SBMM8_V2DI)"
+  "sbmm8eordp %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
+)
 
 (define_insn "*sbmm8dp_s1"
   [(set (match_operand:ALL128 0 "register_operand" "=r")

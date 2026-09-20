@@ -39,6 +39,7 @@
         UNSPEC_SCALL
         UNSPEC_STSU
         UNSPEC_SBMM8D
+        UNSPEC_SBMM8EORD
         UNSPEC_SBMMT8D
         UNSPEC_WAITIT
         UNSPEC_WFXL

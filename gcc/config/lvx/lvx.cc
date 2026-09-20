@@ -6285,15 +6285,175 @@ lvx_expand_vec_perm_const_emit_insf (rtx target, rtx source1, rtx source2,
   return NULL_RTX;
 }
 
-/* Implements swizzle (NULL source2) or shuffle based on lvx_expand_vec_perm.
-   Before implementing a generic SBMM8D-XORD scheme, we special-case the target
-   words that can be computed using a MOVE alone or followed by EXTFZ, INSF. */
-void
-lvx_expand_vec_perm_const_emit (rtx target, rtx source1, rtx source2)
+/* The generic path for one destination pair (words 2 * DPAIR and
+   2 * DPAIR + 1 of TARGET), accumulated from the SBMM8 contributions of
+   the origin words.
+
+   Per word, the first contribution is SBMM8D with the matrix as its
+   immediate and the rest are SBMM8EORD with the matrix in a register:
+   the same count as SBMM8D-immediate plus EORD in straight-line code,
+   and one op fewer per contribution in a loop, where the register matrix
+   is invariant and hoisted.  The accumulator is a fresh DI so the final
+   move onto the target word is a plain copy the allocator folds into the
+   last op, whatever the sources overlap.
+
+   When every contribution to the pair comes from an origin pair whose two
+   words feed the two destination words directly (o0 -> d0 and o1 -> d1)
+   and there are at least two such pairs, the pair is accumulated whole
+   with SBMM8DP and then SBMM8EORDP on the origin pairs as they sit in the
+   register file, with the matrix pairs in registers: that breaks even in
+   straight-line code (a pair op and two maked for two immediate ops, then
+   one op instead of two per further pair) and halves the loop body.  A
+   pair with a lone or a crossed contribution stays on the word path,
+   where the immediate form is free.  Words already produced by the
+   special cases (SKIP0/SKIP1) are left alone.
+
+   CHAIN selects the accumulating forms; it is set inside a loop, where the
+   hoisted matrices make them pay (7-11% on the ISS).  In straight-line
+   code they do not: the matrices are immediates for free, and a tied
+   accumulation chain holds its register from the first op while the
+   sources are still read, which costs copies when the result must land
+   where the sources are (x = shuffle (x), a value returned in the
+   argument registers).  There the three-address form -- SBMM8D-immediate
+   into temporaries, an EORD tree, the target written last -- is what the
+   allocator does best.  */
+static void
+lvx_expand_vec_perm_const_emit_pair (rtx target, rtx source1, rtx source2,
+				     int dpair, bool skip0, bool skip1,
+				     bool chain)
 {
   machine_mode vector_mode = GET_MODE (target);
   int nwords = GET_MODE_SIZE (vector_mode) / UNITS_PER_WORD;
   int range = source2 ? 2 * nwords : nwords;
+  int d0 = 2 * dpair, d1 = d0 + 1;
+
+  /* Whole pair?  Every nonzero matrix must sit on a straight pair whose
+     other matrix is nonzero too, and there must be at least two pairs.  */
+  if (!skip0 && !skip1 && chain)
+    {
+      int npairs = 0;
+      bool whole = true;
+      for (int opair = 0; opair < range / 2 && whole; opair++)
+	{
+	  int o0 = 2 * opair, o1 = o0 + 1;
+	  bool s0 = lvx_expand_vec_perm.values[o0][d0].dword != 0;
+	  bool s1 = lvx_expand_vec_perm.values[o1][d1].dword != 0;
+	  bool x0 = lvx_expand_vec_perm.values[o1][d0].dword != 0;
+	  bool x1 = lvx_expand_vec_perm.values[o0][d1].dword != 0;
+	  if (x0 || x1 || s0 != s1)
+	    whole = false;
+	  else if (s0)
+	    npairs++;
+	}
+      if (whole && npairs >= 2)
+	{
+	  rtx acc = simplify_gen_subreg (V2DImode, target, vector_mode,
+					 d0 * UNITS_PER_WORD);
+	  bool init = false;
+	  for (int opair = 0; opair < range / 2; opair++)
+	    {
+	      int o0 = 2 * opair, o1 = o0 + 1;
+	      HOST_WIDE_INT m0 = lvx_expand_vec_perm.values[o0][d0].dword;
+	      HOST_WIDE_INT m1 = lvx_expand_vec_perm.values[o1][d1].dword;
+	      if (!m0)
+		continue;
+	      rtx source = o0 >= nwords ? source2 : source1;
+	      int offset = o0 >= nwords ? o0 - nwords : o0;
+	      rtx pair = simplify_gen_subreg (V2DImode, source, vector_mode,
+					      offset * UNITS_PER_WORD);
+	      rtx matrix
+		= force_reg (V2DImode,
+			     gen_rtx_CONST_VECTOR (V2DImode,
+						   gen_rtvec (2, GEN_INT (m0),
+							      GEN_INT (m1))));
+	      if (!init)
+		emit_insn (gen_lvx_sbmm8dp (acc, pair, matrix));
+	      else
+		emit_insn (gen_lvx_sbmm8eordp (acc, acc, pair, matrix));
+	      init = true;
+	    }
+	  return;
+	}
+    }
+
+  /* Word by word.  Chained, into the two halves of one V2DI accumulator
+     so the allocator can give the pair the registers the target pair
+     wants; otherwise each contribution into its own temporary and an EORD
+     tree, the target written last.  */
+  rtx acc2 = chain ? gen_reg_rtx (V2DImode) : NULL_RTX;
+  for (int h = 0; h < 2; h++)
+    {
+      int d = h ? d1 : d0;
+      if (h ? skip1 : skip0)
+	continue;
+      rtx acc = chain ? simplify_gen_subreg (DImode, acc2, V2DImode,
+					     h * UNITS_PER_WORD)
+		: NULL_RTX;
+      bool init = false;
+      for (int orig = 0; orig < range; orig++)
+	{
+	  HOST_WIDE_INT m = lvx_expand_vec_perm.values[orig][d].dword;
+	  if (!m)
+	    continue;
+	  rtx source = orig >= nwords ? source2 : source1;
+	  int offset = orig >= nwords ? orig - nwords : orig;
+	  rtx word = simplify_gen_subreg (DImode, source, vector_mode,
+					  offset * UNITS_PER_WORD);
+	  if (!chain)
+	    {
+	      rtx tmp = gen_reg_rtx (DImode);
+	      emit_insn (gen_lvx_sbmm8d (tmp, word, GEN_INT (m)));
+	      if (!init)
+		acc = tmp;
+	      else
+		{
+		  rtx sum = gen_reg_rtx (DImode);
+		  emit_insn (gen_xordi3 (sum, acc, tmp));
+		  acc = sum;
+		}
+	      init = true;
+	    }
+	  else if (!init)
+	    {
+	      emit_insn (gen_lvx_sbmm8d (acc, word, GEN_INT (m)));
+	      init = true;
+	    }
+	  else
+	    emit_insn (gen_lvx_sbmm8eord (acc, acc, word,
+					  force_reg (DImode, GEN_INT (m))));
+	}
+      gcc_assert (init);
+      if (!chain)
+	emit_move_insn (simplify_gen_subreg (DImode, target, vector_mode,
+					     d * UNITS_PER_WORD), acc);
+    }
+  if (!chain)
+    return;
+  if (!skip0 && !skip1)
+    emit_move_insn (simplify_gen_subreg (V2DImode, target, vector_mode,
+					 d0 * UNITS_PER_WORD), acc2);
+  else
+    {
+      int d = skip0 ? d1 : d0;
+      emit_move_insn (simplify_gen_subreg (DImode, target, vector_mode,
+					   d * UNITS_PER_WORD),
+		      simplify_gen_subreg (DImode, acc2, V2DImode,
+					   (d - d0) * UNITS_PER_WORD));
+    }
+}
+
+/* Implements swizzle (NULL source2) or shuffle based on lvx_expand_vec_perm.
+   The target words that a MOVE alone, or a MOVE with EXTFZ and INSF, can
+   produce are special-cased first; the rest are accumulated a pair of words
+   at a time by lvx_expand_vec_perm_const_emit_pair.  */
+void
+lvx_expand_vec_perm_const_emit (rtx target, rtx source1, rtx source2,
+				bool chain)
+{
+  machine_mode vector_mode = GET_MODE (target);
+  int nwords = GET_MODE_SIZE (vector_mode) / UNITS_PER_WORD;
+  int range = source2 ? 2 * nwords : nwords;
+  bool done[8] = { false };
 
   for (int dest = 0; dest < nwords; dest++)
     {
@@ -6318,7 +6478,10 @@ lvx_expand_vec_perm_const_emit (rtx target, rtx source1, rtx source2)
       if (orig0 >= 0
 	  && lvx_expand_vec_perm_const_emit_move (target, source1, source2,
 						  dest, orig0))
-	continue;
+	{
+	  done[dest] = true;
+	  continue;
+	}
 
       // Force source1 and source2 in registers since we may insert into them.
       if (source1)
@@ -6329,29 +6492,21 @@ lvx_expand_vec_perm_const_emit (rtx target, rtx source1, rtx source2)
       if (nconst == 2
 	  && lvx_expand_vec_perm_const_emit_insf (target, source1, source2,
 						  dest, orig1, orig2))
+	done[dest] = true;
+    }
+
+  /* Two words at a time; a 64-bit vector has one word, taken alone.  */
+  for (int dpair = 0; 2 * dpair < nwords; dpair++)
+    {
+      int d0 = 2 * dpair, d1 = d0 + 1;
+      bool skip1 = d1 >= nwords || done[d1];
+      if (done[d0] && skip1)
 	continue;
-
-      rtx op0 = simplify_gen_subreg (DImode, target, vector_mode,
-				     dest * UNITS_PER_WORD);
-      rtx acc = force_reg (DImode, GEN_INT (0));
-      for (int orig = 0; orig < range; orig++)
-	{
-	  HOST_WIDE_INT constant =
-	    lvx_expand_vec_perm.values[orig][dest].dword;
-	  if (constant)
-	    {
-	      rtx tmp = gen_reg_rtx (DImode);
-	      rtx source = orig >= nwords ? source2 : source1;
-	      int offset = orig >= nwords ? orig - nwords : orig;
-	      rtx op1 = simplify_gen_subreg (DImode, source, vector_mode,
-					     offset * UNITS_PER_WORD);
-	      rtx op2 = force_reg (DImode, GEN_INT (constant));
-	      emit_insn (gen_lvx_sbmm8d (tmp, op1, op2));
-	      emit_insn (gen_xordi3 (acc, acc, tmp));
-	    }
-	}
-
-      emit_move_insn (op0, acc);
+      source1 = force_reg (vector_mode, source1);
+      if (source2)
+	source2 = force_reg (vector_mode, source2);
+      lvx_expand_vec_perm_const_emit_pair (target, source1, source2, dpair,
+					   done[d0], skip1, chain);
     }
 }
 
@@ -6421,10 +6576,16 @@ lvx_expand_vec_perm_const (rtx target, rtx source1, rtx source2, rtx selector)
   if (overlap)
     temporary = gen_reg_rtx (vector_mode);
 
+  /* The accumulating SBMM8EORD forms pay inside a loop, where their
+     register matrices are hoisted; see lvx_expand_vec_perm_const_emit_pair.  */
+  bool chain = (currently_expanding_gimple_stmt
+		&& gimple_bb (currently_expanding_gimple_stmt)
+		&& bb_loop_depth (gimple_bb (currently_expanding_gimple_stmt)) > 0);
+
   if (which == 1)
-    lvx_expand_vec_perm_const_emit (temporary, source1, NULL_RTX);
+    lvx_expand_vec_perm_const_emit (temporary, source1, NULL_RTX, chain);
   else
-    lvx_expand_vec_perm_const_emit (temporary, source1, source2);
+    lvx_expand_vec_perm_const_emit (temporary, source1, source2, chain);
 
   if (overlap)
     emit_move_insn (target, temporary);
