@@ -60,6 +60,9 @@
         UNSPEC_SXWDP
         UNSPEC_QXWDP
         UNSPEC_SPLAT
+        UNSPEC_EVEN
+        UNSPEC_ODD
+        UNSPEC_ZIP
         UNSPEC_SBMM8DS
         UNSPEC_SBMM8DXY
         UNSPEC_TRUNC

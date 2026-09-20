@@ -6506,6 +6506,165 @@ lvx_expand_vec_perm_const_emit (rtx target, rtx source1, rtx source2,
 }
 
 
+/* The lane shuffles EVEN*Q, ODD*Q and ZIP*DQ (UZP1, UZP2, ZIP1/ZIP2), read
+   off the byte map lvx_expand_vec_perm.from[] at every lane width W the
+   instructions have, on a 128-bit vector, or on each 128-bit half of a
+   256-bit one:
+
+     UZP1  dest lane j = lane 2j of [source1 source2]      even<w>q s1, s2
+     UZP2  dest lane j = lane 2j+1 of [source1 source2]    odd<w>q  s1, s2
+     ZIP1  dest lanes 2j, 2j+1 = lane j of s1, of s2 (low halves)
+                                                   zip<w>dq s1.lo, s2.lo
+     ZIP2  the same on the high halves             zip<w>dq s1.hi, s2.hi
+
+   A 256-bit UZP1 of (s1, s2) is even (s1.lo, s1.hi) then even (s2.lo,
+   s2.hi); a 256-bit ZIP1 is zip (s1.w0, s2.w0) then zip (s1.w1, s2.w1),
+   ZIP2 on words 2 and 3.  Double-word lanes zip as CATDQ, the even/odd
+   of double words is EVENDQ/ODDDQ.  Returns true if it emitted the
+   permutation.  */
+static bool
+lvx_expand_vec_perm_shuffle (rtx target, rtx source1, rtx source2,
+			     bool single)
+{
+  machine_mode vector_mode = GET_MODE (target);
+  unsigned size = GET_MODE_SIZE (vector_mode);
+  const unsigned short *from = lvx_expand_vec_perm.from;
+
+  if (!LVX_2 || (size != 16 && size != 32))
+    return false;
+
+  /* A swizzle's byte map indexes source1 alone: the "second source" of a
+     shuffle of a vector with itself is at offset 0, not SIZE.  */
+  unsigned s2off = single ? 0 : size;
+
+  /* Does the byte map, restricted to the destination half [base, base+16)
+     with sources s1, s2 (byte offsets of the two 128-bit operands in the
+     concatenated [source1 source2]), read as the shuffle?  */
+  auto is_even_odd = [&] (unsigned base, unsigned s1, unsigned s2, unsigned w,
+			  unsigned odd)
+    {
+      for (unsigned j = 0; j < 16 / w; j++)
+	for (unsigned k = 0; k < w; k++)
+	  {
+	    unsigned lane = 2 * j + odd;
+	    unsigned src = lane < 16 / w ? s1 + lane * w : s2 + (lane - 16 / w) * w;
+	    if (from[base + j * w + k] != src + k)
+	      return false;
+	  }
+      return true;
+    };
+  auto is_zip = [&] (unsigned base, unsigned s1, unsigned s2, unsigned w,
+		     unsigned half)
+    {
+      for (unsigned j = 0; j < 8 / w; j++)
+	for (unsigned k = 0; k < w; k++)
+	  {
+	    if (from[base + (2 * j) * w + k] != s1 + half * 8 + j * w + k
+		|| from[base + (2 * j + 1) * w + k] != s2 + half * 8 + j * w + k)
+	      return false;
+	  }
+      return true;
+    };
+
+  auto quad = [&] (rtx v, unsigned byte_offset, machine_mode m)
+    {
+      return simplify_gen_subreg (m, v, GET_MODE (v), byte_offset);
+    };
+  auto dword = [&] (rtx v, unsigned byte_offset)
+    {
+      return simplify_gen_subreg (DImode, v, GET_MODE (v), byte_offset);
+    };
+  static const machine_mode lane_mode[4] = { V16QImode, V8HImode, V4SImode,
+					     V2DImode };
+  typedef rtx (*gen2) (rtx, rtx, rtx);
+  static const gen2 gen_even[4] = { gen_lvx_evenbq, gen_lvx_evenhq,
+				    gen_lvx_evenwq, gen_lvx_evendq };
+  static const gen2 gen_odd[4] = { gen_lvx_oddbq, gen_lvx_oddhq,
+				   gen_lvx_oddwq, gen_lvx_odddq };
+  static const gen2 gen_zip[3] = { gen_lvx_zipbdq, gen_lvx_ziphdq,
+				   gen_lvx_zipwdq };
+
+  unsigned nhalf = size / 16;
+  for (unsigned lw = 0; lw < 4; lw++)
+    {
+      unsigned w = 1 << lw;
+      machine_mode lm = lane_mode[lw];
+      bool even = true, odd = true, zip1 = true, zip2 = true;
+      for (unsigned h = 0; h < nhalf; h++)
+	{
+	  unsigned base = h * 16;
+	  if (nhalf == 1)
+	    {
+	      even &= is_even_odd (base, 0, s2off, w, 0);
+	      odd &= is_even_odd (base, 0, s2off, w, 1);
+	      zip1 &= is_zip (base, 0, s2off, w, 0);
+	      zip2 &= is_zip (base, 0, s2off, w, 1);
+	    }
+	  else
+	    {
+	      /* Half h of a 256-bit UZP takes the two quads of source h;
+		 half h of a 256-bit ZIP takes word h (ZIP1) or 2 + h (ZIP2)
+		 of each source -- is_zip's HALF selects the word within the
+		 quad it is given, so hand it the quad holding that word.  */
+	      unsigned sh = h ? s2off : 0;
+	      even &= is_even_odd (base, sh, sh + 16, w, 0);
+	      odd &= is_even_odd (base, sh, sh + 16, w, 1);
+	      zip1 &= is_zip (base, 0, s2off, w, h);
+	      zip2 &= is_zip (base, 16, s2off + 16, w, h);
+	    }
+	}
+      if (!even && !odd && !zip1 && !zip2)
+	continue;
+
+      source1 = force_reg (vector_mode, source1);
+      source2 = force_reg (vector_mode, source2);
+
+      /* A 256-bit result is two quads, each from one insn.  Compute them
+	 in two fresh quads and join them with lvx_cat256 (a vec_concat that
+	 ties its low half to the result), rather than writing the halves of
+	 the result: a partial write of a multi-register pseudo keeps the
+	 whole pseudo live before it, which stops it sharing registers with a
+	 source that dies there, and every 256-bit shuffle would start with
+	 four copyd.  */
+      rtx halves[2];
+      for (unsigned h = 0; h < nhalf; h++)
+	{
+	  rtx dest = nhalf == 1 ? quad (target, 0, lm) : gen_reg_rtx (lm);
+	  halves[h] = dest;
+	  if (even || odd)
+	    {
+	      rtx a, b;
+	      if (nhalf == 1)
+		a = quad (source1, 0, lm), b = quad (source2, 0, lm);
+	      else
+		{
+		  rtx src = h ? source2 : source1;
+		  a = quad (src, 0, lm), b = quad (src, 16, lm);
+		}
+	      emit_insn ((even ? gen_even : gen_odd)[lw] (dest, a, b));
+	    }
+	  else
+	    {
+	      /* 128-bit: word 0 (ZIP1) or 1 (ZIP2) of each source; 256-bit:
+		 word h (ZIP1) or 2 + h (ZIP2).  */
+	      unsigned word = nhalf == 1 ? (zip1 ? 0 : 8) : (zip1 ? 0 : 16) + h * 8;
+	      rtx a = dword (source1, word), b = dword (source2, word);
+	      if (lw == 3)
+		emit_insn (gen_lvx_catdq (dest, a, b));
+	      else
+		emit_insn (gen_zip[lw] (dest, a, b));
+	    }
+	}
+      if (nhalf == 2)
+	emit_insn (gen_lvx_cat256 (simplify_gen_subreg (V4DImode, target,
+							vector_mode, 0),
+				   simplify_gen_subreg (V2DImode, halves[0], lm, 0),
+				   simplify_gen_subreg (V2DImode, halves[1], lm, 0)));
+      return true;
+    }
+  return false;
+}
+
 /* Called by the vec_perm_const<mode> standard pattern.
    First step identifies whether this is a swizzle (one source) or a shuffle.
    Second step fills the lvx_expand_vec_perm structure with SBMM8D immediates.
@@ -6570,6 +6729,12 @@ lvx_expand_vec_perm_const (rtx target, rtx source1, rtx source2, rtx selector)
   rtx temporary = target;
   if (overlap)
     temporary = gen_reg_rtx (vector_mode);
+
+  /* One of the ISA's lane shuffles?  Each writes its quad in one insn, so
+     it handles overlap of target and sources itself.  */
+  if (lvx_expand_vec_perm_shuffle (target, source1,
+				   which == 1 ? source1 : source2, which == 1))
+    return true;
 
   /* The accumulating SBMM8EORD forms pay inside a loop, where their
      register matrices are hoisted; see lvx_expand_vec_perm_const_emit_pair.  */

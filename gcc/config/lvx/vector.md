@@ -601,6 +601,79 @@
   }
 )
 
+;; The lane shuffles of a quad, after ARM's UZP1/UZP2/ZIP1/ZIP2.
+;; EVEN%1 = %2, %3: the even lanes of %2 then the even lanes of %3 (UZP1);
+;; ODD the odd ones (UZP2).  ZIP%1 = %2, %3 interleaves the lanes of two
+;; double words: ZIP1 on the low halves of two vectors, ZIP2 on the high
+;; halves.  The permutation expander (lvx_expand_vec_perm_shuffle) matches
+;; the selectors; vec_pack_trunc is EVEN, since a little-endian lane's low
+;; half is its even half.
+(define_mode_iterator SHUF128 [V16QI V8HI V4SI V2DI])
+(define_mode_iterator ZIP128 [V16QI V8HI V4SI])
+
+(define_insn "lvx_even<lane>q"
+  [(set (match_operand:SHUF128 0 "register_operand" "=r")
+        (unspec:SHUF128 [(match_operand:SHUF128 1 "register_operand" "r")
+                         (match_operand:SHUF128 2 "register_operand" "r")] UNSPEC_EVEN))]
+  "LVX_2"
+  "even<lane>q %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
+)
+
+(define_insn "lvx_odd<lane>q"
+  [(set (match_operand:SHUF128 0 "register_operand" "=r")
+        (unspec:SHUF128 [(match_operand:SHUF128 1 "register_operand" "r")
+                         (match_operand:SHUF128 2 "register_operand" "r")] UNSPEC_ODD))]
+  "LVX_2"
+  "odd<lane>q %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
+)
+
+(define_insn "lvx_zip<lane>dq"
+  [(set (match_operand:ZIP128 0 "register_operand" "=r")
+        (unspec:ZIP128 [(match_operand:DI 1 "register_operand" "r")
+                        (match_operand:DI 2 "register_operand" "r")] UNSPEC_ZIP))]
+  "LVX_2"
+  "zip<lane>dq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
+)
+
+;; CATDQ: a quad from two double words, the vec_concat.
+(define_insn "lvx_catdq"
+  [(set (match_operand:V2DI 0 "register_operand" "=r")
+        (vec_concat:V2DI (match_operand:DI 1 "register_operand" "r")
+                         (match_operand:DI 2 "register_operand" "r")))]
+  "LVX_2"
+  "catdq %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
+)
+
+;; Narrowing pack: the low half of each lane, which is its even half.
+(define_mode_iterator PACK128 [V8HI V4SI V2DI])
+(define_mode_attr packed [(V8HI "V16QI") (V4SI "V8HI") (V2DI "V4SI")])
+(define_mode_attr packedlane [(V8HI "b") (V4SI "h") (V2DI "w")])
+
+(define_expand "vec_pack_trunc_<mode>"
+  [(match_operand:<packed> 0 "register_operand")
+   (match_operand:PACK128 1 "register_operand")
+   (match_operand:PACK128 2 "register_operand")]
+  "LVX_2"
+  {
+    emit_insn (gen_lvx_even<packedlane>q (operands[0],
+					   gen_lowpart (<packed>mode, operands[1]),
+					   gen_lowpart (<packed>mode, operands[2])));
+    DONE;
+  }
+)
+
 (define_insn_and_split "*dup128"
   [(set (match_operand:SIMD128 0 "register_operand" "=r")
         (vec_duplicate:SIMD128 (match_operand:<CHUNK> 1 "nonmemory_operand" "r")))]

@@ -826,6 +826,10 @@
   (V2DF    "V4DF")
 ])
 
+(define_mode_attr lane [
+  (V16QI "b") (V8HI "h") (V8HF "h") (V4SI "w") (V4SF "w") (V2DI "d") (V2DF "d")
+])
+
 (define_mode_attr WIDE [
   (V8QI    "V8HI")
   (V4HI    "V4SI")
