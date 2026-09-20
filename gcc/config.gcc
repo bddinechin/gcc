@@ -2453,10 +2453,12 @@ iq2000*-*-elf*)
 lvx-*-mbr*)
 	tm_file="${tm_file} lvx/lvx-registers.h elfos.h lvx/lvx-mbr.h newlib-stdint.h"
 	tmake_file="lvx/t-lvx lvx/t-mbr"
+	use_gcc_stdint=wrap
 	;;
 lvx-*-cos*)
 	tm_file="${tm_file} lvx/lvx-registers.h elfos.h lvx/lvx-cos.h newlib-stdint.h"
 	tmake_file="lvx/t-lvx lvx/t-cos"
+	use_gcc_stdint=wrap
 	extra_options="${extra_options} lvx/lvx-cos.opt"
 	if test x$enable_as_accelerator = xyes; then
 		extra_programs="${extra_programs} mkoffload\$(exeext)"
