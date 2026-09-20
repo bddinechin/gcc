@@ -5694,7 +5694,8 @@
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
      (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")]
+   (set_attr "length" "4, 8, 12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadchz"
@@ -5711,7 +5712,8 @@
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
      (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")]
+   (set_attr "length" "4, 8, 12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadcwz"
@@ -5728,7 +5730,8 @@
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
      (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")]
+   (set_attr "length" "4, 8, 12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadcd"
@@ -5745,7 +5748,8 @@
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
      (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")]
+   (set_attr "length" "4, 8, 12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadcq"
@@ -5762,7 +5766,8 @@
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
      (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")]
+   (set_attr "length" "4, 8, 12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadchf"
@@ -5779,7 +5784,8 @@
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
      (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")]
+   (set_attr "length" "4, 8, 12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadcwf"
@@ -5796,7 +5802,8 @@
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
      (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")]
+   (set_attr "length" "4, 8, 12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadcdf"
@@ -5813,7 +5820,8 @@
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
      (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")]
+   (set_attr "length" "4, 8, 12")
+   (set_attr "predicable" "no")]
 )
 
 (define_expand "lvx_loadc128"
@@ -5860,7 +5868,8 @@
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
      (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")]
+   (set_attr "length" "4, 8, 12")
+   (set_attr "predicable" "no")]
 )
 
 (define_expand "lvx_loadc256"
@@ -5894,7 +5903,8 @@
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
      (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")]
+   (set_attr "length" "4, 8, 12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadc__"
@@ -5910,7 +5920,8 @@
     [(const_string "lsu_auxw")
      (const_string "lsu_auxw_x")
      (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")]
+   (set_attr "length" "4, 8, 12")
+   (set_attr "predicable" "no")]
 )
 
 
@@ -6088,7 +6099,8 @@
   "guard%3%X1 %2? sb %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 (define_insn "*lvx_storecb"
   [(set (match_operand:QI 1 "memsimple_operand"  "=c,d,e")
@@ -6101,7 +6113,8 @@
   "guard%3%X1 %2? sb %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storech"
@@ -6115,7 +6128,8 @@
   "guard%3%X1 %2? sh %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 (define_insn "*lvx_storech"
   [(set (match_operand:HI 1 "memsimple_operand"  "=c,d,e")
@@ -6128,7 +6142,8 @@
   "guard%3%X1 %2? sh %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storecw"
@@ -6142,7 +6157,8 @@
   "guard%3%X1 %2? sw %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 (define_insn "*lvx_storecw"
   [(set (match_operand:SI 1 "memsimple_operand"  "=c,d,e")
@@ -6155,7 +6171,8 @@
   "guard%3%X1 %2? sw %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storecd"
@@ -6169,7 +6186,8 @@
   "guard%3%X1 %2? sd %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storecq"
@@ -6183,7 +6201,8 @@
  "guard%3%X1 %2? sq %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storechf"
@@ -6197,7 +6216,8 @@
   "guard%3%X1 %2? sh %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storecwf"
@@ -6211,7 +6231,8 @@
   "guard%3%X1 %2? sw %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storecdf"
@@ -6225,7 +6246,8 @@
   "guard%3%X1 %2? sd %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 
 (define_expand "lvx_storec128"
@@ -6272,7 +6294,8 @@
   "guard%3%X1 %2? sq %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storec256"
@@ -6286,7 +6309,8 @@
   "guard%3%X1 %2? so %1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")]
+   (set_attr "length"            "4,               8,              12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn_and_split "lvx_undef128"

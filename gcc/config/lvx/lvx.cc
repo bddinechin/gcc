@@ -101,18 +101,10 @@ static struct lvx_ifcvt
 {
   enum lvx_ifcvt_ce ce_level;
   int block_count;
-  unsigned def_counter;
   sbitmap block_visited;
   rtx_insn *recog_insn;
   recog_data_d recog_data;
   // Cleared by lvx_ifcvt_reset.
-  unsigned fake_reg_counter;
-  int prep_insns_count;
-  struct
-  {
-    rtx_insn *insn;
-    rtx parallel;
-  } prep_insns[2 * MAX_CONDITIONAL_EXECUTE];
   rtx_insn *then_start;
   rtx_insn *then_end;
   rtx_insn *else_start;
@@ -9238,6 +9230,37 @@ lvx_addr_space_convert (rtx op, tree from_type, tree to_type)
 
 /* ifcvt utils {{{ */
 
+/* If-conversion on LVX runs three times.  CE1 and CE2, before register
+   allocation, are the generic noce pass: an if-then-else that computes one
+   value becomes an if_then_else, which is a CMOVED.  CE3, after reload, is
+   the generic cond_exec pass, and on LVX a conditionally executed insn is a
+   GUARD prefix: the BCU syllable "guard.<cond> $rN?" that suppresses the
+   guarded units of its bundle when the condition is false.  Any pattern
+   with predicable=yes (the default, see lvx.md) has a COND_EXEC variant for
+   it, so CE3 needs no scratch register and no rewriting of the insns; only
+   the BCU and singleton-bundle instructions cannot be guarded.
+
+   What the target still has to do is done here, through IFCVT_MACHDEP_INIT
+   in CE2 and IFCVT_MODIFY_TESTS/INSN in CE3:
+
+   - In CE2, decide whether the then/else blocks of an if header are what
+     CE3 can convert (every insn recognisable as a COND_EXEC, no jump or
+     call, no more than MAX_CONDITIONAL_EXECUTE) and, if so, append a USE
+     of the tested register to each block.  Register allocation then keeps
+     that register live to the end of the blocks, where the guards need it;
+     without the USE its range ends at the jump and the allocator is free to
+     reuse it inside the blocks.
+
+   - In CE3, speculate what is free: a non-memory, non-trapping insn whose
+     destination is dead after the block and unused by the other block runs
+     unconditionally, costing no guard syllable.  Everything else is guarded.
+
+   Until 2026-09-20 arithmetic was pseudo-predicated the KV3 way: computed
+   into a scratch register scavenged after reload, then CMOVED into place,
+   through a fake-SFR placeholder set in CE2, the *wrapped_* patterns of
+   if-convert.md and UNSPEC_DEF.  A guarded insn is one syllable where that
+   was two plus a register.  */
+
 static void
 lvx_ifcvt_ctor (void)
 {
@@ -9261,9 +9284,6 @@ lvx_ifcvt_reset (void)
   if (dump_file)
     fprintf (dump_file, "LVX_IFCVT_RESET(%s, CE%d)\n",
 	     current_function_name (), (int) lvx_ifcvt->ce_level);
-  lvx_ifcvt->fake_reg_counter = 0;
-  lvx_ifcvt->prep_insns_count = 0;
-  memset (lvx_ifcvt->prep_insns, 0, sizeof (lvx_ifcvt->prep_insns));
   lvx_ifcvt->then_start = lvx_ifcvt->then_end = 0;
   lvx_ifcvt->else_start = lvx_ifcvt->else_end = 0;
 }
@@ -9277,20 +9297,6 @@ lvx_ifcvt_dtor (void)
   if (lvx_ifcvt->block_visited)
     sbitmap_free (lvx_ifcvt->block_visited);
   memset (lvx_ifcvt, 0, sizeof (struct lvx_ifcvt));
-}
-
-/* Allocate fake GPRs in SFRs for the scratch registers used by pseudo-predication.
-   These are remapped to real GPRs in CE3 by (lvx_ifcvt_ce3_fix_pseudo_predicated).
-   Cannot use pseudo-registers for pseudo-predication temporaries as they may be
-   assigned different architectural registers after spill and reload.  */
-static rtx
-lvx_ifcvt_gen_fake_reg_rtx (machine_mode mode)
-{
-  unsigned regno_mask = LVX_SFR_FAKE_GPR_MASK;
-  unsigned first_regno = LVX_SFR_FAKE_GPR_FIRST;
-  gcc_checking_assert (GET_MODE_SIZE (mode) <= UNITS_PER_WORD);
-  unsigned regno = first_regno + (lvx_ifcvt->fake_reg_counter++ & regno_mask);
-  return gen_rtx_REG (mode, regno);
 }
 
 /* Get the test of a register the conditional jump at the end of BLOCK.  */
@@ -9338,106 +9344,11 @@ lvx_ifcvt_ce2_recog_pattern (rtx pattern, bool split)
   return icode;
 }
 
-/* Check that INSN is a move that can be changed to conditional move.  */
-static bool
-lvx_ifcvt_ce2_cond_move_ce3 (rtx_insn *insn, rtx reg_cond)
-{
-  rtx pattern = PATTERN (insn);
-  gcc_checking_assert (GET_CODE (pattern) == SET);
-
-  rtx set_src = SET_SRC (pattern);
-  rtx set_dest = SET_DEST (pattern);
-
-  if (register_operand (set_dest, VOIDmode)
-      && (CONSTANT_P (set_src) || register_operand (set_src, VOIDmode)))
-    {
-      rtx new_pattern = gen_rtx_COND_EXEC (VOIDmode, reg_cond, pattern);
-      int recog = lvx_ifcvt_ce2_recog_pattern (new_pattern, true);
-      return recog >= 0;
-    }
-
-  return false;
-}
-
-/* Check that INSN is a memory access that can be (pseudo-)predicated.  */
-static bool
-lvx_ifcvt_ce2_cond_mem_ce3 (rtx_insn *insn, rtx reg_cond)
-{
-  rtx pattern = PATTERN (insn);
-  gcc_checking_assert (GET_CODE (pattern) == SET);
-
-  rtx set_src = SET_SRC (pattern);
-  rtx set_dest = SET_DEST (pattern);
-  enum rtx_code dest_code = GET_CODE (set_dest);
-  enum rtx_code src_code = GET_CODE (set_src);
-
-  // Cases of loads with zero extension or sign extension.
-  if ((src_code == ZERO_EXTEND || src_code == SIGN_EXTEND)
-      && MEM_P (XEXP (set_src, 0)))
-    {
-      set_src = XEXP (set_src, 0);
-      src_code = MEM;
-    }
-
-  // Find MEM and reject MEM to MEM moves.
-  if (src_code == MEM && dest_code == MEM)
-    return false;
-
-  rtx mem = 0;
-  if (src_code == MEM)
-    mem = set_src;
-  if (dest_code == MEM)
-    mem = set_dest;
-  if (!mem)
-    return false;
-
-  bool memsimple = memsimple_operand (mem, VOIDmode);
-  if (!memsimple)
-    // Need to pseudo-predicate.
-    {
-      rtx fake_reg = lvx_ifcvt_gen_fake_reg_rtx (Pmode);
-      rtx parallel = gen_rtx_PARALLEL (VOIDmode, rtvec_alloc (2));
-      XVECEXP (parallel, 0, 0) = copy_rtx (pattern);
-      XVECEXP (parallel, 0, 1) = gen_rtx_USE (VOIDmode, fake_reg);
-      gcc_assert (lvx_ifcvt->prep_insns_count < 2 * MAX_CONDITIONAL_EXECUTE);
-      lvx_ifcvt->prep_insns[lvx_ifcvt->prep_insns_count].parallel = parallel;
-      lvx_ifcvt->prep_insns[lvx_ifcvt->prep_insns_count].insn = insn;
-      lvx_ifcvt->prep_insns_count++;
-      pattern = parallel;
-    }
-
-  rtx new_pattern = gen_rtx_COND_EXEC (VOIDmode, reg_cond, pattern);
-  int recog = lvx_ifcvt_ce2_recog_pattern (new_pattern, true);
-  return recog >= 0;
-}
-
-/* Check that INSN is arithmetic that can be pseudo-predicated.  */
-static bool
-lvx_ifcvt_ce2_cond_arith_ce3 (rtx_insn *insn, rtx reg_cond)
-{
-  rtx pattern = PATTERN (insn);
-  gcc_checking_assert (GET_CODE (pattern) == SET);
-
-  rtx set_dest = SET_DEST (pattern);
-  machine_mode mode = GET_MODE (set_dest);
-  if (GET_MODE_SIZE (mode) > UNITS_PER_WORD)
-    return false;
-
-  rtx fake_reg = lvx_ifcvt_gen_fake_reg_rtx (mode);
-  rtx parallel = gen_rtx_PARALLEL (VOIDmode, rtvec_alloc (2));
-  XVECEXP (parallel, 0, 0) = copy_rtx (pattern);
-  XVECEXP (parallel, 0, 1) = gen_rtx_USE (VOIDmode, fake_reg);
-  gcc_assert (lvx_ifcvt->prep_insns_count < 2 * MAX_CONDITIONAL_EXECUTE);
-  lvx_ifcvt->prep_insns[lvx_ifcvt->prep_insns_count].parallel = parallel;
-  lvx_ifcvt->prep_insns[lvx_ifcvt->prep_insns_count].insn = insn;
-  lvx_ifcvt->prep_insns_count++;
-
-  rtx new_pattern = gen_rtx_COND_EXEC (VOIDmode, reg_cond, parallel);
-  int recog = lvx_ifcvt_ce2_recog_pattern (new_pattern, true);
-  return recog >= 0;
-}
-
-/* Check that BLOCK only contains valid candidates for CE3 if-conversion.  */
+/* Check that BLOCK only contains valid candidates for CE3 if-conversion:
+   insns whose conditional form under REG_COND is a recognisable pattern --
+   a CMOVED for a move, the guarded variant of anything predicable.  Reload
+   will still reshape some of these (a constant forced into a register, a
+   spill), but into loads, stores and moves, which are predicable too.  */
 static bool
 lvx_ifcvt_ce2_candidate_ce3 (basic_block block, rtx reg_cond)
 {
@@ -9458,67 +9369,23 @@ lvx_ifcvt_ce2_candidate_ce3 (basic_block block, rtx reg_cond)
       if (NONJUMP_INSN_P (insn))
 	{
 	  rtx pattern = PATTERN (insn);
+	  // A USE is deleted by cond_exec_process_insns, not predicated.
+	  if (GET_CODE (pattern) == USE)
+	    continue;
 	  if (count++ >= MAX_CONDITIONAL_EXECUTE)
 	    {
 	      if (dump_file)
 		fprintf(dump_file, "LVX_IFCVT not candidate (%d > MAX_CONDITIONAL)\n", count);
 	      return false;
 	    }
-	  if (GET_CODE (pattern) != SET)
+
+	  rtx new_pattern = gen_rtx_COND_EXEC (VOIDmode, reg_cond, pattern);
+	  if (lvx_ifcvt_ce2_recog_pattern (new_pattern, true) < 0)
 	    {
 	      if (dump_file)
-		fprintf(dump_file, "LVX_IFCVT not candidate (insn %d not as SET)\n", INSN_UID (insn));
+		fprintf(dump_file, "LVX_IFCVT not candidate (insn %d has no cond_exec form)\n", INSN_UID (insn));
 	      return false;
 	    }
-
-	  // Check if insn can be converted to conditional move.
-	  if (lvx_ifcvt_ce2_cond_move_ce3 (insn, reg_cond))
-	    {
-	      if (dump_file)
-		fprintf(dump_file, "LVX_IFCVT cond_move (insn %d)\n", INSN_UID (insn));
-	      continue;
-	    }
-
-	  // Check if insn can be converted to conditional memory access.
-	  if (contains_mem_rtx_p (pattern))
-	    {
-	      if (HAVE_LVX_PREDICATION)
-		continue;
-	      if (lvx_ifcvt_ce2_cond_mem_ce3 (insn, reg_cond))
-		{
-		  if (dump_file)
-		    fprintf(dump_file, "LVX_IFCVT cond_mem (insn %d)\n", INSN_UID (insn));
-		  continue;
-		}
-	      if (dump_file)
-		fprintf(dump_file, "LVX_IFCVT not candidate (insn %d is not cond_mem)\n", INSN_UID (insn));
-	      return false;
-	    }
-
-	  if (side_effects_p (pattern))
-	    {
-	      if (dump_file)
-		fprintf(dump_file, "LVX_IFCVT not candidate (insn %d has side effects)\n", INSN_UID (insn));
-	      return false;
-	    }
-
-	  if (may_trap_p (pattern))
-	    {
-	      if (dump_file)
-		fprintf(dump_file, "LVX_IFCVT not candidate (insn %d may_trap)\n", INSN_UID (insn));
-	      return false;
-	    }
-
-	  if (lvx_ifcvt_ce2_cond_arith_ce3 (insn, reg_cond))
-	    {
-	      if (dump_file)
-		fprintf(dump_file, "LVX_IFCVT cond_artith (insn %d)\n", INSN_UID (insn));
-	      continue;
-	    }
-
-	    if (dump_file)
-	      fprintf(dump_file, "LVX_IFCVT not candidate (insn %d arith)\n", INSN_UID (insn));
-	    return false;
 	}
       else if (NONDEBUG_INSN_P (insn))
 	{
@@ -9532,30 +9399,13 @@ lvx_ifcvt_ce2_candidate_ce3 (basic_block block, rtx reg_cond)
 }
 
 
-/* Access to the scratch register of the pseudo-predicated INSN.  */
-static rtx *
-lvx_ifcvt_ce3_pseudo_predicate__scratch_reg (rtx_insn *insn)
-{
-  rtx pattern = PATTERN (insn);
-  if (GET_CODE (pattern) == PARALLEL && XVECLEN (pattern, 0) == 2)
-    {
-      rtx x0 = XVECEXP (pattern, 0, 0);
-      rtx x1 = XVECEXP (pattern, 0, 1);
-      if (GET_CODE (x0) == SET && GET_CODE (x1) == USE
-	  && GET_CODE (XEXP (x1, 0)) == REG)
-	return &XEXP (x1, 0);
-    }
-
-  return 0;
-}
-
 /* Fill USED_REGS the set of registers that are in use at BLOCK boundaries so
-   must not be used as scratch registers when if-converting the other block.
+   must not be written by a speculated insn of the other block.
 
-   Assume assigning scratch registers to the THEN BLOCK, with the if-converted
-   ELSE BLOCK laying after the if converted THEN BLOCK. Any scratch register
-   will be unconditionally set by the if-converted THEN BLOCK so would clobber
-   a live-in or live-out register of the ELSE BLOCK.
+   Assume speculating in the THEN BLOCK, with the if-converted ELSE BLOCK
+   laying after the if converted THEN BLOCK.  A speculated insn of the THEN
+   BLOCK writes its destination unconditionally, so would clobber a live-in
+   or live-out register of the ELSE BLOCK.
 
    In case there are no head or tail sequences, the USED_REGS of the ELSE BLOCK
    is the union of its live-in and live-out registers.  In case BLOCK has a head
@@ -9631,12 +9481,31 @@ lvx_ifcvt_ce3_compute_used_regs (basic_block block, bool with_used_in,
     *used_regs = used_out_regs;
 }
 
-/* Fix the pseudo-predicated instructions of BLOCK by replacing the fake scratch
-   registers in SFRs by the real GPRs available in BLOCK.  */
+/* Can INSN run unconditionally?  A guard costs a share of a BCU syllable;
+   an insn that writes only registers, cannot trap and has no other effect
+   is free to run on the other path as long as what it writes is dead there.
+   Returns the registers it sets in *SETS.  */
+static bool
+lvx_ifcvt_ce3_speculable_p (rtx_insn *insn, HARD_REG_SET *sets)
+{
+  rtx pattern = PATTERN (insn);
+  rtx set = single_set (insn);
+  if (!set || !REG_P (SET_DEST (set)))
+    return false;
+  if (contains_mem_rtx_p (pattern) || side_effects_p (pattern)
+      || may_trap_p (pattern))
+    return false;
+  CLEAR_HARD_REG_SET (*sets);
+  note_stores (insn, record_hard_reg_sets, sets);
+  return true;
+}
+
+/* Speculate the insns of BLOCK whose every written register is dead at the
+   block's tail sequence (or live-out) and unused by the if-converted part of
+   the other block: flag them with a REG_NONNEG note, which
+   lvx_ifcvt_modify_insn reads to leave them unpredicated.  */
 static void
-lvx_ifcvt_ce3_fix_pseudo_predicated (ce_if_block *ce_info,
-				     basic_block block,
-				     unsigned *_last_regno)
+lvx_ifcvt_ce3_speculate (ce_if_block *ce_info, basic_block block)
 {
   int index = block->index;
   if ((unsigned) index >= (unsigned) lvx_ifcvt->block_count
@@ -9648,11 +9517,6 @@ lvx_ifcvt_ce3_fix_pseudo_predicated (ce_if_block *ce_info,
     ? ce_info->else_bb
     : ce_info->then_bb;
   bool with_used_in = (other_block == ce_info->else_bb);
-
-  // Range of hard regnos where to search for an unused one.
-  unsigned base_regno = LVX_GPR_FIRST_REGNO + 32;
-  unsigned past_regno = LVX_GPR_FIRST_REGNO + 64;
-  unsigned last_regno = *_last_regno < past_regno ? *_last_regno : base_regno;
 
   // Prepare to compute live registers at each INSN of BLOCK.
   regset live_out = df_get_live_out (block);
@@ -9696,82 +9560,22 @@ lvx_ifcvt_ce3_fix_pseudo_predicated (ce_if_block *ce_info,
 	live_regs &= ~kill_regs;
 	live_regs |= gen_regs;
 
-	// Process the pseudo-predicated instructions.
-	rtx *_scratch_reg = lvx_ifcvt_ce3_pseudo_predicate__scratch_reg (insn);
-	if (_scratch_reg && REGNO (*_scratch_reg) > LVX_GPR_LAST_REGNO)
-	  {
-	    // Try to speculate a non-memory INSN identified for pseudo-predication.
-	    // Its target register must not be live at this BLOCK of tail sequence.
-	    // Also it should not be in use by the if-converted part of OTHER_BLOCK.
-	    rtx set = single_set (insn), dest_reg = 0;
+	HARD_REG_SET sets;
 #ifndef __OPTIMIZE__
-	    if (lvx_aspec_count-- <= 0)
-	      set = 0;
+	if (lvx_aspec_count-- <= 0)
+	  continue;
 #endif//__OPTIMIZE__
-	    if (set && REG_P ((dest_reg = SET_DEST (set)))
-		&& !contains_mem_rtx_p (PATTERN (insn)))
-	      {
-		unsigned dest_regno = REGNO (dest_reg);
-		if (!TEST_HARD_REG_BIT (live_tail_regs, dest_regno)
-		    && !TEST_HARD_REG_BIT (other_regs, dest_regno))
-		  {
-		    PATTERN (insn) = set;
-		    INSN_CODE (insn) = -1;
-		    df_insn_rescan (insn);
-		    // Use the REG_NONNEG note to flag insn as speculative.
-		    add_reg_note (insn, REG_NONNEG, NULL_RTX);
-		    if (dump_file)
-		      fprintf (dump_file, "LVX_IFCVT speculate (insn %d) dest to %s\n",
-					  INSN_UID (insn), reg_names[dest_regno]);
-		    continue;
-		  }
-	      }
-
-	    // Try to assign a scratch GPR in range [BASE_REGNO, PAST_REGNO - 1] scanning
-	    // the available registers by decreasing regno, starting from LAST_REGNO - 1.
-	    rtx fake_reg = *_scratch_reg;
-	    unsigned mask = past_regno - base_regno - 1;
-	    for (unsigned offset = 0; offset <= mask; offset++)
-	      {
-		unsigned scratch_regno = base_regno + ((last_regno - offset - 1) & mask);
-		gcc_assert (scratch_regno >= base_regno && scratch_regno < past_regno);
-		// The scratch register must not be live at this BLOCK of tail sequence.
-		// Also it should not be in use by the if-converted part of OTHER_BLOCK.
-		// The scratch register should not be live before INSN nor killed by it.
-		if (!TEST_HARD_REG_BIT (live_tail_regs, scratch_regno)
-		    && !TEST_HARD_REG_BIT (other_regs, scratch_regno)
-		    && !TEST_HARD_REG_BIT (live_regs, scratch_regno)
-		    && !TEST_HARD_REG_BIT (kill_regs, scratch_regno))
-		  {
-		    // Replace FAKE_REG by SCRATCH_REG in INSN.
-		    rtx scratch_reg = gen_rtx_REG (GET_MODE (fake_reg), scratch_regno);
-		    *_scratch_reg = scratch_reg;
-		    df_insn_rescan (insn);
-		    last_regno = scratch_regno;
-		    // Insert DEF of SCRATCH_REG with unique value before INSN.
-		    unsigned def_counter = lvx_ifcvt->def_counter++ ;
-		    rtvec vec = gen_rtvec (1, GEN_INT (def_counter));
-		    rtx def = gen_rtx_UNSPEC (GET_MODE (scratch_reg), vec, UNSPEC_DEF);
-		    insn = emit_insn_before (gen_rtx_SET (scratch_reg, def), insn);
-		    if (dump_file)
-		      fprintf (dump_file, "LVX_IFCVT assign (insn %d) scratch to %s\n",
-					  INSN_UID (insn), reg_names[REGNO (scratch_reg)]);
-		    break;
-		  }
-	      }
-
-	    if (fake_reg == *_scratch_reg)
-	      {
-		// Failed to find a scratch register for pseudo-predication.
-		if (dump_file)
-		  fprintf (dump_file, "LVX_IFCVT failed to assign (insn %d) a scratch for %s\n",
-				      INSN_UID (insn), reg_names[REGNO (fake_reg)]);
-		return;
-	      }
+	if (lvx_ifcvt_ce3_speculable_p (insn, &sets)
+	    && hard_reg_set_empty_p (sets & live_tail_regs)
+	    && hard_reg_set_empty_p (sets & other_regs))
+	  {
+	    // Use the REG_NONNEG note to flag insn as speculative.
+	    add_reg_note (insn, REG_NONNEG, NULL_RTX);
+	    if (dump_file)
+	      fprintf (dump_file, "LVX_IFCVT speculate (insn %d)\n",
+		       INSN_UID (insn));
 	  }
       }
-
-  *_last_regno = last_regno;
 }
 /* ifcvt utils }}} */
 
@@ -9779,7 +9583,7 @@ lvx_ifcvt_ce3_fix_pseudo_predicated (ce_if_block *ce_info,
    We don't need to modify the tests. However we need to find the boundaries
    of the common prefix and suffix of the then block and else blocks. These are
    available in the scope of IFCVT_MODIFY_TESTS as THEN_START, THEN_END,
-   ELSE_START, ELSE_END.  Then we fix the pseudo-predicated instructions.  */
+   ELSE_START, ELSE_END.  Then we choose the insns to speculate.  */
 void
 lvx_ifcvt_modify_tests (ce_if_block *ce_info ATTRIBUTE_UNUSED,
 			rtx true_expr ATTRIBUTE_UNUSED,
@@ -9807,19 +9611,18 @@ lvx_ifcvt_modify_tests (ce_if_block *ce_info ATTRIBUTE_UNUSED,
 
   basic_block then_bb = ce_info->then_bb;
   basic_block else_bb = ce_info->else_bb;
-  unsigned last_regno = FIRST_PSEUDO_REGISTER;
 
   if (then_bb)
-    lvx_ifcvt_ce3_fix_pseudo_predicated (ce_info, then_bb, &last_regno);
+    lvx_ifcvt_ce3_speculate (ce_info, then_bb);
 
   if (else_bb)
-    lvx_ifcvt_ce3_fix_pseudo_predicated (ce_info, else_bb, &last_regno);
+    lvx_ifcvt_ce3_speculate (ce_info, else_bb);
 }
 
 /* Implements IFCVT_MODIFY_INSN.
    Called from (cond_exec_process_insns), from (cond_exec_process_if_block).
    So pass is CE3 after register allocation. This function is passed PATTERN
-   which is a COND_EXEC.  */
+   which is a COND_EXEC.  A speculated insn keeps its pattern.  */
 rtx
 lvx_ifcvt_modify_insn (ce_if_block *ce_info ATTRIBUTE_UNUSED,
 		       rtx pattern, rtx_insn ARG_UNUSED (*insn))
@@ -9830,25 +9633,10 @@ lvx_ifcvt_modify_insn (ce_if_block *ce_info ATTRIBUTE_UNUSED,
 #endif //__OPTIMIZE__
   rtx old_pattern = PATTERN (insn);
 
-  // Ignore (SET (...) UNSPEC_DEF) at this point.
-  rtx src = GET_CODE (old_pattern) == SET ? SET_SRC (old_pattern) : 0;
-  if (src && GET_CODE (src) == UNSPEC && (XINT (src, 1) == UNSPEC_DEF))
-    return old_pattern;
-
   // No changes if the insn was flagged as speculative.
   for (rtx link = REG_NOTES (insn); link; link = XEXP (link, 1))
     if (REG_NOTE_KIND (link) == REG_NONNEG)
       return old_pattern;
-
-  // Disable pseudo-predicated that did not get a real scratch register.
-  rtx *_scratch_reg = lvx_ifcvt_ce3_pseudo_predicate__scratch_reg (insn);
-  if (_scratch_reg && REGNO (*_scratch_reg) > LVX_GPR_LAST_REGNO)
-    {
-      if (dump_file)
-	fprintf (dump_file, "LVX_IFCVT CE3 no scratch for (insn %d)\n",
-		 INSN_UID (insn));
-      return 0;
-    }
 
   return pattern;
 }
@@ -9987,20 +9775,6 @@ lvx_ifcvt_machdep_init (struct ce_if_block *ce_info, bool after_combine)
 	  // shares rtl, which verify_rtl_sharing rejects after ce2.
 	  emit_insn_after (gen_rtx_USE (VOIDmode, tested_reg), last_insn);
 	  df_set_bb_dirty (else_bb);
-	}
-
-      // Update the pattern of the pseudo-predicated insns.
-      for (int index = 0; index < lvx_ifcvt->prep_insns_count; index++)
-	{
-	  rtx_insn *insn = lvx_ifcvt->prep_insns[index].insn;
-	  rtx parallel = lvx_ifcvt->prep_insns[index].parallel;
-	  gcc_checking_assert (GET_CODE (parallel) == PARALLEL);
-	  PATTERN (insn) = parallel;
-	  INSN_CODE (insn) = -1;
-	  df_insn_rescan (insn);
-	  if (dump_file)
-	    fprintf (dump_file, "LVX_IFCVT prepare cond_exec (insn %d)\n",
-		     INSN_UID (insn));
 	}
     }
 }
