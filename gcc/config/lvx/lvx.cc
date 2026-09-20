@@ -8329,11 +8329,41 @@ lvx_output_addr_const_extra (FILE *fp, rtx x)
 
 /* 18.20.7 Output of Assembler Instructions {{{ */
 
+/* The insn being output when it is a guarded COND_EXEC (attribute "guarded",
+   set by the define_cond_exec in control.md), else null.  Set by
+   FINAL_PRESCAN_INSN, cleared by TARGET_ASM_FINAL_POSTSCAN_INSN, so that
+   output_asm_insn calls from outside final_scan_insn (the thunk generator)
+   never see a stale one.  */
+static rtx_insn *lvx_final_guarded_insn;
+
+/* Print the "guard.<cond> $rN? " prefix of the guarded INSN to STREAM.  The
+   spelling is the one the former define_cond_exec templates produced:
+   "guard.<w|d><cond>z" for a comparison of a register with zero, "guard.even"
+   / "guard.odd" for the test of its bit 0.  */
+static void
+lvx_output_guard_prefix (FILE *stream, rtx_insn *insn)
+{
+  rtx test = COND_EXEC_TEST (PATTERN (insn));
+  rtx reg = XEXP (test, 0);
+  if (GET_CODE (reg) == ZERO_EXTRACT)
+    fprintf (stream, "guard.%s $%s? ", GET_CODE (test) == EQ ? "even" : "odd",
+	     reg_names[REGNO (XEXP (reg, 0))]);
+  else
+    fprintf (stream, "guard.%c%sz $%s? ", GET_MODE (reg) == SImode ? 'w' : 'd',
+	     GET_RTX_NAME (GET_CODE (test)), reg_names[REGNO (reg)]);
+}
+
+/* Implements ASM_OUTPUT_OPCODE.  final.cc calls this at the start of every
+   line of an insn's template, which is where a guarded insn's every syllable
+   receives its GUARD prefix.  */
 const char *
 lvx_asm_output_opcode (FILE *stream, const char *code)
 {
   if (!lvx_shaker_enabled && lvx_final_end_bundle[0])
     fputs(lvx_final_end_bundle, stream);
+
+  if (lvx_final_guarded_insn)
+    lvx_output_guard_prefix (stream, lvx_final_guarded_insn);
 
   return code;
 }
@@ -8343,6 +8373,11 @@ void
 lvx_final_prescan_insn (rtx_insn *insn)
 {
   lvx_final_end_bundle[0] = '\0';
+
+  lvx_final_guarded_insn = 0;
+  if (GET_CODE (PATTERN (insn)) == COND_EXEC && INSN_CODE (insn) >= 0
+      && get_attr_guarded (insn) == GUARDED_YES)
+    lvx_final_guarded_insn = insn;
 
   // Fix missing bundle delimiter (because of deleted insn after SCHED2).
   int uid = INSN_UID (insn);
@@ -8377,6 +8412,8 @@ lvx_asm_final_postscan_insn (FILE *file, rtx_insn *insn,
 			     rtx *opvec ATTRIBUTE_UNUSED,
 			     int noperands ATTRIBUTE_UNUSED)
 {
+  lvx_final_guarded_insn = 0;
+
   int doloop_end = recog_memoized (insn) == CODE_FOR_doloop_end_si
 		   || recog_memoized (insn) == CODE_FOR_doloop_end_di;
 

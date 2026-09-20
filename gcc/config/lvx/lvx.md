@@ -12,6 +12,17 @@
 (define_attr "predicable" "no,yes"
   (const_string "no"))
 
+;; Set by the define_cond_exec (control.md) on the guarded variant it derives
+;; from every predicable pattern: the insn is a COND_EXEC that final prints
+;; under a GUARD prefix, put in front of each line of the template by
+;; lvx_asm_output_opcode.  The define_cond_exec's own template is empty on
+;; purpose -- gensupport only prefixes plain string templates, and only their
+;; first line, so C templates and two-syllable templates would not be guarded.
+;; The explicit COND_EXEC patterns (cmoved) do not carry it: they are ALU
+;; instructions that test the condition themselves.
+(define_attr "guarded" "no,yes"
+  (const_string "no"))
+
 (define_attr "arch" "lvx_1,lvx_2" (const (symbol_ref "lvx_arch_schedule")))
 
 ;; Unspec numbers
@@ -28,10 +39,11 @@
 
 ;; Whether the pattern occupies a BCU slot, which lvx_sched_dfa_new_cycle uses
 ;; to share one guard syllable between the instructions a bundle guards on the
-;; same condition.  A predicated pattern overrides it to yes.
+;; same condition.  A guarded pattern occupies one through its GUARD prefix.
 (define_attr "bcu_used" "no,yes"
   (if_then_else
-    (ior (eq_attr "type" "branch")
+    (ior (eq_attr "guarded" "yes")
+         (eq_attr "type" "branch")
          (eq_attr "type" "sysget")
          (eq_attr "type" "jump")
          (eq_attr "type" "ijump"))

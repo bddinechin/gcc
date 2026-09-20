@@ -2216,14 +2216,21 @@
 
 
 ;; BCU Predication
+;;
+;; Every pattern with predicable=yes gets a COND_EXEC variant for each of these
+;; two tests.  The templates are empty: the "guard.<cond> $rN?" prefix is
+;; printed by lvx_asm_output_opcode on every line of the variant's template
+;; (see the "guarded" attribute in lvx.md), which is what lets a C template or a
+;; two-syllable template be predicated.  gas merges the prefixes of one bundle
+;; that share a condition into a single GUARD syllable.
 
 (define_cond_exec
   [(match_operator 1 "zero_comparison_operator"
     [(match_operand:SIDI 0 "register_operand" "r")
      (const_int 0)])]
   ""
-  "guard.<SIDI:suffix>%1z %0?"
-  [(set_attr "bcu_used" "yes")]
+  ""
+  [(set_attr "guarded" "yes")]
 )
 
 (define_cond_exec
@@ -2231,8 +2238,8 @@
                             (const_int 1) (const_int 0))
          (const_int 0))]
   ""
-  "guard.<EQNE:evenodd> %0?"
-  [(set_attr "bcu_used" "yes")]
+  ""
+  [(set_attr "guarded" "yes")]
 )
 
 (define_insn "*store<ALLIFV:mode>"
