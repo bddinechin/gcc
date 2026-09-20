@@ -17,7 +17,8 @@
    (cond_exec
      (match_op_dup 3 [(match_dup 2) (const_int 0)])
      (set (match_dup 0) (match_dup 4)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_unary_<SHORT:mode>_ext<ANY_EXTEND:lsux>.<EQNE:evenodd>"
   [(cond_exec
@@ -36,7 +37,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 2) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 3)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_unary_<SHORT:mode>_ext<ANY_EXTEND:lsux>"
   [(set (match_operand:DI 0 "register_operand" "=r")
@@ -70,7 +72,8 @@
    (cond_exec
      (match_op_dup 4 [(match_dup 3) (const_int 0)])
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_unary_<FITGPR:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -90,7 +93,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 3) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 4)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_unary_<FITGPR:mode>"
   [(set (match_operand:FITGPR 0 "register_operand" "=r")
@@ -125,7 +129,8 @@
    (cond_exec
      (match_op_dup 4 [(match_dup 3) (const_int 0)])
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_unary_<SHORT:mode>_ext<ANY_EXTEND:lsux>.<EQNE:evenodd>"
   [(cond_exec
@@ -145,7 +150,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 3) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 4)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_unary_<SHORT:mode>_ext<ANY_EXTEND:lsux>"
   [(set (match_operand:DI 0 "register_operand" "=r")
@@ -180,7 +186,8 @@
    (cond_exec
      (match_op_dup 4 [(match_dup 3) (const_int 0)])
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_unary_zx<SHORT:mode>di2.<EQNE:evenodd>"
   [(cond_exec
@@ -200,7 +207,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 3) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 4)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_unary_zx<SHORT:mode>di2"
   [(set (match_operand:DI 0 "register_operand" "=r")
@@ -236,7 +244,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_cstoresi4.<EQNE:evenodd>"
   [(cond_exec
@@ -257,7 +266,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_cstoresi4"
   [(set (match_operand:DISI 0 "register_operand" "=r,r")
@@ -292,7 +302,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 (define_insn_and_split "*cond_exec_cstoredi4"
   [(cond_exec
      (match_operator 5 "zero_comparison_operator"
@@ -312,7 +323,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_cstoredi4.<EQNE:evenodd>"
   [(cond_exec
@@ -333,7 +345,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 (define_insn_and_split "*cond_exec_cstoredi4.<EQNE:evenodd>"
   [(cond_exec
      (EQNE (zero_extract:SIDI (match_operand:SIDI 4 "register_operand" "r,r")
@@ -353,7 +366,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_cstoredi4"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
@@ -402,7 +416,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_shift_<WI:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -423,7 +438,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_shift_<WI:mode>"
   [(set (match_operand:WI 0 "register_operand" "=r")
@@ -461,7 +477,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_shift_zx<SHORT:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -482,7 +499,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_shift_zx<SHORT:mode>"
   [(set (match_operand:DI 0 "register_operand" "=r")
@@ -519,7 +537,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_binary_<WI:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -540,7 +559,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_binary_<WI:mode>"
   [(set (match_operand:WI 0 "register_operand" "=r,r,r,r")
@@ -577,7 +597,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_binary_zx<SHORT:mode>di3.<EQNE:evenodd>"
   [(cond_exec
@@ -598,7 +619,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_binary_zx<SHORT:mode>di3"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
@@ -635,7 +657,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_binary_<WF:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -656,7 +679,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_binary_<WF:mode>"
   [(set (match_operand:WF 0 "register_operand" "=r")
@@ -693,7 +717,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_multiply_<WI:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -714,7 +739,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_multiply_<WI:mode>"
   [(set (match_operand:WI 0 "register_operand" "=r,r")
@@ -753,7 +779,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_madd_<DISI:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -776,7 +803,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_madd_<DISI:mode>"
   [(set (match_operand:DISI 0 "register_operand" "=r")
@@ -816,7 +844,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_msbf_<DISI:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -839,7 +868,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_msbf_<DISI:mode>"
   [(set (match_operand:DISI 0 "register_operand" "=r")
@@ -877,7 +907,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_multiply_<WF:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -898,7 +929,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_multiply_<WF:mode>"
   [(set (match_operand:WF 0 "register_operand" "=r")
@@ -936,7 +968,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_fma_<WF:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -958,7 +991,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_fma_<WF:mode>"
   [(set (match_operand:WF 0 "register_operand" "=r")
@@ -996,7 +1030,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_fnma_<WF:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -1018,7 +1053,8 @@
    (cond_exec
      (EQNE (zero_extract:SIDI (match_dup 4) (const_int 1) (const_int 0)) (const_int 0))
      (set (match_dup 0) (match_dup 5)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_fnma_<WF:mode>"
   [(set (match_operand:WF 0 "register_operand" "=r")

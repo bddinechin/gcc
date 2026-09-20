@@ -10,7 +10,7 @@
 (define_attr "pcrel" "" (const_int 0))
 
 (define_attr "predicable" "no,yes"
-  (const_string "no"))
+  (const_string "yes"))
 
 ;; Set by the define_cond_exec (control.md) on the guarded variant it derives
 ;; from every predicable pattern: the insn is a COND_EXEC that final prints
@@ -70,7 +70,8 @@
   ""
   ""
   [(set_attr "type" "branch")
-   (set_attr "issue" "bcu_brrp")]
+   (set_attr "issue" "bcu_brrp")
+   (set_attr "predicable" "no")]
 )
 
 (define_expand "store_multiple"
@@ -293,7 +294,8 @@
 }
   [(set_attr "type" "alu, alu, alu, alu, store, store, store, load, load, load, sysget, all, alu, alu")
    (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2, lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2, lsu_auxw, lsu_auxw_x, lsu_auxw_x2, bcu2_tiny_lsu, all, full_x, tiny_x2")
-   (set_attr "length"      "4,        4,          8,         12,          4,            8,           12,         4,           8,          12,       4,   4,          8,         12")]
+   (set_attr "length"      "4,        4,          8,         12,          4,            8,           12,         4,           8,          12,       4,   4,          8,         12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "add_pcrel_<mode>"
@@ -323,7 +325,8 @@
   "goto %0"
   [(set_attr "type" "jump")
    (set_attr "issue" "bcu_xfer")
-   (set_attr "pcrel" "27")]
+   (set_attr "pcrel" "27")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*gotox"
@@ -333,7 +336,8 @@
   [(set_attr "type" "jump")
    (set_attr "issue" "bcu2_x")
    (set_attr "pcrel" "54")
-   (set_attr "length" "8")]
+   (set_attr "length" "8")
+   (set_attr "predicable" "no")]
 )
 
 (define_expand "indirect_jump"
@@ -344,7 +348,8 @@
   ""
   "igoto %0"
   [(set_attr "type" "ijump")
-   (set_attr "issue" "bcu_xfer_brrp")]
+   (set_attr "issue" "bcu_xfer_brrp")
+   (set_attr "predicable" "no")]
 )
 
 ;; Restore the frame and jump, for __builtin_longjmp and nonlocal goto.
@@ -415,7 +420,8 @@
   "<MODE>mode == Pmode"
   "igoto %0"
   [(set_attr "type" "ijump")
-   (set_attr "issue" "bcu_xfer_brrp")]
+   (set_attr "issue" "bcu_xfer_brrp")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "nop"
@@ -423,7 +429,8 @@
   ""
   "nop\n\t;;"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "nop_volatile"
@@ -431,7 +438,8 @@
   ""
   "nop"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 ;; Provide a 37bits offset for 32bits and 64bits for 64bits.
@@ -454,7 +462,8 @@
    ""
    "get %0 = %1"
   [(set_attr "type" "sysget")
-   (set_attr "issue" "bcu2_tiny_lsu")]
+   (set_attr "issue" "bcu2_tiny_lsu")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_get"
@@ -465,7 +474,8 @@
     get %0 = %1
     iget %0"
   [(set_attr "type" "sysget")
-   (set_attr "issue" "bcu2_tiny_lsu")]
+   (set_attr "issue" "bcu2_tiny_lsu")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*set_<mode>"
@@ -474,7 +484,8 @@
    ""
    "set %0 = %1"
   [(set_attr "type" "all, branch2")
-   (set_attr "issue" "all, bcu2")]
+   (set_attr "issue" "all, bcu2")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_set"
@@ -483,7 +494,8 @@
    ""
    "set %0 = %1"
   [(set_attr "type" "all, branch2")
-   (set_attr "issue" "all, bcu2")]
+   (set_attr "issue" "all, bcu2")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_scall"
@@ -491,7 +503,8 @@
   ""
   "scall %0"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_wfxl"
@@ -500,7 +513,8 @@
    ""
    "wfxl %0, %1"
   [(set_attr "type" "all, branch2")
-   (set_attr "issue" "all, bcu2")]
+   (set_attr "issue" "all, bcu2")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_wfxm"
@@ -509,7 +523,8 @@
    ""
    "wfxm %0, %1"
   [(set_attr "type" "all, branch2")
-   (set_attr "issue" "all, bcu2")]
+   (set_attr "issue" "all, bcu2")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_syncgroup"
@@ -520,7 +535,8 @@
   ""
   "syncgroup %0"
   [(set_attr "type" "branch2")
-   (set_attr "issue" "bcu2")]
+   (set_attr "issue" "bcu2")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_await"
@@ -528,7 +544,8 @@
    ""
    "await"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_barrier"
@@ -536,7 +553,8 @@
    ""
    "barrier"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_sleep"
@@ -544,7 +562,8 @@
    ""
    "sleep"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_stop"
@@ -552,7 +571,8 @@
    ""
    "stop"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_waitit"
@@ -561,7 +581,8 @@
    ""
    "waitit %0"
   [(set_attr "type" "sysget")
-   (set_attr "issue" "bcu2_tiny_lsu")]
+   (set_attr "issue" "bcu2_tiny_lsu")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "trap"
@@ -569,7 +590,8 @@
   ""
   "errop"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_fence"
@@ -578,7 +600,8 @@
   ""
   "fence%0"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")]
+   (set_attr "issue" "lsu2_memw")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_d1inval"
@@ -587,7 +610,8 @@
   ""
   "d1inval"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")]
+   (set_attr "issue" "lsu2_memw")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_i1inval"
@@ -596,7 +620,8 @@
   ""
   "i1inval"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")]
+   (set_attr "issue" "lsu2_memw")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_dinvall"
@@ -606,7 +631,8 @@
   "dinvall%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_dtouchl"
@@ -617,7 +643,8 @@
   "dtouchl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_dpurgel"
@@ -627,7 +654,8 @@
   "dpurgel%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_dflushl"
@@ -637,7 +665,8 @@
   "dflushl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_i1invals"
@@ -647,7 +676,8 @@
   "i1invals%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu2_memw, lsu2_memw_x, lsu2_memw_x2")]
+   (set_attr "issue" "lsu2_memw, lsu2_memw_x, lsu2_memw_x2")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_dinvalsw"
@@ -658,7 +688,8 @@
   ""
   "dinvalsw%2 %0, %1"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")]
+   (set_attr "issue" "lsu2_memw")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_dpurgesw"
@@ -669,7 +700,8 @@
   ""
   "dpurgesw%2 %0, %1"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")]
+   (set_attr "issue" "lsu2_memw")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_dflushsw"
@@ -680,7 +712,8 @@
   ""
   "dflushsw%2 %0, %1"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")]
+   (set_attr "issue" "lsu2_memw")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "prefetch"
@@ -691,7 +724,8 @@
   "dtouchl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_tlbdinval"
@@ -700,7 +734,8 @@
   ""
   "tlbdinval"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_tlbiinval"
@@ -709,7 +744,8 @@
   ""
   "tlbiinval"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_tlbprobe"
@@ -717,7 +753,8 @@
   ""
   "tlbprobe"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_tlbread"
@@ -725,7 +762,8 @@
   ""
   "tlbread"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_tlbwrite"
@@ -734,7 +772,8 @@
   ""
   "tlbwrite"
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "memory_barrier"
@@ -742,7 +781,8 @@
   ""
   "fence"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")]
+   (set_attr "issue" "lsu2_memw")
+   (set_attr "predicable" "no")]
 )
 
 ;; FIXME AUTO: add size info for 'reg[reg]' addressing (currently falling back to lsu.x)
@@ -802,7 +842,8 @@
   ""
   "icall %0"
   [(set_attr "type" "ijump")
-   (set_attr "issue" "bcu_xfer_brrp")]
+   (set_attr "issue" "bcu_xfer_brrp")
+   (set_attr "predicable" "no")]
 )
 
 (define_expand "call"
@@ -823,7 +864,8 @@
   "!lvx_is_farcall_p (operands[0])"
   "call %0"
   [(set_attr "type" "jump")
-   (set_attr "issue" "bcu_xfer")]
+   (set_attr "issue" "bcu_xfer")
+   (set_attr "predicable" "no")]
 )
 
 ;; The X forms of the direct transfers.  CALL and GOTO reach 27 bits, which is
@@ -842,7 +884,8 @@
   "callx %0"
   [(set_attr "type" "jump")
    (set_attr "issue" "bcu2_x")
-   (set_attr "length" "8")]
+   (set_attr "length" "8")
+   (set_attr "predicable" "no")]
 )
 
 (define_expand "call_value"
@@ -869,7 +912,8 @@
     return "scall %1";
   }
   [(set_attr "type" "all")
-   (set_attr "issue" "all")]
+   (set_attr "issue" "all")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*call_value_<mode>"
@@ -880,7 +924,8 @@
   "!lvx_is_farcall_p (operands[1])"
   "call %1"
   [(set_attr "type" "jump")
-   (set_attr "issue" "bcu_xfer")]
+   (set_attr "issue" "bcu_xfer")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*callx_value_<mode>"
@@ -892,7 +937,8 @@
   "callx %1"
   [(set_attr "type" "jump")
    (set_attr "issue" "bcu2_x")
-   (set_attr "length" "8")]
+   (set_attr "length" "8")
+   (set_attr "predicable" "no")]
 )
 
 (define_expand "sibcall_value"
@@ -916,7 +962,8 @@
   "!lvx_is_farcall_p (operands[1])"
   "goto %1"
   [(set_attr "type" "jump")
-   (set_attr "issue" "bcu_xfer")]
+   (set_attr "issue" "bcu_xfer")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*sibcallx_value_<mode>"
@@ -928,7 +975,8 @@
   "gotox %1"
   [(set_attr "type" "jump")
    (set_attr "issue" "bcu2_x")
-   (set_attr "length" "8")]
+   (set_attr "length" "8")
+   (set_attr "predicable" "no")]
 )
 
 (define_expand "sibcall"
@@ -950,7 +998,8 @@
   "!lvx_is_farcall_p (operands[0])"
   "goto %0"
   [(set_attr "type" "jump")
-   (set_attr "issue" "bcu_xfer")]
+   (set_attr "issue" "bcu_xfer")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*sibcallx_<mode>"
@@ -961,7 +1010,8 @@
   "gotox %0"
   [(set_attr "type" "jump")
    (set_attr "issue" "bcu2_x")
-   (set_attr "length" "8")]
+   (set_attr "length" "8")
+   (set_attr "predicable" "no")]
 )
 
 ;;
@@ -995,7 +1045,8 @@
   ""
   "icall %1"
   [(set_attr "type" "ijump")
-   (set_attr "issue" "bcu_xfer_brrp")]
+   (set_attr "issue" "bcu_xfer_brrp")
+   (set_attr "predicable" "no")]
 )
 
 (define_code_iterator gt_comp [gt gtu])
@@ -1020,7 +1071,7 @@
      operands[4] = gen_rtx_fmt_ee(lvx_strict_to_nonstrict_comparison_operator (<CODE>),
                                   SImode, operands[1], operands[2]);
 }
-)
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*comp_<code>_decr"
    [(set (match_operand:SI 0 "register_operand" "=r")
@@ -1039,7 +1090,7 @@
      operands[4] = gen_rtx_fmt_ee(lvx_strict_to_nonstrict_comparison_operator (<CODE>),
                                   SImode, operands[1], operands[2]);
 }
-)
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*comp_<code>_decr"
    [(set (match_operand:SI 0 "register_operand" "=r")
@@ -1058,7 +1109,7 @@
      operands[4] = gen_rtx_fmt_ee(lvx_strict_to_nonstrict_comparison_operator (<CODE>),
                                   SImode, operands[1], operands[2]);
 }
-)
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*comp_<code>_incr"
    [(set (match_operand:SI 0 "register_operand" "=r")
@@ -1077,7 +1128,7 @@
      operands[4] = gen_rtx_fmt_ee(lvx_strict_to_nonstrict_comparison_operator (<CODE>),
                                   SImode, operands[1], operands[2]);
 }
-)
+  [(set_attr "predicable" "no")])
 
 (define_expand "prologue"
   [(const_int 1)]
@@ -1114,7 +1165,8 @@
   ""
   "ret"
   [(set_attr "type" "jump")
-   (set_attr "issue" "bcu_xfer")]
+   (set_attr "issue" "bcu_xfer")
+   (set_attr "predicable" "no")]
 )
 
 (define_expand "untyped_call"
@@ -1156,7 +1208,8 @@
    ;; The end-of-loop address is a PC-relative immediate of the same width as
    ;; CB's, and LOOPDO has no extended form to widen to.  (lvx_hwloop_optimize)
    ;; reads this to decide whether the body fits.
-   (set_attr "pcrel" "17")])
+   (set_attr "pcrel" "17")
+   (set_attr "predicable" "no")])
 
 ;; operand 0 is the loop count pseudo register
 ;; operand 1 is the label to jump to at the top of the loop
@@ -1206,7 +1259,7 @@
           (label_ref (match_dup 1))
           (pc)))]
   ""
-)
+  [(set_attr "predicable" "no")])
 
 /* ====================================================================== */
 /*                            Reload stuff                                */

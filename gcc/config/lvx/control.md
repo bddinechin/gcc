@@ -301,7 +301,8 @@
   "cb.<SIDI:suffix>%0z %1? %2"
   [(set_attr "type" "branch")
    (set_attr "issue" "bcu_brrp")
-   (set_attr "pcrel" "17")]
+   (set_attr "pcrel" "17")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*cbx<mode>"
@@ -316,7 +317,8 @@
   [(set_attr "type" "branch")
    (set_attr "issue" "bcu2_x")
    (set_attr "pcrel" "44")
-   (set_attr "length" "8")]
+   (set_attr "length" "8")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*cb<mode>.<EQNE:evenodd>"
@@ -330,7 +332,8 @@
   "cb.<EQNE:evenodd> %0? %1"
   [(set_attr "type" "branch")
    (set_attr "issue" "bcu_brrp")
-   (set_attr "pcrel" "17")]
+   (set_attr "pcrel" "17")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*cbx<mode>.<EQNE:evenodd>"
@@ -345,7 +348,8 @@
   [(set_attr "type" "branch")
    (set_attr "issue" "bcu2_x")
    (set_attr "pcrel" "44")
-   (set_attr "length" "8")]
+   (set_attr "length" "8")
+   (set_attr "predicable" "no")]
 )
 
 
@@ -366,7 +370,8 @@
   }
   [(set_attr "type" "branch")
    (set_attr "issue" "bcu_brrp2")
-   (set_attr "pcrel" "11")]
+   (set_attr "pcrel" "11")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*ccbx<mode>"
@@ -385,7 +390,8 @@
   [(set_attr "type" "branch")
    (set_attr "issue" "bcu2_x")
    (set_attr "pcrel" "38")
-   (set_attr "length" "8")]
+   (set_attr "length" "8")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*ccb<mode>.<EQNE:anynone>"
@@ -399,7 +405,8 @@
   "ccb.<SIDI:suffix><EQNE:anynone> %0, %1? %2"
   [(set_attr "type" "branch")
    (set_attr "issue" "bcu_brrp2")
-   (set_attr "pcrel" "11")]
+   (set_attr "pcrel" "11")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*ccbx<mode>.<EQNE:anynone>"
@@ -414,7 +421,8 @@
   [(set_attr "type" "branch")
    (set_attr "issue" "bcu2_x")
    (set_attr "pcrel" "38")
-   (set_attr "length" "8")]
+   (set_attr "length" "8")
+   (set_attr "predicable" "no")]
 )
 
 
@@ -1934,7 +1942,8 @@
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
   [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "lite, lite, lite_x, lite_x2")
-   (set_attr "length"      "4,       4,         8,        12")]
+   (set_attr "length"      "4,       4,         8,        12")
+   (set_attr "predicable" "no")]
 )
 (define_insn "*cond_exec_move<FITGPR:mode>"
   [(cond_exec
@@ -1947,7 +1956,8 @@
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "lite, lite_x")
-   (set_attr "length"      "4,         8")]
+   (set_attr "length"      "4,         8")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*cond_exec_move<FITGPR:mode>.<EQNE:evenodd>"
@@ -1961,7 +1971,8 @@
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
   [(set_attr "type" "alu, alu, alu, alu")
    (set_attr "issue" "lite, lite, lite_x, lite_x2")
-   (set_attr "length"      "4,       4,         8,        12")]
+   (set_attr "length"      "4,       4,         8,        12")
+   (set_attr "predicable" "no")]
 )
 (define_insn "*cond_exec_move<FITGPR:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -1974,7 +1985,8 @@
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "lite, lite_x")
-   (set_attr "length"      "4,         8")]
+   (set_attr "length"      "4,         8")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*cond_exec_move<ALL128:mode>"
@@ -1988,7 +2000,8 @@
   "cmoved.<SIDI:suffix>%2z %3? %x0 = %x1\n\tcmoved.<SIDI:suffix>%2z %3? %y0 = %y1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2")
-   (set_attr "length"         "8")]
+   (set_attr "length"         "8")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*cond_exec_move<ALL128:mode>.<EQNE:evenodd>"
@@ -2002,7 +2015,8 @@
   "cmoved.<EQNE:evenodd> %2? %x0 = %x1\n\tcmoved.<EQNE:evenodd> %2? %y0 = %y1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2")
-   (set_attr "length"         "8")]
+   (set_attr "length"         "8")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*cond_exec_move<ALL256:mode>"
@@ -2019,7 +2033,8 @@
   }
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny4")
-   (set_attr "length"        "16")]
+   (set_attr "length"        "16")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*cond_exec_move<ALL256:mode>.<EQNE:evenodd>"
@@ -2036,7 +2051,8 @@
   }
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny4")
-   (set_attr "length"        "16")]
+   (set_attr "length"        "16")
+   (set_attr "predicable" "no")]
 )
 
 
@@ -2065,7 +2081,8 @@
    (cond_exec
      (match_op_dup 6 [(match_dup 5) (const_int 0)])
      (set (match_dup 0) (match_dup 7)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 (define_insn_and_split "*cond_exec_cmove_<FITGPR:mode>"
   [(cond_exec
      (match_operator 6 "zero_comparison_operator"
@@ -2089,7 +2106,8 @@
    (cond_exec
      (match_op_dup 6 [(match_dup 5) (const_int 0)])
      (set (match_dup 0) (match_dup 7)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_cmove_<FITGPR:mode>"
   [(set (match_operand:FITGPR 0 "register_operand" "=r,r,r,r")
@@ -2149,7 +2167,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 (define_insn_and_split "*cond_exec_cmove_<FITGPR:mode>.<EQNE:evenodd>"
   [(cond_exec
      (match_operator 5 "zero_comparison_operator"
@@ -2175,7 +2194,8 @@
    (cond_exec
      (match_op_dup 5 [(match_dup 4) (const_int 0)])
      (set (match_dup 0) (match_dup 6)))]
-)
+  ""
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_cmove_<FITGPR:mode>.<EQNE:evenodd>"
   [(set (match_operand:FITGPR 0 "register_operand" "=r,r,r,r")
@@ -2226,7 +2246,7 @@
 
 (define_cond_exec
   [(match_operator 1 "zero_comparison_operator"
-    [(match_operand:SIDI 0 "register_operand" "r")
+    [(match_operand:SIDI 0 "register_operand" "")
      (const_int 0)])]
   ""
   ""
@@ -2234,7 +2254,7 @@
 )
 
 (define_cond_exec
-  [(EQNE (zero_extract:SIDI (match_operand:SIDI 0 "register_operand" "r")
+  [(EQNE (zero_extract:SIDI (match_operand:SIDI 0 "register_operand" "")
                             (const_int 1) (const_int 0))
          (const_int 0))]
   ""
@@ -2305,7 +2325,7 @@
         set_mem_addr_space (operands[0], as);
       }
   }
-)
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_store<ALLIFV:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -2334,7 +2354,7 @@
         set_mem_addr_space (operands[0], as);
       }
   }
-)
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_store<ALLIFV:mode>"
   [(set (match_operand:ALLIFV 0 "memory_operand" "=a,b,m")
@@ -2376,7 +2396,7 @@
         set_mem_addr_space (operands[1], as);
       }
   }
-)
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_load<ALLIFV:mode>.<EQNE:evenodd>"
   [(cond_exec
@@ -2405,7 +2425,7 @@
         set_mem_addr_space (operands[1], as);
       }
   }
-)
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_load<ALLIFV:mode>"
   [(set (match_operand:ALLIFV 0 "register_operand" "=r,r,r")
@@ -2448,7 +2468,7 @@
         set_mem_addr_space (operands[1], as);
       }
   }
-)
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*cond_exec_load<SHORT:mode>_ext<ANY_EXTEND:lsux>.<EQNE:evenodd>"
   [(cond_exec
@@ -2477,7 +2497,7 @@
         set_mem_addr_space (operands[1], as);
       }
   }
-)
+  [(set_attr "predicable" "no")])
 
 (define_insn_and_split "*wrapped_load<SHORT:mode>_ext<ANY_EXTEND:lsux>"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r")

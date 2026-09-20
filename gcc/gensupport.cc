@@ -2357,11 +2357,13 @@ process_one_cond_exec (class queue_elem *ce_elem)
 
        if (XVEC (ce_elem->data, 3) != NULL)
 	{
-	  rtvec attributes = rtvec_alloc (XVECLEN (insn, 4)
+	  /* The insn may have no attribute list at all.  */
+	  int n_insn_attrs = XVEC (insn, 4) ? XVECLEN (insn, 4) : 0;
+	  rtvec attributes = rtvec_alloc (n_insn_attrs
 	                                  + XVECLEN (ce_elem->data, 3));
 	  int i = 0;
 	  int j = 0;
-	  for (i = 0; i < XVECLEN (insn, 4); i++)
+	  for (i = 0; i < n_insn_attrs; i++)
 	    RTVEC_ELT (attributes, i) = XVECEXP (insn, 4, i);
 
 	  for (j = 0; j < XVECLEN (ce_elem->data, 3); j++, i++)

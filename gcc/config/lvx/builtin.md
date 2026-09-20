@@ -4513,7 +4513,8 @@
   "LVX_2"
   "fwidenwdp%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_fwidenwd"
@@ -4524,7 +4525,8 @@
   ""
   "fwidenwd%2 %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite")
+   (set_attr "predicable" "no")]
 )
 
 ;; Widening every lane of a 128-bit vector gives 256 bits, which the ISA does
@@ -4979,7 +4981,8 @@
   "iord %0 = %1, %1"
   [(set_attr "type" "ghost")
    (set_attr "issue" "tiny")
-   (set_attr "length"          "4")]
+   (set_attr "length"          "4")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*lvx_ready"
@@ -4990,7 +4993,8 @@
   "iord %0 = %1, %2"
   [(set_attr "type" "ghost")
    (set_attr "issue" "tiny")
-   (set_attr "length"          "4")]
+   (set_attr "length"          "4")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*lvx_ready"
@@ -5002,7 +5006,8 @@
   "iord %0 = %1, %2\n\tiord %0 = %3, %3"
   [(set_attr "type" "ghost")
    (set_attr "issue" "tiny2")
-   (set_attr "length"             "8")]
+   (set_attr "length"             "8")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "*lvx_ready"
@@ -5015,7 +5020,8 @@
   "iord %0 = %1, %2\n\tiord %0 = %3, %4"
   [(set_attr "type" "ghost")
    (set_attr "issue" "tiny2")
-   (set_attr "length"             "8")]
+   (set_attr "length"             "8")
+   (set_attr "predicable" "no")]
 )
 
 

@@ -210,7 +210,8 @@
   "al<lsusize>%2%X1 %0 = %O1"
   [(set_attr "type" "aload, aload, aload")
    (set_attr "issue" "lsu_memw_auxw, lsu_memw_auxw_x, lsu_memw_auxw_x2")
-   (set_attr "length"             "4,                8,               12")]
+   (set_attr "length"             "4,                8,               12")
+   (set_attr "predicable" "no")]
 )
 
 ;; Atomic Store
@@ -244,7 +245,8 @@
   "alclr<lsusize>%2%X1 %0 = %1"
   [(set_attr "type" "aloadc, aloadc, aloadc")
    (set_attr "issue" "lsu2_memw_auxw, lsu2_memw_auxw_x, lsu2_memw_auxw_x2")
-   (set_attr "length"             "4,                8,               12")]
+   (set_attr "length"             "4,                8,               12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "alclr<lsusize>_2"
@@ -255,7 +257,8 @@
   "alclr<lsusize>%2%X1 %0 = %O1"
   [(set_attr "type" "aloadc, aloadc, aloadc")
    (set_attr "issue" "lsu2_memw_auxw, lsu2_memw_auxw_x, lsu2_memw_auxw_x2")
-   (set_attr "length"             "4,                8,               12")]
+   (set_attr "length"             "4,                8,               12")
+   (set_attr "predicable" "no")]
 )
 
 ;; Atomic Load and Add
@@ -283,7 +286,8 @@
   "aladd<lsusize>%3%X1 %1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
    (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
-   (set_attr "length"                  "4,                     8,                    12")]
+   (set_attr "length"                  "4,                     8,                    12")
+   (set_attr "predicable" "no")]
 )
 
 (define_insn "aladd<lsusize>_2"
@@ -297,7 +301,8 @@
   "aladd<lsusize>%3%X1 %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
    (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
-   (set_attr "length"                  "4,                     8,                    12")]
+   (set_attr "length"                  "4,                     8,                    12")
+   (set_attr "predicable" "no")]
 )
 
 ;; Atomic Compare and Swap
@@ -331,7 +336,8 @@
   "acswap<lsusize>%2%X1 %1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
    (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
-   (set_attr "length"                  "4,                     8,                    12")]
+   (set_attr "length"                  "4,                     8,                    12")
+   (set_attr "predicable" "no")]
 )
 
 
@@ -346,6 +352,7 @@
   "acswap<lsusize>%2%X1 %<acswap_reg>0, %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
    (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
-   (set_attr "length"                  "4,                     8,                    12")]
+   (set_attr "length"                  "4,                     8,                    12")
+   (set_attr "predicable" "no")]
 )
 
