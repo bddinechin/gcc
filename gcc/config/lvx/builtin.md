@@ -2007,7 +2007,7 @@
   "HAVE_LVX_SBMM8_DI"
   "sbmm8eord %0 = %2, %3"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
+   (set_attr "issue" "tiny")
    (set_attr "length" "4")]
 )
 

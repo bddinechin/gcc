@@ -2181,7 +2181,7 @@
   ""
   "sllq %0 = %1, %2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "ashrti3"
@@ -2191,7 +2191,7 @@
   ""
   "sraq %0 = %1, %2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "lshrti3"
@@ -2201,7 +2201,7 @@
   ""
   "srlq %0 = %1, %2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
+   (set_attr "issue" "lite")]
 )
 
 (define_insn "sshrdi3"
