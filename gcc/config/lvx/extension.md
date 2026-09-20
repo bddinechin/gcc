@@ -28,8 +28,7 @@
    "LVX_2 && (HAVE_LVX_MOV_FROM_CORE_V4DI_TO_EXT_V1OI)"
    "xmovefo %0 = %1"
    [(set_attr "type" "xmovef")
-    (set_attr "issue" "ext_misc_auxw")
-   (set_attr "predicable" "no")]
+    (set_attr "issue" "ext_misc_auxw")]
 )
 
 (define_insn "lvx_xmovefq"
@@ -40,8 +39,7 @@
    "LVX_2 && (HAVE_LVX_MOV_FROM_CORE_V2DI_TO_EXT_V1OI)"
    "xmovefq %0 = %1%2"
    [(set_attr "type" "xmovef")
-    (set_attr "issue" "ext_misc_auxw")
-   (set_attr "predicable" "no")]
+    (set_attr "issue" "ext_misc_auxw")]
 )
 
 (define_insn "lvx_xmovefd"
@@ -52,8 +50,7 @@
    "LVX_2 && (HAVE_LVX_MOV_FROM_CORE_V1DI_TO_EXT_V1OI)"
    "xmovefd %0 = %1%2"
    [(set_attr "type" "xmovef")
-    (set_attr "issue" "ext_misc_auxw")
-   (set_attr "predicable" "no")]
+    (set_attr "issue" "ext_misc_auxw")]
 )
 
 (define_insn_and_split "lvx_xputqo"
@@ -84,8 +81,7 @@
   }
   [(set_attr "type" "xmoveto")
    (set_attr "issue" "lite2_misc")
-   (set_attr "length" "8")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "8")]
 )
 
 (define_insn "lvx_xputdq"
@@ -98,8 +94,7 @@
   "xputdq %0%3 = %x2, %y2"
   [(set_attr "type" "xmoveto")
    (set_attr "issue" "lite_misc")
-   (set_attr "length" "4")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4")]
 )
 
 (define_insn "lvx_xmovetd"
@@ -112,8 +107,7 @@
   "xmovetd %0%3 = %2"
   [(set_attr "type" "xmoveto")
    (set_attr "issue" "lite_misc")
-   (set_attr "length" "4")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4")]
 )
 
 (define_expand "mov<mode>"
@@ -203,8 +197,7 @@
   "xmovefo %0 = %1"
   [(set_attr "type" "xmovef")
    (set_attr "issue" "ext_misc_auxw")
-   (set_attr "length" "4")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4")]
 )
 
 (define_insn "*xmovet<mode>_lo"
@@ -215,8 +208,7 @@
   "xputdq %0.lo = %x1, %y1"
   [(set_attr "type" "xmoveto")
    (set_attr "issue" "lite_misc")
-   (set_attr "length" "4")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4")]
 )
 
 (define_insn "*xmovet<mode>_hi"
@@ -227,8 +219,7 @@
   "xputdq %0.hi = %x1, %y1"
   [(set_attr "type" "xmoveto")
    (set_attr "issue" "lite_misc")
-   (set_attr "length" "4")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4")]
 )
 
 (define_split
@@ -308,8 +299,7 @@
     [(const_string "lsu")
      (const_string "lsu_x")
      (const_string "lsu_x2")])
-   (set_attr "length" "4, 8, 12")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4, 8, 12")]
 )
 
 (define_insn_and_split "lvx_xload512"
@@ -365,8 +355,7 @@
     [(const_string "lsu")
      (const_string "lsu_x")
      (const_string "lsu_x2")])
-   (set_attr "length" "4, 8, 12")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4, 8, 12")]
 )
 
 (define_insn "lvx_xload1024q1"
@@ -381,8 +370,7 @@
     [(const_string "lsu")
      (const_string "lsu_x")
      (const_string "lsu_x2")])
-   (set_attr "length" "4, 8, 12")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4, 8, 12")]
 )
 
 (define_insn "lvx_xload1024q2"
@@ -397,8 +385,7 @@
     [(const_string "lsu")
      (const_string "lsu_x")
      (const_string "lsu_x2")])
-   (set_attr "length" "4, 8, 12")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4, 8, 12")]
 )
 
 (define_insn "lvx_xload1024q3"
@@ -413,8 +400,7 @@
     [(const_string "lsu")
      (const_string "lsu_x")
      (const_string "lsu_x2")])
-   (set_attr "length" "4, 8, 12")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4, 8, 12")]
 )
 
 (define_insn "lvx_xloadc1024q0"
@@ -500,8 +486,7 @@
   "xso.q0%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
-   (set_attr "length"       "4,          8,         12")
-   (set_attr "predicable" "no")]
+   (set_attr "length"       "4,          8,         12")]
 )
 
 (define_insn "lvx_xstore1024q1"
@@ -512,8 +497,7 @@
   "xso.q1%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
-   (set_attr "length"       "4,          8,         12")
-   (set_attr "predicable" "no")]
+   (set_attr "length"       "4,          8,         12")]
 )
 
 (define_insn "lvx_xstore1024q2"
@@ -524,8 +508,7 @@
   "xso.q2%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
-   (set_attr "length"       "4,          8,         12")
-   (set_attr "predicable" "no")]
+   (set_attr "length"       "4,          8,         12")]
 )
 
 (define_insn "lvx_xstore1024q3"
@@ -536,8 +519,7 @@
   "xso.q3%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
-   (set_attr "length"       "4,          8,         12")
-   (set_attr "predicable" "no")]
+   (set_attr "length"       "4,          8,         12")]
 )
 
 (define_insn "lvx_xstorec1024q0"
@@ -743,8 +725,7 @@
   "xso%X1 %1 = %0"
   [(set_attr "type" "xstore, xstore, xstore")
    (set_attr "issue" "lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2")
-   (set_attr "length"       "4,          8,         12")
-   (set_attr "predicable" "no")]
+   (set_attr "length"       "4,          8,         12")]
 )
 
 (define_insn_and_split "lvx_xstore512"
@@ -877,8 +858,7 @@
   "xplo%4%X2 %b0, %3 = %O2"
   [(set_attr "type" "prefetch, prefetch, prefetch")
    (set_attr "issue" "lsu, lsu_x, lsu_x2")
-   (set_attr "length" "4,   8,   12")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4,   8,   12")]
 )
 
 (define_insn "lvx_xpreload<AI:lsusize><XBUFF:bitsize>"
@@ -891,8 +871,7 @@
   "xpl<AI:lsusize>%4%X2 %b0, %3 = %O2"
   [(set_attr "type" "prefetch, prefetch, prefetch")
    (set_attr "issue" "lsu, lsu_x, lsu_x2")
-   (set_attr "length" "4,   8,   12")
-   (set_attr "predicable" "no")]
+   (set_attr "length" "4,   8,   12")]
 )
 
 
@@ -905,8 +884,7 @@
   "LVX_2 && (HAVE_LVX_EXT_BUFFER_MOV_EXT_<CHUNK>_<XBUFF:MODE>)"
   "xaligno %0 = %b1, %2"
   [(set_attr "type" "xcopy")
-   (set_attr "issue" "ext_misc_auxw")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext_misc_auxw")]
 )
 
 (define_insn "lvx_xaccesso<XBUFF:bitsize>"
@@ -916,8 +894,7 @@
   "LVX_2 && (HAVE_LVX_EXT_BUFFER_MOV_CORE_<V256:MODE>_<XBUFF:MODE>)"
   "xaccesso %0 = %b1, %2"
   [(set_attr "type" "xmovef")
-   (set_attr "issue" "ext_misc_auxw")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext_misc_auxw")]
 )
 
 ;; XCOPYO, XCOPYX, XCOPYV
@@ -952,8 +929,7 @@
   "LVX_2 && (HAVE_LVX_EXT_AND_<MODE>)"
   "xando %0 = %1, %2"
   [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xnando"
@@ -963,8 +939,7 @@
   "LVX_2 && (HAVE_LVX_EXT_NAND_<MODE>)"
   "xnando %0 = %1, %2"
   [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xandno"
@@ -974,8 +949,7 @@
   "LVX_2 && (HAVE_LVX_EXT_ANDN_<MODE>)"
   "xandno %0 = %1, %2"
   [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xioro"
@@ -985,8 +959,7 @@
   "LVX_2 && (HAVE_LVX_EXT_IOR_<MODE>)"
   "xioro %0 = %1, %2"
   [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xnioro"
@@ -996,8 +969,7 @@
   "LVX_2 && (HAVE_LVX_EXT_NIOR_<MODE>)"
   "xnioro %0 = %1, %2"
   [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xiorno"
@@ -1007,8 +979,7 @@
   "LVX_2 && (HAVE_LVX_EXT_IORN_<MODE>)"
   "xiorno %0 = %1, %2"
   [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xeoro"
@@ -1018,8 +989,7 @@
   "LVX_2 && (HAVE_LVX_EXT_EOR_<MODE>)"
   "xeoro %0 = %1, %2"
   [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xneoro"
@@ -1029,8 +999,7 @@
   "LVX_2 && (HAVE_LVX_EXT_NEOR_<MODE>)"
   "xneoro %0 = %1, %2"
   [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xsbmm8dq"
@@ -1040,8 +1009,7 @@
   "LVX_2 && (HAVE_LVX_EXT_SBMM8_V1OI)"
   "xsbmm8dq %0 = %1, %2"
   [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext")]
 )
 
 (define_insn "lvx_xsbmmt8dq"
@@ -1051,6 +1019,5 @@
   "LVX_2 && (HAVE_LVX_EXT_SBMMT8_V1OI)"
   "xsbmmt8dq %0 = %1, %2"
   [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "ext")]
 )

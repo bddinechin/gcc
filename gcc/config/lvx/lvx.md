@@ -600,8 +600,7 @@
   ""
   "fence%0"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "lvx_d1inval"
@@ -610,8 +609,7 @@
   ""
   "d1inval"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "lvx_i1inval"
@@ -620,8 +618,7 @@
   ""
   "i1inval"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "lvx_dinvall"
@@ -631,8 +628,7 @@
   "dinvall%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_x2")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
 )
 
 (define_insn "lvx_dtouchl"
@@ -643,8 +639,7 @@
   "dtouchl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_x2")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
 )
 
 (define_insn "lvx_dpurgel"
@@ -654,8 +649,7 @@
   "dpurgel%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_x2")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
 )
 
 (define_insn "lvx_dflushl"
@@ -665,8 +659,7 @@
   "dflushl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_x2")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
 )
 
 (define_insn "lvx_i1invals"
@@ -676,8 +669,7 @@
   "i1invals%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu2_memw, lsu2_memw_x, lsu2_memw_x2")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu2_memw, lsu2_memw_x, lsu2_memw_x2")]
 )
 
 (define_insn "lvx_dinvalsw"
@@ -688,8 +680,7 @@
   ""
   "dinvalsw%2 %0, %1"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "lvx_dpurgesw"
@@ -700,8 +691,7 @@
   ""
   "dpurgesw%2 %0, %1"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "lvx_dflushsw"
@@ -712,8 +702,7 @@
   ""
   "dflushsw%2 %0, %1"
   [(set_attr "type" "cache")
-   (set_attr "issue" "lsu2_memw")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu2_memw")]
 )
 
 (define_insn "prefetch"
@@ -724,8 +713,7 @@
   "dtouchl%X0 %A0"
   [(set_attr "length" "4,     8,    12")
    (set_attr "type" "cache, cache, cache")
-   (set_attr "issue" "lsu, lsu_x, lsu_x2")
-   (set_attr "predicable" "no")]
+   (set_attr "issue" "lsu, lsu_x, lsu_x2")]
 )
 
 (define_insn "lvx_tlbdinval"
