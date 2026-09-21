@@ -816,7 +816,7 @@
                            (match_operand 2 "sixbits_unsigned_operand" "i")
                            (match_operand 3 "sixbits_unsigned_operand" "i")))]
   ""
-  "extfs %0 = %1, %2+%3-1, %3"
+  "extfsd %0 = %1, %2, %3"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
@@ -827,7 +827,7 @@
                            (match_operand 2 "sixbits_unsigned_operand" "i")
                            (match_operand 3 "sixbits_unsigned_operand" "i")))]
   ""
-  "extfz %0 = %1, %2+%3-1, %3"
+  "extfzd %0 = %1, %2, %3"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
@@ -838,7 +838,7 @@
                            (match_operand 2 "sixbits_unsigned_operand" "i"))
         (match_operand:SIDI 3 "register_operand" "r"))]
   ""
-  "insf %0 = %3, %1+%2-1, %2"
+  "insfd %0 = %3, %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
