@@ -83,6 +83,7 @@
         UNSPEC_QXO
         UNSPEC_QXE
         UNSPEC_OROE
+        UNSPEC_LVX_BLEND
         UNSPEC_MM
         UNSPEC_MMA
         UNSPEC_MMS

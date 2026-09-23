@@ -335,6 +335,61 @@
   }
 )
 
+;; -------------------------------------------------------------------------
+;; PROTOTYPE bit-mask predication for V2DI.  COMPDP compares two 2x64 vectors
+;; and packs a 2-bit lane mask into a GPR (QImode); BLENDDP selects lanes from
+;; a source into the destination by that GPR bit-mask.  lvx_get_mask_mode makes
+;; the vectorizer request these for V2DI selects.
+;; -------------------------------------------------------------------------
+
+(define_insn "vec_cmpv2diqi"
+  [(set (match_operand:QI 0 "register_operand" "=r")
+        (match_operator:QI 1 "comparison_operator"
+          [(match_operand:V2DI 2 "register_operand" "r")
+           (match_operand:V2DI 3 "register_operand" "r")]))]
+  "LVX_2"
+  "compdp.%1 %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")])
+
+(define_insn "vec_cmpuv2diqi"
+  [(set (match_operand:QI 0 "register_operand" "=r")
+        (match_operator:QI 1 "comparison_operator"
+          [(match_operand:V2DI 2 "register_operand" "r")
+           (match_operand:V2DI 3 "register_operand" "r")]))]
+  "LVX_2"
+  "compdp.%1 %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")])
+
+(define_insn "lvx_blenddp"
+  [(set (match_operand:V2DI 0 "register_operand" "=r")
+        (unspec:V2DI
+          [(match_operand:V2DI 1 "register_operand" "0")
+           (match_operand:V2DI 2 "register_operand" "r")
+           (match_operand:QI 3 "register_operand" "r")]
+          UNSPEC_LVX_BLEND))]
+  "LVX_2"
+  "blenddp %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")])
+
+(define_expand "vcond_mask_v2diqi"
+  [(match_operand:V2DI 0 "register_operand")
+   (match_operand:V2DI 1 "register_operand")
+   (match_operand:V2DI 2 "register_operand")
+   (match_operand:QI 3 "register_operand")]
+  "LVX_2"
+  {
+    /* vcond_mask: dst = mask ? op1 : op2.  BLENDDP does dst = mask ? src : dst,
+       so seed dst with the false value (op2) then blend in op1 where set.  */
+    rtx dst = operands[0];
+    if (!rtx_equal_p (dst, operands[2]))
+      emit_move_insn (dst, operands[2]);
+    emit_insn (gen_lvx_blenddp (dst, dst, operands[1], operands[3]));
+    DONE;
+  })
+
 (define_expand "vec_shl_insert_<mode>"
   [(match_operand:SIMDALL 0 "register_operand" "")
    (match_operand:SIMDALL 1 "register_operand" "")
@@ -1681,51 +1736,90 @@
 )
 
 
-(define_insn_and_split "rotl<mode>3"
-  [(set (match_operand:V128I 0 "register_operand" "=r")
-        (rotate:V128I (match_operand:V128I 1 "register_operand" "r")
-                      (match_operand:SI 2 "register_operand" "r")))
+(define_insn "rotlv2di3"
+  [(set (match_operand:V2DI 0 "register_operand" "=r")
+        (rotate:V2DI (match_operand:V2DI 1 "register_operand" "r")
+                     (match_operand:SI 2 "reg_shift_operand" "rU06")))]
+  "LVX_2"
+  "roldp %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")])
+
+;; The vectorizer queries the vrotl optab (vrotl<mode>3) for vector rotates;
+;; delegate it to the native V2DI rotate above so 64-bit-lane rotate loops use
+;; ROLDP instead of shift-left / shift-right / or.
+(define_expand "vrotlv2di3"
+  [(set (match_operand:V2DI 0 "register_operand")
+        (rotate:V2DI (match_operand:V2DI 1 "register_operand")
+                     (match_operand:SI 2 "reg_shift_operand")))]
+  "LVX_2"
+  "")
+
+;; V8HI has no native rotate: lower to shift-left / shift-right / or.
+(define_insn_and_split "rotlv8hi3"
+  [(set (match_operand:V8HI 0 "register_operand" "=r")
+        (rotate:V8HI (match_operand:V8HI 1 "register_operand" "r")
+                     (match_operand:SI 2 "register_operand" "r")))
    (clobber (match_scratch:SI 3 "=&r"))
-   (clobber (match_scratch:V128I 4 "=&r"))
-   (clobber (match_scratch:V128I 5 "=&r"))]
+   (clobber (match_scratch:V8HI 4 "=&r"))
+   (clobber (match_scratch:V8HI 5 "=&r"))]
   "LVX_2"
   "#"
   ""
   [(set (match_dup 3) (neg:SI (match_dup 2)))
-   (set (match_dup 4) (ashift:V128I (match_dup 1) (match_dup 2)))
-   (set (match_dup 5) (lshiftrt:V128I (match_dup 1) (match_dup 3)))
-   (set (match_dup 0) (ior:V128I (match_dup 4) (match_dup 5)))]
+   (set (match_dup 4) (ashift:V8HI (match_dup 1) (match_dup 2)))
+   (set (match_dup 5) (lshiftrt:V8HI (match_dup 1) (match_dup 3)))
+   (set (match_dup 0) (ior:V8HI (match_dup 4) (match_dup 5)))]
   {
     if (GET_CODE (operands[3]) == SCRATCH)
       operands[3] = gen_reg_rtx (SImode);
     if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (<MODE>mode);
+      operands[4] = gen_reg_rtx (V8HImode);
     if (GET_CODE (operands[5]) == SCRATCH)
-      operands[5] = gen_reg_rtx (<MODE>mode);
+      operands[5] = gen_reg_rtx (V8HImode);
   }
 )
 
-(define_insn_and_split "rotr<mode>3"
-  [(set (match_operand:V128I 0 "register_operand" "=r")
-        (rotatert:V128I (match_operand:V128I 1 "register_operand" "r")
-                        (match_operand:SI 2 "register_operand" "r")))
+(define_insn "rotrv2di3"
+  [(set (match_operand:V2DI 0 "register_operand" "=r")
+        (rotatert:V2DI (match_operand:V2DI 1 "register_operand" "r")
+                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
+  "LVX_2"
+  "rordp %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")])
+
+(define_expand "vrotrv2di3"
+  [(set (match_operand:V2DI 0 "register_operand")
+        (rotatert:V2DI (match_operand:V2DI 1 "register_operand")
+                       (match_operand:SI 2 "reg_shift_operand")))]
+  "LVX_2"
+  "")
+
+;; V8HI has no native rotate: lower to shift-right / shift-left / or.
+(define_insn_and_split "rotrv8hi3"
+  [(set (match_operand:V8HI 0 "register_operand" "=r")
+        (rotatert:V8HI (match_operand:V8HI 1 "register_operand" "r")
+                       (match_operand:SI 2 "register_operand" "r")))
    (clobber (match_scratch:SI 3 "=&r"))
-   (clobber (match_scratch:V128I 4 "=&r"))
-   (clobber (match_scratch:V128I 5 "=&r"))]
+   (clobber (match_scratch:V8HI 4 "=&r"))
+   (clobber (match_scratch:V8HI 5 "=&r"))]
   "LVX_2"
   "#"
   ""
   [(set (match_dup 3) (neg:SI (match_dup 2)))
-   (set (match_dup 4) (lshiftrt:V128I (match_dup 1) (match_dup 2)))
-   (set (match_dup 5) (ashift:V128I (match_dup 1) (match_dup 3)))
-   (set (match_dup 0) (ior:V128I (match_dup 4) (match_dup 5)))]
+   (set (match_dup 4) (lshiftrt:V8HI (match_dup 1) (match_dup 2)))
+   (set (match_dup 5) (ashift:V8HI (match_dup 1) (match_dup 3)))
+   (set (match_dup 0) (ior:V8HI (match_dup 4) (match_dup 5)))]
   {
     if (GET_CODE (operands[3]) == SCRATCH)
       operands[3] = gen_reg_rtx (SImode);
     if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (<MODE>mode);
+      operands[4] = gen_reg_rtx (V8HImode);
     if (GET_CODE (operands[5]) == SCRATCH)
-      operands[5] = gen_reg_rtx (<MODE>mode);
+      operands[5] = gen_reg_rtx (V8HImode);
   }
 )
 

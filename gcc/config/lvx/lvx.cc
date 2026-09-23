@@ -84,6 +84,7 @@
 
 /* This file should be included last.  */
 #include "target-def.h"
+#include "targhooks.h"
 
 static void lvx_sched2_dtor (void);
 static void lvx_sched2_ctor (int max_uid);
@@ -6812,6 +6813,21 @@ lvx_vectorize_preferred_simd_mode (scalar_mode mode)
 
 #undef TARGET_VECTORIZE_PREFERRED_SIMD_MODE
 #define TARGET_VECTORIZE_PREFERRED_SIMD_MODE lvx_vectorize_preferred_simd_mode
+
+/* PROTOTYPE (bit-mask predication).  Tell the vectorizer a V2DI mask lives in a
+   QImode lane bit-mask (one bit per lane), so it drives the vec_cmp/vcond_mask
+   integer-mask path (COMPDP -> BLENDDP) instead of full-width 0/-1 masks.  Every
+   other mode keeps the default full-width vector mask.  */
+static opt_machine_mode
+lvx_get_mask_mode (machine_mode mode)
+{
+  if (LVX_2 && mode == V2DImode)
+    return QImode;
+  return default_get_mask_mode (mode);
+}
+
+#undef TARGET_VECTORIZE_GET_MASK_MODE
+#define TARGET_VECTORIZE_GET_MASK_MODE lvx_get_mask_mode
 
 /* Implements TARGET_VECTORIZE_AUTOVECTORIZE_VECTOR_MODES.
 
