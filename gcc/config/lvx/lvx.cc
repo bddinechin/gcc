@@ -5554,9 +5554,21 @@ lvx_vector_mode_supported_p (enum machine_mode mode)
        on lvx-1 or their builtins cannot be called there.  */
     return mode == V2SFmode;
 
-  // In core, support up to 64-byte vectors (8 registers).
+  /* V2SF is the same 64-bit GPR-resident `float complex' exception as on
+     lvx-1 (see above); it is not backed by a SIMD register pair.  */
+  if (mode == V2SFmode)
+    return true;
+
+  /* Native SIMD is 128-bit and wider (V16QI ... up to 64-byte / 8-register
+     vectors); the patterns are written over SIMD128/256/512.  A sub-128-bit
+     vector -- V2HI, V4QI, V8QI, V4HI, V2SI and the like -- has no packed
+     instruction and no mov<mode> pattern, so claiming it lets the middle end
+     put a vector value where nothing can move or operate on it: passing such a
+     type as an argument ICEs in emit_move_multi_word (gcc.c-torture/execute/
+     20050316-1.c).  Bound it from below so those types are lowered
+     element-wise instead.  */
   unsigned size = GET_MODE_SIZE (mode);
-  return (size <= UNITS_PER_WORD * 8);
+  return (size >= 16 && size <= UNITS_PER_WORD * 8);
 }
 
 
