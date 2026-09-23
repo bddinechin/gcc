@@ -1397,6 +1397,15 @@
   V8HI V4SI V2DI
 ])
 
+;; V128J minus V2DI: the 128-bit integer vector modes whose element add/sub/etc.
+;; has a scalar-broadcast form (addho/addwq broadcast a sub-64-bit scalar from a
+;; single register).  V2DI is excluded: a 64-bit element fills a whole register,
+;; so adddp/subdp have no single-register broadcast -- a V2DI broadcast splats to
+;; a pair first and uses the regular pair/pair form.
+(define_mode_iterator V128JB [
+  V8HI V4SI
+])
+
 ;; Iterator V128L.
 (define_mode_iterator V128K [
   (V16QI "1") V8HI V4SI V2DI
