@@ -1482,6 +1482,12 @@
   V16HI V8SI V4DI
 ])
 
+;; V256J minus V4DI: the integer 256-bit vector modes whose element rotate has
+;; no native lane-rotate instruction (V4DI uses ROLDP two-halves instead).
+(define_mode_iterator V256JH [
+  V16HI V8SI
+])
+
 ;; Iterator V256L.
 (define_mode_iterator V256K [
   (V32QI "1") V16HI V8SI V4DI

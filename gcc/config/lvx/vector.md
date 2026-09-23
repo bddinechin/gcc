@@ -1798,6 +1798,22 @@
   "LVX_2"
   "")
 
+;; 256-bit vector rotate: route the vrotl optab to the native V4DI two-halves
+;; rotate (ROLDP/RORDP) -- this is the width the vectorizer picks by default.
+(define_expand "vrotlv4di3"
+  [(set (match_operand:V4DI 0 "register_operand")
+        (rotate:V4DI (match_operand:V4DI 1 "register_operand")
+                     (match_operand:SI 2 "reg_shift_operand")))]
+  "LVX_2"
+  "")
+
+(define_expand "vrotrv4di3"
+  [(set (match_operand:V4DI 0 "register_operand")
+        (rotatert:V4DI (match_operand:V4DI 1 "register_operand")
+                       (match_operand:SI 2 "reg_shift_operand")))]
+  "LVX_2"
+  "")
+
 ;; V8HI has no native rotate: lower to shift-right / shift-left / or.
 (define_insn_and_split "rotrv8hi3"
   [(set (match_operand:V8HI 0 "register_operand" "=r")
@@ -4608,19 +4624,19 @@
 ;; V256J (V16HI V8SI V4DI)
 
 (define_insn_and_split "rotl<mode>3"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (rotate:V256J (match_operand:V256J 1 "register_operand" "r")
+  [(set (match_operand:V256JH 0 "register_operand" "=r")
+        (rotate:V256JH (match_operand:V256JH 1 "register_operand" "r")
                       (match_operand:SI 2 "register_operand" "r")))
    (clobber (match_scratch:SI 3 "=&r"))
-   (clobber (match_scratch:V256J 4 "=&r"))
-   (clobber (match_scratch:V256J 5 "=&r"))]
+   (clobber (match_scratch:V256JH 4 "=&r"))
+   (clobber (match_scratch:V256JH 5 "=&r"))]
   "LVX_2"
   "#"
   ""
   [(set (match_dup 3) (neg:SI (match_dup 2)))
-   (set (match_dup 4) (ashift:V256J (match_dup 1) (match_dup 2)))
-   (set (match_dup 5) (lshiftrt:V256J (match_dup 1) (match_dup 3)))
-   (set (match_dup 0) (ior:V256J (match_dup 4) (match_dup 5)))]
+   (set (match_dup 4) (ashift:V256JH (match_dup 1) (match_dup 2)))
+   (set (match_dup 5) (lshiftrt:V256JH (match_dup 1) (match_dup 3)))
+   (set (match_dup 0) (ior:V256JH (match_dup 4) (match_dup 5)))]
   {
     if (GET_CODE (operands[3]) == SCRATCH)
       operands[3] = gen_reg_rtx (SImode);
@@ -4632,19 +4648,19 @@
 )
 
 (define_insn_and_split "rotr<mode>3"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (rotatert:V256J (match_operand:V256J 1 "register_operand" "r")
+  [(set (match_operand:V256JH 0 "register_operand" "=r")
+        (rotatert:V256JH (match_operand:V256JH 1 "register_operand" "r")
                         (match_operand:SI 2 "register_operand" "r")))
    (clobber (match_scratch:SI 3 "=&r"))
-   (clobber (match_scratch:V256J 4 "=&r"))
-   (clobber (match_scratch:V256J 5 "=&r"))]
+   (clobber (match_scratch:V256JH 4 "=&r"))
+   (clobber (match_scratch:V256JH 5 "=&r"))]
   "LVX_2"
   "#"
   ""
   [(set (match_dup 3) (neg:SI (match_dup 2)))
-   (set (match_dup 4) (lshiftrt:V256J (match_dup 1) (match_dup 2)))
-   (set (match_dup 5) (ashift:V256J (match_dup 1) (match_dup 3)))
-   (set (match_dup 0) (ior:V256J (match_dup 4) (match_dup 5)))]
+   (set (match_dup 4) (lshiftrt:V256JH (match_dup 1) (match_dup 2)))
+   (set (match_dup 5) (ashift:V256JH (match_dup 1) (match_dup 3)))
+   (set (match_dup 0) (ior:V256JH (match_dup 4) (match_dup 5)))]
   {
     if (GET_CODE (operands[3]) == SCRATCH)
       operands[3] = gen_reg_rtx (SImode);
@@ -5156,6 +5172,33 @@
   "LVX_2"
   {
     return "slldp %L0 = %L1, %2\n\tslldp %M0 = %M1, %2";
+  }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
+)
+
+;; Native 2x64-lane rotate at 256 bits: two ROLDP halves (cf. ashlv4di3).
+(define_insn "rotlv4di3"
+  [(set (match_operand:V4DI 0 "register_operand" "=r")
+        (rotate:V4DI (match_operand:V4DI 1 "register_operand" "r")
+                     (match_operand:SI 2 "reg_shift_operand" "rU06")))]
+  "LVX_2"
+  {
+    return "roldp %L0 = %L1, %2\n\troldp %M0 = %M1, %2";
+  }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
+)
+
+(define_insn "rotrv4di3"
+  [(set (match_operand:V4DI 0 "register_operand" "=r")
+        (rotatert:V4DI (match_operand:V4DI 1 "register_operand" "r")
+                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
+  "LVX_2"
+  {
+    return "rordp %L0 = %L1, %2\n\trordp %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2")

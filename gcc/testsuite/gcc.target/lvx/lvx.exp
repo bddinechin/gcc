@@ -1,0 +1,20 @@
+# GCC testsuite that uses the `dg.exp' driver, for the LVX target.
+# Scan-assembler / compile tests: each test's own dg-options are authoritative
+# (no torture-option sweep -- the option set is what selects the instruction).
+
+# Exit immediately if this isn't an LVX target.
+if ![istarget lvx*-*-*] then {
+  return
+}
+
+# Load support procs.
+load_lib gcc-dg.exp
+
+# Initialize `dg'.
+dg-init
+
+# Main loop: run each test once, honouring only its own dg-options.
+dg-runtest [lsort [glob -nocomplain $srcdir/$subdir/*.\[cS\]]] "" ""
+
+# All done.
+dg-finish
