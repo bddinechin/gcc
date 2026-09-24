@@ -6749,6 +6749,50 @@ lvx_expand_vec_perm_const (rtx target, rtx source1, rtx source2, rtx selector)
 				   which == 1 ? source1 : source2, which == 1))
     return true;
 
+  /* Pure lane permutation: every destination 64-bit word is a whole source
+     word, its bytes in order.  A v2i64 lane reverse is just the pair swap
+     (R0R1 -> R1R0), and any 64-bit-lane shuffle is a handful of register
+     moves -- but the SBMM8D path below would byte-reverse the register and
+     then un-reverse each lane to get back there (9 insns for a 2-move swap).
+     Emit word moves through a fresh temporary instead, so an in-place swap
+     does not clobber a word it still has to read.  */
+  {
+    int srcword[8];
+    bool pure = true;
+    for (int d = 0; d < nwords && pure; d++)
+      {
+	int sw = lvx_expand_vec_perm.from[d * UNITS_PER_WORD] / UNITS_PER_WORD;
+	for (int j = 0; j < UNITS_PER_WORD; j++)
+	  if (lvx_expand_vec_perm.from[d * UNITS_PER_WORD + j]
+	      != sw * UNITS_PER_WORD + j)
+	    { pure = false; break; }
+	srcword[d] = sw;
+      }
+    if (pure)
+      {
+	rtx tmp = gen_reg_rtx (vector_mode);
+	rtx dsub[8], ssub[8];
+	bool ok = true;
+	for (int d = 0; d < nwords && ok; d++)
+	  {
+	    int sw = srcword[d];
+	    rtx src = sw < nwords ? source1 : source2;
+	    int woff = (sw < nwords ? sw : sw - nwords) * UNITS_PER_WORD;
+	    dsub[d] = simplify_gen_subreg (word_mode, tmp, vector_mode,
+					   d * UNITS_PER_WORD);
+	    ssub[d] = simplify_gen_subreg (word_mode, src, vector_mode, woff);
+	    ok = dsub[d] && ssub[d];
+	  }
+	if (ok)
+	  {
+	    for (int d = 0; d < nwords; d++)
+	      emit_move_insn (dsub[d], ssub[d]);
+	    emit_move_insn (target, tmp);
+	    return true;
+	  }
+      }
+  }
+
   /* The accumulating SBMM8EORD forms pay inside a loop, where their
      register matrices are hoisted; see lvx_expand_vec_perm_const_emit_pair.  */
   bool chain = (currently_expanding_gimple_stmt
