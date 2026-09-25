@@ -10,7 +10,8 @@
    (set_attr "length"        "8")]
 )
 
-;; zero-extend version of bswapsi2
+;; No _sx sibling: this emits sbmm8d, a D-form instruction with no
+;; signextw modifier, so the extension cannot be folded into it.
 (define_insn "*bswapsi2_zext"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (zero_extend:DI (bswap:HI (match_operand:HI 1 "register_operand" "r"))))]
@@ -26,7 +27,7 @@
 (define_expand "usadd<mode>3"
   [(match_operand:SIDI 0 "register_operand" "")
    (match_operand:SIDI 1 "register_operand" "")
-   (match_operand:SIDI 2 "register_s32_operand" "")]
+   (match_operand:SIDI 2 "<imm32pred>" "")]
   ""
   {
     if (!HAVE_LVX_US_PLUS_<MODE>)
@@ -63,7 +64,7 @@
 (define_expand "ussub<mode>3"
   [(match_operand:SIDI 0 "register_operand" "")
    (match_operand:SIDI 1 "register_operand" "")
-   (match_operand:SIDI 2 "register_s32_operand" "")]
+   (match_operand:SIDI 2 "<imm32pred>" "")]
   ""
   {
     if (!HAVE_LVX_US_MINUS_<MODE>)
@@ -149,11 +150,11 @@
    (set_attr "issue" "tiny")]
 )
 
-(define_insn "negsi2"
+(define_insn "negsi2<arith_zx><arith_sx>"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (neg:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
-  "negw %0 = %1"
+  "negw<_sx> %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
@@ -166,11 +167,11 @@
 ;; end widens a QI/HI negate to SImode and uses negw, which is what the
 ;; hardware can actually do.
 
-(define_insn "ssneg<mode>2"
+(define_insn "ssneg<mode>2<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r")
         (ss_neg:SIDI (match_operand:SIDI 1 "register_operand" "r")))]
   ""
-  "sbfs<suffix> %0 = %1, 0"
+  "sbfs<suffix><_sx> %0 = %1, 0"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny_x")
    (set_attr "length"        "8")]
@@ -179,11 +180,11 @@
 ;; ABSD_registerW_registerZ_simple and ABSW_signextw_registerW_registerZ_simple
 ;; are the only forms, on both cores, and "simple" is one syllable.  There is
 ;; no two-syllable abs to choose between, so there is nothing to gate.
-(define_insn "abs<mode>2"
+(define_insn "abs<mode>2<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r")
         (abs:SIDI (match_operand:SIDI 1 "register_operand" "r")))]
   ""
-  "abs<suffix> %0 = %1"
+  "abs<suffix><_sx> %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
@@ -214,11 +215,11 @@
   ""
 )
 
-(define_insn "ssabs<mode>2_2"
+(define_insn "ssabs<mode>2_2<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r")
         (ss_abs:SIDI (match_operand:SIDI 1 "register_operand" "r")))]
   "HAVE_LVX_SS_ABS_<MODE>"
-  "abss<suffix> %0 = %1"
+  "abss<suffix><_sx> %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
@@ -227,7 +228,7 @@
 (define_expand "abd<mode>3"
   [(match_operand:SIDI 0 "register_operand" "")
    (match_operand:SIDI 1 "register_operand" "")
-   (match_operand:SIDI 2 "register_s32_operand" "")]
+   (match_operand:SIDI 2 "<imm32pred>" "")]
   ""
   {
     emit_insn (gen_abd<mode>3_4 (operands[0], operands[1], operands[2]));
@@ -235,38 +236,25 @@
   }
 )
 
-(define_insn "abd<mode>3_4"
+(define_insn "abd<mode>3_4<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (minus:SIDI (smax:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
-                               (match_operand:SIDI 2 "register_s32_operand" "r,I32"))
+                               (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>"))
                     (smin:SIDI (match_dup 1) (match_dup 2))))]
   "HAVE_LVX_ABD_ONLY_I32_IMMEDIATE"
-  "abd<suffix> %0 = %1, %2"
+  "abd<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length"      "4,         8")]
 )
 
-(define_insn "abd<mode>3_4s"
+(define_insn "abd<mode>3_4s<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (minus:SIDI (smax:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
-                               (match_operand:SIDI 2 "register_s32_operand" "r,I32"))
+                               (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>"))
                     (smin:SIDI (match_dup 2) (match_dup 1))))]
   "HAVE_LVX_ABD_ONLY_I32_IMMEDIATE"
-  "abd<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length"      "4,         8")]
-)
-
-;; zero-extend version of abdsi3
-(define_insn "*abdsi3_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (zero_extend:DI (minus:SI (smax:SI (match_operand:SI 1 "register_operand" "r,r")
-                                           (match_operand:SI 2 "register_w32_operand" "r,W32"))
-                                  (smin:SI (match_dup 1) (match_dup 2)))))]
-  "HAVE_LVX_ABD_SI"
-  "abdw %0 = %1, %2"
+  "abd<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length"      "4,         8")]
@@ -275,7 +263,7 @@
 (define_expand "abds<mode>3"
   [(match_operand:SIDI 0 "register_operand" "")
    (match_operand:SIDI 1 "register_operand" "")
-   (match_operand:SIDI 2 "register_s32_operand" "")]
+   (match_operand:SIDI 2 "<imm32pred>" "")]
   ""
   {
     if (!HAVE_LVX_SS_ABD_<MODE>)
@@ -310,34 +298,21 @@
   }
 )
 
-(define_insn "abds<mode>3_2"
+(define_insn "abds<mode>3_2<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (ss_minus:SIDI (smax:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
-                                  (match_operand:SIDI 2 "register_s32_operand" "r,I32"))
+                                  (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>"))
                        (smin:SIDI (match_dup 1) (match_dup 2))))]
   "HAVE_LVX_SS_ABD_<MODE>"
-  "abds<suffix> %0 = %1, %2"
+  "abds<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length"      "4,         8")]
 )
-;; zero-extend version of abdssi3
-(define_insn "*abdssi3_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (zero_extend:DI (ss_minus:SI (smax:SI (match_operand:SI 1 "register_operand" "r,r")
-                                              (match_operand:SI 2 "register_w32_operand" "r,W32"))
-                                     (smin:SI (match_dup 1) (match_dup 2)))))]
-  "HAVE_LVX_SS_ABD_SI"
-  "abdsw %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length"      "4,         8")]
-)
-
 (define_expand "abdu<mode>3"
   [(match_operand:SIDI 0 "register_operand" "")
    (match_operand:SIDI 1 "register_operand" "")
-   (match_operand:SIDI 2 "register_s32_operand" "")]
+   (match_operand:SIDI 2 "<imm32pred>" "")]
   ""
   {
     if (!HAVE_LVX_UABD_<MODE>)
@@ -372,229 +347,138 @@
   }
 )
 
-(define_insn "abdu<mode>3_2"
+(define_insn "abdu<mode>3_2<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (minus:SIDI (umax:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
-                               (match_operand:SIDI 2 "register_s32_operand" "r,I32"))
+                               (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>"))
                     (umin:SIDI (match_dup 1) (match_dup 2))))]
   "HAVE_LVX_UABD_<MODE>"
-  "abdu<suffix> %0 = %1, %2"
+  "abdu<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length"      "4,         8")]
 )
-;; zero-extend version of abdusi3
-(define_insn "*abdusi3_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (zero_extend:DI (minus:SI (umax:SI (match_operand:SI 1 "register_operand" "r,r")
-                                           (match_operand:SI 2 "register_w32_operand" "r,W32"))
-                                  (umin:SI (match_dup 1) (match_dup 2)))))]
-  "HAVE_LVX_UABD_SI"
-  "abduw %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length"      "4,         8")]
-)
-
-(define_insn "*addx2<suffix>"
+(define_insn "*addx2<suffix><arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (ashift:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                                 (const_int 1))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL02_ADD_<MODE>"
-  "addx2<suffix> %0 = %1, %2"
+  "addx2<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
 ;; multiplicative version of addx2<suffix>
-(define_insn "*addx2<suffix>_m"
+(define_insn "*addx2<suffix>_m<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                               (const_int 2))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL02_ADD_<MODE>"
-  "addx2<suffix> %0 = %1, %2"
+  "addx2<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
-;; zero-extend version of *addx2si
-(define_insn "*addx2si_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (zero_extend:DI (plus:SI (ashift:SI (match_operand:SI 1 "register_operand" "r,r")
-                                            (const_int 1))
-                                 (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
-  "HAVE_LVX_MUL02_ADD_SI"
-  "addx2w %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length" "     4,         8")]
-)
-
-(define_insn "*addx4<suffix>"
+(define_insn "*addx4<suffix><arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (ashift:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                                 (const_int 2))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL04_ADD_<MODE>"
-  "addx4<suffix> %0 = %1, %2"
+  "addx4<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
 ;; multiplicative version of addx4<suffix>
-(define_insn "*addx4<suffix>_m"
+(define_insn "*addx4<suffix>_m<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                               (const_int 4))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL04_ADD_<MODE>"
-  "addx4<suffix> %0 = %1, %2"
+  "addx4<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
-;; zero-extend version of *addx4si
-(define_insn "*addx4si_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (zero_extend:DI (plus:SI (ashift:SI (match_operand:SI 1 "register_operand" "r,r")
-                                            (const_int 2))
-                                 (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
-  "HAVE_LVX_MUL04_ADD_SI"
-  "addx4w %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length" "     4,         8")]
-)
-
-(define_insn "*addx8<suffix>"
+(define_insn "*addx8<suffix><arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (ashift:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                                 (const_int 3))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL08_ADD_<MODE>"
-  "addx8<suffix> %0 = %1, %2"
+  "addx8<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
 ;; multiplicative version of addx8<suffix>
-(define_insn "*addx8<suffix>_m"
+(define_insn "*addx8<suffix>_m<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                               (const_int 8))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL08_ADD_<MODE>"
-  "addx8<suffix> %0 = %1, %2"
+  "addx8<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
-;; zero-extend version of *addx8si
-(define_insn "*addx8si_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (zero_extend:DI (plus:SI (ashift:SI (match_operand:SI 1 "register_operand" "r,r")
-                                            (const_int 3))
-                                 (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
-  "HAVE_LVX_MUL08_ADD_SI"
-  "addx8w %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length" "     4,         8")]
-)
-
-(define_insn "*addx16<suffix>"
+(define_insn "*addx16<suffix><arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (ashift:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                                 (const_int 4))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL16_ADD_<MODE>"
-  "addx16<suffix> %0 = %1, %2"
+  "addx16<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
 ;; multiplicative version of addx16<suffix>
-(define_insn "*addx16<suffix>_m"
+(define_insn "*addx16<suffix>_m<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                               (const_int 16))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL16_ADD_<MODE>"
-  "addx16<suffix> %0 = %1, %2"
+  "addx16<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
-;; zero-extend version of *addx16si
-(define_insn "*addx16si_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (zero_extend:DI (plus:SI (ashift:SI (match_operand:SI 1 "register_operand" "r,r")
-                                            (const_int 4))
-                                 (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
-  "HAVE_LVX_MUL16_ADD_SI"
-  "addx16w %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length" "     4,         8")]
-)
-
-(define_insn "*addx32<suffix>"
+(define_insn "*addx32<suffix><arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (ashift:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                                 (const_int 5))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL32_ADD_<MODE>"
-  "addx32<suffix> %0 = %1, %2"
+  "addx32<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
-;; zero-extend version of *addx32si
-(define_insn "*addx32si_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (zero_extend:DI (plus:SI (ashift:SI (match_operand:SI 1 "register_operand" "r,r")
-                                            (const_int 5))
-                                 (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
-  "HAVE_LVX_MUL32_ADD_SI"
-  "addx32w %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length" "     4,         8")]
-)
-
-(define_insn "*addx64<suffix>"
+(define_insn "*addx64<suffix><arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (ashift:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                                 (const_int 6))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL64_ADD_<MODE>"
-  "addx64<suffix> %0 = %1, %2"
+  "addx64<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
-;; zero-extend version of *addx64si
-(define_insn "*addx64si_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (zero_extend:DI (plus:SI (ashift:SI (match_operand:SI 1 "register_operand" "r,r")
-                                            (const_int 6))
-                                 (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
-  "HAVE_LVX_MUL64_ADD_SI"
-  "addx64w %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length" "     4,         8")]
-)
-
-(define_insn "*addx32<suffix>"
+(define_insn "*addx32<suffix><arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (ashift:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                                 (const_int 5))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL32_ADD_<MODE>"
-  "addx32<suffix> %0 = %1, %2"
+  "addx32<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
@@ -604,44 +488,31 @@
   [(set (match_operand:SIDI 0 "register_operand" "=&r,&r")
         (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                               (const_int 32))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "!HAVE_LVX_MUL32_ADD_<MODE>"
   "#"
   "!HAVE_LVX_MUL32_ADD_<MODE>"
   [(set (match_dup 0) (ashift:SIDI (match_dup 1) (const_int 5)))
    (set (match_dup 0) (plus:SIDI (match_dup 0) (match_dup 2)))]
 )
-(define_insn "*addx32<suffix>_m"
+(define_insn "*addx32<suffix>_m<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                               (const_int 32))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL32_ADD_<MODE>"
-  "addx32<suffix> %0 = %1, %2"
+  "addx32<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
-;; zero-extend version of *addx32si
-(define_insn "*addx32si_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (zero_extend:DI (plus:SI (ashift:SI (match_operand:SI 1 "register_operand" "r,r")
-                                            (const_int 5))
-                                 (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
-  "HAVE_LVX_MUL32_ADD_SI"
-  "addx32w %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length" "     4,         8")]
-)
-
-(define_insn "*addx64<suffix>"
+(define_insn "*addx64<suffix><arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (ashift:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                                 (const_int 6))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL64_ADD_<MODE>"
-  "addx64<suffix> %0 = %1, %2"
+  "addx64<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
@@ -651,37 +522,24 @@
   [(set (match_operand:SIDI 0 "register_operand" "=&r,&r")
         (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                               (const_int 64))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "!HAVE_LVX_MUL64_ADD_<MODE>"
   "#"
   "!HAVE_LVX_MUL64_ADD_<MODE>"
   [(set (match_dup 0) (ashift:SIDI (match_dup 1) (const_int 6)))
    (set (match_dup 0) (plus:SIDI (match_dup 0) (match_dup 2)))]
 )
-(define_insn "*addx64<suffix>_m"
+(define_insn "*addx64<suffix>_m<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                               (const_int 64))
-                   (match_operand:SIDI 2 "register_s32_operand" "r,I32")))]
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
   "HAVE_LVX_MUL64_ADD_<MODE>"
-  "addx64<suffix> %0 = %1, %2"
+  "addx64<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
-;; zero-extend version of *addx64si
-(define_insn "*addx64si_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (zero_extend:DI (plus:SI (ashift:SI (match_operand:SI 1 "register_operand" "r,r")
-                                            (const_int 6))
-                                 (match_operand:SI 2 "register_w32_operand" "r,W32"))))]
-  "HAVE_LVX_MUL64_ADD_SI"
-  "addx64w %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length" "     4,         8")]
-)
-
 (define_insn "lvx_land<suffix>"
   [(set (match_operand:SIDI 0 "register_operand" "=r")
         (and:SIDI (ne:SIDI (match_operand:SIDI 1 "register_operand" "%r") (const_int 0))
@@ -846,24 +704,6 @@
 
 ;; SI
 
-(define_subst_attr "arith_zx" "arith_zx_subst" "" "_zx")
-(define_subst "arith_zx_subst"
-  [(set (match_operand:SI 0 "" "")
-        (match_operand:SI 1 "" ""))]
-  ""
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (match_dup 1)))]
-)
-
-(define_subst_attr "arith_sx" "arith_sx_subst" "" "_sx")
-(define_subst_attr "_sx" "arith_sx_subst" "" ".sx")
-(define_subst "arith_sx_subst"
-  [(set (match_operand:SI 0 "" "")
-        (match_operand:SI 1 "" ""))]
-  "HAVE_LVX_MODIFIER_SX"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (sign_extend:DI (match_dup 1)))]
-)
 
 (define_insn "addsi3<arith_zx><arith_sx>"
   [(set (match_operand:SI 0 "register_operand" "=r,r,r")
@@ -1040,28 +880,16 @@
   }
 )
 
-(define_insn "maddsisi4"
+(define_insn "maddsisi4<arith_zx><arith_sx>"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (plus:SI (mult:SI (match_operand:SI 1 "register_operand" "r")
                           (match_operand:SI 2 "register_operand" "r"))
                  (match_operand:SI 3 "register_operand" "0")))]
   ""
-  "maddw %0 = %1, %2"
+  "maddw<_sx> %0 = %1, %2"
   [(set_attr "type" "imadd")
    (set_attr "issue" "lite")]
 )
-;; zero-extend version of maddsisi4
-(define_insn "*maddsisi4_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (plus:SI (mult:SI (match_operand:SI 1 "register_operand" "r")
-                                          (match_operand:SI 2 "register_operand" "r"))
-                                 (match_operand:SI 3 "register_operand" "0"))))]
-  ""
-  "maddw %0 = %1, %2"
-  [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
-)
-
 (define_insn "maddsidi4"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (plus:DI (mult:DI (sign_extend:DI (match_operand:SI 1 "register_operand" "r"))
@@ -1106,28 +934,16 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "msubsisi4"
+(define_insn "msubsisi4<arith_zx><arith_sx>"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (minus:SI (match_operand:SI 3 "register_operand" "0")
                   (mult:SI (match_operand:SI 1 "register_operand" "r")
                            (match_operand:SI 2 "register_operand" "r"))))]
   ""
-  "msbfw %0 = %1, %2"
+  "msbfw<_sx> %0 = %1, %2"
   [(set_attr "type" "imadd")
    (set_attr "issue" "lite")]
 )
-;; zero-extend version of msubsisi4
-(define_insn "*msubsisi4_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (minus:SI (match_operand:SI 3 "register_operand" "0")
-                                  (mult:SI (match_operand:SI 1 "register_operand" "r")
-                                           (match_operand:SI 2 "register_operand" "r")))))]
-  ""
-  "msbfw %0 = %1, %2"
-  [(set_attr "type" "imadd")
-   (set_attr "issue" "lite")]
-)
-
 (define_insn "msubsidi4"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (minus:DI (match_operand:DI 3 "register_operand" "0")
@@ -1473,7 +1289,6 @@
    (set_attr "issue" "tiny_x")
    (set_attr "length"        "8")]
 )
-;; zero-extend version of bswapsi2
 (define_insn "*bswapsi2_zext"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (zero_extend:DI (bswap:SI (match_operand:SI 1 "register_operand" "r"))))]
@@ -1484,137 +1299,48 @@
    (set_attr "length"        "8")]
 )
 
-;; zero-extend version of negsi2
-(define_insn "*negsi2_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (neg:SI (match_operand:SI 1 "register_operand" "r"))))]
-  ""
-  "negw %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
 ;; zero-extend version of ssnegsi2
-(define_insn "*ssnegsi2_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (ss_neg:SI (match_operand:SI 1 "register_operand" "r"))))]
-  ""
-  "sbfsw %0 = %1, 0"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny_x")
-   (set_attr "length"        "8")]
-)
-
-;; zero-extend version of abssi2
-(define_insn "*abssi2_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (abs:SI (match_operand:SI 1 "register_operand" "r"))))]
-  ""
-  "absw %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
 ;; zero-extend version of ssabssi2
-(define_insn "*ssabssi2_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (ss_abs:SI (match_operand:SI 1 "register_operand" "r"))))]
-  "HAVE_LVX_SS_ABS_SI"
-  "abssw %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
-(define_insn "clrsbsi2"
+(define_insn "clrsbsi2<arith_zx><arith_sx>"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (clrsb:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
-  "clsw %0 = %1"
+  "clsw<_sx> %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
-;; zero-extend version of clrsbsi2
-(define_insn "*clrsbsi2_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (clrsb:SI (match_operand:SI 1 "register_operand" "r"))))]
-  ""
-  "clsw %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
-(define_insn "clzsi2"
+(define_insn "clzsi2<arith_zx><arith_sx>"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (clz:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
-  "clzw %0 = %1"
+  "clzw<_sx> %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
-;; zero-extend version of clzsi2
-(define_insn "*clzsi2_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (clz:SI (match_operand:SI 1 "register_operand" "r"))))]
-  ""
-  "clzw %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
-(define_insn "ctzsi2"
+(define_insn "ctzsi2<arith_zx><arith_sx>"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (ctz:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
-  "ctzw %0 = %1"
+  "ctzw<_sx> %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
-;; zero-extend version of ctzsi2
-(define_insn "*ctzsi2_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (ctz:SI (match_operand:SI 1 "register_operand" "r"))))]
-  ""
-  "ctzw %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
-(define_insn "popcountsi2"
+(define_insn "popcountsi2<arith_zx><arith_sx>"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (popcount:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
-  "cbsw %0 = %1"
+  "cbsw<_sx> %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
-;; zero-extend version of popcountsi2
-(define_insn "*popcountsi2_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (popcount:SI (match_operand:SI 1 "register_operand" "r"))))]
-  ""
-  "cbsw %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
-(define_insn "one_cmplsi2"
+(define_insn "one_cmplsi2<arith_zx><arith_sx>"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (not:SI (match_operand:SI 1 "register_operand" "r")))]
   ""
-  "notw %0 = %1"
+  "notw<_sx> %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
-;; zero-extend version of one_cmplsi2
-(define_insn "*one_cmplsi2_zext"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-        (zero_extend:DI (not:SI (match_operand:SI 1 "register_operand" "r"))))]
-  ""
-  "notw %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")]
-)
-
 (define_insn "lvx_stsuw"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (unspec:SI [(match_operand:SI 1 "register_operand" "r")
@@ -2962,7 +2688,8 @@
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
-;; zero-extend version of fix_truncsfsi2
+;; No _sx sibling: the fixedw family is fpucode6-encoded and carries no
+;; signextw modifier.
 (define_insn "*fix_truncsfsi2_zext"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (zero_extend:DI (fix:SI (match_operand:SF 1 "register_operand" "r"))))]
@@ -2988,7 +2715,7 @@
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
-;; zero-extend version of fixuns_truncsfsi2
+;; No _sx sibling: see fix_truncsfsi2 above.
 (define_insn "*fixuns_truncsfsi2_zext"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (zero_extend:DI (unsigned_fix:SI (match_operand:SF 1 "register_operand" "r"))))]

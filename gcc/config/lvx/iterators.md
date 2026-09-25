@@ -463,6 +463,28 @@
 
 (define_mode_iterator DISI [  DI SI])
 
+;; The 32-bit immediate a pattern may take depends on how wide its result is.
+;; A `*W` instruction produces a 32-bit result, so bit 31's sign-extension to
+;; 64 bits is invisible to it and the widest immediate it accepts is the
+;; "wrapped" 32-bit constant, W32 -- which also covers the values 0x80000000
+;; through 0xFFFFFFFF that a signed I32 rejects.  A `*D` instruction consumes
+;; the same field as a 64-bit value, sign-extended, so only I32 is faithful
+;; there: giving it W32 made `cmoved $r0 = 0xFFFFFFFF` write -1 (fixed
+;; 2026-09-25).  These attributes carry that distinction through the mode
+;; iterators that mix the two widths.
+(define_mode_attr imm32pred [
+  (QI "register_w32_operand") (HI "register_w32_operand")
+  (HF "register_w32_operand") (SI "register_w32_operand")
+  (SF "register_w32_operand") (DI "register_s32_operand")
+  (DF "register_s32_operand")
+])
+
+(define_mode_attr imm32cons [
+  (QI "W32") (HI "W32") (HF "W32") (SI "W32") (SF "W32")
+  (DI "I32") (DF "I32")
+])
+
+
 ;; Type suffix and length for materializing a symbol depending on pointer
 ;; size.  Alternatives using these should only be enabled for valid
 ;; pointer modes: SI or DI. Anything else is an error.

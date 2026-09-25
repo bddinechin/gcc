@@ -12,6 +12,8 @@
    (set_attr "length"      "4,         8")]
 )
 ;; zero-extend version of cstoresi4
+;; No _sx sibling needed: a comparison yields 0 or 1, so its sign- and
+;; zero-extensions to DI are the same value, and this pattern covers both.
 (define_insn "*cstoresi4_zext"
   [(set (match_operand:DI 0 "register_operand" "=r,r")
         (match_operator:DI 1 "comparison_operator"
@@ -95,7 +97,7 @@
         (ne:SIDI
           (and:SI
             (match_operand:SI 1 "register_operand" "r,r")
-            (match_operand:SI 2 "register_s32_operand" "r,I32"))
+            (match_operand:SI 2 "register_w32_operand" "r,W32"))
           (const_int 0)))]
   ""
   "compw.any %0 = %1, %2"
@@ -136,7 +138,7 @@
         (eq:SIDI
           (and:SI
             (match_operand:SI 1 "register_operand" "r,r")
-            (match_operand:SI 2 "register_s32_operand" "r,I32"))
+            (match_operand:SI 2 "register_w32_operand" "r,W32"))
           (const_int 0)))]
   ""
   "compw.none %0 = %1, %2"
@@ -177,7 +179,7 @@
         (eq:SIDI
           (and:SI
             (not:SI (match_operand:SI 1 "register_operand" "r,r"))
-            (match_operand:SI 2 "register_s32_operand" "r,I32"))
+            (match_operand:SI 2 "register_w32_operand" "r,W32"))
           (const_int 0)))]
   "HAVE_LVX_COMP_SIDI_ALL_NALL"
   "compw.all %0 = %1, %2"
@@ -1299,7 +1301,7 @@
         (if_then_else:FITGPR (match_operator 2 "zero_comparison_operator"
                                                [(match_operand:SIDI 3 "register_operand" "r,r")
                                                 (const_int 0)])
-                             (match_operand:FITGPR 1 "register_w32_operand" "r,W32")
+                             (match_operand:FITGPR 1 "<FITGPR:imm32pred>" "r,<FITGPR:imm32cons>")
                              (match_operand:FITGPR 4 "register_operand" "0,0")))]
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
@@ -1326,7 +1328,7 @@
         (if_then_else:FITGPR (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r")
                                                       (const_int 1) (const_int 0))
                                    (const_int 0))
-                             (match_operand:FITGPR 1 "register_w32_operand" "r,W32")
+                             (match_operand:FITGPR 1 "<FITGPR:imm32pred>" "r,<FITGPR:imm32cons>")
                              (match_operand:FITGPR 3 "register_operand" "0,0")))]
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
@@ -1951,7 +1953,7 @@
       [(match_operand:SIDI 3 "register_operand" "r,r")
        (const_int 0)])
      (set (match_operand:FITGPR 0 "register_operand" "=r,r")
-          (match_operand:FITGPR 1 "register_w32_operand" "r,W32")))]
+          (match_operand:FITGPR 1 "<FITGPR:imm32pred>" "r,<FITGPR:imm32cons>")))]
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
   [(set_attr "type" "alu, alu")
@@ -1980,7 +1982,7 @@
                               (const_int 1) (const_int 0))
            (const_int 0))
      (set (match_operand:FITGPR 0 "register_operand" "=r,r")
-          (match_operand:FITGPR 1 "register_w32_operand" "r,W32")))]
+          (match_operand:FITGPR 1 "<FITGPR:imm32pred>" "r,<FITGPR:imm32cons>")))]
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
   [(set_attr "type" "alu, alu")
