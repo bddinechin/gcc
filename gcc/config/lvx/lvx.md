@@ -23,6 +23,13 @@
 (define_attr "guarded" "no,yes"
   (const_string "no"))
 
+;; Whether the pattern carries a MASKS/MASKM lane-masking BCU prefix -- a mask
+;; register operand and a lanetodo polarity, marked by UNSPEC_MASKS/UNSPEC_MASKM
+;; (see unspec.md and lvx_sched_dfa_new_cycle).  It is a second, independent BCU
+;; prefix beside "guarded"; the two are mutually exclusive on one insn.
+(define_attr "masked" "no,yes"
+  (const_string "no"))
+
 (define_attr "arch" "lvx_1,lvx_2" (const (symbol_ref "lvx_arch_schedule")))
 
 ;; Unspec numbers
@@ -43,6 +50,7 @@
 (define_attr "bcu_used" "no,yes"
   (if_then_else
     (ior (eq_attr "guarded" "yes")
+         (eq_attr "masked" "yes")
          (eq_attr "type" "branch")
          (eq_attr "type" "sysget")
          (eq_attr "type" "jump")

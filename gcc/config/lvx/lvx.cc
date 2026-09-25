@@ -164,6 +164,12 @@ lvx_multiply_class_p (enum attr_type type)
     }
 }
 
+/* The BCU prefix kinds that share a bundle's two BCU syllables.  Tagging each
+   occupied slot with its kind keeps a MASKS mask keyed on $rN from aliasing a
+   GUARD condition, or a MASKM byte-enable, on the same register: a slot is
+   shared only when kind, lanetodo and the key register all match.  */
+enum lvx_bcu_kind { BCU_PLAIN, BCU_GUARD, BCU_MASKS, BCU_MASKM };
+
 /* SCHED2 data structure.  */
 static struct lvx_sched2
 {
@@ -171,7 +177,9 @@ static struct lvx_sched2
   int prev_uid;
   short *insn_cycle;
   unsigned char *insn_flags;
-  rtx bcu_use[2];
+  rtx bcu_use[2];                  /* Key rtx occupying each BCU slot, 0 free. */
+  enum lvx_bcu_kind bcu_kind[2];   /* Which prefix kind that slot holds. */
+  int bcu_lanetodo[2];             /* lanetodo polarity for a mask-prefix slot. */
   rtx_insn *cond_insn;
   /* A scratch DFA state, state_size () bytes -- one byte per automaton, so it
      grows whenever scheduling.md is split into more of them.  It used to be a
@@ -8119,6 +8127,75 @@ lvx_sched_finish (FILE *file ATTRIBUTE_UNUSED, int verbose ATTRIBUTE_UNUSED)
 #undef TARGET_SCHED_FINISH
 #define TARGET_SCHED_FINISH lvx_sched_finish
 
+/* If INSN carries a MASKS/MASKM lane-masking prefix -- a
+   `(use (unspec [mask lanetodo] UNSPEC_MASKS|UNSPEC_MASKM))' inside its
+   PARALLEL -- fill *KIND, *MASK and *LANETODO from it and return true, else
+   false.  This is the masked counterpart of reading XEXP (PATTERN, 0) for a
+   guarded COND_EXEC: a fixed sub-rtx the scheduler keys BCU-slot sharing on,
+   and, being a use of the mask register, the dataflow edge from the COMP or
+   EXTB*D that produced it.  */
+static bool
+lvx_masked_prefix (rtx_insn *insn, enum lvx_bcu_kind *kind, rtx *mask,
+		   int *lanetodo)
+{
+  rtx pattern = PATTERN (insn);
+  if (GET_CODE (pattern) != PARALLEL)
+    return false;
+  for (int i = 0; i < XVECLEN (pattern, 0); i++)
+    {
+      rtx e = XVECEXP (pattern, 0, i);
+      if (GET_CODE (e) != USE || GET_CODE (XEXP (e, 0)) != UNSPEC)
+	continue;
+      rtx u = XEXP (e, 0);
+      if (XINT (u, 1) == UNSPEC_MASKS)
+	*kind = BCU_MASKS;
+      else if (XINT (u, 1) == UNSPEC_MASKM)
+	*kind = BCU_MASKM;
+      else
+	continue;
+      *mask = XVECEXP (u, 0, 0);
+      *lanetodo = INTVAL (XVECEXP (u, 0, 1));
+      return true;
+    }
+  return false;
+}
+
+/* Share or claim one of the bundle's two BCU prefix slots for a prefix of KIND
+   with sharing key (LANETODO, KEY) -- a guard condition, or a mask register.
+   BUNDLE_STATE is CURR_STATE with this insn's own reservation already applied,
+   so a claim only has to fit the extra prefix syllable (modelled by cond_insn,
+   the shared BCU_BRRP reservation).  Returns 0 when the prefix is shared (free)
+   or a fresh syllable was reserved (committed to CURR_STATE), and 1 when the
+   bundle cannot take it -- both slots already hold distinct prefixes, or the
+   syllable does not fit -- so the caller starts a new cycle.  */
+static int
+lvx_bcu_prefix_slot (state_t curr_state, void *bundle_state,
+		     enum lvx_bcu_kind kind, int lanetodo, rtx key)
+{
+  for (int s = 0; s < 2; s++)
+    {
+      if (!lvx_sched2->bcu_use[s])
+	{
+	  /* Claim slot s: this prefix needs its own BCU syllable.  A syllable
+	     that does not fit fails the whole issue -- no other slot helps.  */
+	  if (state_transition (bundle_state, lvx_sched2->cond_insn) < 0)
+	    {
+	      state_transition (curr_state, lvx_sched2->cond_insn);
+	      lvx_sched2->bcu_use[s] = key;
+	      lvx_sched2->bcu_kind[s] = kind;
+	      lvx_sched2->bcu_lanetodo[s] = lanetodo;
+	      return 0;
+	    }
+	  return 1;
+	}
+      if (lvx_sched2->bcu_kind[s] == kind
+	  && lvx_sched2->bcu_lanetodo[s] == lanetodo
+	  && rtx_equal_p (lvx_sched2->bcu_use[s], key))
+	return 0;  /* An identical prefix already in the bundle: the op is free. */
+    }
+  return 1;  /* Both slots hold distinct prefixes. */
+}
+
 static int
 lvx_sched_dfa_new_cycle (FILE *, int, rtx_insn *insn, int last_clock,
 			 int clock, int *)
@@ -8152,54 +8229,49 @@ lvx_sched_dfa_new_cycle (FILE *, int, rtx_insn *insn, int last_clock,
       if (bcu_used == BCU_USED_YES)
 	{
 	  rtx pattern = PATTERN (insn);
+	  enum lvx_bcu_kind kind = BCU_PLAIN;
+	  rtx key = NULL_RTX;
+	  int lanetodo = 0;
+	  bool prefixed = false;
+
 	  if (GET_CODE (pattern) == COND_EXEC)
-	    // If-converted INSN, either merge the BCU prefix or use a new one.
+	    /* An if-converted (guarded) insn: its GUARD condition is the key. */
+	    {
+	      kind = BCU_GUARD;
+	      key = XEXP (pattern, 0);
+	      prefixed = true;
+	    }
+	  else if (lvx_masked_prefix (insn, &kind, &key, &lanetodo))
+	    /* A MASKS/MASKM masked insn: mask register (and lanetodo) is the key.
+	       An insn is never both guarded and masked -- one op, one prefix
+	       syllable -- and COND_EXEC is handled above, so this is exclusive. */
+	    prefixed = true;
+
+	  if (prefixed)
+	    /* GUARD, MASKS and MASKM all spend one BCU_BRRP prefix syllable, and
+	       two ops sharing an identical prefix spend only one between them. */
 	    {
 	      memcpy (lvx_sched2->bundle_state, curr_state, state_size ());
 	      if (state_transition (lvx_sched2->bundle_state, insn) >= 0)
 		gcc_unreachable ();
-
-	      rtx bcu_use = XEXP (pattern, 0);
-	      if (!lvx_sched2->bcu_use[0])
-		{
-		  // Check if INSN can issue with the BCU prefix in BCU0.
-		  if (state_transition (lvx_sched2->bundle_state,
-					lvx_sched2->cond_insn) < 0)
-		    {
-		      // Only transition state for the BCU prefix part.
-		      state_transition (curr_state, lvx_sched2->cond_insn);
-		      lvx_sched2->bcu_use[0] = bcu_use;
-		    }
-		  else
-		    return 1;
-		}
-	      else if (rtx_equal_p (lvx_sched2->bcu_use[0], bcu_use))
-		;
-	      else if (!lvx_sched2->bcu_use[1])
-		{
-		  // Check if INSN can issue with the BCU prefix in BCU1.
-		  if (state_transition (lvx_sched2->bundle_state,
-					lvx_sched2->cond_insn) < 0)
-		    {
-		      // Only transition state for the BCU prefix part.
-		      state_transition (curr_state, lvx_sched2->cond_insn);
-		      lvx_sched2->bcu_use[1] = bcu_use;
-		    }
-		  else
-		    return 1;
-		}
-	      else if (rtx_equal_p (lvx_sched2->bcu_use[1], bcu_use))
-		;
-	      else
+	      if (lvx_bcu_prefix_slot (curr_state, lvx_sched2->bundle_state,
+				       kind, lanetodo, key))
 		return 1;
 	    }
 	  else
-	    // Normal BCU INSN.
+	    /* A plain BCU insn (branch/jump/sysget): it is the BCU op itself, not
+	       a prefix, so it claims a whole slot and never shares one. */
 	    {
 	      if (!lvx_sched2->bcu_use[0])
-		lvx_sched2->bcu_use[0] = const0_rtx;
+		{
+		  lvx_sched2->bcu_use[0] = const0_rtx;
+		  lvx_sched2->bcu_kind[0] = BCU_PLAIN;
+		}
 	      else if (!lvx_sched2->bcu_use[1])
-		lvx_sched2->bcu_use[1] = const1_rtx;
+		{
+		  lvx_sched2->bcu_use[1] = const1_rtx;
+		  lvx_sched2->bcu_kind[1] = BCU_PLAIN;
+		}
 	      else
 		return 1;
 	    }

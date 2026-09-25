@@ -226,6 +226,14 @@
         UNSPEC_WIDENZ
         UNSPEC_WIDENQ
 
+        ;; MASKS/MASKM lane-masking BCU prefix markers.  A masked insn carries
+        ;; `(use (unspec [mask lanetodo] UNSPEC_MASKS|UNSPEC_MASKM))' in its
+        ;; PARALLEL: the mask register and lanetodo polarity the prefix reads,
+        ;; a fixed sub-rtx lvx_sched_dfa_new_cycle keys the BCU-slot sharing on
+        ;; (the way it reads XEXP (pattern, 0) for a guarded COND_EXEC).
+        UNSPEC_MASKS
+        UNSPEC_MASKM
+
         UNSPEC_COMPND ;; todo: get rid of this unspec
         UNSPECV_NOP
    ]
