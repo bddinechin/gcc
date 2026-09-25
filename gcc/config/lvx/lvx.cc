@@ -7232,7 +7232,15 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
       debug_rtx (x);
     }
 
-  // By default there is no added cost.
+  /* *TOTAL arrives holding the generic default that rtx_cost pre-loaded --
+     factor * COSTS_N_INSNS (1), or the O(N*N) schoolbook estimate for a
+     multiply or a divide.  Keep it for the `default' arm, where the code is
+     one this switch does not know: zeroing it for everything is what made
+     COPYSIGN, one fsign instruction, cost nothing at all.  The arms that
+     compute nothing and break do so because the cost belongs to the
+     enclosing insn (a SET costs what its source costs, a shift inside a PLUS
+     is the ADDX* that absorbs it), so they keep the zero.  */
+  int unknown_total = *total;
   *total = 0;
 
   switch (GET_CODE (x))
@@ -7343,6 +7351,7 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
     case CTZ:
     case POPCOUNT:
     case PARITY:
+    case COPYSIGN:
     case VEC_DUPLICATE:
     case SS_NEG:
     case US_NEG:
@@ -7368,6 +7377,8 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
     case MULT:
     case SS_MULT:
     case US_MULT:
+    case SMUL_HIGHPART:
+    case UMUL_HIGHPART:
       latency = 2 + float_mode_p * 2;
       *total = lvx_type_mau_cost (nwords, (latency - 1), speed);
       if (!float_mode_p && (outer_code == PLUS || outer_code == MINUS))
@@ -7506,6 +7517,8 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
       goto end_recurse;
 
     default:
+      /* An rtx code with no arm here: charge what GCC would have.  */
+      *total = unknown_total;
       break;
     }
 
