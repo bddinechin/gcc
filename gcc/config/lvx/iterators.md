@@ -830,6 +830,24 @@
   (V16QI "b") (V8HI "h") (V8HF "h") (V4SI "w") (V4SF "w") (V2DI "d") (V2DF "d")
 ])
 
+;; The 128-bit integer SIMD modes, and their bit-per-lane GPR mask (COMP* packs
+;; one bit per lane into it, BLEND* reads it -- see lvx_get_mask_mode): HImode
+;; for V16QI's 16 lanes, QImode for the 8/4/2 lanes of the others.  <compx> is
+;; the COMP*/BLEND* mnemonic suffix for the lane width.
+(define_mode_iterator SIMD128I [V16QI V8HI V4SI V2DI])
+
+(define_mode_attr LANEMASK [
+  (V16QI "HI") (V8HI "QI") (V4SI "QI") (V2DI "QI")
+])
+
+(define_mode_attr lanemask [
+  (V16QI "hi") (V8HI "qi") (V4SI "qi") (V2DI "qi")
+])
+
+(define_mode_attr compx [
+  (V16QI "bx") (V8HI "ho") (V4SI "wq") (V2DI "dp")
+])
+
 (define_mode_attr WIDE [
   (V8QI    "V8HI")
   (V4HI    "V4SI")

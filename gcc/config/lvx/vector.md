@@ -336,57 +336,60 @@
 )
 
 ;; -------------------------------------------------------------------------
-;; PROTOTYPE bit-mask predication for V2DI.  COMPDP compares two 2x64 vectors
-;; and packs a 2-bit lane mask into a GPR (QImode); BLENDDP selects lanes from
-;; a source into the destination by that GPR bit-mask.  lvx_get_mask_mode makes
-;; the vectorizer request these for V2DI selects.
+;; Bit-per-lane mask predication for the 128-bit integer SIMD modes.  COMP*
+;; compares two vectors and packs one bit per lane into a GPR (the <LANEMASK>
+;; integer mode); BLEND* selects lanes from a source into the destination by
+;; that GPR bit-mask.  lvx_get_mask_mode makes the vectorizer request these
+;; instead of full-width 0/-1 vector masks -- one COMP and one BLEND for a
+;; select, against the full-width AND/ANDC/IOR.  compbx/ho/wq/dp and their
+;; blend siblings cover byte/half/word/double lanes.
 ;; -------------------------------------------------------------------------
 
-(define_insn "vec_cmpv2diqi"
-  [(set (match_operand:QI 0 "register_operand" "=r")
-        (match_operator:QI 1 "comparison_operator"
-          [(match_operand:V2DI 2 "register_operand" "r")
-           (match_operand:V2DI 3 "register_operand" "r")]))]
+(define_insn "vec_cmp<mode><lanemask>"
+  [(set (match_operand:<LANEMASK> 0 "register_operand" "=r")
+        (match_operator:<LANEMASK> 1 "comparison_operator"
+          [(match_operand:SIMD128I 2 "register_operand" "r")
+           (match_operand:SIMD128I 3 "register_operand" "r")]))]
   "LVX_2"
-  "compdp.%1 %0 = %2, %3"
+  "comp<compx>.%1 %0 = %2, %3"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")])
 
-(define_insn "vec_cmpuv2diqi"
-  [(set (match_operand:QI 0 "register_operand" "=r")
-        (match_operator:QI 1 "comparison_operator"
-          [(match_operand:V2DI 2 "register_operand" "r")
-           (match_operand:V2DI 3 "register_operand" "r")]))]
+(define_insn "vec_cmpu<mode><lanemask>"
+  [(set (match_operand:<LANEMASK> 0 "register_operand" "=r")
+        (match_operator:<LANEMASK> 1 "comparison_operator"
+          [(match_operand:SIMD128I 2 "register_operand" "r")
+           (match_operand:SIMD128I 3 "register_operand" "r")]))]
   "LVX_2"
-  "compdp.%1 %0 = %2, %3"
+  "comp<compx>.%1 %0 = %2, %3"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")])
 
-(define_insn "lvx_blenddp"
-  [(set (match_operand:V2DI 0 "register_operand" "=r")
-        (unspec:V2DI
-          [(match_operand:V2DI 1 "register_operand" "0")
-           (match_operand:V2DI 2 "register_operand" "r")
-           (match_operand:QI 3 "register_operand" "r")]
+(define_insn "lvx_blend<compx>"
+  [(set (match_operand:SIMD128I 0 "register_operand" "=r")
+        (unspec:SIMD128I
+          [(match_operand:SIMD128I 1 "register_operand" "0")
+           (match_operand:SIMD128I 2 "register_operand" "r")
+           (match_operand:<LANEMASK> 3 "register_operand" "r")]
           UNSPEC_LVX_BLEND))]
   "LVX_2"
-  "blenddp %0 = %2, %3"
+  "blend<compx> %0 = %2, %3"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")])
 
-(define_expand "vcond_mask_v2diqi"
-  [(match_operand:V2DI 0 "register_operand")
-   (match_operand:V2DI 1 "register_operand")
-   (match_operand:V2DI 2 "register_operand")
-   (match_operand:QI 3 "register_operand")]
+(define_expand "vcond_mask_<mode><lanemask>"
+  [(match_operand:SIMD128I 0 "register_operand")
+   (match_operand:SIMD128I 1 "register_operand")
+   (match_operand:SIMD128I 2 "register_operand")
+   (match_operand:<LANEMASK> 3 "register_operand")]
   "LVX_2"
   {
-    /* vcond_mask: dst = mask ? op1 : op2.  BLENDDP does dst = mask ? src : dst,
+    /* vcond_mask: dst = mask ? op1 : op2.  BLEND* does dst = mask ? src : dst,
        so seed dst with the false value (op2) then blend in op1 where set.  */
     rtx dst = operands[0];
     if (!rtx_equal_p (dst, operands[2]))
       emit_move_insn (dst, operands[2]);
-    emit_insn (gen_lvx_blenddp (dst, dst, operands[1], operands[3]));
+    emit_insn (gen_lvx_blend<compx> (dst, dst, operands[1], operands[3]));
     DONE;
   })
 

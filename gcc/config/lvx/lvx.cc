@@ -6949,15 +6949,22 @@ lvx_vectorize_preferred_simd_mode (scalar_mode mode)
 #undef TARGET_VECTORIZE_PREFERRED_SIMD_MODE
 #define TARGET_VECTORIZE_PREFERRED_SIMD_MODE lvx_vectorize_preferred_simd_mode
 
-/* PROTOTYPE (bit-mask predication).  Tell the vectorizer a V2DI mask lives in a
-   QImode lane bit-mask (one bit per lane), so it drives the vec_cmp/vcond_mask
-   integer-mask path (COMPDP -> BLENDDP) instead of full-width 0/-1 masks.  Every
-   other mode keeps the default full-width vector mask.  */
+/* An integer SIMD select uses a bit-per-lane mask in a GPR: COMP* packs one bit
+   per lane, BLEND* reads it, so the vectorizer should carry the mask as the
+   integer mode with one bit per lane rather than a full-width 0/-1 vector.  That
+   is QImode for a mode of up to 8 lanes and HImode for V16QI's 16 -- always a
+   single GPR (the architectural max is 64 lanes / DImode).  Restricted to the
+   128-bit integer modes for now; float and wider SIMD keep the default
+   full-width vector mask.  */
 static opt_machine_mode
 lvx_get_mask_mode (machine_mode mode)
 {
-  if (LVX_2 && mode == V2DImode)
-    return QImode;
+  if (LVX_2 && GET_MODE_CLASS (mode) == MODE_VECTOR_INT
+      && GET_MODE_SIZE (mode) == 16 && GET_MODE_NUNITS (mode) >= 2)
+    {
+      unsigned nunits = GET_MODE_NUNITS (mode);
+      return int_mode_for_size (nunits < 8 ? 8 : nunits, 0).require ();
+    }
   return default_get_mask_mode (mode);
 }
 
