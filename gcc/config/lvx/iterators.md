@@ -1862,3 +1862,32 @@
 
 (define_int_attr minmax [(UNSPEC_FMIN "fmin") (UNSPEC_FMINN "fminn")
 			 (UNSPEC_FMAX "fmax") (UNSPEC_FMAXN "fmaxn")])
+
+;; The word-to-double substitutions.  Every 32-bit ALU instruction carries the
+;; `signextw` modifier, which widens its result to 64 bits: without the
+;; modifier by zero-extension (a *W instruction clears the upper half), with
+;; `.sx` by sign-extension.  So an SI pattern whose mnemonic has that modifier
+;; can absorb a following zero_extend or sign_extend to DI, and these two
+;; define_subst generate exactly those variants from the base pattern:
+;; write the name as `foo<arith_zx><arith_sx>` and the mnemonic as `bar<_sx>`.
+;; They live here, not beside the patterns, because an md file is read in
+;; order and a pattern cannot use a subst declared after it.
+
+(define_subst_attr "arith_zx" "arith_zx_subst" "" "_zx")
+(define_subst "arith_zx_subst"
+  [(set (match_operand:SI 0 "" "")
+        (match_operand:SI 1 "" ""))]
+  ""
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (zero_extend:DI (match_dup 1)))]
+)
+
+(define_subst_attr "arith_sx" "arith_sx_subst" "" "_sx")
+(define_subst_attr "_sx" "arith_sx_subst" "" ".sx")
+(define_subst "arith_sx_subst"
+  [(set (match_operand:SI 0 "" "")
+        (match_operand:SI 1 "" ""))]
+  ""
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (sign_extend:DI (match_dup 1)))]
+)

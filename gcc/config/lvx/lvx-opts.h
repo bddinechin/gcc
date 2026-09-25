@@ -48,7 +48,6 @@ enum lvx_arch_type
 #define HAVE_LVX_FP_CONV_WITH_SHIFT (0)
 #define HAVE_LVX_SILENT_FP_OPS (0)
 #define HAVE_LVX_ADDRESSING_XS (0)
-#define HAVE_LVX_MODIFIER_SX (1)
 
 /* ABDD/ABDW take registerY or upper27_lower5 and nothing wider, on both
    cores, so this is unconditional like MULD below.  It used to be (LVX_1),
