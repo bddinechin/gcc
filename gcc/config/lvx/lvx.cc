@@ -7072,60 +7072,64 @@ static int lvx_cost_factor = 0;
 //#define COST_FACTOR(n) (lvx_cost_factor ? (n + lvx_cost_factor - 1)/lvx_cost_factor : n)
 #define COST_FACTOR(n) (((n) + 1) >> 1)
 
+/* The latency of each instruction type, in cycles, as scheduling.md's
+   define_insn_reservation states it.  lvx_insn_cost reads that file through
+   insn_default_latency, which needs an insn; lvx_rtx_costs is handed a bare
+   rtx and cannot, so it reads this table instead.
+
+   The table is therefore a copy, and a copy drifts: MDS/BE/GCC/BIN/
+   check-scheduling.py compares every entry against scheduling.md and fails
+   if they disagree, which is what keeps it honest.  Where a type has several
+   latencies the entry is the common one and the caller handles the rest --
+   a load is 3 cached and 24 uncached, and the MEM arm reads the address
+   space to tell them apart.  */
+static const int lvx_type_latency[] = {
+  1,   /* TYPE_ALL      */  1,   /* TYPE_NOP      */  0,   /* TYPE_GHOST    */
+  1,   /* TYPE_ALU      */  2,   /* TYPE_IMUL     */  2,   /* TYPE_IMADD    */
+  3,   /* TYPE_FMULS    */  3,   /* TYPE_FMADDS   */  4,   /* TYPE_FMULD    */
+  4,   /* TYPE_FMADDD   */  4,   /* TYPE_FCVT     */  4,   /* TYPE_FDOTP    */
+  4,   /* TYPE_FDMDA    */  15,  /* TYPE_FDIV     */  3,   /* TYPE_LOAD     */
+  4,   /* TYPE_XLOAD    */  1,   /* TYPE_STORE    */  1,   /* TYPE_XSTORE   */
+  24,  /* TYPE_ALOAD    */  24,  /* TYPE_ALOADC   */  24,  /* TYPE_ATOMIC   */
+  3,   /* TYPE_COPY     */  1,   /* TYPE_CACHE    */  1,   /* TYPE_PREFETCH */
+  1,   /* TYPE_BRANCH   */  1,   /* TYPE_BRANCH2  */  1,   /* TYPE_JUMP     */
+  1,   /* TYPE_IJUMP    */  1,   /* TYPE_SYSGET   */  1,   /* TYPE_XMOVETO  */
+  3,   /* TYPE_XMOVEF   */  1,   /* TYPE_XCOPY    */  1,   /* TYPE_EXT      */
+  3,   /* TYPE_EXT_INT  */  3,   /* TYPE_EXT_FLOAT */
+};
+
+/* How scarce the units one instruction of scheduling class ISSUE occupies
+   are, in COSTS_N_INSNS units.  Read out of lvx_issue_table, which BE/GCC
+   generates from the Machine Description System, so an ISA change moves it;
+   this is the same weighting lvx_insn_cost applies to a real insn.  */
 static int
-lvx_type_all_cost (int nunits, int penalty, bool speed)
+lvx_issue_weight (enum attr_issue issue)
 {
-  int factor = 4 * nunits;
-  return speed ? COSTS_N_INSNS (factor) + penalty : COSTS_N_INSNS (4);
+  const struct lvx_issue_resources *r = &lvx_issue_table[(int) issue];
+
+  if (issue == ISSUE_ALL)
+    /* A singleton bundle: it costs the whole issue width.  */
+    return 4;
+  if (r->full || r->lsu || r->bcu || r->ext)
+    /* A unit there are one or two of, or a port.  */
+    return COST_FACTOR (4);
+  /* TINY and LITE: the plentiful ALU slots.  */
+  return COST_FACTOR (2);
 }
 
+/* The cost of NUNITS instructions of type TYPE issuing as ISSUE.  SPEED
+   selects the speed or the size cost: for size, an instruction is an
+   instruction, except that the singleton-bundle class empties a bundle.  */
 static int
-lvx_type_tiny_cost (int nunits, int penalty, bool speed)
+lvx_op_cost (enum attr_type type, enum attr_issue issue, int nunits,
+	     bool speed)
 {
-  int factor = COST_FACTOR (1) * nunits;
-  return speed ? COSTS_N_INSNS (factor) + penalty : COSTS_N_INSNS (1);
-}
+  if (!speed)
+    return COSTS_N_INSNS (type == TYPE_ALL ? 4 : 1);
 
-static int
-lvx_type_lite_cost (int nunits, int penalty, bool speed)
-{
-  int factor = COST_FACTOR (2) * nunits;
-  return speed ? COSTS_N_INSNS (factor) + penalty : COSTS_N_INSNS (1);
-}
-
-static int
-lvx_type_full_cost (int nunits, int penalty, bool speed)
-{
-  int factor = COST_FACTOR (4) * nunits;
-  return speed ? COSTS_N_INSNS (factor) + penalty : COSTS_N_INSNS (1);
-}
-
-static int
-lvx_type_lsu_cost (int nunits, int penalty, bool speed)
-{
-  int factor = COST_FACTOR (4) * nunits;
-  return speed ? COSTS_N_INSNS (factor) + penalty : COSTS_N_INSNS (1);
-}
-
-static int
-lvx_type_mau_cost (int nunits, int penalty, bool speed)
-{
-  int factor = COST_FACTOR (4) * nunits;
-  return speed ? COSTS_N_INSNS (factor) + penalty : COSTS_N_INSNS (1);
-}
-
-static int
-lvx_type_bcu_cost (int nunits, int penalty, bool speed)
-{
-  int factor = COST_FACTOR (4) * nunits;
-  return speed ? COSTS_N_INSNS (factor) + penalty : COSTS_N_INSNS (1);
-}
-
-static int
-lvx_type_tca_cost (int nunits, int penalty, bool speed)
-{
-  int factor = COST_FACTOR (4) * nunits;
-  return speed ? COSTS_N_INSNS (factor) + penalty : COSTS_N_INSNS (1);
+  int latency = lvx_type_latency[(int) type];
+  return COSTS_N_INSNS (lvx_issue_weight (issue) * nunits)
+	 + (latency > 0 ? latency - 1 : 0);
 }
 
 /* Utils }}} */
@@ -7168,12 +7172,14 @@ static int
 lvx_memory_move_cost (machine_mode mode, reg_class_t rclass ATTRIBUTE_UNUSED,
 		      bool in)
 {
-  // Assume in-cache load latency is 3 cycles.
-  int penalty = in ? (3 - 1) : 0;
   unsigned mode_size = GET_MODE_SIZE (mode);
   unsigned oi_size = GET_MODE_SIZE (OImode);
   int lsucount = mode_size ? (mode_size + oi_size - 1) / oi_size : 1;
-  int cost = lvx_type_lsu_cost (lsucount, penalty, true);
+  /* A spill reload is an in-cache load and a spill store a store; both
+     latencies come from the description.  */
+  int cost = lvx_op_cost (in ? TYPE_LOAD : TYPE_STORE,
+			  in ? ISSUE_LSU_AUXW : ISSUE_LSU_MEMW_AUXR,
+			  lsucount, true);
 
   if (DUMP_COSTS)
     {
@@ -7215,12 +7221,21 @@ static bool
 lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
 	       int opno, int *total, bool speed)
 {
-  int latency = 1;
+  /* Half precision is the one FP width with a shorter pipeline: faddh and
+     fmulh are type fmuls (3 cycles) where faddw/faddd are fmuld (4).  */
+  auto lvx_half_float_mode_p = [] (machine_mode m) {
+    return GET_MODE_INNER (m) == HFmode;
+  };
   bool float_mode_p = FLOAT_MODE_P (mode);
   unsigned mode_size = GET_MODE_SIZE (mode);
   unsigned oi_size = GET_MODE_SIZE (OImode);
   int lsucount = mode_size ? (mode_size + oi_size - 1) / oi_size : 1;
   int nwords = (mode_size + UNITS_PER_WORD - 1) / UNITS_PER_WORD;
+  if (lvx_extension_mode_p (mode))
+    /* An extension-unit mode is lanes in an XVR, not machine words: one xlo
+       or xcopyo moves the whole buffer, so counting its 64-bit words charges
+       64 instructions for a 512-byte mode.  */
+    nwords = GET_MODE_NUNITS (mode);
   nwords = nwords >= 1 ? nwords : 1;
 
   if (DUMP_COSTS)
@@ -7270,7 +7285,7 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
       *total = speed ? 2 * nwords : 8 * nwords;
       if (outer_code == SET)
 	{
-	  *total += lvx_type_tiny_cost (nwords, 0, speed);
+	  *total += lvx_op_cost (TYPE_ALU, ISSUE_TINY, nwords, speed);
 	}
       goto end_recurse;
 
@@ -7280,8 +7295,18 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
       goto end_recurse;
 
     case MEM:
-      latency = opno ? 3 : 1;
-      *total = lvx_type_lsu_cost (lsucount, (latency - 1), speed);
+      {
+	/* A MEM read is a load and a MEM written is a store; opno is 0 only
+	   for the destination of a SET.  An uncached or preload access does
+	   not hit the L1, and the description says so: 24 cycles, not 3.  */
+	bool is_load = opno != 0;
+	enum lvx_variant variant = lvx_mem_variant (x);
+	enum attr_type type = is_load ? TYPE_LOAD : TYPE_STORE;
+	enum attr_issue issue = is_load ? ISSUE_LSU_AUXW : ISSUE_LSU_MEMW_AUXR;
+	*total = lvx_op_cost (type, issue, lsucount, speed);
+	if (speed && is_load && lvx_uncached_variant_p (variant))
+	  *total += 24 - lvx_type_latency[(int) TYPE_LOAD];
+      }
       goto end_recurse;
 
     // RTX_COMPARE:
@@ -7307,10 +7332,8 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
       if (outer_code != IF_THEN_ELSE)
 	{
 	  // COMP* and FCOMP* instructions.
-	  latency = 2;
-	  *total = float_mode_p
-		     ? lvx_type_lite_cost (nwords, (latency - 1), speed)
-		     : lvx_type_tiny_cost (nwords, (latency - 1), speed);
+	  *total = lvx_op_cost (TYPE_ALU, float_mode_p ? ISSUE_LITE : ISSUE_TINY,
+				nwords, speed);
 	}
       // Recurse for immediates.
       break;
@@ -7328,7 +7351,7 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
 	      || (!float_mode_p && inner_class == RTX_UNARY))
 	    // Stand-alone NEG / NOT / SIGN_EXTEND / ZERO_EXTEND.
 	    {
-	      *total = lvx_type_tiny_cost (nwords, 0, speed);
+	      *total = lvx_op_cost (TYPE_ALU, ISSUE_TINY, nwords, speed);
 	      goto end_recurse;
 	    }
 	}
@@ -7358,19 +7381,26 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
     case SS_ABS:
     case SS_TRUNCATE:
     case US_TRUNCATE:
-      *total = float_mode_p
-	? lvx_type_lite_cost (nwords, 0, speed)
-	: lvx_type_tiny_cost (nwords, 0, speed);
+      {
+	enum rtx_code code = GET_CODE (x);
+	bool conversion = (code == FLOAT_EXTEND || code == FLOAT_TRUNCATE
+			   || code == FIX || code == FLOAT
+			   || code == UNSIGNED_FIX || code == UNSIGNED_FLOAT);
+	*total = float_mode_p || conversion
+	  ? lvx_op_cost (conversion ? TYPE_FCVT : TYPE_ALU, ISSUE_LITE,
+			 nwords, speed)
+	  : lvx_op_cost (TYPE_ALU, ISSUE_TINY, nwords, speed);
+      }
       goto end_recurse;
 
     // RTX_COMM_ARITH:
     // RTX_BIN_ARITH:
     case PLUS:
     case MINUS:
-      latency = 2 + float_mode_p * 2;
       *total = float_mode_p
-	? lvx_type_mau_cost (nwords, (latency - 1), speed)
-	: lvx_type_tiny_cost (nwords, 0, speed);
+	? lvx_op_cost (lvx_half_float_mode_p (mode) ? TYPE_FMULS : TYPE_FMULD,
+		       ISSUE_LITE, nwords, speed)
+	: lvx_op_cost (TYPE_ALU, ISSUE_TINY, nwords, speed);
       // Recurse for immediates or for inner MULT or SHIFT.
       break;
 
@@ -7379,12 +7409,16 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
     case US_MULT:
     case SMUL_HIGHPART:
     case UMUL_HIGHPART:
-      latency = 2 + float_mode_p * 2;
-      *total = lvx_type_mau_cost (nwords, (latency - 1), speed);
+      *total = float_mode_p
+	? lvx_op_cost (lvx_half_float_mode_p (mode) ? TYPE_FMULS : TYPE_FMULD,
+		       ISSUE_LITE, nwords, speed)
+	: lvx_op_cost (TYPE_IMUL, ISSUE_LITE, nwords, speed);
       if (!float_mode_p && (outer_code == PLUS || outer_code == MINUS))
 	{
-	  // MADD*, MSBF* instructions, subtract cost of PLUS / MINUS.
-	  *total -= lvx_type_tiny_cost (nwords, 0, speed);
+	  // MADD*, MSBF* instructions: one imadd, and the enclosing PLUS or
+	  // MINUS charges nothing of its own.
+	  *total = lvx_op_cost (TYPE_IMADD, ISSUE_LITE, nwords, speed)
+		   - lvx_op_cost (TYPE_ALU, ISSUE_TINY, nwords, speed);
 	  gcc_checking_assert (*total >= 0);
 	}
       goto end_recurse;
@@ -7398,9 +7432,8 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
     case UMAX:
     case SS_PLUS:
     case US_PLUS:
-      *total = float_mode_p
-	? lvx_type_lite_cost (nwords, 0, speed)
-	: lvx_type_tiny_cost (nwords, 0, speed);
+      *total = lvx_op_cost (TYPE_ALU, float_mode_p ? ISSUE_LITE : ISSUE_TINY,
+			    nwords, speed);
       // Recurse for immediates.
       break;
 
@@ -7418,10 +7451,12 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
 	  && __builtin_popcount (INTVAL (XEXP (x, 1))) == 1)
 	{
 	  // Integer divide by a power of 2.
-	  *total = lvx_type_tiny_cost (nwords, 0, speed);
+	  *total = lvx_op_cost (TYPE_ALU, ISSUE_TINY, nwords, speed);
 	  goto end_recurse;
 	}
-      *total = lvx_type_all_cost (8, 0, speed);
+      *total = float_mode_p
+	? lvx_op_cost (TYPE_FDIV, ISSUE_FULL, nwords, speed)
+	: lvx_op_cost (TYPE_ALL, ISSUE_ALL, 8, speed);
       goto end_recurse;
 
     case ASHIFT:
@@ -7432,7 +7467,7 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
       if (outer_code != PLUS && outer_code != MINUS)
 	{
 	  // ADDX* and SBFX* instructions.
-	  *total = lvx_type_tiny_cost (nwords, 0, speed);
+	  *total = lvx_op_cost (TYPE_ALU, ISSUE_TINY, nwords, speed);
 	}
       break;
 
@@ -7443,18 +7478,18 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
     case SS_ASHIFT:
     case US_ASHIFT:
     case US_MINUS:
-      *total = lvx_type_lite_cost (nwords, 0, speed);
+      *total = lvx_op_cost (TYPE_ALU, ISSUE_LITE, nwords, speed);
       break;
 
     // RTX_TERNARY:
     case IF_THEN_ELSE:
       if (mode == VOIDmode)
 	{
-	  *total = lvx_type_bcu_cost (1, 0, speed);
+	  *total = lvx_op_cost (TYPE_BRANCH, ISSUE_BCU_BRRP, 1, speed);
 	}
       else
 	{
-	  *total = lvx_type_lite_cost (nwords, 0, speed);
+	  *total = lvx_op_cost (TYPE_ALU, ISSUE_LITE, nwords, speed);
 	}
       goto end_recurse;
 
@@ -7462,15 +7497,16 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
       break;
 
     case FMA:
-      latency = 2 + float_mode_p * 2;
-      *total = lvx_type_mau_cost (nwords, (latency - 1), speed);
+      *total = lvx_op_cost (lvx_half_float_mode_p (mode) ? TYPE_FMADDS
+						        : TYPE_FMADDD,
+			    ISSUE_LITE, nwords, speed);
       goto end_recurse;
 
     // RTX_BITFIELD_OPS:
     case SIGN_EXTRACT:
     case ZERO_EXTRACT:
       if (outer_code == SET)
-	*total = lvx_type_lite_cost (nwords, 0, speed);
+	*total = lvx_op_cost (TYPE_ALU, ISSUE_LITE, nwords, speed);
       goto end_recurse;
 
     // RTX_EXTRA:
@@ -7495,25 +7531,25 @@ lvx_rtx_costs (rtx x, machine_mode mode, int outer_code,
 	case UNSPEC_SBMM8DS:
 	case UNSPEC_SBMM8DXY:
 	case UNSPEC_SRS:
-	  *total = lvx_type_tiny_cost (nwords, 0, speed);
+	  *total = lvx_op_cost (TYPE_ALU, ISSUE_TINY, nwords, speed);
 	  goto end_recurse;
 	default:
-	  *total = lvx_type_lite_cost (nwords, 0, speed);
+	  *total = lvx_op_cost (TYPE_ALU, ISSUE_LITE, nwords, speed);
 	  break;
 	}
       break;
 
     case UNSPEC_VOLATILE:
-      *total = lvx_type_all_cost (nwords, 0, speed);
+      *total = lvx_op_cost (TYPE_ALL, ISSUE_ALL, nwords, speed);
       goto end_recurse;
 
     case PREFETCH:
-      *total = lvx_type_lsu_cost (1, 0, speed);
+      *total = lvx_op_cost (TYPE_PREFETCH, ISSUE_LSU, 1, speed);
       goto end_recurse;
 
     case CALL:
     case RETURN:
-      *total = lvx_type_bcu_cost (1, 0, speed);
+      *total = lvx_op_cost (TYPE_BRANCH, ISSUE_BCU_BRRP, 1, speed);
       goto end_recurse;
 
     default:
