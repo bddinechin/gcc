@@ -6793,6 +6793,77 @@ lvx_expand_vec_perm_const (rtx target, rtx source1, rtx source2, rtx selector)
       }
   }
 
+  /* Whole-vector byte shift.  A single-source byte rotate, or a byte-granular
+     two-source funnel/align (the palignr idiom), is a shift of the whole
+     128-bit register pair -- which SLLQ and SRLQ each do in one instruction --
+     ORed back together with a single IORQ.  Four instructions (one of the two
+     shift counts always exceeds the 6-bit immediate field and so needs a MAKED
+     for its register form) where the SBMM8D path spends six.  Only for a full
+     128-bit vector, where the pair is exactly a TImode shift: a wider vector
+     has no 256-bit shift.  The shifts read the sources into fresh registers
+     before the IORQ writes the result, so this handles target/source overlap
+     itself and needs no temporary.  */
+  if (GET_MODE_SIZE (vector_mode) == 16)
+    {
+      const int N = 16;
+      rtx sll_src = NULL_RTX, srl_src = NULL_RTX;
+      int sll_bits = 0, srl_bits = 0;
+
+      /* Case A -- one source: a byte rotate, from[j] == (j - k) mod 16.  The
+	 word swap (k == 8) is a pure word permutation and never reaches here.  */
+      if (which == 1)
+	{
+	  int k = (N - lvx_expand_vec_perm.from[0]) % N;
+	  bool rot = k != 0;
+	  for (int j = 0; rot && j < N; j++)
+	    if (lvx_expand_vec_perm.from[j] != (j - k + N) % N)
+	      rot = false;
+	  if (rot)
+	    {
+	      sll_src = source1; sll_bits = k * 8;
+	      srl_src = source1; srl_bits = (N - k) * 8;
+	    }
+	}
+      /* Case B -- both sources: an align, from[j] == j + k, with [0,15] the
+	 bytes of source1 and [16,31] those of source2.  dest = (source1 >> k)
+	 | (source2 << (16 - k)).  If source1 == source2 this is the same rotate
+	 and stays correct.  */
+      else if (which == 3)
+	{
+	  int k = lvx_expand_vec_perm.from[0];
+	  bool aln = k >= 1 && k <= N - 1;
+	  for (int j = 0; aln && j < N; j++)
+	    if (lvx_expand_vec_perm.from[j] != j + k)
+	      aln = false;
+	  if (aln)
+	    {
+	      sll_src = source2; sll_bits = (N - k) * 8;
+	      srl_src = source1; srl_bits = k * 8;
+	    }
+	}
+
+      if (sll_src)
+	{
+	  rtx tsll = simplify_gen_subreg (TImode, sll_src, vector_mode, 0);
+	  rtx tsrl = simplify_gen_subreg (TImode, srl_src, vector_mode, 0);
+	  rtx tdst = simplify_gen_subreg (TImode, target, vector_mode, 0);
+	  if (tsll && tsrl && tdst)
+	    {
+	      /* A count of 64 or more does not fit the U06 immediate, so it
+		 goes through a register; exactly one of the pair always does.  */
+	      rtx cl = sll_bits < 64 ? GEN_INT (sll_bits)
+				     : force_reg (SImode, GEN_INT (sll_bits));
+	      rtx cr = srl_bits < 64 ? GEN_INT (srl_bits)
+				     : force_reg (SImode, GEN_INT (srl_bits));
+	      rtx a = gen_reg_rtx (TImode), b = gen_reg_rtx (TImode);
+	      emit_insn (gen_ashlti3 (a, tsll, cl));
+	      emit_insn (gen_lshrti3 (b, tsrl, cr));
+	      emit_insn (gen_iorti3 (tdst, a, b));
+	      return true;
+	    }
+	}
+    }
+
   /* The accumulating SBMM8EORD forms pay inside a loop, where their
      register matrices are hoisted; see lvx_expand_vec_perm_const_emit_pair.  */
   bool chain = (currently_expanding_gimple_stmt
