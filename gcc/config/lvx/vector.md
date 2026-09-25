@@ -405,26 +405,29 @@
 ;; vector needs no expansion -- its lane mask already is the byte mask.
 ;; -------------------------------------------------------------------------
 
+;; EXTB{2,4,8}D issue as TINY, not LITE: the ISA gives all three
+;; Scheduling-ALU_TINY, and claiming a LITE slot they do not need only costs
+;; bundle density (MDS/BE/GCC/BIN/check-scheduling.py reported it).
 (define_insn "lvx_extb2d"
   [(set (match_operand:HI 0 "register_operand" "=r")
         (unspec:HI [(match_operand:QI 1 "register_operand" "r")] UNSPEC_EXTB2))]
   "LVX_2"
   "extb2d %0 = %1"
-  [(set_attr "type" "alu") (set_attr "issue" "lite") (set_attr "length" "4")])
+  [(set_attr "type" "alu") (set_attr "issue" "tiny") (set_attr "length" "4")])
 
 (define_insn "lvx_extb4d"
   [(set (match_operand:HI 0 "register_operand" "=r")
         (unspec:HI [(match_operand:QI 1 "register_operand" "r")] UNSPEC_EXTB4))]
   "LVX_2"
   "extb4d %0 = %1"
-  [(set_attr "type" "alu") (set_attr "issue" "lite") (set_attr "length" "4")])
+  [(set_attr "type" "alu") (set_attr "issue" "tiny") (set_attr "length" "4")])
 
 (define_insn "lvx_extb8d"
   [(set (match_operand:HI 0 "register_operand" "=r")
         (unspec:HI [(match_operand:QI 1 "register_operand" "r")] UNSPEC_EXTB8))]
   "LVX_2"
   "extb8d %0 = %1"
-  [(set_attr "type" "alu") (set_attr "issue" "lite") (set_attr "length" "4")])
+  [(set_attr "type" "alu") (set_attr "issue" "tiny") (set_attr "length" "4")])
 
 ;; The MASKM-prefixed lq/sq.  The mask (byte enables) is a real operand so the
 ;; allocator sees it and the scheduler the edge from EXTB*D; the UNSPEC_MASKM
