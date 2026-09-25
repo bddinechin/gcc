@@ -46,6 +46,13 @@ static const struct default_options lvx_option_optimization_table[] =
     {OPT_LEVELS_ALL, OPT__param_max_completely_peeled_insns_, NULL, 400},
     {OPT_LEVELS_ALL, OPT__param_max_peeled_insns_, NULL, 400},
 
+    /* LVX's masked-loop support is incomplete: maskload/maskstore are in for
+       if-conversion, but the while_ult-masked loop body (Autovectorization-
+       masking plan sec. 5) is not, and letting the vectorizer fully-mask a loop
+       (the params.opt Init(2) default) miscompiles its main iterations.  Keep
+       partial vectors off until sec. 5; if-conversion still uses the masks.  */
+    {OPT_LEVELS_ALL, OPT__param_vect_partial_vector_usage_, NULL, 0},
+
     {OPT_LEVELS_2_PLUS, OPT_fsched2_use_superblocks, NULL, 1},
     {OPT_LEVELS_2_PLUS, OPT_ftree_loop_if_convert, NULL, 1},
 

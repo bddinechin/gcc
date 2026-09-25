@@ -347,9 +347,11 @@
 
 (define_insn "vec_cmp<mode><lanemask>"
   [(set (match_operand:<LANEMASK> 0 "register_operand" "=r")
-        (match_operator:<LANEMASK> 1 "comparison_operator"
-          [(match_operand:SIMD128I 2 "register_operand" "r")
-           (match_operand:SIMD128I 3 "register_operand" "r")]))]
+        (unspec:<LANEMASK>
+          [(match_operator:<LANEMASK> 1 "comparison_operator"
+            [(match_operand:SIMD128I 2 "register_operand" "r")
+             (match_operand:SIMD128I 3 "register_operand" "r")])]
+          UNSPEC_PACKCMP))]
   "LVX_2"
   "comp<compx>.%1 %0 = %2, %3"
   [(set_attr "type" "alu")
@@ -357,9 +359,11 @@
 
 (define_insn "vec_cmpu<mode><lanemask>"
   [(set (match_operand:<LANEMASK> 0 "register_operand" "=r")
-        (match_operator:<LANEMASK> 1 "comparison_operator"
-          [(match_operand:SIMD128I 2 "register_operand" "r")
-           (match_operand:SIMD128I 3 "register_operand" "r")]))]
+        (unspec:<LANEMASK>
+          [(match_operator:<LANEMASK> 1 "comparison_operator"
+            [(match_operand:SIMD128I 2 "register_operand" "r")
+             (match_operand:SIMD128I 3 "register_operand" "r")])]
+          UNSPEC_PACKCMP))]
   "LVX_2"
   "comp<compx>.%1 %0 = %2, %3"
   [(set_attr "type" "alu")
@@ -390,6 +394,117 @@
     if (!rtx_equal_p (dst, operands[2]))
       emit_move_insn (dst, operands[2]);
     emit_insn (gen_lvx_blend<compx> (dst, dst, operands[1], operands[3]));
+    DONE;
+  })
+
+;; -------------------------------------------------------------------------
+;; Masked load/store (MASKM).  MASKM is a BCU prefix over a plain lq/sq whose
+;; byte-enable mask says which bytes to touch.  The vectorizer's mask is a lane
+;; bit-mask (lvx_get_mask_mode); EXTB{2,4,8}D expand each lane bit into its
+;; lane's bytes, so a 128-bit access always feeds MASKM 16 byte enables.  A byte
+;; vector needs no expansion -- its lane mask already is the byte mask.
+;; -------------------------------------------------------------------------
+
+(define_insn "lvx_extb2d"
+  [(set (match_operand:HI 0 "register_operand" "=r")
+        (unspec:HI [(match_operand:QI 1 "register_operand" "r")] UNSPEC_EXTB2))]
+  "LVX_2"
+  "extb2d %0 = %1"
+  [(set_attr "type" "alu") (set_attr "issue" "lite") (set_attr "length" "4")])
+
+(define_insn "lvx_extb4d"
+  [(set (match_operand:HI 0 "register_operand" "=r")
+        (unspec:HI [(match_operand:QI 1 "register_operand" "r")] UNSPEC_EXTB4))]
+  "LVX_2"
+  "extb4d %0 = %1"
+  [(set_attr "type" "alu") (set_attr "issue" "lite") (set_attr "length" "4")])
+
+(define_insn "lvx_extb8d"
+  [(set (match_operand:HI 0 "register_operand" "=r")
+        (unspec:HI [(match_operand:QI 1 "register_operand" "r")] UNSPEC_EXTB8))]
+  "LVX_2"
+  "extb8d %0 = %1"
+  [(set_attr "type" "alu") (set_attr "issue" "lite") (set_attr "length" "4")])
+
+;; The MASKM-prefixed lq/sq.  The mask (byte enables) is a real operand so the
+;; allocator sees it and the scheduler the edge from EXTB*D; the UNSPEC_MASKM
+;; use is the marker lvx_sched_dfa_new_cycle keys BCU-slot sharing on.  Length
+;; is the lq/sq's own size, as for a guarded op -- the prefix syllable is
+;; accounted by the scheduler (masked attr -> bcu_used), not counted here.
+(define_insn "lvx_maskload<mode>"
+  [(set (match_operand:SIMD128I 0 "register_operand" "=r,r,r")
+        (unspec:SIMD128I
+          [(match_operand:SIMD128I 1 "memory_operand" "a,b,m")
+           (match_operand:HI 2 "register_operand" "r,r,r")]
+          UNSPEC_MASKM_LOAD))
+   (use (unspec:HI [(match_dup 2) (const_int 1)] UNSPEC_MASKM))]
+  "LVX_2"
+  "maskm.mt %2? lq%V1 %0 = %1"
+  [(set_attr "masked" "yes")
+   (set_attr "predicable" "no")
+   (set_attr "type" "load,load,load")
+   (set_attr "issue" "lsu_auxw,lsu_auxw_x,lsu_auxw_x2")
+   (set_attr "length" "4,8,12")])
+
+(define_insn "lvx_maskstore<mode>"
+  [(set (match_operand:SIMD128I 0 "memory_operand" "=a,b,m")
+        (unspec:SIMD128I
+          [(match_operand:SIMD128I 1 "register_operand" "r,r,r")
+           (match_operand:HI 2 "register_operand" "r,r,r")]
+          UNSPEC_MASKM_STORE))
+   (use (unspec:HI [(match_dup 2) (const_int 1)] UNSPEC_MASKM))]
+  "LVX_2"
+  "maskm.mt %2? sq%X0 %0 = %1"
+  [(set_attr "masked" "yes")
+   (set_attr "predicable" "no")
+   (set_attr "type" "store,store,store")
+   (set_attr "issue" "lsu_memw_auxr,lsu_memw_auxr_x,lsu_memw_auxr_x2")
+   (set_attr "length" "4,8,12")])
+
+;; The optabs the vectorizer requests.  Bridge the lane mask to byte enables
+;; (EXTB*D, or identity for a byte vector) then emit the prefixed lq/sq.
+(define_expand "maskload<mode><lanemask>"
+  [(match_operand:SIMD128I 0 "register_operand")
+   (match_operand:SIMD128I 1 "memory_operand")
+   (match_operand:<LANEMASK> 2 "register_operand")
+   (match_operand:SIMD128I 3 "maskload_else_operand")]
+  "LVX_2"
+  {
+    /* operands[3] is the else value; LVX supports only the undefined case
+       (see maskload_else_operand), so there is nothing to materialise.  */
+    unsigned elt = GET_MODE_UNIT_SIZE (<MODE>mode);
+    rtx bytes;
+    if (elt == 1)
+      bytes = operands[2];
+    else
+      {
+        bytes = gen_reg_rtx (HImode);
+        if (elt == 2)      emit_insn (gen_lvx_extb2d (bytes, operands[2]));
+        else if (elt == 4) emit_insn (gen_lvx_extb4d (bytes, operands[2]));
+        else               emit_insn (gen_lvx_extb8d (bytes, operands[2]));
+      }
+    emit_insn (gen_lvx_maskload<mode> (operands[0], operands[1], bytes));
+    DONE;
+  })
+
+(define_expand "maskstore<mode><lanemask>"
+  [(match_operand:SIMD128I 0 "memory_operand")
+   (match_operand:SIMD128I 1 "register_operand")
+   (match_operand:<LANEMASK> 2 "register_operand")]
+  "LVX_2"
+  {
+    unsigned elt = GET_MODE_UNIT_SIZE (<MODE>mode);
+    rtx bytes;
+    if (elt == 1)
+      bytes = operands[2];
+    else
+      {
+        bytes = gen_reg_rtx (HImode);
+        if (elt == 2)      emit_insn (gen_lvx_extb2d (bytes, operands[2]));
+        else if (elt == 4) emit_insn (gen_lvx_extb4d (bytes, operands[2]));
+        else               emit_insn (gen_lvx_extb8d (bytes, operands[2]));
+      }
+    emit_insn (gen_lvx_maskstore<mode> (operands[0], operands[1], bytes));
     DONE;
   })
 

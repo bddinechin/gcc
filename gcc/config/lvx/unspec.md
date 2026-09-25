@@ -234,6 +234,23 @@
         UNSPEC_MASKS
         UNSPEC_MASKM
 
+        ;; EXTB{2,4,8}D: expand a lane bit-mask into byte enables -- each lane
+        ;; bit to 2/4/8 adjacent bits -- the bridge from a COMP* lane mask to
+        ;; the byte-enable mask MASKM reads.  And the masked load/store bodies
+        ;; themselves, opaque so nothing reasons through the partial access.
+        ;; A packed lane bit-mask from COMP*/FCOMP* -- one bit per lane in a
+        ;; GPR.  It wraps the comparison so the result is not mistaken for a
+        ;; scalar 0/1 boolean: a bare (ne:QI (V4SI)(V4SI)) has nonzero_bits 1,
+        ;; and combine would then shrink a `mask & 0xf' all-lanes-zero test
+        ;; (the vectorizer's masked-store skip guard) to `mask & 1'.
+        UNSPEC_PACKCMP
+
+        UNSPEC_EXTB2
+        UNSPEC_EXTB4
+        UNSPEC_EXTB8
+        UNSPEC_MASKM_LOAD
+        UNSPEC_MASKM_STORE
+
         UNSPEC_COMPND ;; todo: get rid of this unspec
         UNSPECV_NOP
    ]

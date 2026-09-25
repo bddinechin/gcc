@@ -305,3 +305,11 @@
   (and (match_code "parallel")
        (match_test "lvx_load_multiple_operation_p (op)")))
 
+
+;; The else value for a masked load: LVX supports only the "undefined" case
+;; (masked-off lanes are not guaranteed to hold any particular value -- the
+;; shim reads a contiguous span, so a sparse mask leaves them memory-defined,
+;; not zero -- so the vectorizer must blend them before use).  A scratch rtx
+;; is how GCC spells MASK_LOAD_ELSE_UNDEFINED.
+(define_predicate "maskload_else_operand"
+  (match_operand 0 "scratch_operand"))
