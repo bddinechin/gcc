@@ -93,159 +93,6 @@
   (ne "any")
 ])
 
-;; Code attribute to generate "EQ" or "NE".
-(define_code_attr eqne [
-  (eq "EQ")
-  (ne "NE")
-])
-
-;; Unary arithmetic code iterator for expanding VXQI patterns.
-(define_code_iterator UNARITH [
-  neg
-  ss_neg
-  ;;us_neg
-  abs
-  ss_abs
-])
-
-(define_code_attr unarith [
-  (neg "NEG")
-  (ss_neg "SS_NEG")
-  (us_neg "US_NEG")
-  (abs "ABS")
-  (ss_abs "SS_ABS")
-])
-
-;; Binary arithmetic code iterator for expanding VXQI patterns.
-(define_code_iterator BINARITH [
-  plus
-  ss_plus
-  us_plus
-  minus
-  ss_minus
-  us_minus
-  ;; mult
-  ;; div
-  ;; mod
-  ;; udiv
-  ;; umod
-  smin
-  smax
-  umin
-  umax
-])
-
-(define_code_attr binarith [
-  (plus "PLUS")
-  (ss_plus "SS_PLUS")
-  (us_plus "US_PLUS")
-  (minus "MINUS")
-  (ss_minus "SS_MINUS")
-  (us_minus "US_MINUS")
-  (mult "MULT")
-  (div "DIV")
-  (mod "MOD")
-  (udiv "UDIV")
-  (umod "UMOD")
-  (smin "SMIN")
-  (smax "SMAX")
-  (umin "UMIN")
-  (umax "UMAX")
-])
-
-(define_code_iterator BINDIV [
-  div
-  udiv
-])
-
-(define_code_attr bindiv [
-  (div "DIV")
-  (udiv "UDIV")
-])
-
-(define_code_iterator BINMOD [
-  mod
-  umod
-])
-
-(define_code_attr binmod [
-  (mod "MOD")
-  (umod "UMOD")
-])
-
-;; Binary arithmetic commutative code iterator for expanding VXQI patterns.
-(define_code_iterator BINARITHC [
-  plus
-  ss_plus
-  us_plus
-  ;; mult
-  smin
-  smax
-  umin
-  umax
-])
-
-(define_code_attr binarithc [
-  (plus "PLUS")
-  (ss_plus "SS_PLUS")
-  (us_plus "US_PLUS")
-  (mult "MULT")
-  (smin "SMIN")
-  (smax "SMAX")
-  (umin "UMIN")
-  (umax "UMAX")
-])
-
-;; Binary minus code iterator for expanding VXQI patterns.
-(define_code_iterator BINMINUS [
-  minus
-  ss_minus
-  us_minus
-])
-
-(define_code_attr binminus [
-  (minus "MINUS")
-  (ss_minus "SS_MINUS")
-  (us_minus "US_MINUS")
-])
-
-;; Binary shift left code iterator for expanding VXQI patterns.
-(define_code_iterator BINSHL [
-  ashift
-  ss_ashift
-  us_ashift
-])
-
-(define_code_attr binshl [
-  (ashift "ASHIFT")
-  (ss_ashift "SS_ASHIFT")
-  (us_ashift "US_ASHIFT")
-])
-
-;; Binary shift right code iterator for expanding VXQI patterns.
-(define_code_iterator BINSHR [
-  lshiftrt
-  ashiftrt
-])
-
-(define_code_attr binshr [
-  (lshiftrt "LSHIFTRT")
-  (ashiftrt "ASHIFTRT")
-])
-
-;; Binary shift left and right code iterator for the 1 VXQI TINY patterns.
-(define_code_iterator BINSHLRT [
-  ashift
-  lshiftrt
-  ashiftrt
-])
-
-(define_code_attr binshlrt [
-  (ashift "ASHIFT")
-  (lshiftrt "LSHIFTRT")
-  (ashiftrt "ASHIFTRT")
-])
-
 ;; Binary shift left and right code iterator for the 1 VXQI LITE patterns.
 (define_code_iterator BINSHLRL [
   ss_ashift
@@ -337,50 +184,6 @@
   (rotatert "ror")
 ])
 
-;; Code attribute for setting the 8 lsbs of 16-bit lanes.
-(define_code_attr set8lsb [
-  (neg "false")
-  (ss_neg "true")
-  (abs "false")
-  (ss_abs "true")
-  (not "true")
-  (plus "false")
-  (ss_plus "true")
-  (us_plus "true")
-  (minus "false")
-  (ss_minus "true")
-  (us_minus "true")
-  (smin "false")
-  (smax "false")
-  (umin "false")
-  (umax "false")
-  (ashift "false")
-  (ss_ashift "true")
-  (us_ashift "true")
-  (rotate "true")
-])
-
-;; Code attribute for setting the 8 msbs of 16-bit lanes.
-(define_code_attr set8msb [
-  (div "true")
-  (udiv "false")
-  (lshiftrt "false")
-  (ashiftrt "true")
-  (rotatert "true")
-])
-
-;; Code iterator to generate the "abd<>3" and "abds<>3" patterns.
-(define_code_iterator MINUS [
-  minus
-  ss_minus
-])
-
-;; Code attribute for the "abd<>3" and "abds<>3" pattern names.
-(define_code_attr abdm [
-  (minus "abd")
-  (ss_minus "abds")
-])
-
 ;; Int iterator for the AVG operators of VXQI patterns.
 (define_int_iterator UNSPEC_AVGI [
   UNSPEC_AVG
@@ -410,14 +213,6 @@
   (UNSPEC_AVGU "3_floor")
   (UNSPEC_AVGR "3_ceil")
   (UNSPEC_AVGRU "3_ceil")
-])
-
-;; Int attribute for the AVG rounding of VXQI patterns.
-(define_int_attr avground [
-  (UNSPEC_AVG "false")
-  (UNSPEC_AVGU "false")
-  (UNSPEC_AVGR "true")
-  (UNSPEC_AVGRU "true")
 ])
 
 ;; Int attribute for the AVG mnemonic of VXQI patterns.
@@ -460,8 +255,6 @@
 (define_mode_iterator P [(SI "Pmode == SImode") (DI "Pmode == DImode")])
 
 (define_mode_iterator SIDI [  SI DI])
-
-(define_mode_iterator DISI [  DI SI])
 
 ;; The 32-bit immediate a pattern may take depends on how wide its result is.
 ;; A `*W` instruction produces a 32-bit result, so bit 31's sign-extension to
@@ -521,11 +314,6 @@
 ;; Iterator for the integer modes that fit in a GPR.
 (define_mode_iterator WI [
   QI HI SI DI
-])
-
-;; Iterator for the floating-point modes that fit in a GPR.
-(define_mode_iterator WF [
-  HF SF DF
 ])
 
 ;; Iterator for the scalar modes that fit in a GPR.
@@ -763,18 +551,6 @@
   (V8DF    "df")
 ])
 
-;; Attribute to get the mask MODE of a vector mode.
-;; Bundling class of the native 128-bit SIMD integer compare.  COMPWQ is TINY
-;; and the other three are LITE -- see .bundling in lvx-binutils' lvx-opc.c,
-;; which is generated from the same ISA description.  The negated forms
-;; (COMPN*) and every FP compare are LITE throughout, so they do not need this.
-(define_mode_attr compty [
-  (V16QI   "alu_lite")
-  (V8HI    "alu_lite")
-  (V4SI    "alu_tiny")
-  (V2DI    "alu_lite")
-])
-
 (define_mode_attr MASK [
   (V8QI    "V8QI")
   (V4HI    "V4HI")
@@ -905,24 +681,6 @@
   (V16HF   "v16sf")
   (V8SI    "v8di")
   (V8SF    "v8df")
-])
-
-(define_mode_attr wide_upper_half_bs [
-  (V8QI    "8")
-  (V4HI    "8")
-  (V4HF    "8")
-  (V2SI    "8")
-  (V2SF    "8")
-  (V16QI   "16")
-  (V8HI    "16")
-  (V8HF    "16")
-  (V4SI    "16")
-  (V4SF    "16")
-  (V32QI   "32")
-  (V16HI   "32")
-  (V16HF   "32")
-  (V8SI    "32")
-  (V8SF    "32")
 ])
 
 ;; Attribute to get the widening suffix of a vector mode.
@@ -1160,25 +918,6 @@
   (V8DF    "V2DI")
 ])
 
-;; Attribute to get the quarter wide MODE of a vector mode.
-(define_mode_attr QWIDE [
-  (V16QI   "V4HI")
-  (V8HI    "V2SI")
-  (V8HF    "V2SF")
-  (V4SI    "DI")
-  (V4SF    "DF")
-  (V32QI   "V8HI")
-  (V16HI   "V4SI")
-  (V16HF   "V4SF")
-  (V8SI    "V2DI")
-  (V8SF    "V2DF")
-  (V64QI   "V16HI")
-  (V32HI   "V8SI")
-  (V32HF   "V8SF")
-  (V16SI   "V4DI")
-  (V16SF   "V4DF")
-])
-
 ;; Iterator for all the Integral SIMD modes to which a vector can be unpacked.
 (define_mode_iterator UNPACKI [
   V4SI V8SI V16SI
@@ -1232,20 +971,6 @@
   (V16HF   "whx")
   (V8SI    "dwo")
   (V8SF    "dwo")
-])
-
-;; Attribute to get the half trunc(ate) suffix of a vector mode.
-(define_mode_attr htruncx [
-  (V8QI    "hbq")
-  (V4HI    "whp")
-  (V4HF    "whp")
-  (V2SI    "dw")
-  (V2SF    "dw")
-  (V16QI   "hbo")
-  (V8HI    "whq")
-  (V8HF    "whq")
-  (V4SI    "dwp")
-  (V4SF    "dwp")
 ])
 
 ;; Attribute to get the chunk MODE of a vector mode.
@@ -1352,52 +1077,16 @@
   (V8DF    "d")
 ])
 
-;; Attribute to get the suffix of a vector by scalar instruction.
-(define_mode_attr chunkxs [
-  (V8QI    "bos")
-  (V4HI    "hqs")
-  (V4HF    "hqs")
-  (V2SI    "wps")
-  (V2SF    "wps")
-  (DI      "d")
-  (DF      "d")
-  (V16QI   "bos")
-  (V8HI    "hqs")
-  (V8HF    "hqs")
-  (V4SI    "wps")
-  (V4SF    "wps")
-  (V2DI    "d")
-  (V2DF    "d")
-  (V32QI   "bos")
-  (V16HI   "hqs")
-  (V16HF   "hqs")
-  (V8SI    "wps")
-  (V8SF    "wps")
-  (V4DI    "d")
-  (V4DF    "d")
-  (V64QI   "bos")
-  (V32HI   "hqs")
-  (V32HF   "hqs")
-  (V16SI   "wps")
-  (V16SF   "wps")
-  (V8DI    "d")
-  (V8DF    "d")
-])
-
-;; Attribute to get the suffix of a vector by complex instruction with conj.
-(define_mode_attr chunkxc [
-  (V8HI   "hcp.c")
-  (V4SI   "wc.c")
-])
-
 ;; Iterator for the small element 128-bit vector FP modes.
 (define_mode_iterator S128F [
   V8HF V4SF
 ])
 
-;; Iterator for the non-byte small element 128-bit vector integer modes.
+;; Iterator for the small-element 128-bit vector integer modes -- the shifts,
+;; which exist at every lane width including the byte (SLLBX, SRABX, SRLBX and
+;; the saturating forms).
 (define_mode_iterator S128I [
-  V8HI V4SI
+  V16QI V8HI V4SI
 ])
 
 ;; Iterator S128L.
@@ -1429,11 +1118,31 @@
 
 ;; Iterator for the non-byte non-standard 128-bit vector integer modes.
 (define_mode_iterator V128I [
-  V8HI V2DI
+  V16QI V8HI V4SI V2DI
 ])
 
-;; Iterator for the non-byte 128-bit vector integer modes.
+;; Iterator for the 128-bit vector integer modes.  The byte lanes belong here: ADDBX, SBFBX, MINBX,
+;; MAXBX, ABSBX, NEGBX and the saturating forms all exist -- they were left
+;; out while the byte modes went through the VXQI half-word synthesis this
+;; port inherited from KVX, which the LVX ISA makes unnecessary.
 (define_mode_iterator V128J [
+  V16QI V8HI V4SI V2DI
+])
+
+;; Every 128-bit lane shape has a native rotate now that ROLBX/RORBX and
+;; ROLHO/RORHO joined ROLWQ/RORWQ and ROLDP/RORDP: V16QI went through the VXQI
+;; half-word synthesis and V8HI was lowered to shift-left/shift-right/or.
+(define_mode_iterator V128R [
+  V16QI V8HI V4SI V2DI
+])
+
+;; The two rotate directions, which differ only by a letter in the mnemonic.
+(define_code_iterator ROTCODE [rotate rotatert])
+(define_code_attr rotm [(rotate "l") (rotatert "r")])
+
+;; V128J without the byte lanes, for the bit-counting operations: CLZ, CLS, CTZ
+;; and CBS exist at DP, WQ and HO, but there is no BX form.
+(define_mode_iterator V128CZ [
   V8HI V4SI V2DI
 ])
 
@@ -1460,7 +1169,7 @@
 ;; The integer multiply-add widths.  V4SI was conditioned out of both of
 ;; these while the ISA had no MADDWQ/MSBFWQ; it has since 2026-09-11.
 (define_mode_iterator V128M [
-  V8HI V4SI V2DI
+  V16QI V8HI V4SI V2DI
 ])
 
 ;; Iterator V128K excluding VV128KDI.
@@ -1468,30 +1177,14 @@
   (V16QI "1") V8HI V4SI (V2DI "1")
 ])
 
-;; Iterator for all the 128-bit vector complex integer modes.
-(define_mode_iterator V128CI [
-  (V16QI "1") V8HI V4SI
-])
-
-;; Iterator for all the 128-bit vector complex integer modes with conjugate.
-(define_mode_iterator V128CC [
-  (V8HI "0") (V4SI "0")
-])
-
-;; Iterator for all the 128-bit vector complex integer modes supported both on 
-;; V4SI (restricted) and wider modes (extended) on LVX.
-(define_mode_iterator V128CB [
-  V8HI V4SI
-])
-
 ;; Iterator for the small element 256-bit vector FP modes.
 (define_mode_iterator S256F [
   V16HF V8SF
 ])
 
-;; Iterator for the non-byte small element 256-bit vector integer modes.
+;; The same at 256 bits, two halves at a time.
 (define_mode_iterator S256I [
-  V16HI V8SI
+  V32QI V16HI V8SI
 ])
 
 ;; Iterator S256L.
@@ -1526,15 +1219,25 @@
   V16HI V4DI
 ])
 
-;; Iterator for the non-byte 256-bit vector integer modes.
+;; Iterator for the 256-bit vector integer modes.  The byte lanes belong here: ADDBX, SBFBX, MINBX,
+;; MAXBX, ABSBX, NEGBX and the saturating forms all exist -- they were left
+;; out while the byte modes went through the VXQI half-word synthesis this
+;; port inherited from KVX, which the LVX ISA makes unnecessary.
 (define_mode_iterator V256J [
+  V32QI V16HI V8SI V4DI
+])
+
+;; The same at 256 bits: each half is a 128-bit bit-count, so the byte lanes
+;; have nowhere to split to.
+(define_mode_iterator V256CZ [
   V16HI V8SI V4DI
 ])
 
-;; V256J minus V4DI: the integer 256-bit vector modes whose element rotate has
+;; The 256-bit rotate, two native 128-bit halves at a time.  Was: V256J minus
+;; V4DI, the modes whose element rotate had
 ;; no native lane-rotate instruction (V4DI uses ROLDP two-halves instead).
-(define_mode_iterator V256JH [
-  V16HI V8SI
+(define_mode_iterator V256R [
+  V32QI V16HI V8SI V4DI
 ])
 
 ;; Iterator V256L.
@@ -1549,7 +1252,7 @@
 
 ;; Iterator V256I.
 (define_mode_iterator V256M [
-  V16HI V8SI V4DI
+  V32QI V16HI V8SI V4DI
 ])
 
 ;; Iterator V256L excluding V4DI.
@@ -1577,11 +1280,6 @@
 ;; Iterator for all the 512-bit vector FP modes without half float.
 (define_mode_iterator V512G [
   V16SF V8DF
-])
-
-;; Iterator V512L.
-(define_mode_iterator V512K [
-  (V64QI "1") V32HI V16SI V8DI
 ])
 
 ;; Iterator for all the 512-bit vector integer modes.
@@ -1622,9 +1320,10 @@
 ])
 
 ;; Iterator for the VXQI and V64QI modes.
+;; The 512-bit byte mode alone: V16QI and V32QI reach the general V128J and
+;; V256J patterns now, and HAVE_LVX_SELECT_* is 1 at every width, so the
+;; half-word synthesis these carried was already unreachable.
 (define_mode_iterator VYQI [
-  V16QI
-  V32QI
   V64QI
 ])
 
@@ -1736,25 +1435,6 @@
   (V8SF    "wdp")
 ])
 
-;; Attribute to get the narrowed chunk extension of a vector mode.
-(define_mode_attr nchunkx [
-  (V8QI    "hbo")
-  (V4HI    "whq")
-  (V4HF    "whq")
-  (V2SI    "dwp")
-  (V2SF    "dwp")
-  (V16QI   "hbo")
-  (V8HI    "whq")
-  (V8HF    "whq")
-  (V4SI    "dwp")
-  (V4SF    "dwp")
-  (V32QI   "hbo")
-  (V16HI   "whq")
-  (V16HF   "whq")
-  (V8SI    "dwp")
-  (V8SF    "dwp")
-])
-
 ;; Attribute to get the double MODE of a vector mode.
 (define_mode_attr DMODE [
   (V8QI    "V16QI")
@@ -1775,19 +1455,6 @@
   (V2DI    "V4DI")
 ])
 
-;; Attribute to get the tetra MODE of a vector mode.
-(define_mode_attr TMODE [
-  (V8QI    "V32QI")
-  (V4HI    "V16HI")
-  (V4HF    "V16HF")
-  (V2SI    "V8SI")
-  (V2SF    "V8SF")
-  (V1DI    "V4DI")
-  (DI      "V4DI")
-  (DF      "V4DF")
-])
-
-
 (define_mode_iterator V128 [  V2DI])
 (define_mode_iterator V256 [  V4DI])
 (define_mode_iterator V512 [  V8DI])
@@ -1795,9 +1462,6 @@
 (define_mode_iterator X256 [  V1OI])
 (define_mode_iterator X512 [  V2OI])
 (define_mode_iterator X1024 [  V4OI])
-(define_mode_iterator X2048 [  V8OI])
-(define_mode_iterator X4096 [  V16OI])
-(define_mode_iterator X8192 [  V32OI])
 (define_mode_iterator XBUFF [
   V2OI V4OI V8OI V16OI V32OI
 ])
@@ -1855,26 +1519,6 @@
   (V8OI    "128")
   (V16OI   "256")
   (V32OI   "512")
-])
-
-;; Attribute to map to chunk 2x mode.
-(define_mode_attr CHUNK2 [
-  (V1OI    "V2OI")
-  (V2OI    "V2OI")
-  (V4OI    "V2OI")
-  (V8OI    "V2OI")
-  (V16OI   "V2OI")
-  (V32OI   "V2OI")
-])
-
-;; Attribute to map to chunk 4x mode.
-(define_mode_attr CHUNK4 [
-  (V1OI    "V4OI")
-  (V2OI    "V4OI")
-  (V4OI    "V4OI")
-  (V8OI    "V4OI")
-  (V16OI   "V4OI")
-  (V32OI   "V4OI")
 ])
 
 ;; The four IEEE min/max families, so the 256-bit aggregates are written once.

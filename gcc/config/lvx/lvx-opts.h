@@ -289,9 +289,6 @@ enum lvx_arch_type
 #define HAVE_LVX_FSDIV_SF (0) // fsdivw -- removed from the ISA
 #define HAVE_LVX_FSDIV_V2SF (1)
 
-#define HAVE_LVX_HAVE_SS_PLUS_V16HI (1)
-#define HAVE_LVX_HAVE_SS_PLUS_V4DI (1)
-#define HAVE_LVX_HAVE_SS_PLUS_V8SI (1)
 
 #define HAVE_LVX_IOR_DI (1)
 #define HAVE_LVX_IOR_SI (1)
@@ -720,10 +717,13 @@ enum lvx_arch_type
 #define HAVE_LVX_SS_PLUS_V4SI (1)
 #define HAVE_LVX_SS_PLUS_V8HI (1)
 #define HAVE_LVX_SS_PLUS_V16QI (1)
+#define HAVE_LVX_SS_PLUS_V32QI (1)
+#define HAVE_LVX_SS_PLUS_V16HI (1)
+#define HAVE_LVX_SS_PLUS_V8SI (1)
+#define HAVE_LVX_SS_PLUS_V4DI (1)
 #define HAVE_LVX_SS_PLUS_V4DI (1)
 #define HAVE_LVX_SS_PLUS_V8SI (1)
 #define HAVE_LVX_SS_PLUS_V16HI (1)
-#define HAVE_LVX_SS_PLUS_V32QI (1)
 
 #define HAVE_LVX_STSU_DI (1)
 #define HAVE_LVX_STSU_V2DI (1)

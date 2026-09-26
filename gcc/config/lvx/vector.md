@@ -1000,151 +1000,13 @@
 )
 
 ;; neg<m>2 ssneg<m>2 abs<m>2 ssabs<m>2
-(define_expand "<prefix><mode>2"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (UNARITH:VXQI (match_operand:VXQI 1 "register_operand" "")))]
-  "LVX_2"
-  {
-    if (!HAVE_LVX_<unarith>_V8QI)
-      {
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op1o, operands[1]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op1e, operands[1]));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_<prefix><hwide>2 (op0e, op1e));
-        emit_insn (gen_<prefix><hwide>2 (op0o, op1o));
-        rtx opto = gen_reg_rtx (<MODE>mode), opte = gen_reg_rtx (<MODE>mode);
-        if (<set8lsb>)
-          {
-            emit_insn (gen_rtx_SET (opto, gen_rtx_SUBREG (<MODE>mode, op0o, 0)));
-            emit_insn (gen_lvx_qxo<hwidenx> (op0o, opto));
-          }
-        emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-        emit_insn (gen_lvx_zxo<hwidenx> (op0e, opte));
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-        DONE;
-      }
-  }
-)
-(define_insn "*<prefix>v16qi2_2"
-  [(set (match_operand:V16QI 0 "register_operand" "=r")
-        (UNARITH:V16QI (match_operand:V16QI 1 "register_operand" "r")))]
-  "LVX_2 && (HAVE_LVX_<unarith>_V16QI)"
-  "<stem>bx %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
-)
-(define_insn "*<prefix>v32qi2_2"
-  [(set (match_operand:V32QI 0 "register_operand" "=r")
-        (UNARITH:V32QI (match_operand:V32QI 1 "register_operand" "r")))]
-  "LVX_2 && (HAVE_LVX_<unarith>_V32QI)"
-  {
-    return "<stem>bx %L0 = %L1\n\t<stem>bx %M0 = %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length"          "32")]
-)
 
 ;; add<m>3 ssadd<m>3 usass<m>3 sub<m>3 sssub<m>3 ussub<m>3 smin<m>3 smax<m>3 umin<m>3 umax<m>3
-(define_expand "<prefix><mode>3"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (BINARITH:VXQI (match_operand:VXQI 1 "register_operand" "")
-                       (match_operand:VXQI 2 "register_operand" "")))]
-  "LVX_2"
-  {
-    if (!HAVE_LVX_<binarith>_<MODE>)
-      {
-        rtx op2o = gen_reg_rtx (<HWIDE>mode), op2e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op2o, operands[2]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op2e, operands[2]));
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op1o, operands[1]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op1e, operands[1]));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_<prefix><hwide>3 (op0o, op1o, op2o));
-        emit_insn (gen_<prefix><hwide>3 (op0e, op1e, op2e));
-        rtx opto = gen_reg_rtx (<MODE>mode), opte = gen_reg_rtx (<MODE>mode);
-        if (<set8lsb>)
-          {
-            emit_insn (gen_rtx_SET (opto, gen_rtx_SUBREG (<MODE>mode, op0o, 0)));
-            emit_insn (gen_lvx_qxo<hwidenx> (op0o, opto));
-          }
-        emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-        emit_insn (gen_lvx_zxo<hwidenx> (op0e, opte));
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
 
-        DONE;
-      }
-  }
-)
-(define_insn "*<prefix>v16qi3_2"
-  [(set (match_operand:V16QI 0 "register_operand" "=r")
-        (BINARITHC:V16QI (match_operand:V16QI 1 "register_operand" "r")
-                         (match_operand:V16QI 2 "register_operand" "r")))]
-  "LVX_2 && (HAVE_LVX_<binarithc>_V16QI)"
-  "<stem>bx %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-(define_insn "*<prefix>v32qi3_2"
-  [(set (match_operand:V32QI 0 "register_operand" "=r")
-        (BINARITHC:V32QI (match_operand:V32QI 1 "register_operand" "r")
-                         (match_operand:V32QI 2 "register_operand" "r")))]
-  "LVX_2 && (HAVE_LVX_<binarithc>_V32QI)"
-  {
-    return "<stem>bx %L0 = %L1, %L2\n\t<stem>bx %M0 = %M1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-(define_insn "*<prefix>v16qi3_2"
-  [(set (match_operand:V16QI 0 "register_operand" "=r")
-        (BINMINUS:V16QI (match_operand:V16QI 1 "register_operand" "r")
-                        (match_operand:V16QI 2 "register_operand" "r")))]
-  "LVX_2 && (HAVE_LVX_<binminus>_V16QI)"
-  "<stem>bx %0 = %2, %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-(define_insn "*<prefix>v32qi3_2"
-  [(set (match_operand:V32QI 0 "register_operand" "=r")
-        (BINMINUS:V32QI (match_operand:V32QI 1 "register_operand" "r")
-                        (match_operand:V32QI 2 "register_operand" "r")))]
-  "LVX_2 && (HAVE_LVX_<binminus>_V32QI)"
-  {
-    return "<stem>bx %L0 = %L2, %L1\n\t<stem>bx %M0 = %M2, %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_expand "mul<mode>3"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (mult:VXQI (match_operand:VXQI 1 "register_operand" "")
-                   (match_operand:VXQI 2 "register_operand" "")))]
-  "LVX_2"
-  {
-    rtx op2o = gen_reg_rtx (<HWIDE>mode), op2e = gen_reg_rtx (<HWIDE>mode);
-    emit_insn (gen_rtx_SET (op2e, simplify_gen_subreg (<HWIDE>mode, operands[2], <MODE>mode, 0)));
-    emit_insn (gen_lvx_zxo<hwidenx> (op2o, operands[2]));
-    rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-    emit_insn (gen_rtx_SET (op1e, simplify_gen_subreg (<HWIDE>mode, operands[1], <MODE>mode, 0)));
-    emit_insn (gen_lvx_qxo<hwidenx> (op1o, operands[1]));
-    rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-    emit_insn (gen_mul<hwide>3 (op0o, op1o, op2o));
-    emit_insn (gen_mul<hwide>3 (op0e, op1e, op2e));
-    rtx opte = gen_reg_rtx (<MODE>mode);
-    emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-    emit_insn (gen_lvx_zxe<hwidenx> (op0e, opte));
-    emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-    DONE;
-  }
-)
+;; ROL and ROR have no byte-lane form in the ISA -- the packed rotates are
+;; ROLDP/ROLWQ and their RORs -- so a V16QI or V32QI rotate is still built
+;; from half-word rotates the way this port has always done it.  The rest of
+;; the VXQI synthesis went when the byte lanes joined the general iterators.
 
 (define_expand "mulv64qi3"
   [(set (match_operand:V64QI 0 "register_operand" "")
@@ -1168,178 +1030,12 @@
   }
 )
 
-(define_expand "<prefix><mode>3"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (BINDIV:VXQI (match_operand:VXQI 1 "register_operand" "")
-                       (match_operand:VXQI 2 "register_operand" "")))]
-  "LVX_2"
-  {
-    if (HAVE_LVX_<bindiv>_<MODE>)
-      {
-        rtx dest = emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "__<prefix><mode>3"),
-                                            operands[0], LCT_CONST, <MODE>mode,
-                                            operands[1], <MODE>mode, operands[2], <MODE>mode);
-        if (dest != operands[0])
-          emit_move_insn (operands[0], dest);
-      }
-    else
-      {
-        /* Recursively try to use operations on wider lanes.  */
-        rtx op2o = gen_reg_rtx (<HWIDE>mode), op2e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op2o, operands[2]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op2e, operands[2]));
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op1o, operands[1]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op1e, operands[1]));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_<prefix><hwide>3 (op0o, op1o, op2o));
-        emit_insn (gen_<prefix><hwide>3 (op0e, op1e, op2e));
-        rtx opto = gen_reg_rtx (<MODE>mode), opte = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (opto, gen_rtx_SUBREG (<MODE>mode, op0o, 0)));
-        emit_insn (gen_lvx_qxe<hwidenx> (op0o, opto));
-        if (<set8msb>)
-          {
-            emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-            emit_insn (gen_lvx_zxe<hwidenx> (op0e, opte));
-          }
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-      }
-    DONE;
-  }
-)
 
-(define_expand "<prefix><mode>3"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (BINMOD:VXQI (match_operand:VXQI 1 "register_operand" "")
-                       (match_operand:VXQI 2 "register_operand" "")))]
-  "LVX_2"
-  {
-    if (HAVE_LVX_<binmod>_<MODE>)
-      {
-        rtx dest = emit_library_call_value (gen_rtx_SYMBOL_REF (Pmode, "__<prefix><mode>3"),
-                                            operands[0], LCT_CONST, <MODE>mode,
-                                            operands[1], <MODE>mode, operands[2], <MODE>mode);
-        if (dest != operands[0])
-          emit_move_insn (operands[0], dest);
-      }
-    else
-      {
-        /* Recursively try to use operations on wider lanes.  */
-        rtx op2o = gen_reg_rtx (<HWIDE>mode), op2e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op2o, operands[2]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op2e, operands[2]));
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op1o, operands[1]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op1e, operands[1]));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_<prefix><hwide>3 (op0o, op1o, op2o));
-        emit_insn (gen_<prefix><hwide>3 (op0e, op1e, op2e));
-        rtx opte = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-        emit_insn (gen_lvx_zxo<hwidenx> (op0e, opte));
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-      }
-    DONE;
-  }
-)
 
-;; abd<m>3 abds<m>3
-(define_expand "<MINUS:abdm><mode>3_1"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (MINUS:VXQI (smax:VXQI (match_operand:VXQI 1 "register_operand" "")
-                               (match_operand:VXQI 2 "register_operand" ""))
-                    (smin:VXQI (match_dup 1) (match_dup 2))))]
-  "LVX_2"
-  {
-    if (!HAVE_LVX_ABD_V8QI)
-      {
-        rtx op2o = gen_reg_rtx (<HWIDE>mode), op2e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op2o, operands[2]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op2e, operands[2]));
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op1o, operands[1]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op1e, operands[1]));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_<MINUS:abdm><hwide>3 (op0o, op1o, op2o));
-        emit_insn (gen_<MINUS:abdm><hwide>3 (op0e, op1e, op2e));
-        rtx opto = gen_reg_rtx (<MODE>mode), opte = gen_reg_rtx (<MODE>mode);
-        if (<set8lsb>)
-          {
-            emit_insn (gen_rtx_SET (opto, gen_rtx_SUBREG (<MODE>mode, op0o, 0)));
-            emit_insn (gen_lvx_qxo<hwidenx> (op0o, opto));
-          }
-        emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-        emit_insn (gen_lvx_zxo<hwidenx> (op0e, opte));
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-        DONE;
-      }
-  }
-)
 
 ;; abdu<m>3
-(define_expand "abdu<mode>3_1"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (minus:VXQI (umax:VXQI (match_operand:VXQI 1 "register_operand" "")
-                               (match_operand:VXQI 2 "register_operand" ""))
-                    (umin:VXQI (match_dup 1) (match_dup 2))))]
-  "LVX_2"
-  {
-    if (!HAVE_LVX_UABD_V8QI)
-      {
-        rtx op2o = gen_reg_rtx (<HWIDE>mode), op2e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op2o, operands[2]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op2e, operands[2]));
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op1o, operands[1]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op1e, operands[1]));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_abdu<hwide>3 (op0o, op1o, op2o));
-        emit_insn (gen_abdu<hwide>3 (op0e, op1e, op2e));
-        rtx opte = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-        emit_insn (gen_lvx_zxo<hwidenx> (op0e, opte));
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-        DONE;
-      }
-  }
-)
 
 ;; avg<m>3_floor uavg<m>3_floor avg<m>3_ceil uavg<m>3_ceil
-(define_expand "<avgpre><mode><avgpost>"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (unspec:VXQI [(match_operand:VXQI 1 "register_operand" "")
-                      (match_operand:VXQI 2 "register_operand" "")] UNSPEC_AVGI))]
-  "LVX_2"
-  {
-    if (!HAVE_LVX_<AVGPRE>_V8QI)
-      {
-        rtx op2o = gen_reg_rtx (<HWIDE>mode), op2e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op2o, operands[2]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op2e, operands[2]));
-        if (<avground>)
-          {
-            // Add 0xFF to the low bytes so the rounding propagtes to the high bytes.
-            rtx bias =  gen_reg_rtx (DImode);
-            emit_insn (gen_rtx_SET (bias, GEN_INT (0x00FF00FF00FF00FF)));
-            emit_insn (gen_rtx_SET (op2o, gen_rtx_UNSPEC (<HWIDE>mode, gen_rtvec (2, op2o, bias), UNSPEC_ADDD)));
-            emit_insn (gen_rtx_SET (op2e, gen_rtx_UNSPEC (<HWIDE>mode, gen_rtvec (2, op2e, bias), UNSPEC_ADDD)));
-          }
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op1o, operands[1]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op1e, operands[1]));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_<avgpre><hwide><avgpost> (op0o, op1o, op2o));
-        emit_insn (gen_<avgpre><hwide><avgpost> (op0e, op1e, op2e));
-        rtx opto = gen_reg_rtx (<MODE>mode), opte = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (opto, gen_rtx_SUBREG (<MODE>mode, op0o, 0)));
-        emit_insn (gen_lvx_qxo<hwidenx> (op0o, opto));
-        emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-        emit_insn (gen_lvx_zxo<hwidenx> (op0e, opte));
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-        DONE;
-      }
-  }
-)
 
 ;; The byte averages the expander above falls through to.  S128I is the
 ;; non-byte 128-bit integer modes, so the AVG*BX forms need their own patterns;
@@ -1371,73 +1067,6 @@
 )
 
 ;; ashl<m>3 ssashl<m>3 usashl<m>3
-(define_expand "<prefix><mode>3"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (BINSHL:VXQI (match_operand:VXQI 1 "register_operand" "")
-                     (match_operand:SI 2 "reg_shift_operand" "")))]
-  "LVX_2"
-  {
-    if (!HAVE_LVX_<binshl>_V8QI)
-      {
-        rtx op2 = NULL_RTX;
-        if (CONST_INT_P (operands[2]))
-          op2 = GEN_INT (INTVAL (operands[2]) & 0x7);
-        else
-          {
-            op2 = gen_reg_rtx (SImode);
-            emit_insn (gen_andsi3 (op2, operands[2], GEN_INT (0x7)));
-          }
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op1o, operands[1]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op1e, operands[1]));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_<prefix><hwide>3 (op0o, op1o, op2));
-        emit_insn (gen_<prefix><hwide>3 (op0e, op1e, op2));
-        rtx opto = gen_reg_rtx (<MODE>mode), opte = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-        emit_insn (gen_lvx_zxo<hwidenx> (op0e, opte));
-        if (<set8lsb>)
-          {
-            emit_insn (gen_rtx_SET (opto, gen_rtx_SUBREG (<MODE>mode, op0o, 0)));
-            emit_insn (gen_lvx_qxo<hwidenx> (op0o, opto));
-          }
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-        DONE;
-      }
-  }
-)
-(define_insn "*<prefix>v16qi3_2"
-  [(set (match_operand:V16QI 0 "register_operand" "=r")
-        (BINSHLRT:V16QI (match_operand:V16QI 1 "register_operand" "r")
-                        (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "LVX_2 && (HAVE_LVX_<binshlrt>_V16QI)"
-  "<stem>bx %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-(define_insn "*<prefix>v32qi3_2"
-  [(set (match_operand:V32QI 0 "register_operand" "=r")
-        (BINSHLRT:V32QI (match_operand:V32QI 1 "register_operand" "r")
-                        (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "LVX_2 && (HAVE_LVX_<binshlrt>_V32QI)"
-  {
-    return "<stem>bx %L0 = %L1, %2\n\t<stem>bx %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-(define_insn "*<prefix>v16qi3_2"
-  [(set (match_operand:V16QI 0 "register_operand" "=r")
-        (BINSHLRL:V16QI (match_operand:V16QI 1 "register_operand" "r")
-                        (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "LVX_2 && (HAVE_LVX_<binshlrl>_V16QI)"
-  "<stem>bx %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
 (define_insn_and_split "*<prefix>v32qi3_2"
   [(set (match_operand:V32QI 0 "register_operand" "=&r,r")
         (BINSHLRL:V32QI (match_operand:V32QI 1 "register_operand" "r,r")
@@ -1457,81 +1086,7 @@
 )
 
 ;; lshr<m>3 ashr<m>3
-(define_expand "<prefix><mode>3"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (BINSHR:VXQI (match_operand:VXQI 1 "register_operand" "")
-                     (match_operand:SI 2 "reg_shift_operand" "")))]
-  "LVX_2"
-  {
-    if (!HAVE_LVX_<binshr>_V8QI)
-      {
-        rtx op2 = NULL_RTX, op2p8 = NULL_RTX;
-        if (CONST_INT_P (operands[2]))
-          {
-            op2 = GEN_INT (INTVAL (operands[2]) & 0x7);
-            op2p8 = GEN_INT ((INTVAL (operands[2]) & 0x7) + 8);
-          }
-        else
-          {
-            op2 = gen_reg_rtx (SImode), op2p8 = gen_reg_rtx (SImode);
-            emit_insn (gen_andsi3 (op2, operands[2], GEN_INT (0x7)));
-            emit_insn (gen_addsi3 (op2p8, op2, GEN_INT (8)));
-          }
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op1o, operands[1]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op1e, operands[1]));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_<prefix><hwide>3 (op0o, op1o, op2));
-        emit_insn (gen_<prefix><hwide>3 (op0e, op1e, op2p8));
-        rtx opto = gen_reg_rtx (<MODE>mode), opte = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (opto, gen_rtx_SUBREG (<MODE>mode, op0o, 0)));
-        emit_insn (gen_lvx_qxo<hwidenx> (op0o, opto));
-        if (<set8msb>)
-          {
-            emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-            emit_insn (gen_lvx_zxe<hwidenx> (op0e, opte));
-          }
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-        DONE;
-      }
-  }
-)
 
-;; sshr<m>3
-(define_expand "sshr<mode>3"
-  [(match_operand:VXQI 0 "register_operand" "")
-   (match_operand:VXQI 1 "register_operand" "")
-   (match_operand:SI 2 "register_operand" "")]
-  "LVX_2"
-  {
-    if (!HAVE_LVX_SSHR_V8QI)
-      {
-        rtx const8 = GEN_INT (8);
-        rtx op2 = gen_reg_rtx (SImode), op2p8 = gen_reg_rtx (SImode);
-        emit_insn (gen_andsi3 (op2, operands[2], GEN_INT (0x7)));
-        emit_insn (gen_addsi3 (op2p8, op2, const8));
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lvx_qxo<hwidenx> (op1o, operands[1]));
-        emit_insn (gen_lvx_qxe<hwidenx> (op1e, operands[1]));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_sshr<hwide>3 (op0o, op1o, op2p8));
-        emit_insn (gen_sshr<hwide>3 (op0e, op1e, op2p8));
-        rtx opto = gen_reg_rtx (<MODE>mode), opte = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (opto, gen_rtx_SUBREG (<MODE>mode, op0o, 0)));
-        emit_insn (gen_lvx_qxe<hwidenx> (op0o, opto));
-        emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-        emit_insn (gen_lvx_zxe<hwidenx> (op0e, opte));
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-      }
-    else
-      {
-        rtvec vec = gen_rtvec (2, operands[1], operands[2]);
-        rtx select = gen_rtx_UNSPEC (<MODE>mode, vec, UNSPEC_SRS);
-        emit_insn (gen_rtx_SET (operands[0], select));
-      }
-    DONE;
-  }
-)
 (define_insn_and_split "*sshrv32qi_2"
   [(set (match_operand:V32QI 0 "register_operand" "=&r,r")
         (unspec:V32QI [(match_operand:V32QI 1 "register_operand" "r,r")
@@ -1551,110 +1106,53 @@
 )
 
 
-;; rotl<m>3
-(define_expand "rotl<mode>3"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (rotate:VXQI (match_operand:VXQI 1 "register_operand" "")
-                     (match_operand:SI 2 "register_operand" "")))
-   (clobber (match_scratch:SI 3 ""))
-   (clobber (match_scratch:VXQI 4 ""))
-   (clobber (match_scratch:VXQI 5 ""))]
+
+;; Every 128-bit lane shape has a native rotate: ROLBX/RORBX and ROLHO/RORHO
+;; joined ROLWQ/RORWQ and ROLDP/RORDP in the LVX-2 ISA, so V16QI no longer goes
+;; through the VXQI half-word synthesis and V8HI is no longer lowered to
+;; shift-left / shift-right / or.
+
+(define_insn "rot<rotm><mode>3"
+  [(set (match_operand:V128R 0 "register_operand" "=r")
+        (ROTCODE:V128R (match_operand:V128R 1 "register_operand" "r")
+                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   "LVX_2"
-  {
-    if (!HAVE_LVX_NEG_<MODE> || !HAVE_LVX_ASHIFT_<MODE>
-     || !HAVE_LVX_LSHIFTRT_<MODE> || !HAVE_LVX_IOR_<MODE>)
-      {
-        rtx evenbmm = gen_reg_rtx (DImode), oddbmm = gen_reg_rtx (DImode);
-        emit_insn (gen_rtx_SET (evenbmm, GEN_INT (0x4040101004040101)));
-        emit_insn (gen_rtx_SET (oddbmm, GEN_INT (0x8080202008080202)));
-        rtx vevenbmm = evenbmm, voddbmm = oddbmm;
-        unsigned nwords = GET_MODE_SIZE (<MODE>mode) / UNITS_PER_WORD;
-        if (nwords > 1)
-          {
-            machine_mode vmode = mode_for_vector (DImode, nwords).require ();
-            vevenbmm = gen_rtx_VEC_DUPLICATE (vmode, evenbmm);
-            voddbmm = gen_rtx_VEC_DUPLICATE (vmode, oddbmm);
-          }
-        rtx op2 = gen_reg_rtx (SImode);
-        emit_insn (gen_andsi3 (op2, operands[2], GEN_INT (0x7)));
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_rtx_SET (op1o, gen_rtx_UNSPEC (<HWIDE>mode, gen_rtvec (2, operands[1], voddbmm), UNSPEC_SBMM8D)));
-        emit_insn (gen_rtx_SET (op1e, gen_rtx_UNSPEC (<HWIDE>mode, gen_rtvec (2, operands[1], vevenbmm), UNSPEC_SBMM8D)));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_ashl<hwide>3 (op0o, op1o, op2));
-        emit_insn (gen_ashl<hwide>3 (op0e, op1e, op2));
-        rtx opto = gen_reg_rtx (<MODE>mode), opte = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (opto, gen_rtx_SUBREG (<MODE>mode, op0o, 0)));
-        emit_insn (gen_lvx_qxo<hwidenx> (op0o, opto));
-        emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-        emit_insn (gen_lvx_zxo<hwidenx> (op0e, opte));
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-      }
-    else
-      {
-        rtx operands_3 = gen_reg_rtx (SImode);
-        rtx operands_4 = gen_reg_rtx (<MODE>mode);
-        rtx operands_5 = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (operands_3, gen_rtx_NEG (SImode, operands[2])));
-        emit_insn (gen_rtx_SET (operands_4, gen_rtx_ASHIFT (<MODE>mode, operands[1], operands[2])));
-        emit_insn (gen_rtx_SET (operands_5, gen_rtx_LSHIFTRT (<MODE>mode, operands[1], operands_3)));
-        emit_insn (gen_rtx_SET (operands[0], gen_rtx_IOR (<MODE>mode, operands_4, operands_5)));
-      }
-    DONE;
-  }
+  "ro<rotm><suffix> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
 )
 
-;; rotr<m>3
-(define_expand "rotr<mode>3"
-  [(set (match_operand:VXQI 0 "register_operand" "")
-        (rotatert:VXQI (match_operand:VXQI 1 "register_operand" "")
-                       (match_operand:SI 2 "register_operand" "")))
-   (clobber (match_scratch:SI 3 ""))
-   (clobber (match_scratch:VXQI 4 ""))
-   (clobber (match_scratch:VXQI 5 ""))]
+;; The vectorizer queries the vrotl/vrotr optabs rather than rotl/rotr, so
+;; delegate them to the insn above: a rotate loop then uses ROL*/ROR* instead
+;; of the three-instruction lowering.
+(define_expand "vrot<rotm><mode>3"
+  [(set (match_operand:V128R 0 "register_operand")
+        (ROTCODE:V128R (match_operand:V128R 1 "register_operand")
+                       (match_operand:SI 2 "reg_shift_operand")))]
+  "LVX_2"
+  "")
+
+;; The same at 256 bits, one native rotate per 128-bit half.
+(define_insn "rot<rotm><mode>3"
+  [(set (match_operand:V256R 0 "register_operand" "=r")
+        (ROTCODE:V256R (match_operand:V256R 1 "register_operand" "r")
+                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   "LVX_2"
   {
-    if (!HAVE_LVX_LSHIFTRT_<MODE> || !HAVE_LVX_ASHIFT_<MODE> || !HAVE_LVX_IOR_<MODE>)
-      {
-        rtx evenbmm = gen_reg_rtx (DImode), oddbmm = gen_reg_rtx (DImode);
-        emit_insn (gen_rtx_SET (evenbmm, GEN_INT (0x4040101004040101)));
-        emit_insn (gen_rtx_SET (oddbmm, GEN_INT (0x8080202008080202)));
-        rtx vevenbmm = evenbmm, voddbmm = oddbmm;
-        unsigned nwords = GET_MODE_SIZE (<MODE>mode) / UNITS_PER_WORD;
-        if (nwords > 1)
-          {
-            machine_mode vmode = mode_for_vector (DImode, nwords).require ();
-            vevenbmm = gen_rtx_VEC_DUPLICATE (vmode, evenbmm);
-            voddbmm = gen_rtx_VEC_DUPLICATE (vmode, oddbmm);
-          }
-        rtx op2 = gen_reg_rtx (SImode);
-        emit_insn (gen_andsi3 (op2, operands[2], GEN_INT (0x7)));
-        rtx op1o = gen_reg_rtx (<HWIDE>mode), op1e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_rtx_SET (op1o, gen_rtx_UNSPEC (<HWIDE>mode, gen_rtvec (2, operands[1], voddbmm), UNSPEC_SBMM8D)));
-        emit_insn (gen_rtx_SET (op1e, gen_rtx_UNSPEC (<HWIDE>mode, gen_rtvec (2, operands[1], vevenbmm), UNSPEC_SBMM8D)));
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        emit_insn (gen_lshr<hwide>3 (op0o, op1o, op2));
-        emit_insn (gen_lshr<hwide>3 (op0e, op1e, op2));
-        rtx opto = gen_reg_rtx (<MODE>mode), opte = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (opto, gen_rtx_SUBREG (<MODE>mode, op0o, 0)));
-        emit_insn (gen_lvx_qxe<hwidenx> (op0o, opto));
-        emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-        emit_insn (gen_lvx_zxe<hwidenx> (op0e, opte));
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-      }
-    else
-      {
-        rtx operands_3 = gen_reg_rtx (SImode);
-        rtx operands_4 = gen_reg_rtx (<MODE>mode);
-        rtx operands_5 = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (operands_3, gen_rtx_NEG (SImode, operands[2])));
-        emit_insn (gen_rtx_SET (operands_4, gen_rtx_LSHIFTRT (<MODE>mode, operands[1], operands[2])));
-        emit_insn (gen_rtx_SET (operands_5, gen_rtx_ASHIFT (<MODE>mode, operands[1], operands_3)));
-        emit_insn (gen_rtx_SET (operands[0], gen_rtx_IOR (<MODE>mode, operands_4, operands_5)));
-      }
-    DONE;
+    return "ro<rotm><hsuffix> %L0 = %L1, %2\n\tro<rotm><hsuffix> %M0 = %M1, %2";
   }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
+
+(define_expand "vrot<rotm><mode>3"
+  [(set (match_operand:V256R 0 "register_operand")
+        (ROTCODE:V256R (match_operand:V256R 1 "register_operand")
+                       (match_operand:SI 2 "reg_shift_operand")))]
+  "LVX_2"
+  "")
 
 ;; S128I (V8HI V4SI)
 
@@ -1844,7 +1342,8 @@
 )
 
 
-;; V128I (V8HI V2DI)
+;; V128I -- the multiply is native at every 128-bit lane shape: MULBX, MULHO,
+;; MULWQ, MULDP.
 
 (define_insn "mul<mode>3"
   [(set (match_operand:V128I 0 "register_operand" "=r")
@@ -1854,110 +1353,6 @@
   "mul<suffix> %0 = %1, %2"
   [(set_attr "type" "imul")
    (set_attr "issue" "lite")]
-)
-
-
-(define_insn "rotlv2di3"
-  [(set (match_operand:V2DI 0 "register_operand" "=r")
-        (rotate:V2DI (match_operand:V2DI 1 "register_operand" "r")
-                     (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "LVX_2"
-  "roldp %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")])
-
-;; The vectorizer queries the vrotl optab (vrotl<mode>3) for vector rotates;
-;; delegate it to the native V2DI rotate above so 64-bit-lane rotate loops use
-;; ROLDP instead of shift-left / shift-right / or.
-(define_expand "vrotlv2di3"
-  [(set (match_operand:V2DI 0 "register_operand")
-        (rotate:V2DI (match_operand:V2DI 1 "register_operand")
-                     (match_operand:SI 2 "reg_shift_operand")))]
-  "LVX_2"
-  "")
-
-;; V8HI has no native rotate: lower to shift-left / shift-right / or.
-(define_insn_and_split "rotlv8hi3"
-  [(set (match_operand:V8HI 0 "register_operand" "=r")
-        (rotate:V8HI (match_operand:V8HI 1 "register_operand" "r")
-                     (match_operand:SI 2 "register_operand" "r")))
-   (clobber (match_scratch:SI 3 "=&r"))
-   (clobber (match_scratch:V8HI 4 "=&r"))
-   (clobber (match_scratch:V8HI 5 "=&r"))]
-  "LVX_2"
-  "#"
-  ""
-  [(set (match_dup 3) (neg:SI (match_dup 2)))
-   (set (match_dup 4) (ashift:V8HI (match_dup 1) (match_dup 2)))
-   (set (match_dup 5) (lshiftrt:V8HI (match_dup 1) (match_dup 3)))
-   (set (match_dup 0) (ior:V8HI (match_dup 4) (match_dup 5)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (SImode);
-    if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (V8HImode);
-    if (GET_CODE (operands[5]) == SCRATCH)
-      operands[5] = gen_reg_rtx (V8HImode);
-  }
-)
-
-(define_insn "rotrv2di3"
-  [(set (match_operand:V2DI 0 "register_operand" "=r")
-        (rotatert:V2DI (match_operand:V2DI 1 "register_operand" "r")
-                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "LVX_2"
-  "rordp %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")])
-
-(define_expand "vrotrv2di3"
-  [(set (match_operand:V2DI 0 "register_operand")
-        (rotatert:V2DI (match_operand:V2DI 1 "register_operand")
-                       (match_operand:SI 2 "reg_shift_operand")))]
-  "LVX_2"
-  "")
-
-;; 256-bit vector rotate: route the vrotl optab to the native V4DI two-halves
-;; rotate (ROLDP/RORDP) -- this is the width the vectorizer picks by default.
-(define_expand "vrotlv4di3"
-  [(set (match_operand:V4DI 0 "register_operand")
-        (rotate:V4DI (match_operand:V4DI 1 "register_operand")
-                     (match_operand:SI 2 "reg_shift_operand")))]
-  "LVX_2"
-  "")
-
-(define_expand "vrotrv4di3"
-  [(set (match_operand:V4DI 0 "register_operand")
-        (rotatert:V4DI (match_operand:V4DI 1 "register_operand")
-                       (match_operand:SI 2 "reg_shift_operand")))]
-  "LVX_2"
-  "")
-
-;; V8HI has no native rotate: lower to shift-right / shift-left / or.
-(define_insn_and_split "rotrv8hi3"
-  [(set (match_operand:V8HI 0 "register_operand" "=r")
-        (rotatert:V8HI (match_operand:V8HI 1 "register_operand" "r")
-                       (match_operand:SI 2 "register_operand" "r")))
-   (clobber (match_scratch:SI 3 "=&r"))
-   (clobber (match_scratch:V8HI 4 "=&r"))
-   (clobber (match_scratch:V8HI 5 "=&r"))]
-  "LVX_2"
-  "#"
-  ""
-  [(set (match_dup 3) (neg:SI (match_dup 2)))
-   (set (match_dup 4) (lshiftrt:V8HI (match_dup 1) (match_dup 2)))
-   (set (match_dup 5) (ashift:V8HI (match_dup 1) (match_dup 3)))
-   (set (match_dup 0) (ior:V8HI (match_dup 4) (match_dup 5)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (SImode);
-    if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (V8HImode);
-    if (GET_CODE (operands[5]) == SCRATCH)
-      operands[5] = gen_reg_rtx (V8HImode);
-  }
 )
 
 
@@ -2685,8 +2080,8 @@
 )
 
 (define_insn "clrsb<mode>2"
-  [(set (match_operand:V128J 0 "register_operand" "=r")
-        (clrsb:V128J (match_operand:V128J 1 "register_operand" "r")))]
+  [(set (match_operand:V128CZ 0 "register_operand" "=r")
+        (clrsb:V128CZ (match_operand:V128CZ 1 "register_operand" "r")))]
   "LVX_2"
   "cls<suffix> %0 = %1"
   [(set_attr "type" "alu")
@@ -2695,8 +2090,8 @@
 )
 
 (define_insn "clz<mode>2"
-  [(set (match_operand:V128J 0 "register_operand" "=r")
-        (clz:V128J (match_operand:V128J 1 "register_operand" "r")))]
+  [(set (match_operand:V128CZ 0 "register_operand" "=r")
+        (clz:V128CZ (match_operand:V128CZ 1 "register_operand" "r")))]
   "LVX_2"
   "clz<suffix> %0 = %1"
   [(set_attr "type" "alu")
@@ -2705,8 +2100,8 @@
 )
 
 (define_insn "ctz<mode>2"
-  [(set (match_operand:V128J 0 "register_operand" "=r")
-        (ctz:V128J (match_operand:V128J 1 "register_operand" "r")))]
+  [(set (match_operand:V128CZ 0 "register_operand" "=r")
+        (ctz:V128CZ (match_operand:V128CZ 1 "register_operand" "r")))]
   "LVX_2"
   "ctz<suffix> %0 = %1"
   [(set_attr "type" "alu")
@@ -2715,8 +2110,8 @@
 )
 
 (define_insn "popcount<mode>2"
-  [(set (match_operand:V128J 0 "register_operand" "=r")
-        (popcount:V128J (match_operand:V128J 1 "register_operand" "r")))]
+  [(set (match_operand:V128CZ 0 "register_operand" "=r")
+        (popcount:V128CZ (match_operand:V128CZ 1 "register_operand" "r")))]
   "LVX_2"
   "cbs<suffix> %0 = %1"
   [(set_attr "type" "alu")
@@ -3038,39 +2433,6 @@
 
 
 ;; V4SI
-
-(define_insn "mulv4si3"
-  [(set (match_operand:V4SI 0 "register_operand" "=r")
-        (mult:V4SI (match_operand:V4SI 1 "register_operand" "r")
-                   (match_operand:V4SI 2 "register_operand" "r")))]
-  "LVX_2"
-  "mulwq %0 = %1, %2"
-  [(set_attr "type" "imul")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "rotlv4si3"
-  [(set (match_operand:V4SI 0 "register_operand" "=r")
-        (rotate:V4SI (match_operand:V4SI 1 "register_operand" "r")
-                     (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "LVX_2"
-  "rolwq %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "rotrv4si3"
-  [(set (match_operand:V4SI 0 "register_operand" "=r")
-        (rotatert:V4SI (match_operand:V4SI 1 "register_operand" "r")
-                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "LVX_2"
-  "rorwq %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
 
 ;; V2DI
 
@@ -3681,7 +3043,7 @@
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (ss_plus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
                     (match_operand:V256J 2 "register_operand" "r")))]
-  "LVX_2 && (HAVE_LVX_HAVE_SS_PLUS_<MODE>)"
+  "LVX_2 && (HAVE_LVX_SS_PLUS_<MODE>)"
   {
     return "adds<hsuffix> %L0 = %1, %L2\n\tadds<hsuffix> %M0 = %1, %M2";
   }
@@ -4744,54 +4106,6 @@
 
 ;; V256J (V16HI V8SI V4DI)
 
-(define_insn_and_split "rotl<mode>3"
-  [(set (match_operand:V256JH 0 "register_operand" "=r")
-        (rotate:V256JH (match_operand:V256JH 1 "register_operand" "r")
-                      (match_operand:SI 2 "register_operand" "r")))
-   (clobber (match_scratch:SI 3 "=&r"))
-   (clobber (match_scratch:V256JH 4 "=&r"))
-   (clobber (match_scratch:V256JH 5 "=&r"))]
-  "LVX_2"
-  "#"
-  ""
-  [(set (match_dup 3) (neg:SI (match_dup 2)))
-   (set (match_dup 4) (ashift:V256JH (match_dup 1) (match_dup 2)))
-   (set (match_dup 5) (lshiftrt:V256JH (match_dup 1) (match_dup 3)))
-   (set (match_dup 0) (ior:V256JH (match_dup 4) (match_dup 5)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (SImode);
-    if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (<MODE>mode);
-    if (GET_CODE (operands[5]) == SCRATCH)
-      operands[5] = gen_reg_rtx (<MODE>mode);
-  }
-)
-
-(define_insn_and_split "rotr<mode>3"
-  [(set (match_operand:V256JH 0 "register_operand" "=r")
-        (rotatert:V256JH (match_operand:V256JH 1 "register_operand" "r")
-                        (match_operand:SI 2 "register_operand" "r")))
-   (clobber (match_scratch:SI 3 "=&r"))
-   (clobber (match_scratch:V256JH 4 "=&r"))
-   (clobber (match_scratch:V256JH 5 "=&r"))]
-  "LVX_2"
-  "#"
-  ""
-  [(set (match_dup 3) (neg:SI (match_dup 2)))
-   (set (match_dup 4) (lshiftrt:V256JH (match_dup 1) (match_dup 2)))
-   (set (match_dup 5) (ashift:V256JH (match_dup 1) (match_dup 3)))
-   (set (match_dup 0) (ior:V256JH (match_dup 4) (match_dup 5)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (SImode);
-    if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (<MODE>mode);
-    if (GET_CODE (operands[5]) == SCRATCH)
-      operands[5] = gen_reg_rtx (<MODE>mode);
-  }
-)
-
 (define_insn "neg<mode>2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
         (neg:V256J (match_operand:V256J 1 "register_operand" "r")))]
@@ -4905,8 +4219,8 @@
 )
 
 (define_insn_and_split "clrsb<mode>2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (clrsb:V256J (match_operand:V256J 1 "register_operand" "r")))]
+  [(set (match_operand:V256CZ 0 "register_operand" "=r")
+        (clrsb:V256CZ (match_operand:V256CZ 1 "register_operand" "r")))]
   "LVX_2"
   "#"
   "reload_completed"
@@ -4920,8 +4234,8 @@
 )
 
 (define_insn_and_split "clz<mode>2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (clz:V256J (match_operand:V256J 1 "register_operand" "r")))]
+  [(set (match_operand:V256CZ 0 "register_operand" "=r")
+        (clz:V256CZ (match_operand:V256CZ 1 "register_operand" "r")))]
   "LVX_2"
   "#"
   "reload_completed"
@@ -4935,8 +4249,8 @@
 )
 
 (define_insn_and_split "ctz<mode>2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (ctz:V256J (match_operand:V256J 1 "register_operand" "r")))]
+  [(set (match_operand:V256CZ 0 "register_operand" "=r")
+        (ctz:V256CZ (match_operand:V256CZ 1 "register_operand" "r")))]
   "LVX_2"
   "#"
   "reload_completed"
@@ -4950,8 +4264,8 @@
 )
 
 (define_insn_and_split "popcount<mode>2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (popcount:V256J (match_operand:V256J 1 "register_operand" "r")))]
+  [(set (match_operand:V256CZ 0 "register_operand" "=r")
+        (popcount:V256CZ (match_operand:V256CZ 1 "register_operand" "r")))]
   "LVX_2"
   "#"
   "reload_completed"
@@ -5293,33 +4607,6 @@
   "LVX_2"
   {
     return "slldp %L0 = %L1, %2\n\tslldp %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-;; Native 2x64-lane rotate at 256 bits: two ROLDP halves (cf. ashlv4di3).
-(define_insn "rotlv4di3"
-  [(set (match_operand:V4DI 0 "register_operand" "=r")
-        (rotate:V4DI (match_operand:V4DI 1 "register_operand" "r")
-                     (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "LVX_2"
-  {
-    return "roldp %L0 = %L1, %2\n\troldp %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn "rotrv4di3"
-  [(set (match_operand:V4DI 0 "register_operand" "=r")
-        (rotatert:V4DI (match_operand:V4DI 1 "register_operand" "r")
-                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "LVX_2"
-  {
-    return "rordp %L0 = %L1, %2\n\trordp %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2")
@@ -7125,7 +6412,7 @@
 ;; list is the measured-bad operations and not the whole surface.
 ;; -------------------------------------------------------------------------
 
-(define_mode_iterator V64I [V4HI V2SI])
+(define_mode_iterator V64I [V8QI V4HI V2SI])
 
 
 (define_code_iterator V64I_SHIFT [ashift ashiftrt lshiftrt])
@@ -7134,8 +6421,9 @@
 ;; The shifts take their count as one SImode value, exactly as the 128-bit
 ;; sll<suffix>/sra<suffix>/srl<suffix> patterns do -- it is a shift amount,
 ;; not a lane.  A pattern's condition must stay a compile-time expression, so
-;; the iterator says statically what is available: the 128-bit shifts are
-;; written over S128I (V8HI V4SI), which is what V4HI and V2SI widen into.
+;; the iterator says statically what is available: every widened mode here
+;; has its 128-bit shift (SLLBX/SLLHO/SLLWQ and the arithmetic and logical
+;; right shifts beside them).
 ;; (Asking optab_handler in the condition does not work -- it would query the
 ;; table init_all_optabs is filling when it evaluates the condition, and the
 ;; answer comes back no, disabling the pattern for good.)
@@ -7171,16 +6459,18 @@
   }
 )
 
-;; MUL is the exception: mul<mode>3 is written over V128I (V8HI V2DI), so a
-;; V4HI multiply widens into V8HI and a V2SI one has nothing to widen into
-;; and keeps the middle end's lowering.
-(define_expand "mulv4hi3"
-  [(set (match_operand:V4HI 0 "register_operand")
-        (mult:V4HI (match_operand:V4HI 1 "register_operand")
-                   (match_operand:V4HI 2 "register_operand")))]
+;; MUL reaches every width, but not equally.  The ISA's packed multiplies are
+;; MULHO, MULWQ and MULDP -- there is no MULBX -- so V4HI and V2SI widen into
+;; one instruction each, while V8QI widens into the V16QI multiply, itself
+;; synthesised from two MULHO and a mask.  That is still worth doing: eleven
+;; instructions against the thirty-three the middle end's lowering takes.
+(define_expand "mul<mode>3"
+  [(set (match_operand:V64I 0 "register_operand")
+        (mult:V64I (match_operand:V64I 1 "register_operand")
+                   (match_operand:V64I 2 "register_operand")))]
   "LVX_2"
   {
-    lvx_expand_widen64 (MULT, V8HImode, operands);
+    lvx_expand_widen64 (MULT, <DMODE>mode, operands);
     DONE;
   }
 )

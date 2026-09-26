@@ -5590,9 +5590,8 @@ lvx_vector_mode_supported_p (enum machine_mode mode)
 
      The four-byte modes (V2HI, V4QI) stay out: passing one as an argument
      ICEd in emit_move_multi_word, which is what the lower bound below was
-     added for (gcc.c-torture/execute/20050316-1.c).  V8QI stays out too --
-     its add would widen into V16QI, which add<mode>3 does not cover.  */
-  if (mode == V4HImode || mode == V2SImode)
+     added for (gcc.c-torture/execute/20050316-1.c).  */
+  if (mode == V8QImode || mode == V4HImode || mode == V2SImode)
     return true;
 
   unsigned size = GET_MODE_SIZE (mode);

@@ -581,8 +581,8 @@
 )
 
 (define_expand "lvx_bitcnt<suffix>"
-  [(match_operand:V128J 0 "register_operand" "")
-   (match_operand:V128J 1 "register_operand" "")
+  [(match_operand:V128CZ 0 "register_operand" "")
+   (match_operand:V128CZ 1 "register_operand" "")
    (match_operand 2 "" "")]
   ""
   {
@@ -602,8 +602,8 @@
 )
 
 (define_expand "lvx_bitcnt<suffix>"
-  [(match_operand:V256J 0 "register_operand" "")
-   (match_operand:V256J 1 "register_operand" "")
+  [(match_operand:V256CZ 0 "register_operand" "")
+   (match_operand:V256CZ 1 "register_operand" "")
    (match_operand 2 "" "")]
   ""
   {
@@ -806,14 +806,19 @@
   }
 )
 
+;; EXTLZ* is exactly what these do: select the even or odd lanes and
+;; zero-extend them to the next width.  They used to be hand-built from a
+;; repeating 128-bit mask, which the immediate splat no longer produces for a
+;; quadword operand -- ANDQ sign-extends its immediate, as a 128-bit scalar
+;; should -- and the odd-lane-in-place forms put the lane back with a shift.
 (define_insn "lvx_zxebho"
   [(set (match_operand:V8HI 0 "register_operand" "=r")
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  ""
-  "andq %0 = %1, 0x00FF00FF.@"
+  "LVX_2"
+  "extlzbho %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite_x")
-   (set_attr "length"           "8")]
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "lvx_zxebhx"
@@ -821,11 +826,11 @@
         (unspec:V16HI [(match_operand:V32QI 1 "register_operand" "r")] UNSPEC_ZXE))]
   "LVX_2"
   {
-    return "andq %L0 = %L1, 0x00FF00FF.@\n\tandq %M0 = %M1, 0x00FF00FF.@";
+    return "extlzbho %L0 = %L1\n\textlzbho %M0 = %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
-   (set_attr "length"          "32")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
 (define_insn_and_split "lvx_zxebhv"
@@ -844,11 +849,11 @@
 (define_insn "lvx_zxehwq"
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  ""
-  "andq %0 = %1, 0x0000FFFF.@"
+  "LVX_2"
+  "extlzhwq %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite_x")
-   (set_attr "length"           "8")]
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "lvx_zxehwo"
@@ -856,11 +861,11 @@
         (unspec:V8SI [(match_operand:V16HI 1 "register_operand" "r")] UNSPEC_ZXE))]
   "LVX_2"
   {
-    return "andq %L0 = %L1, 0x0000FFFF.@\n\tandq %M0 = %M1, 0x0000FFFF.@";
+    return "extlzhwq %L0 = %L1\n\textlzhwq %M0 = %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
-   (set_attr "length"          "32")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "lvx_zxewdp"
@@ -1087,11 +1092,13 @@
 (define_insn "lvx_qxobho"
   [(set (match_operand:V8HI 0 "register_operand" "=r")
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_QXO))]
-  ""
-  "andq %0 = %1, 0xFF00FF00.@"
+  "LVX_2"
+  {
+    return "extlzbho.o %0 = %1\n\tsllho %0 = %0, 8";
+  }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite_x")
-   (set_attr "length"           "8")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "lvx_qxobhx"
@@ -1099,11 +1106,12 @@
         (unspec:V16HI [(match_operand:V32QI 1 "register_operand" "r")] UNSPEC_QXO))]
   "LVX_2"
   {
-    return "andq %L0 = %L1, 0xFF00FF00.@\n\tandq %M0 = %M1, 0xFF00FF00.@";
+    return "extlzbho.o %L0 = %L1\n\tsllho %L0 = %L0, 8\n\t"
+           "extlzbho.o %M0 = %M1\n\tsllho %M0 = %M0, 8";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
-   (set_attr "length"          "32")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "16")]
 )
 
 (define_insn_and_split "lvx_qxobhv"
@@ -1122,11 +1130,13 @@
 (define_insn "lvx_qxohwq"
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_QXO))]
-  ""
-  "andq %0 = %1, 0xFFFF0000.@"
+  "LVX_2"
+  {
+    return "extlzhwq.o %0 = %1\n\tsllwq %0 = %0, 16";
+  }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite_x")
-   (set_attr "length"           "8")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "lvx_qxohwo"
@@ -1134,11 +1144,12 @@
         (unspec:V8SI [(match_operand:V16HI 1 "register_operand" "r")] UNSPEC_QXO))]
   "LVX_2"
   {
-    return "andq %L0 = %L1, 0xFFFF0000.@\n\tandq %M0 = %M1, 0xFFFF0000.@";
+    return "extlzhwq.o %L0 = %L1\n\tsllwq %L0 = %L0, 16\n\t"
+           "extlzhwq.o %M0 = %M1\n\tsllwq %M0 = %M0, 16";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
-   (set_attr "length"          "32")]
+   (set_attr "issue" "lite2")
+   (set_attr "length" "16")]
 )
 
 (define_expand "lvx_qxowdp"
@@ -2215,10 +2226,10 @@
         (unspec:V2DI [(match_operand:V2DI 1 "register_operand" "r")
                       (match_operand:V2DI 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
   "LVX_2 && (HAVE_LVX_SBMMT8_V2DI)"
-  "sbmmt8 %x0 = %x1, %x2\n\tsbmmt8 %y0 = %y1, %y2"
+  "sbmmt8dp %0 = %1, %2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
-   (set_attr "length"         "8")]
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
 )
 
 (define_insn "*sbmmt8dp_s1"
@@ -2226,7 +2237,7 @@
         (unspec:ALL128 [(vec_duplicate:V2DI (match_operand:DI 1 "register_operand" "r"))
                         (match_operand:SIMD128 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
   "HAVE_LVX_SBMMT8_<ALL128:MODE>"
-  "sbmmt8 %x0 = %1, %x2\n\tsbmmt8 %y0 = %1, %y2"
+  "sbmmt8d %x0 = %1, %x2\n\tsbmmt8d %y0 = %1, %y2"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny2")
    (set_attr "length"         "8")]
@@ -2237,7 +2248,7 @@
         (unspec:ALL128 [(match_operand:SIMD128 1 "register_operand" "r")
                         (vec_duplicate:V2DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMMT8D))]
   "HAVE_LVX_SBMMT8_<ALL128:MODE>"
-  "sbmmt8 %x0 = %x1, %2\n\tsbmmt8 %y0 = %y1, %2"
+  "sbmmt8d %x0 = %x1, %2\n\tsbmmt8d %y0 = %y1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny2")
    (set_attr "length"         "8")]
@@ -2305,12 +2316,11 @@
                       (match_operand:V4DI 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
   "LVX_2 && (HAVE_LVX_SBMMT8_V4DI)"
   {
-    return "sbmmt8 %x0 = %x1, %x2\n\tsbmmt8 %y0 = %y1, %y2\n\t"
-           "sbmmt8 %z0 = %z1, %z2\n\tsbmmt8 %t0 = %t1, %t2";
+    return "sbmmt8dp %L0 = %L1, %L2\n\tsbmmt8dp %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny4")
-   (set_attr "length"        "16")]
+   (set_attr "issue" "tiny2")
+   (set_attr "length" "8")]
 )
 
 (define_insn "*sbmmt8dq_s1"
@@ -2319,8 +2329,8 @@
                         (match_operand:SIMD256 2 "register_operand" "r")] UNSPEC_SBMMT8D))]
   "LVX_2 && (HAVE_LVX_SBMMT8_V4DI)"
   {
-    return "sbmmt8 %x0 = %1, %x2\n\tsbmmt8 %y0 = %1, %y2\n\t"
-           "sbmmt8 %z0 = %1, %z2\n\tsbmmt8 %t0 = %1, %t2";
+    return "sbmmt8d %x0 = %1, %x2\n\tsbmmt8d %y0 = %1, %y2\n\t"
+           "sbmmt8d %z0 = %1, %z2\n\tsbmmt8d %t0 = %1, %t2";
   }
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny4")
@@ -2333,8 +2343,8 @@
                         (vec_duplicate:V4DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMMT8D))]
   "LVX_2 && (HAVE_LVX_SBMMT8_V4DI)"
   {
-    return "sbmmt8 %x0 = %x1, %2\n\tsbmmt8 %y0 = %y1, %2\n\t"
-           "sbmmt8 %z0 = %z1, %2\n\tsbmmt8 %t0 = %t1, %2";
+    return "sbmmt8d %x0 = %x1, %2\n\tsbmmt8d %y0 = %y1, %2\n\t"
+           "sbmmt8d %z0 = %z1, %2\n\tsbmmt8d %t0 = %t1, %2";
   }
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny4")
