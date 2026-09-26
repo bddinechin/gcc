@@ -170,6 +170,9 @@ lvx_multiply_class_p (enum attr_type type)
    shared only when kind, lanetodo and the key register all match.  */
 enum lvx_bcu_kind { BCU_PLAIN, BCU_GUARD, BCU_MASKS, BCU_MASKM };
 
+/* Defined with the scheduler hooks, used by lvx_insn_cost above them.  */
+static bool lvx_masked_prefix (rtx_insn *, enum lvx_bcu_kind *, rtx *, int *);
+
 /* SCHED2 data structure.  */
 static struct lvx_sched2
 {
@@ -195,6 +198,7 @@ static struct lvx_sched2
 #define LVX_SCHED2_INSN_START 2	// Start instruction bundle.
 #define LVX_SCHED2_INSN_STOP 4	// Stop instruction bundle.
 #define LVX_SCHED2_INSN_STALL 8	// Stall (scoreboard bug).
+#define LVX_SYLLABLE_SIZE 4
 #define LVX_SCHED2_BUNDLE_SIZE 32
 
 struct lvx_sched_resources
@@ -7664,8 +7668,17 @@ lvx_insn_cost (rtx_insn *insn, bool speed)
 
   if (get_attr_type (insn) == TYPE_NOP)
     return 0;
+
+  /* A guarded or masked op is preceded by a GUARD, MASKS or MASKM syllable
+     that the length attribute does not count, the prefix not being part of
+     the insn.  Ops of one bundle sharing a prefix share the syllable, which
+     nothing here can know, so charge it: the alternative is charging nothing,
+     and a predicated insn is not free.  */
+  bool prefixed = (GET_CODE (PATTERN (insn)) == COND_EXEC
+		   || lvx_masked_prefix (insn, NULL, NULL, NULL));
+
   if (!speed)
-    return get_attr_length (insn);
+    return get_attr_length (insn) + (prefixed ? LVX_SYLLABLE_SIZE : 0);
 
   /* What an instruction costs is how many instructions it is, weighted by how
      scarce the unit it needs is, plus the latency it makes a consumer wait.
@@ -7681,6 +7694,8 @@ lvx_insn_cost (rtx_insn *insn, bool speed)
 
   int latency = insn_default_latency (insn);
   int cost = COSTS_N_INSNS (weight * r->ninsns) + (latency > 0 ? latency - 1 : 0);
+  if (prefixed)
+    cost += COSTS_N_INSNS (lvx_issue_weight (ISSUE_BCU_BRRP));
 
   if (DUMP_COSTS)
     {
@@ -8189,7 +8204,7 @@ lvx_sched_finish (FILE *file ATTRIBUTE_UNUSED, int verbose ATTRIBUTE_UNUSED)
    false.  This is the masked counterpart of reading XEXP (PATTERN, 0) for a
    guarded COND_EXEC: a fixed sub-rtx the scheduler keys BCU-slot sharing on,
    and, being a use of the mask register, the dataflow edge from the COMP or
-   EXTB*D that produced it.  */
+   EXTB*D that produced it.  KIND, MASK and LANETODO may be null.  */
 static bool
 lvx_masked_prefix (rtx_insn *insn, enum lvx_bcu_kind *kind, rtx *mask,
 		   int *lanetodo)
@@ -8203,14 +8218,21 @@ lvx_masked_prefix (rtx_insn *insn, enum lvx_bcu_kind *kind, rtx *mask,
       if (GET_CODE (e) != USE || GET_CODE (XEXP (e, 0)) != UNSPEC)
 	continue;
       rtx u = XEXP (e, 0);
+      enum lvx_bcu_kind k;
       if (XINT (u, 1) == UNSPEC_MASKS)
-	*kind = BCU_MASKS;
+	k = BCU_MASKS;
       else if (XINT (u, 1) == UNSPEC_MASKM)
-	*kind = BCU_MASKM;
+	k = BCU_MASKM;
       else
 	continue;
-      *mask = XVECEXP (u, 0, 0);
-      *lanetodo = INTVAL (XVECEXP (u, 0, 1));
+      /* KIND, MASK and LANETODO are optional: a caller that only asks
+	 whether the insn is masked passes none of them.  */
+      if (kind)
+	*kind = k;
+      if (mask)
+	*mask = XVECEXP (u, 0, 0);
+      if (lanetodo)
+	*lanetodo = INTVAL (XVECEXP (u, 0, 1));
       return true;
     }
   return false;
@@ -8224,6 +8246,24 @@ lvx_masked_prefix (rtx_insn *insn, enum lvx_bcu_kind *kind, rtx *mask,
    or a fresh syllable was reserved (committed to CURR_STATE), and 1 when the
    bundle cannot take it -- both slots already hold distinct prefixes, or the
    syllable does not fit -- so the caller starts a new cycle.  */
+/* Is an identical prefix already in the bundle being built?  Then this op
+   shares its syllable and adds nothing, neither a slot nor four bytes.  A
+   pure test, so the byte accounting can ask before the slot is claimed.  */
+static bool
+lvx_bcu_prefix_shared_p (enum lvx_bcu_kind kind, int lanetodo, rtx key)
+{
+  for (int s = 0; s < 2; s++)
+    {
+      if (!lvx_sched2->bcu_use[s])
+	return false;
+      if (lvx_sched2->bcu_kind[s] == kind
+	  && lvx_sched2->bcu_lanetodo[s] == lanetodo
+	  && rtx_equal_p (lvx_sched2->bcu_use[s], key))
+	return true;
+    }
+  return false;
+}
+
 static int
 lvx_bcu_prefix_slot (state_t curr_state, void *bundle_state,
 		     enum lvx_bcu_kind kind, int lanetodo, rtx key)
@@ -8277,19 +8317,19 @@ lvx_sched_dfa_new_cycle (FILE *, int, rtx_insn *insn, int last_clock,
 	 builtins, and from any sequence long enough.  Asking before the BCU
 	 bookkeeping below rather than after it also leaves bcu_use[]
 	 untouched for an insn that is not going to issue here.  */
-      if (lvx_sched2->bundle_size + get_attr_length (insn)
-	  > LVX_SCHED2_BUNDLE_SIZE)
-	return 1;
-
+      /* What prefix, if any, this op carries.  Decided before the capacity
+	 check below, because a prefix that is not already in the bundle costs
+	 a syllable of its own -- four bytes the length attribute does not
+	 include, since the prefix is not part of the insn.  */
       enum attr_bcu_used bcu_used = get_attr_bcu_used (insn);
+      rtx pattern = PATTERN (insn);
+      enum lvx_bcu_kind kind = BCU_PLAIN;
+      rtx key = NULL_RTX;
+      int lanetodo = 0;
+      bool prefixed = false;
+
       if (bcu_used == BCU_USED_YES)
 	{
-	  rtx pattern = PATTERN (insn);
-	  enum lvx_bcu_kind kind = BCU_PLAIN;
-	  rtx key = NULL_RTX;
-	  int lanetodo = 0;
-	  bool prefixed = false;
-
 	  if (GET_CODE (pattern) == COND_EXEC)
 	    /* An if-converted (guarded) insn: its GUARD condition is the key. */
 	    {
@@ -8302,7 +8342,20 @@ lvx_sched_dfa_new_cycle (FILE *, int, rtx_insn *insn, int last_clock,
 	       An insn is never both guarded and masked -- one op, one prefix
 	       syllable -- and COND_EXEC is handled above, so this is exclusive. */
 	    prefixed = true;
+	}
 
+      /* The bytes this op adds: its own syllables, plus a prefix syllable
+	 when it brings a prefix no other op in the bundle already carries.  */
+      int prefix_bytes = (prefixed
+			  && !lvx_bcu_prefix_shared_p (kind, lanetodo, key))
+			 ? LVX_SYLLABLE_SIZE : 0;
+
+      if (lvx_sched2->bundle_size + get_attr_length (insn) + prefix_bytes
+	  > LVX_SCHED2_BUNDLE_SIZE)
+	return 1;
+
+      if (bcu_used == BCU_USED_YES)
+	{
 	  if (prefixed)
 	    /* GUARD, MASKS and MASKM all spend one BCU_BRRP prefix syllable, and
 	       two ops sharing an identical prefix spend only one between them. */
@@ -8333,7 +8386,7 @@ lvx_sched_dfa_new_cycle (FILE *, int, rtx_insn *insn, int last_clock,
 	    }
 	}
 
-      lvx_sched2->bundle_size += get_attr_length (insn);
+      lvx_sched2->bundle_size += get_attr_length (insn) + prefix_bytes;
     }
 
   // Use this hook to record the cycle and flags of INSN in SCHED2.
