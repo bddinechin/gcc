@@ -2179,91 +2179,107 @@
 ;; V128L
 
 (define_insn "and<mode>3"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (and:V128L (match_operand:V128L 1 "register_operand" "r")
-                   (match_operand:V128L 2 "register_operand" "r")))]
+  [(set (match_operand:V128L 0 "register_operand" "=r,r")
+        (and:V128L (match_operand:V128L 1 "register_operand" "r,r")
+                   (match_operand:V128L 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
-  "andq %0 = %1, %2"
+  "@
+   andq %0 = %1, %2
+   andq %0 = %1, %W2.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 (define_insn "*nand<mode>3"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (ior:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r"))
-                   (not:V128L (match_operand:V128L 2 "register_operand" "r"))))]
+  [(set (match_operand:V128L 0 "register_operand" "=r,r")
+        (ior:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r,r"))
+                   (not:V128L (match_operand:V128L 2 "reg_or_splat32_operand" "r,SX4"))))]
   "LVX_2"
-  "nandq %0 = %1, %2"
+  "@
+   nandq %0 = %1, %2
+   nandq %0 = %1, %W2.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 (define_insn "*andn<mode>3"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (and:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r"))
-                   (match_operand:V128L 2 "register_operand" "r")))]
+  [(set (match_operand:V128L 0 "register_operand" "=r,r")
+        (and:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r,r"))
+                   (match_operand:V128L 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
-  "andnq %0 = %1, %2"
+  "@
+   andnq %0 = %1, %2
+   andnq %0 = %1, %W2.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 (define_insn "ior<mode>3"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (ior:V128L (match_operand:V128L 1 "register_operand" "r")
-                   (match_operand:V128L 2 "register_operand" "r")))]
+  [(set (match_operand:V128L 0 "register_operand" "=r,r")
+        (ior:V128L (match_operand:V128L 1 "register_operand" "r,r")
+                   (match_operand:V128L 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
-  "iorq %0 = %1, %2"
+  "@
+   iorq %0 = %1, %2
+   iorq %0 = %1, %W2.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 (define_insn "*nior<mode>3"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (and:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r"))
-                   (not:V128L (match_operand:V128L 2 "register_operand" "r"))))]
+  [(set (match_operand:V128L 0 "register_operand" "=r,r")
+        (and:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r,r"))
+                   (not:V128L (match_operand:V128L 2 "reg_or_splat32_operand" "r,SX4"))))]
   "LVX_2"
-  "niorq %0 = %1, %2"
+  "@
+   niorq %0 = %1, %2
+   niorq %0 = %1, %W2.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 (define_insn "*iorn<mode>3"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (ior:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r"))
-                   (match_operand:V128L 2 "register_operand" "r")))]
+  [(set (match_operand:V128L 0 "register_operand" "=r,r")
+        (ior:V128L (not:V128L (match_operand:V128L 1 "register_operand" "r,r"))
+                   (match_operand:V128L 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
-  "iornq %0 = %1, %2"
+  "@
+   iornq %0 = %1, %2
+   iornq %0 = %1, %W2.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 (define_insn "xor<mode>3"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (xor:V128L (match_operand:V128L 1 "register_operand" "r")
-                   (match_operand:V128L 2 "register_operand" "r")))]
+  [(set (match_operand:V128L 0 "register_operand" "=r,r")
+        (xor:V128L (match_operand:V128L 1 "register_operand" "r,r")
+                   (match_operand:V128L 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
-  "eorq %0 = %1, %2"
+  "@
+   eorq %0 = %1, %2
+   eorq %0 = %1, %W2.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 (define_insn "*nxor<mode>3"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (not:V128L (xor:V128L (match_operand:V128L 1 "register_operand" "r")
-                              (match_operand:V128L 2 "register_operand" "r"))))]
+  [(set (match_operand:V128L 0 "register_operand" "=r,r")
+        (not:V128L (xor:V128L (match_operand:V128L 1 "register_operand" "r,r")
+                              (match_operand:V128L 2 "reg_or_splat32_operand" "r,SX4"))))]
   "LVX_2"
-  "neorq %0 = %1, %2"
+  "@
+   neorq %0 = %1, %2
+   neorq %0 = %1, %W2.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 (define_insn "one_cmpl<mode>2"
@@ -4062,107 +4078,123 @@
 ;; V256L
 
 (define_insn "and<mode>3"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (and:V256L (match_operand:V256L 1 "register_operand" "r")
-                   (match_operand:V256L 2 "register_operand" "r")))]
+  [(set (match_operand:V256L 0 "register_operand" "=r,r")
+        (and:V256L (match_operand:V256L 1 "register_operand" "r,r")
+                   (match_operand:V256L 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "andq %L0 = %L1, %W2.@\n\tandq %M0 = %M1, %W2.@";
     return "andq %L0 = %L1, %L2\n\tandq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*nand<mode>3"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (ior:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r"))
-                   (not:V256L (match_operand:V256L 2 "register_operand" "r"))))]
+  [(set (match_operand:V256L 0 "register_operand" "=r,r")
+        (ior:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r,r"))
+                   (not:V256L (match_operand:V256L 2 "reg_or_splat32_operand" "r,SX4"))))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "nandq %L0 = %L1, %W2.@\n\tnandq %M0 = %M1, %W2.@";
     return "nandq %L0 = %L1, %L2\n\tnandq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*andn<mode>3"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (and:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r"))
-                   (match_operand:V256L 2 "register_operand" "r")))]
+  [(set (match_operand:V256L 0 "register_operand" "=r,r")
+        (and:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r,r"))
+                   (match_operand:V256L 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "andnq %L0 = %L1, %W2.@\n\tandnq %M0 = %M1, %W2.@";
     return "andnq %L0 = %L1, %L2\n\tandnq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "ior<mode>3"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (ior:V256L (match_operand:V256L 1 "register_operand" "r")
-                   (match_operand:V256L 2 "register_operand" "r")))]
+  [(set (match_operand:V256L 0 "register_operand" "=r,r")
+        (ior:V256L (match_operand:V256L 1 "register_operand" "r,r")
+                   (match_operand:V256L 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "iorq %L0 = %L1, %W2.@\n\tiorq %M0 = %M1, %W2.@";
     return "iorq %L0 = %L1, %L2\n\tiorq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*nior<mode>3"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (and:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r"))
-                   (not:V256L (match_operand:V256L 2 "register_operand" "r"))))]
+  [(set (match_operand:V256L 0 "register_operand" "=r,r")
+        (and:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r,r"))
+                   (not:V256L (match_operand:V256L 2 "reg_or_splat32_operand" "r,SX4"))))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "niorq %L0 = %L1, %W2.@\n\tniorq %M0 = %M1, %W2.@";
     return "niorq %L0 = %L1, %L2\n\tniorq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*iorn<mode>3"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (ior:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r"))
-                   (match_operand:V256L 2 "register_operand" "r")))]
+  [(set (match_operand:V256L 0 "register_operand" "=r,r")
+        (ior:V256L (not:V256L (match_operand:V256L 1 "register_operand" "r,r"))
+                   (match_operand:V256L 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "iornq %L0 = %L1, %W2.@\n\tiornq %M0 = %M1, %W2.@";
     return "iornq %L0 = %L1, %L2\n\tiornq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "xor<mode>3"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (xor:V256L (match_operand:V256L 1 "register_operand" "r")
-                   (match_operand:V256L 2 "register_operand" "r")))]
+  [(set (match_operand:V256L 0 "register_operand" "=r,r")
+        (xor:V256L (match_operand:V256L 1 "register_operand" "r,r")
+                   (match_operand:V256L 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "eorq %L0 = %L1, %W2.@\n\teorq %M0 = %M1, %W2.@";
     return "eorq %L0 = %L1, %L2\n\teorq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*nxor<mode>3"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (not:V256L (xor:V256L (match_operand:V256L 1 "register_operand" "r")
-                              (match_operand:V256L 2 "register_operand" "r"))))]
+  [(set (match_operand:V256L 0 "register_operand" "=r,r")
+        (not:V256L (xor:V256L (match_operand:V256L 1 "register_operand" "r,r")
+                              (match_operand:V256L 2 "reg_or_splat32_operand" "r,SX4"))))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "neorq %L0 = %L1, %W2.@\n\tneorq %M0 = %M1, %W2.@";
     return "neorq %L0 = %L1, %L2\n\tneorq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 

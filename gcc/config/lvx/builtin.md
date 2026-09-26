@@ -1093,11 +1093,9 @@
   [(set (match_operand:V8HI 0 "register_operand" "=r")
         (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_QXO))]
   "LVX_2"
-  {
-    return "extlzbho.o %0 = %1\n\tsllho %0 = %0, 8";
-  }
+  "andq %0 = %1, 0xFF00FF00.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
+   (set_attr "issue" "lite_x")
    (set_attr "length" "8")]
 )
 
@@ -1106,11 +1104,10 @@
         (unspec:V16HI [(match_operand:V32QI 1 "register_operand" "r")] UNSPEC_QXO))]
   "LVX_2"
   {
-    return "extlzbho.o %L0 = %L1\n\tsllho %L0 = %L0, 8\n\t"
-           "extlzbho.o %M0 = %M1\n\tsllho %M0 = %M0, 8";
+    return "andq %L0 = %L1, 0xFF00FF00.@\n\tandq %M0 = %M1, 0xFF00FF00.@";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
+   (set_attr "issue" "lite2_x2")
    (set_attr "length" "16")]
 )
 
@@ -1131,11 +1128,9 @@
   [(set (match_operand:V4SI 0 "register_operand" "=r")
         (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_QXO))]
   "LVX_2"
-  {
-    return "extlzhwq.o %0 = %1\n\tsllwq %0 = %0, 16";
-  }
+  "andq %0 = %1, 0xFFFF0000.@"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
+   (set_attr "issue" "lite_x")
    (set_attr "length" "8")]
 )
 
@@ -1144,11 +1139,10 @@
         (unspec:V8SI [(match_operand:V16HI 1 "register_operand" "r")] UNSPEC_QXO))]
   "LVX_2"
   {
-    return "extlzhwq.o %L0 = %L1\n\tsllwq %L0 = %L0, 16\n\t"
-           "extlzhwq.o %M0 = %M1\n\tsllwq %M0 = %M0, 16";
+    return "andq %L0 = %L1, 0xFFFF0000.@\n\tandq %M0 = %M1, 0xFFFF0000.@";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
+   (set_attr "issue" "lite2_x2")
    (set_attr "length" "16")]
 )
 
