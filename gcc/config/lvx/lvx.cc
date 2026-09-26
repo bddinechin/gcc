@@ -5579,6 +5579,22 @@ lvx_vector_mode_supported_p (enum machine_mode mode)
      type as an argument ICEs in emit_move_multi_word (gcc.c-torture/execute/
      20050316-1.c).  Bound it from below so those types are lowered
      element-wise instead.  */
+  /* V4HI and V2SI are claimed as well, and the arithmetic on them is done
+     on the 128-bit unit: the operand goes in the low half of a pair, the
+     packed instruction runs, and the low half is the result (the widening
+     expanders in vector.md, lvx_expand_widen64).  Claiming a mode is what
+     lets a pattern for it be selected at all, and it is cheap on its own --
+     with no pattern the middle end lowers exactly as it does for a mode it
+     was never told about, so the bitwise operations stay the one ANDD, IORD
+     or EORD that the 64-bit container is.
+
+     The four-byte modes (V2HI, V4QI) stay out: passing one as an argument
+     ICEd in emit_move_multi_word, which is what the lower bound below was
+     added for (gcc.c-torture/execute/20050316-1.c).  V8QI stays out too --
+     its add would widen into V16QI, which add<mode>3 does not cover.  */
+  if (mode == V4HImode || mode == V2SImode)
+    return true;
+
   unsigned size = GET_MODE_SIZE (mode);
   return (size >= 16 && size <= UNITS_PER_WORD * 8);
 }
@@ -6938,6 +6954,45 @@ lvx_support_vector_misalignment (enum machine_mode, int, bool, bool)
 #undef TARGET_VECTORIZE_SUPPORT_VECTOR_MISALIGNMENT
 #define TARGET_VECTORIZE_SUPPORT_VECTOR_MISALIGNMENT \
   lvx_support_vector_misalignment
+
+/* Expand OPERANDS[0] = (CODE OPERANDS[1] OPERANDS[2]) for a 64-bit vector
+   mode by doing it on the 128-bit unit WMODE: each vector operand goes in
+   the low half of a fresh pair, the packed instruction runs on all its
+   lanes, and the low half of the result is the answer.
+
+   The upper lanes are left undefined on purpose.  Integer arithmetic raises
+   nothing, so what they compute cannot be observed, and zeroing them would
+   cost an instruction apiece -- where the V2SF patterns must zero, floating
+   point writing the CS exception flags.
+
+   A shift count stays a scalar and is passed through.  */
+void
+lvx_expand_widen64 (enum rtx_code code, machine_mode wmode, rtx *operands)
+{
+  machine_mode mode = GET_MODE (operands[0]);
+
+  auto widen = [&] (rtx op) {
+    rtx wide = gen_reg_rtx (wmode);
+    emit_move_insn (simplify_gen_subreg (mode, wide, wmode, 0),
+		    force_reg (mode, op));
+    return wide;
+  };
+
+  rtx op1 = widen (operands[1]);
+  rtx op2 = operands[2];
+  if (GET_MODE (op2) == mode)
+    /* A lane operand widens like the first; a shift count is one SImode
+       value and goes through unchanged, as the 128-bit shifts take it.  */
+    op2 = widen (op2);
+
+  /* expand_simple_binop rather than a hand-built SET: it prepares the
+     operands the way the 128-bit pattern's predicates want them.  */
+  rtx dest = expand_simple_binop (wmode, code, op1, op2, NULL_RTX,
+				  code == LSHIFTRT || code == UMIN
+				  || code == UMAX, OPTAB_DIRECT);
+  gcc_assert (dest != NULL_RTX);
+  emit_move_insn (operands[0], simplify_gen_subreg (mode, dest, wmode, 0));
+}
 
 static machine_mode
 lvx_vectorize_preferred_simd_mode (scalar_mode mode)

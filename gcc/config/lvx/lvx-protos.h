@@ -92,6 +92,7 @@ enum lvx_variant
   LVX_VARIANT_PRELOAD		/* ".us" -- __preload              */
 };
 
+extern void lvx_expand_widen64 (enum rtx_code, machine_mode, rtx *);
 extern enum lvx_variant lvx_mem_variant (rtx mem);
 extern enum lvx_variant lvx_insn_variant (rtx_insn *insn);
 extern bool lvx_uncached_variant_p (enum lvx_variant variant);
