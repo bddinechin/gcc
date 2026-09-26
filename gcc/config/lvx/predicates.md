@@ -319,3 +319,13 @@
 (define_predicate "reg_or_splat32_operand"
   (ior (match_operand 0 "register_operand")
        (match_test "lvx_splat32_vector_const_p (op)")))
+
+;; A 128-bit SIMD source that a .M format can take at 64-bit lanes.  The format
+;; carries one 32-bit word and the machine replicates it over the operand, so
+;; the only value it can build there is the one whose halves are equal -- and
+;; the one worth having is zero: `a + 0.0` and `a * 0.0` survive folding because
+;; of signed zeros, and otherwise cost two MAKEDs and a register pair.  -0.0 is
+;; deliberately not this: its bit pattern is not zero, so it is not CONST0_RTX.
+(define_predicate "reg_or_const_zero_operand"
+  (ior (match_operand 0 "register_operand")
+       (match_operand 0 "const_zero_operand")))

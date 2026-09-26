@@ -4329,7 +4329,9 @@ lvx_has_43bit_vector_const_p (rtx x)
 bool
 lvx_splat32_vector_const_p (rtx x)
 {
-  if (GET_CODE (x) != CONST_VECTOR || GET_MODE_SIZE (GET_MODE (x)) != 16)
+  /* 128 bits, or a 256-bit operation that issues as two of them.  */
+  unsigned size = GET_MODE_SIZE (GET_MODE (x));
+  if (GET_CODE (x) != CONST_VECTOR || (size != 16 && size != 32))
     return false;
 
   /* Only the lane modes lvx_const_vector_value has an arm for: it asserts on
@@ -4348,8 +4350,9 @@ lvx_splat32_vector_const_p (rtx x)
      times.  For byte, half-word and word lanes any uniform constant is, and
      for 64-bit lanes only those whose halves repeat.  */
   HOST_WIDE_INT lo = lvx_const_vector_value (x, 0);
-  if (lo != lvx_const_vector_value (x, 1))
-    return false;
+  for (unsigned slice = 1; slice < size / 8; slice++)
+    if (lo != lvx_const_vector_value (x, slice))
+      return false;
   return ((lo >> 32) & 0xFFFFFFFF) == (lo & 0xFFFFFFFF);
 }
 

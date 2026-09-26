@@ -2851,16 +2851,18 @@
 )
 
 (define_insn "avg<mode>3_floor_2"
-  [(set (match_operand:S256I 0 "register_operand" "=r")
-        (unspec:S256I [(match_operand:S256I 1 "register_operand" "r")
-                       (match_operand:S256I 2 "register_operand" "r")] UNSPEC_AVG))]
+  [(set (match_operand:S256I 0 "register_operand" "=r,r")
+        (unspec:S256I [(match_operand:S256I 1 "register_operand" "r,r")
+                       (match_operand:S256I 2 "reg_or_splat32_operand" "r,SX4")] UNSPEC_AVG))]
   "LVX_2 && (HAVE_LVX_AVG_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "avg<hsuffix> %L0 = %L1, %W2\n\tavg<hsuffix> %M0 = %M1, %W2";
     return "avg<hsuffix> %L0 = %L1, %L2\n\tavg<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_expand "avg<mode>3_ceil"
@@ -2890,16 +2892,18 @@
 )
 
 (define_insn "avg<mode>3_ceil_2"
-  [(set (match_operand:S256I 0 "register_operand" "=r")
-        (unspec:S256I [(match_operand:S256I 1 "register_operand" "r")
-                       (match_operand:S256I 2 "register_operand" "r")] UNSPEC_AVGR))]
+  [(set (match_operand:S256I 0 "register_operand" "=r,r")
+        (unspec:S256I [(match_operand:S256I 1 "register_operand" "r,r")
+                       (match_operand:S256I 2 "reg_or_splat32_operand" "r,SX4")] UNSPEC_AVGR))]
   "LVX_2 && (HAVE_LVX_CEIL_AVG_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "avgr<hsuffix> %L0 = %L1, %W2\n\tavgr<hsuffix> %M0 = %M1, %W2";
     return "avgr<hsuffix> %L0 = %L1, %L2\n\tavgr<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_expand "uavg<mode>3_floor"
@@ -2929,16 +2933,18 @@
 )
 
 (define_insn "uavg<mode>3_floor_2"
-  [(set (match_operand:S256I 0 "register_operand" "=r")
-        (unspec:S256I [(match_operand:S256I 1 "register_operand" "r")
-                       (match_operand:S256I 2 "register_operand" "r")] UNSPEC_AVGU))]
+  [(set (match_operand:S256I 0 "register_operand" "=r,r")
+        (unspec:S256I [(match_operand:S256I 1 "register_operand" "r,r")
+                       (match_operand:S256I 2 "reg_or_splat32_operand" "r,SX4")] UNSPEC_AVGU))]
   "LVX_2 && (HAVE_LVX_UAVG_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "avgu<hsuffix> %L0 = %L1, %W2\n\tavgu<hsuffix> %M0 = %M1, %W2";
     return "avgu<hsuffix> %L0 = %L1, %L2\n\tavgu<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_expand "uavg<mode>3_ceil"
@@ -2968,16 +2974,18 @@
 )
 
 (define_insn "uavg<mode>3_ceil_2"
-  [(set (match_operand:S256I 0 "register_operand" "=r")
-        (unspec:S256I [(match_operand:S256I 1 "register_operand" "r")
-                       (match_operand:S256I 2 "register_operand" "r")] UNSPEC_AVGRU))]
+  [(set (match_operand:S256I 0 "register_operand" "=r,r")
+        (unspec:S256I [(match_operand:S256I 1 "register_operand" "r,r")
+                       (match_operand:S256I 2 "reg_or_splat32_operand" "r,SX4")] UNSPEC_AVGRU))]
   "LVX_2 && (HAVE_LVX_CEIL_UAVG_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "avgru<hsuffix> %L0 = %L1, %W2\n\tavgru<hsuffix> %M0 = %M1, %W2";
     return "avgru<hsuffix> %L0 = %L1, %L2\n\tavgru<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_expand "extend<mode><wide>2"
@@ -3008,16 +3016,18 @@
 ;; V256J (V16HI V8SI V4DI)
 
 (define_insn "add<mode>3"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (plus:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (match_operand:V256J 2 "register_operand" "r")))]
+  [(set (match_operand:V256J 0 "register_operand" "=r,r")
+        (plus:V256J (match_operand:V256J 1 "register_operand" "r,r")
+                    (match_operand:V256J 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "add<hsuffix> %L0 = %L1, %W2\n\tadd<hsuffix> %M0 = %M1, %W2";
     return "add<hsuffix> %L0 = %L1, %L2\n\tadd<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*add<mode>3_s1"
@@ -3073,16 +3083,18 @@
 )
 
 (define_insn "ssadd<mode>3_2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (ss_plus:V256J (match_operand:V256J 1 "register_operand" "r")
-                       (match_operand:V256J 2 "register_operand" "r")))]
+  [(set (match_operand:V256J 0 "register_operand" "=r,r")
+        (ss_plus:V256J (match_operand:V256J 1 "register_operand" "r,r")
+                       (match_operand:V256J 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2 && (HAVE_LVX_SS_PLUS_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "adds<hsuffix> %L0 = %L1, %W2\n\tadds<hsuffix> %M0 = %M1, %W2";
     return "adds<hsuffix> %L0 = %L1, %L2\n\tadds<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn_and_split "*ssadd<mode>3_s1"
@@ -3187,16 +3199,18 @@
 )
 
 (define_insn "usadd<mode>3_2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (us_plus:V256J (match_operand:V256J 1 "register_operand" "r")
-                       (match_operand:V256J 2 "register_operand" "r")))]
+  [(set (match_operand:V256J 0 "register_operand" "=r,r")
+        (us_plus:V256J (match_operand:V256J 1 "register_operand" "r,r")
+                       (match_operand:V256J 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2 && (HAVE_LVX_US_PLUS_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "addus<hsuffix> %L0 = %L1, %W2\n\taddus<hsuffix> %M0 = %M1, %W2";
     return "addus<hsuffix> %L0 = %L1, %L2\n\taddus<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn_and_split "*usadd<mode>3_s1"
@@ -3287,17 +3301,19 @@
 )
 
 (define_insn "*addx2<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
+  [(set (match_operand:V256K 0 "register_operand" "=r,r")
+        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r,r")
                                   (const_int 1))
-                    (match_operand:V256K 2 "register_operand" "r")))]
+                    (match_operand:V256K 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2 && (HAVE_LVX_MUL02_ADD_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "addx2<hsuffix> %L0 = %L1, %W2\n\taddx2<hsuffix> %M0 = %M1, %W2";
     return "addx2<hsuffix> %L0 = %L1, %L2\n\taddx2<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn_and_split "*addx4<suffix>"
@@ -3322,17 +3338,19 @@
 )
 
 (define_insn "*addx4<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
+  [(set (match_operand:V256K 0 "register_operand" "=r,r")
+        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r,r")
                                   (const_int 2))
-                    (match_operand:V256K 2 "register_operand" "r")))]
+                    (match_operand:V256K 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2 && (HAVE_LVX_MUL04_ADD_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "addx4<hsuffix> %L0 = %L1, %W2\n\taddx4<hsuffix> %M0 = %M1, %W2";
     return "addx4<hsuffix> %L0 = %L1, %L2\n\taddx4<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn_and_split "*addx8<suffix>"
@@ -3357,17 +3375,19 @@
 )
 
 (define_insn "*addx8<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
+  [(set (match_operand:V256K 0 "register_operand" "=r,r")
+        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r,r")
                                   (const_int 3))
-                    (match_operand:V256K 2 "register_operand" "r")))]
+                    (match_operand:V256K 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2 && (HAVE_LVX_MUL08_ADD_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "addx8<hsuffix> %L0 = %L1, %W2\n\taddx8<hsuffix> %M0 = %M1, %W2";
     return "addx8<hsuffix> %L0 = %L1, %L2\n\taddx8<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn_and_split "*addx16<suffix>"
@@ -3392,30 +3412,34 @@
 )
 
 (define_insn "*addx16<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
+  [(set (match_operand:V256K 0 "register_operand" "=r,r")
+        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r,r")
                                   (const_int 4))
-                    (match_operand:V256K 2 "register_operand" "r")))]
+                    (match_operand:V256K 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2 && (HAVE_LVX_MUL16_ADD_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "addx16<hsuffix> %L0 = %L1, %W2\n\taddx16<hsuffix> %M0 = %M1, %W2";
     return "addx16<hsuffix> %L0 = %L1, %L2\n\taddx16<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "sub<mode>3"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (minus:V256J (match_operand:V256J 1 "register_operand" "r")
-                     (match_operand:V256J 2 "register_operand" "r")))]
+  [(set (match_operand:V256J 0 "register_operand" "=r,r")
+        (minus:V256J (match_operand:V256J 1 "reg_or_splat32_operand" "r,SX4")
+                     (match_operand:V256J 2 "register_operand" "r,r")))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "sbf<hsuffix> %L0 = %L2, %W1\n\tsbf<hsuffix> %M0 = %M2, %W1";
     return "sbf<hsuffix> %L0 = %L2, %L1\n\tsbf<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*sub<mode>3_s1"
@@ -3471,16 +3495,18 @@
 )
 
 (define_insn "sssub<mode>3_2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (ss_minus:V256J (match_operand:V256J 1 "register_operand" "r")
-                        (match_operand:V256J 2 "register_operand" "r")))]
+  [(set (match_operand:V256J 0 "register_operand" "=r,r")
+        (ss_minus:V256J (match_operand:V256J 1 "reg_or_splat32_operand" "r,SX4")
+                        (match_operand:V256J 2 "register_operand" "r,r")))]
   "LVX_2 && (HAVE_LVX_SS_MINUS_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "sbfs<hsuffix> %L0 = %L2, %W1\n\tsbfs<hsuffix> %M0 = %M2, %W1";
     return "sbfs<hsuffix> %L0 = %L2, %L1\n\tsbfs<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn_and_split "*sssub<mode>3_s1"
@@ -3580,16 +3606,18 @@
 )
 
 (define_insn "ussub<mode>3_2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (us_minus:V256J (match_operand:V256J 1 "register_operand" "r")
-                        (match_operand:V256J 2 "register_operand" "r")))]
+  [(set (match_operand:V256J 0 "register_operand" "=r,r")
+        (us_minus:V256J (match_operand:V256J 1 "reg_or_splat32_operand" "r,SX4")
+                        (match_operand:V256J 2 "register_operand" "r,r")))]
   "LVX_2 && (HAVE_LVX_US_MINUS_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "sbfus<hsuffix> %L0 = %L2, %W1\n\tsbfus<hsuffix> %M0 = %M2, %W1";
     return "sbfus<hsuffix> %L0 = %L2, %L1\n\tsbfus<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn_and_split "*ussub<mode>3_s1"
@@ -3680,17 +3708,19 @@
 )
 
 (define_insn "*sbfx2<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (minus:V256K (match_operand:V256K 1 "register_operand" "r")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
+  [(set (match_operand:V256K 0 "register_operand" "=r,r")
+        (minus:V256K (match_operand:V256K 1 "reg_or_splat32_operand" "r,SX4")
+                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r,r")
                                    (const_int 1))))]
   "LVX_2 && (HAVE_LVX_MUL02_SUB_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "sbfx2<hsuffix> %L0 = %L2, %W1\n\tsbfx2<hsuffix> %M0 = %M2, %W1";
     return "sbfx2<hsuffix> %L0 = %L2, %L1\n\tsbfx2<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn_and_split "*sbfx4<suffix>"
@@ -3715,17 +3745,19 @@
 )
 
 (define_insn "*sbfx4<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (minus:V256K (match_operand:V256K 1 "register_operand" "r")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
+  [(set (match_operand:V256K 0 "register_operand" "=r,r")
+        (minus:V256K (match_operand:V256K 1 "reg_or_splat32_operand" "r,SX4")
+                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r,r")
                                    (const_int 2))))]
   "LVX_2 && (HAVE_LVX_MUL04_SUB_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "sbfx4<hsuffix> %L0 = %L2, %W1\n\tsbfx4<hsuffix> %M0 = %M2, %W1";
     return "sbfx4<hsuffix> %L0 = %L2, %L1\n\tsbfx4<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn_and_split "*sbfx8<suffix>"
@@ -3750,17 +3782,19 @@
 )
 
 (define_insn "*sbfx8<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (minus:V256K (match_operand:V256K 1 "register_operand" "r")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
+  [(set (match_operand:V256K 0 "register_operand" "=r,r")
+        (minus:V256K (match_operand:V256K 1 "reg_or_splat32_operand" "r,SX4")
+                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r,r")
                                    (const_int 3))))]
   "LVX_2 && (HAVE_LVX_MUL08_SUB_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "sbfx8<hsuffix> %L0 = %L2, %W1\n\tsbfx8<hsuffix> %M0 = %M2, %W1";
     return "sbfx8<hsuffix> %L0 = %L2, %L1\n\tsbfx8<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn_and_split "*sbfx16<suffix>"
@@ -3785,17 +3819,19 @@
 )
 
 (define_insn "*sbfx16<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (minus:V256K (match_operand:V256K 1 "register_operand" "r")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
+  [(set (match_operand:V256K 0 "register_operand" "=r,r")
+        (minus:V256K (match_operand:V256K 1 "reg_or_splat32_operand" "r,SX4")
+                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r,r")
                                    (const_int 4))))]
   "LVX_2 && (HAVE_LVX_MUL16_SUB_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "sbfx16<hsuffix> %L0 = %L2, %W1\n\tsbfx16<hsuffix> %M0 = %M2, %W1";
     return "sbfx16<hsuffix> %L0 = %L2, %L1\n\tsbfx16<hsuffix> %M0 = %M2, %M1";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_expand "div<mode>3"
@@ -3859,16 +3895,18 @@
 )
 
 (define_insn "smin<mode>3"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (smin:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (match_operand:V256J 2 "register_operand" "r")))]
+  [(set (match_operand:V256J 0 "register_operand" "=r,r")
+        (smin:V256J (match_operand:V256J 1 "register_operand" "r,r")
+                    (match_operand:V256J 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "min<hsuffix> %L0 = %L1, %W2\n\tmin<hsuffix> %M0 = %M1, %W2";
     return "min<hsuffix> %L0 = %L1, %L2\n\tmin<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*smin<mode>3_s1"
@@ -3898,16 +3936,18 @@
 )
 
 (define_insn "smax<mode>3"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (smax:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (match_operand:V256J 2 "register_operand" "r")))]
+  [(set (match_operand:V256J 0 "register_operand" "=r,r")
+        (smax:V256J (match_operand:V256J 1 "register_operand" "r,r")
+                    (match_operand:V256J 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "max<hsuffix> %L0 = %L1, %W2\n\tmax<hsuffix> %M0 = %M1, %W2";
     return "max<hsuffix> %L0 = %L1, %L2\n\tmax<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*smax<mode>3_s1"
@@ -3937,16 +3977,18 @@
 )
 
 (define_insn "umin<mode>3"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (umin:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (match_operand:V256J 2 "register_operand" "r")))]
+  [(set (match_operand:V256J 0 "register_operand" "=r,r")
+        (umin:V256J (match_operand:V256J 1 "register_operand" "r,r")
+                    (match_operand:V256J 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "minu<hsuffix> %L0 = %L1, %W2\n\tminu<hsuffix> %M0 = %M1, %W2";
     return "minu<hsuffix> %L0 = %L1, %L2\n\tminu<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*umin<mode>3_s1"
@@ -3976,16 +4018,18 @@
 )
 
 (define_insn "umax<mode>3"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (umax:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (match_operand:V256J 2 "register_operand" "r")))]
+  [(set (match_operand:V256J 0 "register_operand" "=r,r")
+        (umax:V256J (match_operand:V256J 1 "register_operand" "r,r")
+                    (match_operand:V256J 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   {
+    if (which_alternative == 1)
+      return "maxu<hsuffix> %L0 = %L1, %W2\n\tmaxu<hsuffix> %M0 = %M1, %W2";
     return "maxu<hsuffix> %L0 = %L1, %L2\n\tmaxu<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*umax<mode>3_s1"
@@ -4125,43 +4169,53 @@
 ;; V256M
 
 (define_insn_and_split "madd<mode><mode>4"
-  [(set (match_operand:V256M 0 "register_operand" "=r")
-        (plus:V256M (mult:V256M (match_operand:V256M 1 "register_operand" "r")
-                                (match_operand:V256M 2 "register_operand" "r"))
-                    (match_operand:V256M 3 "register_operand" "0")))]
+  [(set (match_operand:V256M 0 "register_operand" "=r,r")
+        (plus:V256M (mult:V256M (match_operand:V256M 1 "register_operand" "r,r")
+                                (match_operand:V256M 2 "reg_or_splat32_operand" "r,SX4"))
+                    (match_operand:V256M 3 "register_operand" "0,0")))]
   "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (plus:<HALF> (mult:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                  (subreg:<HALF> (match_dup 2) 0))
+                                  (match_dup 4))
                      (subreg:<HALF> (match_dup 3) 0)))
    (set (subreg:<HALF> (match_dup 0) 16)
         (plus:<HALF> (mult:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                                  (subreg:<HALF> (match_dup 2) 16))
+                                  (match_dup 5))
                      (subreg:<HALF> (match_dup 3) 16)))]
-  ""
+  {
+    operands[4] = simplify_gen_subreg (<HALF>mode, operands[2], <MODE>mode, 0);
+    operands[5] = simplify_gen_subreg (<HALF>mode, operands[2], <MODE>mode, 16);
+    if (!operands[4] || !operands[5])
+      FAIL;
+  }
   [(set_attr "type" "imadd")
    (set_attr "issue" "lite")]
 )
 
 (define_insn_and_split "msub<mode><mode>4"
-  [(set (match_operand:V256M 0 "register_operand" "=r")
-        (minus:V256M (match_operand:V256M 3 "register_operand" "0")
-                     (mult:V256M (match_operand:V256M 1 "register_operand" "r")
-                                 (match_operand:V256M 2 "register_operand" "r"))))]
+  [(set (match_operand:V256M 0 "register_operand" "=r,r")
+        (minus:V256M (match_operand:V256M 3 "register_operand" "0,0")
+                     (mult:V256M (match_operand:V256M 1 "register_operand" "r,r")
+                                 (match_operand:V256M 2 "reg_or_splat32_operand" "r,SX4"))))]
   "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (minus:<HALF> (subreg:<HALF> (match_dup 3) 0)
                       (mult:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                   (subreg:<HALF> (match_dup 2) 0))))
+                                   (match_dup 4))))
    (set (subreg:<HALF> (match_dup 0) 16)
         (minus:<HALF> (subreg:<HALF> (match_dup 3) 16)
                       (mult:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                                   (subreg:<HALF> (match_dup 2) 16))))]
-  ""
+                                   (match_dup 5))))]
+  {
+    operands[4] = simplify_gen_subreg (<HALF>mode, operands[2], <MODE>mode, 0);
+    operands[5] = simplify_gen_subreg (<HALF>mode, operands[2], <MODE>mode, 16);
+    if (!operands[4] || !operands[5])
+      FAIL;
+  }
   [(set_attr "type" "imadd")
    (set_attr "issue" "lite")]
 )
@@ -4392,17 +4446,19 @@
 )
 
 (define_insn "abd<mode>3_2"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (minus:V256L (smax:V256L (match_operand:V256L 1 "register_operand" "r")
-                                 (match_operand:V256L 2 "register_operand" "r"))
+  [(set (match_operand:V256L 0 "register_operand" "=r,r")
+        (minus:V256L (smax:V256L (match_operand:V256L 1 "register_operand" "r,r")
+                                 (match_operand:V256L 2 "reg_or_splat32_operand" "r,SX4"))
                      (smin:V256L (match_dup 1) (match_dup 2))))]
   "LVX_2 && (HAVE_LVX_ABD_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "abd<hsuffix> %L0 = %L1, %W2\n\tabd<hsuffix> %M0 = %M1, %W2";
     return "abd<hsuffix> %L0 = %L1, %L2\n\tabd<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn_and_split "*abd<mode>_s1"
@@ -4518,17 +4574,19 @@
 )
 
 (define_insn "abds<mode>3_2"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (ss_minus:V256L (smax:V256L (match_operand:V256L 1 "register_operand" "r")
-                                    (match_operand:V256L 2 "register_operand" "r"))
+  [(set (match_operand:V256L 0 "register_operand" "=r,r")
+        (ss_minus:V256L (smax:V256L (match_operand:V256L 1 "register_operand" "r,r")
+                                    (match_operand:V256L 2 "reg_or_splat32_operand" "r,SX4"))
                         (smin:V256L (match_dup 1) (match_dup 2))))]
   "LVX_2 && (HAVE_LVX_SS_ABD_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "abds<hsuffix> %L0 = %L1, %W2\n\tabds<hsuffix> %M0 = %M1, %W2";
     return "abds<hsuffix> %L0 = %L1, %L2\n\tabds<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*abds<mode>_s1"
@@ -4598,17 +4656,19 @@
 )
 
 (define_insn "abdu<mode>3_2"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (minus:V256L (umax:V256L (match_operand:V256L 1 "register_operand" "r")
-                                 (match_operand:V256L 2 "register_operand" "r"))
+  [(set (match_operand:V256L 0 "register_operand" "=r,r")
+        (minus:V256L (umax:V256L (match_operand:V256L 1 "register_operand" "r,r")
+                                 (match_operand:V256L 2 "reg_or_splat32_operand" "r,SX4"))
                      (umin:V256L (match_dup 1) (match_dup 2))))]
   "LVX_2 && (HAVE_LVX_US_ABD_<MODE>)"
   {
+    if (which_alternative == 1)
+      return "abdu<hsuffix> %L0 = %L1, %W2\n\tabdu<hsuffix> %M0 = %M1, %W2";
     return "abdu<hsuffix> %L0 = %L1, %L2\n\tabdu<hsuffix> %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length" "8,16")]
 )
 
 (define_insn "*abdu<mode>_s1"
@@ -4643,19 +4703,24 @@
 ;; V8SI
 
 (define_insn_and_split "mul<mode>3"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (mult:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (match_operand:V256J 2 "register_operand" "r")))]
+  [(set (match_operand:V256J 0 "register_operand" "=r,r")
+        (mult:V256J (match_operand:V256J 1 "register_operand" "r,r")
+                    (match_operand:V256J 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   "#"
   "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (mult:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                     (subreg:<HALF> (match_dup 2) 0)))
+                     (match_dup 3)))
    (set (subreg:<HALF> (match_dup 0) 16)
         (mult:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                     (subreg:<HALF> (match_dup 2) 16)))]
-  ""
+                     (match_dup 4)))]
+  {
+    operands[3] = simplify_gen_subreg (<HALF>mode, operands[2], <MODE>mode, 0);
+    operands[4] = simplify_gen_subreg (<HALF>mode, operands[2], <MODE>mode, 16);
+    if (!operands[3] || !operands[4])
+      FAIL;
+  }
   [(set_attr "type" "imul")
    (set_attr "issue" "lite")]
 )
@@ -5425,11 +5490,13 @@
 ;; V2DF
 
 (define_insn_and_split "addv2df3"
-  [(set (match_operand:V2DF 0 "register_operand" "=r")
-        (plus:V2DF (match_operand:V2DF 1 "register_operand" "r")
-                   (match_operand:V2DF 2 "register_operand" "r")))]
+  [(set (match_operand:V2DF 0 "register_operand" "=r,r")
+        (plus:V2DF (match_operand:V2DF 1 "register_operand" "r,r")
+                   (match_operand:V2DF 2 "reg_or_const_zero_operand" "r,SZ0")))]
   "LVX_2"
-  "fadddp %0 = %1, %2"
+  "@
+   fadddp %0 = %1, %2
+   fadddp %0 = %1, 0"
   "!HAVE_LVX_PLUS_V2DF && reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
         (plus:DF (subreg:DF (match_dup 1) 0)
@@ -5439,15 +5506,18 @@
                  (subreg:DF (match_dup 2) 8)))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 (define_insn_and_split "subv2df3"
-  [(set (match_operand:V2DF 0 "register_operand" "=r")
-        (minus:V2DF (match_operand:V2DF 1 "register_operand" "r")
-                    (match_operand:V2DF 2 "register_operand" "r")))]
+  [(set (match_operand:V2DF 0 "register_operand" "=r,r")
+        (minus:V2DF (match_operand:V2DF 1 "reg_or_const_zero_operand" "r,SZ0")
+                    (match_operand:V2DF 2 "register_operand" "r,r")))]
   "LVX_2"
-  "fsbfdp %0 = %2, %1"
+  "@
+   fsbfdp %0 = %2, %1
+   fsbfdp %0 = %2, 0"
   "!HAVE_LVX_MINUS_V2DF && reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
         (minus:DF (subreg:DF (match_dup 1) 0)
@@ -5457,15 +5527,18 @@
                   (subreg:DF (match_dup 2) 8)))]
   ""
   [(set_attr "type" "fmuld")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 (define_insn_and_split "mulv2df3"
-  [(set (match_operand:V2DF 0 "register_operand" "=r")
-        (mult:V2DF (match_operand:V2DF 1 "register_operand" "r")
-                   (match_operand:V2DF 2 "register_operand" "r")))]
+  [(set (match_operand:V2DF 0 "register_operand" "=r,r")
+        (mult:V2DF (match_operand:V2DF 1 "register_operand" "r,r")
+                   (match_operand:V2DF 2 "reg_or_const_zero_operand" "r,SZ0")))]
   "LVX_2"
-  "fmuldp %0 = %1, %2"
+  "@
+   fmuldp %0 = %1, %2
+   fmuldp %0 = %1, 0"
   "!HAVE_LVX_MULT_V2DF && reload_completed"
   [(set (subreg:DF (match_dup 0) 0)
         (mult:DF (subreg:DF (match_dup 1) 0)
@@ -5475,7 +5548,8 @@
                  (subreg:DF (match_dup 2) 8)))]
   ""
   [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 (define_insn_and_split "fmav2df4"
@@ -5904,9 +5978,9 @@
 ;; V16HF
 
 (define_insn "addv16hf3"
-  [(set (match_operand:V16HF 0 "register_operand" "=r")
-        (plus:V16HF (match_operand:V16HF 1 "register_operand" "r")
-                   (match_operand:V16HF 2 "register_operand" "r")))]
+  [(set (match_operand:V16HF 0 "register_operand" "=r,r")
+        (plus:V16HF (match_operand:V16HF 1 "register_operand" "r,r")
+                   (match_operand:V16HF 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   "#"
 )
@@ -5914,43 +5988,65 @@
 (define_split
   [(set (match_operand:V16HF 0 "register_operand" "")
         (plus:V16HF (match_operand:V16HF 1 "register_operand" "")
-                   (match_operand:V16HF 2 "register_operand" "")))]
+                    (match_operand:V16HF 2 "reg_or_splat32_operand" "")))]
   "LVX_2 && (HAVE_LVX_PLUS_V8HF && reload_completed)"
   [(set (subreg:V8HF (match_dup 0) 0)
-        (plus:V8HF (subreg:V8HF (match_dup 1) 0)
-                   (subreg:V8HF (match_dup 2) 0)))
+        (plus:V8HF (match_dup 3) (match_dup 5)))
    (set (subreg:V8HF (match_dup 0) 16)
-        (plus:V8HF (subreg:V8HF (match_dup 1) 16)
-                   (subreg:V8HF (match_dup 2) 16)))]
-  ""
+        (plus:V8HF (match_dup 4) (match_dup 6)))]
+  {
+    /* A splatted constant narrows to the half's own constant, which is
+       what the 128-bit immediate form takes; a subreg written into the
+       replacement RTL would not fold and would not be recognised.  */
+    for (int i = 0; i < 2; i++)
+      {
+        operands[3 + i] = simplify_gen_subreg (V8HFmode, operands[1],
+                                               V16HFmode, 16 * i);
+        operands[5 + i] = simplify_gen_subreg (V8HFmode, operands[2],
+                                               V16HFmode, 16 * i);
+        if (!operands[3 + i] || !operands[5 + i])
+          FAIL;
+      }
+  }
 )
 
 (define_insn "subv16hf3"
-  [(set (match_operand:V16HF 0 "register_operand" "=r")
-        (minus:V16HF (match_operand:V16HF 1 "register_operand" "r")
-                    (match_operand:V16HF 2 "register_operand" "r")))]
+  [(set (match_operand:V16HF 0 "register_operand" "=r,r")
+        (minus:V16HF (match_operand:V16HF 1 "reg_or_splat32_operand" "r,SX4")
+                    (match_operand:V16HF 2 "register_operand" "r,r")))]
   "LVX_2"
   "#"
 )
 
 (define_split
   [(set (match_operand:V16HF 0 "register_operand" "")
-        (minus:V16HF (match_operand:V16HF 1 "register_operand" "")
+        (minus:V16HF (match_operand:V16HF 1 "reg_or_splat32_operand" "")
                     (match_operand:V16HF 2 "register_operand" "")))]
   "LVX_2 && (HAVE_LVX_MINUS_V8HF && reload_completed)"
   [(set (subreg:V8HF (match_dup 0) 0)
-        (minus:V8HF (subreg:V8HF (match_dup 1) 0)
-                    (subreg:V8HF (match_dup 2) 0)))
+        (minus:V8HF (match_dup 3) (match_dup 5)))
    (set (subreg:V8HF (match_dup 0) 16)
-        (minus:V8HF (subreg:V8HF (match_dup 1) 16)
-                    (subreg:V8HF (match_dup 2) 16)))]
-  ""
+        (minus:V8HF (match_dup 4) (match_dup 6)))]
+  {
+    /* A splatted constant narrows to the half's own constant, which is
+       what the 128-bit immediate form takes; a subreg written into the
+       replacement RTL would not fold and would not be recognised.  */
+    for (int i = 0; i < 2; i++)
+      {
+        operands[3 + i] = simplify_gen_subreg (V8HFmode, operands[1],
+                                               V16HFmode, 16 * i);
+        operands[5 + i] = simplify_gen_subreg (V8HFmode, operands[2],
+                                               V16HFmode, 16 * i);
+        if (!operands[3 + i] || !operands[5 + i])
+          FAIL;
+      }
+  }
 )
 
 (define_insn "mulv16hf3"
-  [(set (match_operand:V16HF 0 "register_operand" "=r")
-        (mult:V16HF (match_operand:V16HF 1 "register_operand" "r")
-                   (match_operand:V16HF 2 "register_operand" "r")))]
+  [(set (match_operand:V16HF 0 "register_operand" "=r,r")
+        (mult:V16HF (match_operand:V16HF 1 "register_operand" "r,r")
+                   (match_operand:V16HF 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   "#"
 )
@@ -5958,24 +6054,35 @@
 (define_split
   [(set (match_operand:V16HF 0 "register_operand" "")
         (mult:V16HF (match_operand:V16HF 1 "register_operand" "")
-                   (match_operand:V16HF 2 "register_operand" "")))]
+                    (match_operand:V16HF 2 "reg_or_splat32_operand" "")))]
   "LVX_2 && (HAVE_LVX_MULT_V8HF && reload_completed)"
   [(set (subreg:V8HF (match_dup 0) 0)
-        (mult:V8HF (subreg:V8HF (match_dup 1) 0)
-                   (subreg:V8HF (match_dup 2) 0)))
+        (mult:V8HF (match_dup 3) (match_dup 5)))
    (set (subreg:V8HF (match_dup 0) 16)
-        (mult:V8HF (subreg:V8HF (match_dup 1) 16)
-                   (subreg:V8HF (match_dup 2) 16)))]
-  ""
+        (mult:V8HF (match_dup 4) (match_dup 6)))]
+  {
+    /* A splatted constant narrows to the half's own constant, which is
+       what the 128-bit immediate form takes; a subreg written into the
+       replacement RTL would not fold and would not be recognised.  */
+    for (int i = 0; i < 2; i++)
+      {
+        operands[3 + i] = simplify_gen_subreg (V8HFmode, operands[1],
+                                               V16HFmode, 16 * i);
+        operands[5 + i] = simplify_gen_subreg (V8HFmode, operands[2],
+                                               V16HFmode, 16 * i);
+        if (!operands[3 + i] || !operands[5 + i])
+          FAIL;
+      }
+  }
 )
 
 
 ;; V8SF
 
 (define_insn "addv8sf3"
-  [(set (match_operand:V8SF 0 "register_operand" "=r")
-        (plus:V8SF (match_operand:V8SF 1 "register_operand" "r")
-                   (match_operand:V8SF 2 "register_operand" "r")))]
+  [(set (match_operand:V8SF 0 "register_operand" "=r,r")
+        (plus:V8SF (match_operand:V8SF 1 "register_operand" "r,r")
+                   (match_operand:V8SF 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
@@ -5985,21 +6092,32 @@
 (define_split
   [(set (match_operand:V8SF 0 "register_operand" "")
         (plus:V8SF (match_operand:V8SF 1 "register_operand" "")
-                   (match_operand:V8SF 2 "register_operand" "")))]
+                    (match_operand:V8SF 2 "reg_or_splat32_operand" "")))]
   "LVX_2 && (HAVE_LVX_PLUS_V4SF && reload_completed)"
   [(set (subreg:V4SF (match_dup 0) 0)
-        (plus:V4SF (subreg:V4SF (match_dup 1) 0)
-                   (subreg:V4SF (match_dup 2) 0)))
+        (plus:V4SF (match_dup 3) (match_dup 5)))
    (set (subreg:V4SF (match_dup 0) 16)
-        (plus:V4SF (subreg:V4SF (match_dup 1) 16)
-                   (subreg:V4SF (match_dup 2) 16)))]
-  ""
+        (plus:V4SF (match_dup 4) (match_dup 6)))]
+  {
+    /* A splatted constant narrows to the half's own constant, which is
+       what the 128-bit immediate form takes; a subreg written into the
+       replacement RTL would not fold and would not be recognised.  */
+    for (int i = 0; i < 2; i++)
+      {
+        operands[3 + i] = simplify_gen_subreg (V4SFmode, operands[1],
+                                               V8SFmode, 16 * i);
+        operands[5 + i] = simplify_gen_subreg (V4SFmode, operands[2],
+                                               V8SFmode, 16 * i);
+        if (!operands[3 + i] || !operands[5 + i])
+          FAIL;
+      }
+  }
 )
 
 (define_insn "subv8sf3"
-  [(set (match_operand:V8SF 0 "register_operand" "=r")
-        (minus:V8SF (match_operand:V8SF 1 "register_operand" "r")
-                    (match_operand:V8SF 2 "register_operand" "r")))]
+  [(set (match_operand:V8SF 0 "register_operand" "=r,r")
+        (minus:V8SF (match_operand:V8SF 1 "reg_or_splat32_operand" "r,SX4")
+                    (match_operand:V8SF 2 "register_operand" "r,r")))]
   "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
@@ -6008,22 +6126,33 @@
 
 (define_split
   [(set (match_operand:V8SF 0 "register_operand" "")
-        (minus:V8SF (match_operand:V8SF 1 "register_operand" "")
+        (minus:V8SF (match_operand:V8SF 1 "reg_or_splat32_operand" "")
                     (match_operand:V8SF 2 "register_operand" "")))]
   "LVX_2 && (HAVE_LVX_MINUS_V4SF && reload_completed)"
   [(set (subreg:V4SF (match_dup 0) 0)
-        (minus:V4SF (subreg:V4SF (match_dup 1) 0)
-                    (subreg:V4SF (match_dup 2) 0)))
+        (minus:V4SF (match_dup 3) (match_dup 5)))
    (set (subreg:V4SF (match_dup 0) 16)
-        (minus:V4SF (subreg:V4SF (match_dup 1) 16)
-                    (subreg:V4SF (match_dup 2) 16)))]
-  ""
+        (minus:V4SF (match_dup 4) (match_dup 6)))]
+  {
+    /* A splatted constant narrows to the half's own constant, which is
+       what the 128-bit immediate form takes; a subreg written into the
+       replacement RTL would not fold and would not be recognised.  */
+    for (int i = 0; i < 2; i++)
+      {
+        operands[3 + i] = simplify_gen_subreg (V4SFmode, operands[1],
+                                               V8SFmode, 16 * i);
+        operands[5 + i] = simplify_gen_subreg (V4SFmode, operands[2],
+                                               V8SFmode, 16 * i);
+        if (!operands[3 + i] || !operands[5 + i])
+          FAIL;
+      }
+  }
 )
 
 (define_insn "mulv8sf3"
-  [(set (match_operand:V8SF 0 "register_operand" "=r")
-        (mult:V8SF (match_operand:V8SF 1 "register_operand" "r")
-                   (match_operand:V8SF 2 "register_operand" "r")))]
+  [(set (match_operand:V8SF 0 "register_operand" "=r,r")
+        (mult:V8SF (match_operand:V8SF 1 "register_operand" "r,r")
+                   (match_operand:V8SF 2 "reg_or_splat32_operand" "r,SX4")))]
   "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
@@ -6033,15 +6162,26 @@
 (define_split
   [(set (match_operand:V8SF 0 "register_operand" "")
         (mult:V8SF (match_operand:V8SF 1 "register_operand" "")
-                   (match_operand:V8SF 2 "register_operand" "")))]
+                    (match_operand:V8SF 2 "reg_or_splat32_operand" "")))]
   "LVX_2 && (HAVE_LVX_MULT_V4SF && reload_completed)"
   [(set (subreg:V4SF (match_dup 0) 0)
-        (mult:V4SF (subreg:V4SF (match_dup 1) 0)
-                   (subreg:V4SF (match_dup 2) 0)))
+        (mult:V4SF (match_dup 3) (match_dup 5)))
    (set (subreg:V4SF (match_dup 0) 16)
-        (mult:V4SF (subreg:V4SF (match_dup 1) 16)
-                   (subreg:V4SF (match_dup 2) 16)))]
-  ""
+        (mult:V4SF (match_dup 4) (match_dup 6)))]
+  {
+    /* A splatted constant narrows to the half's own constant, which is
+       what the 128-bit immediate form takes; a subreg written into the
+       replacement RTL would not fold and would not be recognised.  */
+    for (int i = 0; i < 2; i++)
+      {
+        operands[3 + i] = simplify_gen_subreg (V4SFmode, operands[1],
+                                               V8SFmode, 16 * i);
+        operands[5 + i] = simplify_gen_subreg (V4SFmode, operands[2],
+                                               V8SFmode, 16 * i);
+        if (!operands[3 + i] || !operands[5 + i])
+          FAIL;
+      }
+  }
 )
 
 (define_expand "floatv8hiv8sf2"
@@ -6100,9 +6240,9 @@
 ;; V4DF
 
 (define_insn "addv4df3"
-  [(set (match_operand:V4DF 0 "register_operand" "=r")
-        (plus:V4DF (match_operand:V4DF 1 "register_operand" "r")
-                   (match_operand:V4DF 2 "register_operand" "r")))]
+  [(set (match_operand:V4DF 0 "register_operand" "=r,r")
+        (plus:V4DF (match_operand:V4DF 1 "register_operand" "r,r")
+                   (match_operand:V4DF 2 "reg_or_const_zero_operand" "r,SZ0")))]
   "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
@@ -6112,15 +6252,25 @@
 (define_split
   [(set (match_operand:V4DF 0 "register_operand" "")
         (plus:V4DF (match_operand:V4DF 1 "register_operand" "")
-                   (match_operand:V4DF 2 "register_operand" "")))]
+                   (match_operand:V4DF 2 "reg_or_const_zero_operand" "")))]
   "LVX_2 && (HAVE_LVX_PLUS_V2DF && reload_completed)"
   [(set (subreg:V2DF (match_dup 0) 0)
-        (plus:V2DF (subreg:V2DF (match_dup 1) 0)
-                   (subreg:V2DF (match_dup 2) 0)))
+        (plus:V2DF (match_dup 3) (match_dup 5)))
    (set (subreg:V2DF (match_dup 0) 16)
-        (plus:V2DF (subreg:V2DF (match_dup 1) 16)
-                   (subreg:V2DF (match_dup 2) 16)))]
-  ""
+        (plus:V2DF (match_dup 4) (match_dup 6)))]
+  {
+    /* Each half explicitly: a subreg of a CONST_VECTOR written into the
+       replacement RTL does not fold, and is not recognised.  */
+    for (int i = 0; i < 2; i++)
+      {
+        operands[3 + i] = simplify_gen_subreg (V2DFmode, operands[1],
+                                               V4DFmode, 16 * i);
+        operands[5 + i] = simplify_gen_subreg (V2DFmode, operands[2],
+                                               V4DFmode, 16 * i);
+        if (!operands[3 + i] || !operands[5 + i])
+          FAIL;
+      }
+  }
 )
 
 (define_split
@@ -6144,9 +6294,9 @@
 )
 
 (define_insn "subv4df3"
-  [(set (match_operand:V4DF 0 "register_operand" "=r")
-        (minus:V4DF (match_operand:V4DF 1 "register_operand" "r")
-                    (match_operand:V4DF 2 "register_operand" "r")))]
+  [(set (match_operand:V4DF 0 "register_operand" "=r,r")
+        (minus:V4DF (match_operand:V4DF 1 "reg_or_const_zero_operand" "r,SZ0")
+                    (match_operand:V4DF 2 "register_operand" "r,r")))]
   "LVX_2"
   "#"
   [(set_attr "type" "fmaddd")
@@ -6155,16 +6305,26 @@
 
 (define_split
   [(set (match_operand:V4DF 0 "register_operand" "")
-        (minus:V4DF (match_operand:V4DF 1 "register_operand" "")
+        (minus:V4DF (match_operand:V4DF 1 "reg_or_const_zero_operand" "")
                     (match_operand:V4DF 2 "register_operand" "")))]
   "LVX_2 && (HAVE_LVX_MINUS_V2DF && reload_completed)"
   [(set (subreg:V2DF (match_dup 0) 0)
-        (minus:V2DF (subreg:V2DF (match_dup 1) 0)
-                    (subreg:V2DF (match_dup 2) 0)))
+        (minus:V2DF (match_dup 3) (match_dup 5)))
    (set (subreg:V2DF (match_dup 0) 16)
-        (minus:V2DF (subreg:V2DF (match_dup 1) 16)
-                    (subreg:V2DF (match_dup 2) 16)))]
-  ""
+        (minus:V2DF (match_dup 4) (match_dup 6)))]
+  {
+    /* Each half explicitly: a subreg of a CONST_VECTOR written into the
+       replacement RTL does not fold, and is not recognised.  */
+    for (int i = 0; i < 2; i++)
+      {
+        operands[3 + i] = simplify_gen_subreg (V2DFmode, operands[1],
+                                               V4DFmode, 16 * i);
+        operands[5 + i] = simplify_gen_subreg (V2DFmode, operands[2],
+                                               V4DFmode, 16 * i);
+        if (!operands[3 + i] || !operands[5 + i])
+          FAIL;
+      }
+  }
 )
 
 (define_split

@@ -113,10 +113,16 @@
   (and (match_code "const_vector")
        (match_test "lvx_has_43bit_vector_const_p (op)")))
 
+(define_constraint "SZ0"
+  "The zero vector, which a .M format's replicated 32-bit word can build at any
+   lane width -- the only value it can build at 64-bit lanes."
+  (and (match_code "const_vector,const_int,const_double")
+       (match_test "op == CONST0_RTX (GET_MODE (op))")))
+
 (define_constraint "SX4"
-  "A 128-bit vector constant made of four identical 32-bit values, which is
-   what the .M formats encode: they carry one 32-bit word and the machine
-   replicates it over the operand."
+  "A vector constant that is one 32-bit word repeated across it, which is what
+   the .M formats encode: they carry the word and the machine replicates it over
+   the operand.  128 bits, or 256 as two halves that each carry the same word."
   (and (match_code "const_vector")
        (match_test "lvx_splat32_vector_const_p (op)")))
 
