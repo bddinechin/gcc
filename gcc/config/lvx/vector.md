@@ -7100,6 +7100,59 @@
    (set_attr "issue" "lite")]
 )
 
+;; -------------------------------------------------------------------------
+;; V2SF arithmetic, done on the 128-bit unit
+;;
+;; V2SF is two floats in one GPR -- 64 bits, the `float complex' shape the
+;; FMULWC family works on, and the one sub-128-bit vector mode
+;; lvx_vector_mode_supported_p claims (see the 128-bit lower bound there).
+;; There is no packed 2x32 FP instruction: the narrowest is FADDWQ/FSBFWQ/
+;; FMULWQ on a 4x32 pair.  Without a pattern the middle end lowers a V2SF
+;; add or multiply lane by lane -- four EXTFZD, two scalar ops, a MAKED and
+;; two INSFD, ten instructions for what one FADDWQ does.
+;;
+;; So widen: put each operand in the low half of a pair, run the 128-bit
+;; instruction, take the low half of the result.  The upper lanes are
+;; deliberately zeroed rather than left undefined, because LVX floating point
+;; writes the CS exception flags: garbage in the upper half of the pair would
+;; raise IX or IO from lanes the program never asked about.  Zero is exact in
+;; every one of these operations (0+0, 0-0, 0*0), so it adds no flag of its
+;; own.  That costs two MAKED, and the whole sequence is still half what the
+;; lane-by-lane lowering costs.
+;;
+;; The widening is done at expand time, not in a reload_completed split: a
+;; late split cannot invent the 128-bit register pair, where a pseudo asked
+;; for before allocation is placed by the allocator like any other.
+;; -------------------------------------------------------------------------
+
+(define_code_iterator V2SF_ARITH [plus minus mult])
+(define_code_attr v2sf_arith [(plus "add") (minus "sub") (mult "mul")])
+
+(define_expand "<v2sf_arith>v2sf3"
+  [(set (match_operand:V2SF 0 "register_operand")
+        (V2SF_ARITH:V2SF (match_operand:V2SF 1 "register_operand")
+                         (match_operand:V2SF 2 "register_operand")))]
+  "LVX_2"
+  {
+    rtx wide[3];
+    for (int i = 1; i <= 2; i++)
+      {
+        wide[i] = gen_reg_rtx (V4SFmode);
+        /* The pair is zero but for its low half, which is the operand.  */
+        emit_move_insn (wide[i], CONST0_RTX (V4SFmode));
+        emit_move_insn (simplify_gen_subreg (V2SFmode, wide[i], V4SFmode, 0),
+                        operands[i]);
+      }
+    wide[0] = gen_reg_rtx (V4SFmode);
+    emit_insn (gen_rtx_SET (wide[0],
+                            gen_rtx_fmt_ee (<CODE>, V4SFmode,
+                                            wide[1], wide[2])));
+    emit_move_insn (operands[0],
+                    simplify_gen_subreg (V2SFmode, wide[0], V4SFmode, 0));
+    DONE;
+  }
+)
+
 (define_insn "addv4sf3"
   [(set (match_operand:V4SF 0 "register_operand" "=r")
         (plus:V4SF (match_operand:V4SF 1 "register_operand" "r")
