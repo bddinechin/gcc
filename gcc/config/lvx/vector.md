@@ -7101,6 +7101,91 @@
 )
 
 ;; -------------------------------------------------------------------------
+;; V4HI and V2SI arithmetic, done on the 128-bit unit
+;;
+;; The narrowest packed instruction is 128-bit, so a 64-bit vector has no
+;; instruction of its own and the middle end lowers it.  What the lowering
+;; costs depends entirely on the operation: AND, IOR and XOR are exactly the
+;; 64-bit container's own ANDD/IORD/EORD, one instruction and nothing to
+;; improve; ADD and NEG on 16-bit lanes get GCC's carry-suppression trick,
+;; five to seven instructions; but MUL, the shifts and the comparisons are
+;; lowered lane by lane -- seventeen instructions for a V4HI multiply,
+;; fourteen for a shift, twenty-three for a compare.
+;;
+;; Those are the ones widened here: the operand goes in the low half of a
+;; 128-bit pair, the packed instruction runs on all four or eight lanes, and
+;; the low half is the result.  The upper lanes are left undefined on
+;; purpose -- integer arithmetic raises nothing, so what they compute cannot
+;; be observed, and zeroing them (as the V2SF patterns must, floating point
+;; writing the CS flags) would cost two instructions for nothing.
+;;
+;; An operation NOT widened here keeps whatever the middle end does with it,
+;; which for the bitwise ops is already one instruction: adding a pattern is
+;; a strict improvement and leaving one out costs nothing.  That is why this
+;; list is the measured-bad operations and not the whole surface.
+;; -------------------------------------------------------------------------
+
+(define_mode_iterator V64I [V4HI V2SI])
+
+
+(define_code_iterator V64I_SHIFT [ashift ashiftrt lshiftrt])
+(define_code_attr v64i_shift [(ashift "ashl") (ashiftrt "ashr") (lshiftrt "lshr")])
+
+;; The shifts take their count as one SImode value, exactly as the 128-bit
+;; sll<suffix>/sra<suffix>/srl<suffix> patterns do -- it is a shift amount,
+;; not a lane.  A pattern's condition must stay a compile-time expression, so
+;; the iterator says statically what is available: the 128-bit shifts are
+;; written over S128I (V8HI V4SI), which is what V4HI and V2SI widen into.
+;; (Asking optab_handler in the condition does not work -- it would query the
+;; table init_all_optabs is filling when it evaluates the condition, and the
+;; answer comes back no, disabling the pattern for good.)
+(define_expand "<v64i_shift><mode>3"
+  [(set (match_operand:V64I 0 "register_operand")
+        (V64I_SHIFT:V64I (match_operand:V64I 1 "register_operand")
+                         (match_operand:SI 2 "reg_shift_operand")))]
+  "LVX_2"
+  {
+    lvx_expand_widen64 (<CODE>, <DMODE>mode, operands);
+    DONE;
+  }
+)
+
+(define_code_iterator V64I_MINMAX [plus minus smin smax umin umax])
+(define_code_attr v64i_minmax [(plus "add") (minus "sub")
+                               (smin "smin") (smax "smax")
+                               (umin "umin") (umax "umax")])
+
+;; add/sub and min/max are all written over V128J (V8HI V4SI V2DI), which
+;; covers both widened modes.  Widening an add is worth it at 32-bit lanes,
+;; where the middle end extracts lanes; at 16-bit and 8-bit it has a
+;; carry-suppression trick that is already about this cheap, and taking the
+;; pattern means taking it everywhere -- measured below.
+(define_expand "<v64i_minmax><mode>3"
+  [(set (match_operand:V64I 0 "register_operand")
+        (V64I_MINMAX:V64I (match_operand:V64I 1 "register_operand")
+                          (match_operand:V64I 2 "register_operand")))]
+  "LVX_2"
+  {
+    lvx_expand_widen64 (<CODE>, <DMODE>mode, operands);
+    DONE;
+  }
+)
+
+;; MUL is the exception: mul<mode>3 is written over V128I (V8HI V2DI), so a
+;; V4HI multiply widens into V8HI and a V2SI one has nothing to widen into
+;; and keeps the middle end's lowering.
+(define_expand "mulv4hi3"
+  [(set (match_operand:V4HI 0 "register_operand")
+        (mult:V4HI (match_operand:V4HI 1 "register_operand")
+                   (match_operand:V4HI 2 "register_operand")))]
+  "LVX_2"
+  {
+    lvx_expand_widen64 (MULT, V8HImode, operands);
+    DONE;
+  }
+)
+
+;; -------------------------------------------------------------------------
 ;; V2SF arithmetic, done on the 128-bit unit
 ;;
 ;; V2SF is two floats in one GPR -- 64 bits, the `float complex' shape the
