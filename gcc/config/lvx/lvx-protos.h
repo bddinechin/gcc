@@ -156,7 +156,8 @@ extern bool lvx_has_37bit_vector_const_p (rtx x);
 
 extern bool lvx_has_43bit_vector_const_p (rtx x);
 
-extern bool lvx_has_32x2bit_vector_const_p (rtx x);
+extern bool lvx_splat32_vector_const_p (rtx x);
+extern HOST_WIDE_INT lvx_splat32_vector_value (rtx x);
 
 extern enum machine_mode lvx_get_predicate_mode (enum machine_mode mode);
 

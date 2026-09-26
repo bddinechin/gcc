@@ -113,10 +113,12 @@
   (and (match_code "const_vector")
        (match_test "lvx_has_43bit_vector_const_p (op)")))
 
-(define_constraint "SX2"
-  "A 64-bit vector constant made of two identical 32-bit values."
+(define_constraint "SX4"
+  "A 128-bit vector constant made of four identical 32-bit values, which is
+   what the .M formats encode: they carry one 32-bit word and the machine
+   replicates it over the operand."
   (and (match_code "const_vector")
-       (match_test "lvx_has_32x2bit_vector_const_p (op)")))
+       (match_test "lvx_splat32_vector_const_p (op)")))
 
 (define_memory_constraint "a"
   "Memory operands with 10-bit immediate or register."

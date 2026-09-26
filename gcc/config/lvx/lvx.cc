@@ -4327,12 +4327,38 @@ lvx_has_43bit_vector_const_p (rtx x)
 }
 
 bool
-lvx_has_32x2bit_vector_const_p (rtx ARG_UNUSED (x))
+lvx_splat32_vector_const_p (rtx x)
 {
-  //HOST_WIDE_INT value = lvx_const_vector_value (x, 0);
-  // Need the dual immediate syntax to be fixed in assembler.
-  // return (value&0xFFFFFFFF) == ((value>>32)&0xFFFFFFFF);
-  return false;
+  if (GET_CODE (x) != CONST_VECTOR || GET_MODE_SIZE (GET_MODE (x)) != 16)
+    return false;
+
+  /* Only the lane modes lvx_const_vector_value has an arm for: it asserts on
+     anything else rather than returning, and this runs from a predicate.  */
+  switch (GET_MODE_INNER (GET_MODE (x)))
+    {
+    case E_QImode: case E_HImode: case E_SImode: case E_DImode:
+    case E_HFmode: case E_SFmode: case E_DFmode:
+      break;
+    default:
+      return false;
+    }
+
+  /* The .M formats carry one 32-bit word and the machine replicates it over
+     the whole 128-bit operand, so the constant has to be that word four
+     times.  For byte, half-word and word lanes any uniform constant is, and
+     for 64-bit lanes only those whose halves repeat.  */
+  HOST_WIDE_INT lo = lvx_const_vector_value (x, 0);
+  if (lo != lvx_const_vector_value (x, 1))
+    return false;
+  return ((lo >> 32) & 0xFFFFFFFF) == (lo & 0xFFFFFFFF);
+}
+
+/* The 32-bit word a splattable vector constant is made of.  */
+HOST_WIDE_INT
+lvx_splat32_vector_value (rtx x)
+{
+  gcc_assert (lvx_splat32_vector_const_p (x));
+  return lvx_const_vector_value (x, 0) & 0xFFFFFFFF;
 }
 
 /* Test if X is of the form reg[reg] or .xs reg = reg[reg] or signed10bits[reg]
@@ -9202,6 +9228,13 @@ lvx_print_operand (FILE *file, rtx x, int code)
       fputs (lvx_variant_suffix (lvx_mem_variant (x)), file);
       addr_mode = true;
       break;
+
+    case 'W':
+      /* The 32-bit word of a splattable vector constant, which is all a .M
+         format encodes -- the machine replicates it over the operand.  */
+      fprintf (file, "0x%08" HOST_LONG_FORMAT "x",
+               (unsigned long) (lvx_splat32_vector_value (x) & 0xFFFFFFFF));
+      return;
 
     case 'X':
       addr_mode = true;

@@ -313,3 +313,9 @@
 ;; is how GCC spells MASK_LOAD_ELSE_UNDEFINED.
 (define_predicate "maskload_else_operand"
   (match_operand 0 "scratch_operand"))
+
+;; A 128-bit SIMD source that the .M formats can take: a register, or a vector
+;; constant that is one 32-bit word repeated over the operand.
+(define_predicate "reg_or_splat32_operand"
+  (ior (match_operand 0 "register_operand")
+       (match_test "lvx_splat32_vector_const_p (op)")))
