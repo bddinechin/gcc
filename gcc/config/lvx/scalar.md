@@ -1531,23 +1531,31 @@
 ;; short encoding worth a constraint, so the middle end loads it first.
 
 (define_insn "addti3"
-  [(set (match_operand:TI 0 "register_operand" "=r")
-        (plus:TI (match_operand:TI 1 "register_operand" "r")
-                 (match_operand:TI 2 "register_operand" "r")))]
+  [(set (match_operand:TI 0 "register_operand" "=r,r,r")
+        (plus:TI (match_operand:TI 1 "register_operand" "r,r,r")
+                 (match_operand:TI 2 "reg_or_splat32_or_imm32_operand" "r,I32,SXW")))]
   ""
-  "addq %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
+  "@
+   addq %0 = %1, %2
+   addq %0 = %1, %2
+   addq %0 = %1, %W2.@"
+  [(set_attr "type" "alu,alu,alu")
+   (set_attr "issue" "lite,lite_x,lite_x")
+   (set_attr "length" "4,8,8")]
 )
 
 (define_insn "subti3"
-  [(set (match_operand:TI 0 "register_operand" "=r")
-        (minus:TI (match_operand:TI 1 "register_operand" "r")
-                  (match_operand:TI 2 "register_operand" "r")))]
+  [(set (match_operand:TI 0 "register_operand" "=r,r,r")
+        (minus:TI (match_operand:TI 1 "reg_or_splat32_or_imm32_operand" "r,I32,SXW")
+                  (match_operand:TI 2 "register_operand" "r,r,r")))]
   ""
-  "sbfq %0 = %2, %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
+  "@
+   sbfq %0 = %2, %1
+   sbfq %0 = %2, %1
+   sbfq %0 = %2, %W1.@"
+  [(set_attr "type" "alu,alu,alu")
+   (set_attr "issue" "lite,lite_x,lite_x")
+   (set_attr "length" "4,8,8")]
 )
 
 (define_insn "negti2"
@@ -1560,33 +1568,45 @@
 )
 
 (define_insn "andti3"
-  [(set (match_operand:TI 0 "register_operand" "=r")
-        (and:TI (match_operand:TI 1 "register_operand" "r")
-                (match_operand:TI 2 "register_operand" "r")))]
+  [(set (match_operand:TI 0 "register_operand" "=r,r,r")
+        (and:TI (match_operand:TI 1 "register_operand" "r,r,r")
+                (match_operand:TI 2 "reg_or_splat32_or_imm32_operand" "r,I32,SXW")))]
   ""
-  "andq %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
+  "@
+   andq %0 = %1, %2
+   andq %0 = %1, %2
+   andq %0 = %1, %W2.@"
+  [(set_attr "type" "alu,alu,alu")
+   (set_attr "issue" "lite,lite_x,lite_x")
+   (set_attr "length" "4,8,8")]
 )
 
 (define_insn "iorti3"
-  [(set (match_operand:TI 0 "register_operand" "=r")
-        (ior:TI (match_operand:TI 1 "register_operand" "r")
-                (match_operand:TI 2 "register_operand" "r")))]
+  [(set (match_operand:TI 0 "register_operand" "=r,r,r")
+        (ior:TI (match_operand:TI 1 "register_operand" "r,r,r")
+                (match_operand:TI 2 "reg_or_splat32_or_imm32_operand" "r,I32,SXW")))]
   ""
-  "iorq %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
+  "@
+   iorq %0 = %1, %2
+   iorq %0 = %1, %2
+   iorq %0 = %1, %W2.@"
+  [(set_attr "type" "alu,alu,alu")
+   (set_attr "issue" "lite,lite_x,lite_x")
+   (set_attr "length" "4,8,8")]
 )
 
 (define_insn "xorti3"
-  [(set (match_operand:TI 0 "register_operand" "=r")
-        (xor:TI (match_operand:TI 1 "register_operand" "r")
-                (match_operand:TI 2 "register_operand" "r")))]
+  [(set (match_operand:TI 0 "register_operand" "=r,r,r")
+        (xor:TI (match_operand:TI 1 "register_operand" "r,r,r")
+                (match_operand:TI 2 "reg_or_splat32_or_imm32_operand" "r,I32,SXW")))]
   ""
-  "eorq %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
+  "@
+   eorq %0 = %1, %2
+   eorq %0 = %1, %2
+   eorq %0 = %1, %W2.@"
+  [(set_attr "type" "alu,alu,alu")
+   (set_attr "issue" "lite,lite_x,lite_x")
+   (set_attr "length" "4,8,8")]
 )
 
 (define_insn "one_cmplti2"
@@ -1985,14 +2005,19 @@
 )
 
 (define_insn "anddi3"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
-        (and:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r,r")
+        (and:DI (match_operand:DI 1 "register_operand" "r,r,r,r,r")
+                (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,SXW,i")))]
   ""
-  "andd %0 = %1, %2"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length" "4,4,8,12")]
+  "@
+   andd %0 = %1, %2
+   andd %0 = %1, %2
+   andd %0 = %1, %2
+   andd %0 = %1, %W2.@
+   andd %0 = %1, %2"
+  [(set_attr "type" "alu, alu, alu, alu, alu")
+   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x, tiny_x2")
+   (set_attr "length" "4,4,8,8,12")]
 )
 
 (define_insn "*nandd"
@@ -2018,14 +2043,19 @@
 )
 
 (define_insn "iordi3"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
-        (ior:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r,r")
+        (ior:DI (match_operand:DI 1 "register_operand" "r,r,r,r,r")
+                (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,SXW,i")))]
   ""
-  "iord %0 = %1, %2"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length" "4,4,8,12")]
+  "@
+   iord %0 = %1, %2
+   iord %0 = %1, %2
+   iord %0 = %1, %2
+   iord %0 = %1, %W2.@
+   iord %0 = %1, %2"
+  [(set_attr "type" "alu, alu, alu, alu, alu")
+   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x, tiny_x2")
+   (set_attr "length" "4,4,8,8,12")]
 )
 
 (define_insn "*nord"
@@ -2051,14 +2081,19 @@
 )
 
 (define_insn "xordi3"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
-        (xor:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r,r")
+        (xor:DI (match_operand:DI 1 "register_operand" "r,r,r,r,r")
+                (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,SXW,i")))]
   ""
-  "eord %0 = %1, %2"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length" "4,4,8,12")]
+  "@
+   eord %0 = %1, %2
+   eord %0 = %1, %2
+   eord %0 = %1, %2
+   eord %0 = %1, %W2.@
+   eord %0 = %1, %2"
+  [(set_attr "type" "alu, alu, alu, alu, alu")
+   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x, tiny_x2")
+   (set_attr "length" "4,4,8,8,12")]
 )
 
 (define_insn "*nxord"

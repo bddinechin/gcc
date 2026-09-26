@@ -318,7 +318,12 @@
 ;; constant that is one 32-bit word repeated over the operand.
 (define_predicate "reg_or_splat32_operand"
   (ior (match_operand 0 "register_operand")
-       (match_test "lvx_splat32_vector_const_p (op)")))
+       (and (match_test "lvx_splat32_const_p (op)")
+            ;; A scalar constant carries VOIDmode, so the mode this predicate is
+            ;; asked about is what says how wide the replication must be: a
+            ;; CONST_INT repeats only over 64 bits, which is not a 128-bit splat.
+            (ior (match_code "const_vector,const_wide_int")
+                 (match_test "GET_MODE_SIZE (mode) <= 8")))))
 
 ;; A 128-bit SIMD source that a .M format can take at 64-bit lanes.  The format
 ;; carries one 32-bit word and the machine replicates it over the operand, so
@@ -329,3 +334,13 @@
 (define_predicate "reg_or_const_zero_operand"
   (ior (match_operand 0 "register_operand")
        (match_operand 0 "const_zero_operand")))
+
+;; A 128-bit scalar source for a .M format: a register, a constant the machine
+;; sign-extends, or one it replicates.  The two immediate readings are one
+;; encoding bit apart, and an __int128 wants both -- a small constant and a
+;; repeating mask.
+(define_predicate "reg_or_splat32_or_imm32_operand"
+  (ior (match_operand 0 "register_operand")
+       (match_operand 0 "reg_or_splat32_operand")
+       (and (match_code "const_int")
+            (match_test "SIGNED_INT_FITS_N_BITS (INTVAL (op), 32)"))))

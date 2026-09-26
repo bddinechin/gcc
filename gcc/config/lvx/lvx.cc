@@ -4327,41 +4327,69 @@ lvx_has_43bit_vector_const_p (rtx x)
 }
 
 bool
-lvx_splat32_vector_const_p (rtx x)
+lvx_splat32_const_p (rtx x)
 {
-  /* 128 bits, or a 256-bit operation that issues as two of them.  */
-  unsigned size = GET_MODE_SIZE (GET_MODE (x));
-  if (GET_CODE (x) != CONST_VECTOR || (size != 16 && size != 32))
-    return false;
-
-  /* Only the lane modes lvx_const_vector_value has an arm for: it asserts on
-     anything else rather than returning, and this runs from a predicate.  */
-  switch (GET_MODE_INNER (GET_MODE (x)))
+  /* The .M formats carry one 32-bit word and the machine replicates it over
+     the whole operand, so the constant has to be that word, repeated.  For
+     byte, half-word and word lanes any uniform lane constant is; for 64-bit
+     lanes only those whose halves repeat, which in practice means zero.  */
+  if (GET_CODE (x) == CONST_VECTOR)
     {
-    case E_QImode: case E_HImode: case E_SImode: case E_DImode:
-    case E_HFmode: case E_SFmode: case E_DFmode:
-      break;
-    default:
-      return false;
+      unsigned size = GET_MODE_SIZE (GET_MODE (x));
+      if (size != 16 && size != 32)
+	return false;
+
+      /* Only the lane modes lvx_const_vector_value has an arm for: it asserts
+	 on anything else rather than returning, and this runs from a
+	 predicate.  */
+      switch (GET_MODE_INNER (GET_MODE (x)))
+	{
+	case E_QImode: case E_HImode: case E_SImode: case E_DImode:
+	case E_HFmode: case E_SFmode: case E_DFmode:
+	  break;
+	default:
+	  return false;
+	}
+
+      HOST_WIDE_INT lo = lvx_const_vector_value (x, 0);
+      for (unsigned slice = 1; slice < size / 8; slice++)
+	if (lo != lvx_const_vector_value (x, slice))
+	  return false;
+      return ((lo >> 32) & 0xFFFFFFFF) == (lo & 0xFFFFFFFF);
     }
 
-  /* The .M formats carry one 32-bit word and the machine replicates it over
-     the whole 128-bit operand, so the constant has to be that word four
-     times.  For byte, half-word and word lanes any uniform constant is, and
-     for 64-bit lanes only those whose halves repeat.  */
-  HOST_WIDE_INT lo = lvx_const_vector_value (x, 0);
-  for (unsigned slice = 1; slice < size / 8; slice++)
-    if (lo != lvx_const_vector_value (x, slice))
-      return false;
-  return ((lo >> 32) & 0xFFFFFFFF) == (lo & 0xFFFFFFFF);
+  /* And the same for a scalar: a DImode constant that is one word twice, or a
+     TImode one that is four times.  Both carry VOIDmode, so the width comes
+     from how many host words the constant needs -- the operand predicate,
+     which does know the mode, is the authority.  */
+  if (CONST_INT_P (x))
+    {
+      unsigned HOST_WIDE_INT v = UINTVAL (x);
+      return ((v >> 32) & 0xFFFFFFFF) == (v & 0xFFFFFFFF);
+    }
+
+  if (CONST_WIDE_INT_P (x))
+    {
+      unsigned HOST_WIDE_INT lo = CONST_WIDE_INT_ELT (x, 0);
+      for (int i = 1; i < CONST_WIDE_INT_NUNITS (x); i++)
+	if (lo != (unsigned HOST_WIDE_INT) CONST_WIDE_INT_ELT (x, i))
+	  return false;
+      return ((lo >> 32) & 0xFFFFFFFF) == (lo & 0xFFFFFFFF);
+    }
+
+  return false;
 }
 
-/* The 32-bit word a splattable vector constant is made of.  */
+/* The 32-bit word a splattable constant is made of.  */
 HOST_WIDE_INT
-lvx_splat32_vector_value (rtx x)
+lvx_splat32_value (rtx x)
 {
-  gcc_assert (lvx_splat32_vector_const_p (x));
-  return lvx_const_vector_value (x, 0) & 0xFFFFFFFF;
+  gcc_assert (lvx_splat32_const_p (x));
+  if (GET_CODE (x) == CONST_VECTOR)
+    return lvx_const_vector_value (x, 0) & 0xFFFFFFFF;
+  if (CONST_WIDE_INT_P (x))
+    return CONST_WIDE_INT_ELT (x, 0) & 0xFFFFFFFF;
+  return INTVAL (x) & 0xFFFFFFFF;
 }
 
 /* Test if X is of the form reg[reg] or .xs reg = reg[reg] or signed10bits[reg]
@@ -9236,7 +9264,7 @@ lvx_print_operand (FILE *file, rtx x, int code)
       /* The 32-bit word of a splattable vector constant, which is all a .M
          format encodes -- the machine replicates it over the operand.  */
       fprintf (file, "0x%08" HOST_LONG_FORMAT "x",
-               (unsigned long) (lvx_splat32_vector_value (x) & 0xFFFFFFFF));
+               (unsigned long) (lvx_splat32_value (x) & 0xFFFFFFFF));
       return;
 
     case 'X':

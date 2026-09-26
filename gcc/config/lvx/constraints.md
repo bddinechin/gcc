@@ -119,12 +119,14 @@
   (and (match_code "const_vector,const_int,const_double")
        (match_test "op == CONST0_RTX (GET_MODE (op))")))
 
-(define_constraint "SX4"
-  "A vector constant that is one 32-bit word repeated across it, which is what
-   the .M formats encode: they carry the word and the machine replicates it over
-   the operand.  128 bits, or 256 as two halves that each carry the same word."
-  (and (match_code "const_vector")
-       (match_test "lvx_splat32_vector_const_p (op)")))
+(define_constraint "SXW"
+  "A constant that is one 32-bit word repeated across the operand, which is what
+   a .M format encodes: it carries the word and the machine replicates it.  The
+   width is the operand's -- twice in a 64-bit one, four times in a 128-bit one,
+   eight over a 256-bit pair of halves -- and the operand predicate, which knows
+   the mode, is what enforces it exactly."
+  (and (match_code "const_vector,const_int,const_wide_int")
+       (match_test "lvx_splat32_const_p (op)")))
 
 (define_memory_constraint "a"
   "Memory operands with 10-bit immediate or register."
