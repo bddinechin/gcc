@@ -19,23 +19,57 @@ softfp_truncations := dfsf
 softfp_extras := fixhfti fixunshfti floattihf floatuntihf
 softfp_exclude_libgcc2 := n
 
-# The vector divide/modulo helpers are left out of the default (lvx-1) build.
+# The vector divide/modulo helpers.
 #
-# NOTE the scalar and vector cases differ.  divsf3.c/divdf3.c were retired
-# outright because they are genuinely unreachable -- divsf3/divdf3/divhf3
-# expand straight to fdivw/fdivd/fdivh.  The *vector* dividers are not: there
-# is no vector fdiv, so on lvx-2 a v4sf division still emits a call to
-# __divv4sf3, which nothing currently defines.  They are excluded rather than
-# obsolete, and need reinstating together with an lvx-2 multilib.
+# divv.c is the lane-wise fallback and is built for BOTH multilibs: the middle
+# end lowers a vector `a / b` to a __div<mode>3 call and LVX has no vector
+# divide, so without it every one is a link-time undefined symbol.  It does one
+# scalar fdiv/divmod per lane, which is core-agnostic -- a vector type declared
+# by attribute works on lvx-1 too.  There is no other source for the
+# floating-point ones anywhere.
 #
-# divmodvxdi, divmodvxsi and divv2df3 are the vector divide/modulo helpers.
-# They are written against vector types and SIMD builtins, and SIMD on LVX is
-# lvx-2 only -- every packed arithmetic instruction is Opcode-lvx_v2, so
-# TARGET_VECTOR_MODE_SUPPORTED_P is false for lvx-1 and a vector type does not
-# exist there to call them with.  They also still reference builtins that went
-# with the KVX cleanup (__builtin_lvx_anydq, _frecw, _narrowd*).  Left out of
-# the default (lvx-1) libgcc; they need reinstating, and updating to the
-# current builtin names, alongside an lvx-2 multilib.
+# divmodvxqi.c is the STSU alternative.  It is correct and ready but NOT built,
+# because the one instruction it ends on -- TRUNCHBX -- is wrong in the ISS:
+# it copies the source's low 128 bits instead of packing the low bytes of all
+# sixteen half-words, so result[2j] and result[2j+1] both come from half-word
+# 2j.  TRUNCWHO and TRUNCDWQ are correct, and the generated execute body for
+# TRUNCHBX reads correct, so the fault is downstream of the C.  Verified from
+# hand-written assembly with the compiler out of the picture, and the divider
+# itself was verified correct over 512 lane-checks with the final pack done in
+# portable C instead.  Enable it here the moment TRUNCHBX executes correctly;
+# until then divv.c must keep the byte lanes, or lvx-2 gets wrong answers where
+# it currently gets right ones.  The algorithm
+# (from the TMS320C5x guide) iterates once per bit of the lane with an STSU at
+# twice the lane width, so its cost grows with the lane while the scalar route's
+# falls -- 128/W divides for a W-bit lane.  Measured in bundles at -O2:
+#
+#                      STSU      one divmod per lane
+#   __udivv16qi3         15       24       STSU 1.6x better
+#   __udivv32qi3         30       66       STSU 2.2x better
+#   __udivv8hi3          23       12       scalar 1.9x better
+#   __udivv16hi3         46       20       scalar 2.3x better
+#   __udivv4si3           -        8       scalar (4 divmodw, FULL slot)
+#   __udivv2di3           -        5       scalar (2 divmodd)
+#
+# So the crossover sits between byte and half-word lanes, and only the QI file
+# earns its place.  divv.c guards its own byte-lane helpers off on lvx-2 so the
+# two never define the same symbol.
+#
+# divmodvxhi.c and divmodvxsi.c stay out on those numbers, not because they are
+# broken -- both are now correct (see below) and compile and assemble clean.
+# They are kept so the measurement can be repeated if the STSU latency or the
+# LITE slot count ever changes.  What was wrong with them, and is now fixed:
+# an inverted `#if defined(__lvxarch_lvx_1)` guard that compiled SIMD code on
+# the core without SIMD and nothing on the core with it; a branch in the HI file
+# that widened to FOUR times the lane width and called STSUDO (four STSUDP
+# each); 256-bit paths that formed 512-bit values with no register home; and
+# calls to __builtin_lvx_any*, which never existed -- harmless only because
+# DIV_BY_ZERO_MAY_TRAP discards its arguments.
+#
+# A 64-bit lane cannot use this route at all: it would need a 128-bit STSU and
+# the widest is STSUDP at 64.  divv.c covers V2DI/V4DI with two or four
+# divmodd, which is cheap anyway.
+#
 # divmoddi.c and divmodsi.c are retired: they implemented 32- and 64-bit
 # divide/modulo in software, by Newton-Raphson refinement of a reciprocal
 # seed, and LVX has the operation in hardware -- divmodw, divmodd, divmoduw
@@ -43,14 +77,9 @@ softfp_exclude_libgcc2 := n
 # __builtin_lvx_frec*, which no longer exists (LVX has only the seed form,
 # fsrec*).  The div/mod expanders no longer call out to them: their
 # optimize_size paths, the only ones that did, are gone.
-# The lane-wise vector dividers (divv.c: __divv{4sf,8sf,2df,4df,4si}3).  The
-# middle end lowers a vector `a / b` to a __div<mode>3 call and LVX has no
-# vector divide, so on lvx-2 these are link-time undefined without this; there
-# is no source for the floating-point ones anywhere else.  Built for BOTH
-# multilibs: on lvx-1 they lower to scalar fdiv/divmod just the same (a vector
-# type declared by attribute still works there), so the file is core-agnostic
-# -- unlike the elaborate divmodvx*.c, which use lvx-2-only SIMD builtins and
-# stay excluded (queue item: reinstate against current builtin names).
+#
+# divsf3.c/divdf3.c were retired outright because they are genuinely
+# unreachable: divsf3/divdf3/divhf3 expand straight to fdivw/fdivd/fdivh.
 lvx-libgcc-funcs := \
   divv \
   $(softfp_func_exclude)

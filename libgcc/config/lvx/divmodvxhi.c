@@ -51,6 +51,9 @@
 
 #include "divmodtypes.h"
 
+/* SIMD and the STSU family are lvx-2 only.  */
+#if defined(__lvxarch_lvx_2)
+
 ////////////////////////////////////////////////////////////////////////////////
 
 static inline uint16x16_t
@@ -58,26 +61,18 @@ uint16x8_divmod (uint16x8_t a, uint16x8_t b)
 {
   uint32x8_t src = __builtin_lvx_widenhwo (b, ".z") << (16 - 1);
   uint32x8_t wb = __builtin_lvx_widenhwo (b, ".z");
-  DIV_BY_ZERO_MAY_TRAP (__builtin_lvx_anyho, b);
+  /* Division by zero returns zero rather than trapping -- see
+     divmodtypes.h; LVX has no divide-by-zero trap to raise here.  */
   uint32x8_t acc = __builtin_lvx_widenhwo (a, ".z");
   // As `src == b << (16 -1)` adding src yields `src == b << 16`.
   src += src & (wb > acc);
-#if defined(__lvxarch_lvx_1)
+#pragma GCC unroll 16
   for (int i = 0; i < 16; i++)
     {
       acc = __builtin_lvx_stsuwo (src, acc);
     }
-#else
-  uint64x8_t w_acc = __builtin_lvx_widenwdo (acc, ".z");
-  uint64x8_t w_src = __builtin_lvx_widenwdo (src, ".z");
-  for (int i = 0; i < 16; i++)
-    {
-      w_acc = __builtin_lvx_stsudo (w_src, w_acc);
-    }
-  acc = __builtin_lvx_narrowdwo (w_acc, "");
-#endif
-  uint16x8_t q = __builtin_lvx_narrowwho (acc, "");
-  uint16x8_t r = __builtin_lvx_narrowwho (acc >> 16, "");
+  uint16x8_t q = __builtin_lvx_narrowwho (acc);
+  uint16x8_t r = __builtin_lvx_narrowwho (acc >> 16);
   return __builtin_lvx_cat256 (q, r);
 }
 
@@ -136,90 +131,70 @@ __modv8hi3 (int16x8_t a, int16x8_t b)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static inline uint16x32_t
-uint16x16_divmod (uint16x16_t a, uint16x16_t b)
-{
-  uint32x16_t src = __builtin_lvx_widenhwx (b, ".z") << (16 - 1);
-  uint32x16_t wb = __builtin_lvx_widenhwx (b, ".z");
-  DIV_BY_ZERO_MAY_TRAP (__builtin_lvx_anyhx, b);
-  uint32x16_t acc = __builtin_lvx_widenhwx (a, ".z");
-  // As `src == b << (16 -1)` adding src yields `src == b << 16`.
-  src += src & (wb > acc);
-#if defined(__lvxarch_lvx_1)
-  for (int i = 0; i < 16; i++)
-    {
-      acc = __builtin_lvx_stsuwx (src, acc);
-    }
-#else
-  uint32x8_t acc_lo = __builtin_lvx_low256 (acc);
-  uint32x8_t acc_hi = __builtin_lvx_high256 (acc);
-  uint64x8_t w_acc_lo = __builtin_lvx_widenwdo (acc_lo, ".z");
-  uint64x8_t w_acc_hi = __builtin_lvx_widenwdo (acc_hi, ".z");
-  uint32x8_t src_lo = __builtin_lvx_low256 (src);
-  uint32x8_t src_hi = __builtin_lvx_high256 (src);
-  uint64x8_t w_src_lo = __builtin_lvx_widenwdo (src_lo, ".z");
-  uint64x8_t w_src_hi = __builtin_lvx_widenwdo (src_hi, ".z");
-  for (int i = 0; i < 16; i++)
-    {
-      w_acc_lo = __builtin_lvx_stsudo (w_src_lo, w_acc_lo);
-      w_acc_hi = __builtin_lvx_stsudo (w_src_hi, w_acc_hi);
-    }
-  acc_lo = __builtin_lvx_narrowdwo (w_acc_lo, "");
-  acc_hi = __builtin_lvx_narrowdwo (w_acc_hi, "");
-  acc = __builtin_lvx_cat512 (acc_lo, acc_hi);
-#endif
-  uint16x16_t q = __builtin_lvx_narrowwhx (acc, "");
-  uint16x16_t r = __builtin_lvx_narrowwhx (acc >> 16, "");
-  return __builtin_lvx_cat512 (q, r);
-}
+/* A 256-bit divide is two 128-bit ones.  Each iteration needs an STSU at twice
+   the lane width, every STSU is 128 bits wide, and a 128-bit divide already
+   spends two of them per iteration -- so widening a 256-bit operand as a whole
+   would make a 512-bit value, which has no register home and spills through
+   memory.  Splitting first keeps every intermediate in a register quad.  */
 
 uint16x16_t
 __udivv16hi3 (uint16x16_t a, uint16x16_t b)
 {
-  uint16x32_t divmod = uint16x16_divmod (a, b);
-  return __builtin_lvx_low256 (divmod);
+  return __builtin_lvx_cat256 (__udivv8hi3 (__builtin_lvx_low128 (a),
+                                               __builtin_lvx_low128 (b)),
+                               __udivv8hi3 (__builtin_lvx_high128 (a),
+                                               __builtin_lvx_high128 (b)));
 }
 
 uint16x16_t
 __umodv16hi3 (uint16x16_t a, uint16x16_t b)
 {
-  uint16x32_t divmod = uint16x16_divmod (a, b);
-  return __builtin_lvx_high256 (divmod);
-}
-
-uint16x16_t
-__udivmodv16hi4 (uint16x16_t a, uint16x16_t b, uint16x16_t *c)
-{
-  uint16x32_t divmod = uint16x16_divmod (a, b);
-  *c = __builtin_lvx_high256 (divmod);
-  return __builtin_lvx_low256 (divmod);
-}
-
-int16x16_t
-__divmodv16hi4 (int16x16_t a, int16x16_t b, int16x16_t * c)
-{
-  int16x16_t q = __divv16hi3 (a, b);
-  *c = a - b * q;
-  return q;
+  return __builtin_lvx_cat256 (__umodv8hi3 (__builtin_lvx_low128 (a),
+                                               __builtin_lvx_low128 (b)),
+                               __umodv8hi3 (__builtin_lvx_high128 (a),
+                                               __builtin_lvx_high128 (b)));
 }
 
 int16x16_t
 __divv16hi3 (int16x16_t a, int16x16_t b)
 {
-  uint16x16_t absa = __builtin_lvx_abshx (a, "");
-  uint16x16_t absb = __builtin_lvx_abshx (b, "");
-  uint16x32_t divmod = uint16x16_divmod (absa, absb);
-  int16x16_t result = __builtin_lvx_low256 (divmod);
-  return __builtin_lvx_selecthx (-result, result, a ^ b, ".ltz");
+  return __builtin_lvx_cat256 (__divv8hi3 (__builtin_lvx_low128 (a),
+                                               __builtin_lvx_low128 (b)),
+                               __divv8hi3 (__builtin_lvx_high128 (a),
+                                               __builtin_lvx_high128 (b)));
 }
 
 int16x16_t
 __modv16hi3 (int16x16_t a, int16x16_t b)
 {
-  uint16x16_t absa = __builtin_lvx_abshx (a, "");
-  uint16x16_t absb = __builtin_lvx_abshx (b, "");
-  uint16x32_t divmod = uint16x16_divmod (absa, absb);
-  int16x16_t result = __builtin_lvx_high256 (divmod);
-  return __builtin_lvx_selecthx (-result, result, a, ".ltz");
+  return __builtin_lvx_cat256 (__modv8hi3 (__builtin_lvx_low128 (a),
+                                               __builtin_lvx_low128 (b)),
+                               __modv8hi3 (__builtin_lvx_high128 (a),
+                                               __builtin_lvx_high128 (b)));
 }
 
+uint16x16_t
+__udivmodv16hi4 (uint16x16_t a, uint16x16_t b, uint16x16_t *c)
+{
+  uint16x8_t clo, chi;
+  uint16x8_t qlo = __udivmodv8hi4 (__builtin_lvx_low128 (a),
+				   __builtin_lvx_low128 (b), &clo);
+  uint16x8_t qhi = __udivmodv8hi4 (__builtin_lvx_high128 (a),
+				   __builtin_lvx_high128 (b), &chi);
+  *c = __builtin_lvx_cat256 (clo, chi);
+  return __builtin_lvx_cat256 (qlo, qhi);
+}
+
+int16x16_t
+__divmodv16hi4 (int16x16_t a, int16x16_t b, int16x16_t *c)
+{
+  int16x8_t clo, chi;
+  int16x8_t qlo = __divmodv8hi4 (__builtin_lvx_low128 (a),
+				 __builtin_lvx_low128 (b), &clo);
+  int16x8_t qhi = __divmodv8hi4 (__builtin_lvx_high128 (a),
+				 __builtin_lvx_high128 (b), &chi);
+  *c = __builtin_lvx_cat256 (clo, chi);
+  return __builtin_lvx_cat256 (qlo, qhi);
+}
+
+#endif//__lvxarch_lvx_2

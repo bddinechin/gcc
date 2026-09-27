@@ -167,6 +167,16 @@ LVX_BUILTIN_DIRECT   (widenhwx, V16SI_FTYPE_V16HI_WIDENINT,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (widenwdq, V4DI_FTYPE_V4SI_WIDENINT,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (widenwdo, V8DI_FTYPE_V8SI_WIDENINT,, lvx_2) // Vector
 
+/* The narrowing counterparts of the widen* family: TRUNCHBX, TRUNCWHO and
+   TRUNCDWQ take a 256-bit source to a packed 128-bit result, and the
+   libgcc vector divide/modulo helpers are written against them.  The wider
+   spellings (hbv, whx, dwo) have no instruction -- see lvx_trunc<truncx>,
+   which is over S128L for that reason -- so they are composed from two of
+   these plus a cat256 in the helper.  */
+LVX_BUILTIN_DIRECT   (narrowhbx, lvx_trunchbx, V16QI_FTYPE_V16HI,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (narrowwho, lvx_truncwho, V8HI_FTYPE_V8SI,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (narrowdwq, lvx_truncdwq, V4SI_FTYPE_V4DI,, lvx_2) // Vector
+
 LVX_BUILTIN_DIRECT   (widenebho, V8HI_FTYPE_V16QI_WIDENINT,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (widenebhx, V16HI_FTYPE_V32QI_WIDENINT,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (widenehwq, V4SI_FTYPE_V8HI_WIDENINT,, lvx_2) // Vector

@@ -972,7 +972,7 @@
     return "slldp %L0 = %L1, 32\n\tslldp %M0 = %M1, 32";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -1085,7 +1085,7 @@
     return "srldp %L0 = %L1, 32\n\tsrldp %M0 = %M1, 32";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -1834,7 +1834,7 @@
     return "stsuho %L0 = %L1, %L2\n\tstsuho %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -1876,7 +1876,7 @@
     return "stsuwq %L0 = %L1, %L2\n\tstsuwq %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -1955,7 +1955,7 @@
     return "stsudp %L0 = %L1, %L2\n\tstsudp %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -2127,7 +2127,7 @@
     return "sbmm8dp %L0 = %L1, %L2\n\tsbmm8dp %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -2140,7 +2140,7 @@
     return "sbmm8dp %L0 = %1, %L2\n\tsbmm8dp %M0 = %1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -2153,7 +2153,7 @@
     return "sbmm8dp %L0 = %L1, %2\n\tsbmm8dp %M0 = %M1, %2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
@@ -2313,7 +2313,7 @@
     return "sbmmt8dp %L0 = %L1, %L2\n\tsbmmt8dp %M0 = %M1, %M2";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
+   (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
 
