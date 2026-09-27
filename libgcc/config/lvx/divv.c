@@ -52,6 +52,22 @@ v8sf __divv8sf3 (v8sf, v8sf);
 v2df __divv2df3 (v2df, v2df);
 v4df __divv4df3 (v4df, v4df);
 v4si __divv4si3 (v4si, v4si);
+v16qi __divmodv16qi4 (v16qi, v16qi, v16qi *);
+v16qiu __udivmodv16qi4 (v16qiu, v16qiu, v16qiu *);
+v32qi __divmodv32qi4 (v32qi, v32qi, v32qi *);
+v32qiu __udivmodv32qi4 (v32qiu, v32qiu, v32qiu *);
+v8hi __divmodv8hi4 (v8hi, v8hi, v8hi *);
+v8hiu __udivmodv8hi4 (v8hiu, v8hiu, v8hiu *);
+v16hi __divmodv16hi4 (v16hi, v16hi, v16hi *);
+v16hiu __udivmodv16hi4 (v16hiu, v16hiu, v16hiu *);
+v4si __divmodv4si4 (v4si, v4si, v4si *);
+v4siu __udivmodv4si4 (v4siu, v4siu, v4siu *);
+v8si __divmodv8si4 (v8si, v8si, v8si *);
+v8siu __udivmodv8si4 (v8siu, v8siu, v8siu *);
+v2di __divmodv2di4 (v2di, v2di, v2di *);
+v2diu __udivmodv2di4 (v2diu, v2diu, v2diu *);
+v4di __divmodv4di4 (v4di, v4di, v4di *);
+v4diu __udivmodv4di4 (v4diu, v4diu, v4diu *);
 v16qi __divv16qi3 (v16qi, v16qi);
 v16qi __modv16qi3 (v16qi, v16qi);
 v16qiu __udivv16qi3 (v16qiu, v16qiu);
@@ -303,4 +319,124 @@ v4diu
 __umodv4di3 (v4diu a, v4diu b)
 {
   return (v4diu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3] };
+}
+
+/* The combined divmod entry points.  LVX's DIVMOD* instructions return the
+   quotient in the low half of a register pair and the remainder in the high,
+   so one instruction per lane answers both -- calling __div<mode>3 and then
+   __mod<mode>3 does the division twice.  The middle end does not currently
+   lower a vector divide to these (it emits __div<mode>3 and __mod<mode>3),
+   but they are what a caller that wants both should use, and they are what
+   divmodvxqi.c's own divmod4 has to be measured against.  */
+
+v16qi
+__divmodv16qi4 (v16qi a, v16qi b, v16qi *c)
+{
+  *c = (v16qi) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7], a[8] % b[8], a[9] % b[9], a[10] % b[10], a[11] % b[11], a[12] % b[12], a[13] % b[13], a[14] % b[14], a[15] % b[15] };
+  return (v16qi) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7], a[8] / b[8], a[9] / b[9], a[10] / b[10], a[11] / b[11], a[12] / b[12], a[13] / b[13], a[14] / b[14], a[15] / b[15] };
+}
+
+v16qiu
+__udivmodv16qi4 (v16qiu a, v16qiu b, v16qiu *c)
+{
+  *c = (v16qiu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7], a[8] % b[8], a[9] % b[9], a[10] % b[10], a[11] % b[11], a[12] % b[12], a[13] % b[13], a[14] % b[14], a[15] % b[15] };
+  return (v16qiu) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7], a[8] / b[8], a[9] / b[9], a[10] / b[10], a[11] / b[11], a[12] / b[12], a[13] / b[13], a[14] / b[14], a[15] / b[15] };
+}
+
+v32qi
+__divmodv32qi4 (v32qi a, v32qi b, v32qi *c)
+{
+  *c = (v32qi) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7], a[8] % b[8], a[9] % b[9], a[10] % b[10], a[11] % b[11], a[12] % b[12], a[13] % b[13], a[14] % b[14], a[15] % b[15], a[16] % b[16], a[17] % b[17], a[18] % b[18], a[19] % b[19], a[20] % b[20], a[21] % b[21], a[22] % b[22], a[23] % b[23], a[24] % b[24], a[25] % b[25], a[26] % b[26], a[27] % b[27], a[28] % b[28], a[29] % b[29], a[30] % b[30], a[31] % b[31] };
+  return (v32qi) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7], a[8] / b[8], a[9] / b[9], a[10] / b[10], a[11] / b[11], a[12] / b[12], a[13] / b[13], a[14] / b[14], a[15] / b[15], a[16] / b[16], a[17] / b[17], a[18] / b[18], a[19] / b[19], a[20] / b[20], a[21] / b[21], a[22] / b[22], a[23] / b[23], a[24] / b[24], a[25] / b[25], a[26] / b[26], a[27] / b[27], a[28] / b[28], a[29] / b[29], a[30] / b[30], a[31] / b[31] };
+}
+
+v32qiu
+__udivmodv32qi4 (v32qiu a, v32qiu b, v32qiu *c)
+{
+  *c = (v32qiu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7], a[8] % b[8], a[9] % b[9], a[10] % b[10], a[11] % b[11], a[12] % b[12], a[13] % b[13], a[14] % b[14], a[15] % b[15], a[16] % b[16], a[17] % b[17], a[18] % b[18], a[19] % b[19], a[20] % b[20], a[21] % b[21], a[22] % b[22], a[23] % b[23], a[24] % b[24], a[25] % b[25], a[26] % b[26], a[27] % b[27], a[28] % b[28], a[29] % b[29], a[30] % b[30], a[31] % b[31] };
+  return (v32qiu) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7], a[8] / b[8], a[9] / b[9], a[10] / b[10], a[11] / b[11], a[12] / b[12], a[13] / b[13], a[14] / b[14], a[15] / b[15], a[16] / b[16], a[17] / b[17], a[18] / b[18], a[19] / b[19], a[20] / b[20], a[21] / b[21], a[22] / b[22], a[23] / b[23], a[24] / b[24], a[25] / b[25], a[26] / b[26], a[27] / b[27], a[28] / b[28], a[29] / b[29], a[30] / b[30], a[31] / b[31] };
+}
+
+v8hi
+__divmodv8hi4 (v8hi a, v8hi b, v8hi *c)
+{
+  *c = (v8hi) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7] };
+  return (v8hi) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7] };
+}
+
+v8hiu
+__udivmodv8hi4 (v8hiu a, v8hiu b, v8hiu *c)
+{
+  *c = (v8hiu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7] };
+  return (v8hiu) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7] };
+}
+
+v16hi
+__divmodv16hi4 (v16hi a, v16hi b, v16hi *c)
+{
+  *c = (v16hi) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7], a[8] % b[8], a[9] % b[9], a[10] % b[10], a[11] % b[11], a[12] % b[12], a[13] % b[13], a[14] % b[14], a[15] % b[15] };
+  return (v16hi) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7], a[8] / b[8], a[9] / b[9], a[10] / b[10], a[11] / b[11], a[12] / b[12], a[13] / b[13], a[14] / b[14], a[15] / b[15] };
+}
+
+v16hiu
+__udivmodv16hi4 (v16hiu a, v16hiu b, v16hiu *c)
+{
+  *c = (v16hiu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7], a[8] % b[8], a[9] % b[9], a[10] % b[10], a[11] % b[11], a[12] % b[12], a[13] % b[13], a[14] % b[14], a[15] % b[15] };
+  return (v16hiu) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7], a[8] / b[8], a[9] / b[9], a[10] / b[10], a[11] / b[11], a[12] / b[12], a[13] / b[13], a[14] / b[14], a[15] / b[15] };
+}
+
+v4si
+__divmodv4si4 (v4si a, v4si b, v4si *c)
+{
+  *c = (v4si) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3] };
+  return (v4si) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3] };
+}
+
+v4siu
+__udivmodv4si4 (v4siu a, v4siu b, v4siu *c)
+{
+  *c = (v4siu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3] };
+  return (v4siu) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3] };
+}
+
+v8si
+__divmodv8si4 (v8si a, v8si b, v8si *c)
+{
+  *c = (v8si) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7] };
+  return (v8si) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7] };
+}
+
+v8siu
+__udivmodv8si4 (v8siu a, v8siu b, v8siu *c)
+{
+  *c = (v8siu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7] };
+  return (v8siu) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7] };
+}
+
+v2di
+__divmodv2di4 (v2di a, v2di b, v2di *c)
+{
+  *c = (v2di) { a[0] % b[0], a[1] % b[1] };
+  return (v2di) { a[0] / b[0], a[1] / b[1] };
+}
+
+v2diu
+__udivmodv2di4 (v2diu a, v2diu b, v2diu *c)
+{
+  *c = (v2diu) { a[0] % b[0], a[1] % b[1] };
+  return (v2diu) { a[0] / b[0], a[1] / b[1] };
+}
+
+v4di
+__divmodv4di4 (v4di a, v4di b, v4di *c)
+{
+  *c = (v4di) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3] };
+  return (v4di) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3] };
+}
+
+v4diu
+__udivmodv4di4 (v4diu a, v4diu b, v4diu *c)
+{
+  *c = (v4diu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3] };
+  return (v4diu) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3] };
 }
