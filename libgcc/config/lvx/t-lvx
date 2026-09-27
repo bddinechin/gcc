@@ -28,32 +28,8 @@ softfp_exclude_libgcc2 := n
 # by attribute works on lvx-1 too.  There is no other source for the
 # floating-point ones anywhere.
 #
-# divmodvxqi.c is the STSU alternative.  It is correct and ready but NOT built,
-# because the one instruction it ends on -- TRUNCHBX -- is wrong in the ISS:
-# it copies the source's low 128 bits instead of packing the low bytes of all
-# sixteen half-words, so result[2j] and result[2j+1] both come from half-word
-# 2j.  TRUNCWHO and TRUNCDWQ are correct, and the generated execute body for
-# TRUNCHBX reads correct, so the fault is downstream of the C.  Verified from
-# hand-written assembly with the compiler out of the picture, and the divider
-# itself was verified correct over 512 lane-checks with the final pack done in
-# portable C instead.  Enable it here the moment TRUNCHBX executes correctly;
-# until then divv.c must keep the byte lanes, or lvx-2 gets wrong answers where
-# it currently gets right ones.  The algorithm
-# (from the TMS320C5x guide) iterates once per bit of the lane with an STSU at
-# twice the lane width, so its cost grows with the lane while the scalar route's
-# falls -- 128/W divides for a W-bit lane.  Measured in bundles at -O2:
-#
-#                      STSU      one divmod per lane
-#   __udivv16qi3         15       24       STSU 1.6x better
-#   __udivv32qi3         30       66       STSU 2.2x better
-#   __udivv8hi3          23       12       scalar 1.9x better
-#   __udivv16hi3         46       20       scalar 2.3x better
-#   __udivv4si3           -        8       scalar (4 divmodw, FULL slot)
-#   __udivv2di3           -        5       scalar (2 divmodd)
-#
-# So the crossover sits between byte and half-word lanes, and only the QI file
-# earns its place.  divv.c guards its own byte-lane helpers off on lvx-2 so the
-# two never define the same symbol.
+# divmodvxqi.c is the STSU alternative, and it is built as well.  divv.c guards
+# its own byte-lane helpers off on lvx-2, so the two never define one symbol.
 #
 # divmodvxhi.c and divmodvxsi.c stay out on those numbers, not because they are
 # broken -- both are now correct (see below) and compile and assemble clean.
@@ -82,6 +58,7 @@ softfp_exclude_libgcc2 := n
 # unreachable: divsf3/divdf3/divhf3 expand straight to fdivw/fdivd/fdivh.
 lvx-libgcc-funcs := \
   divv \
+  divmodvxqi \
   $(softfp_func_exclude)
 
 lvx-libgcc-c := $(addsuffix .c,$(lvx-libgcc-funcs))

@@ -53,9 +53,13 @@ v2df __divv2df3 (v2df, v2df);
 v4df __divv4df3 (v4df, v4df);
 v4si __divv4si3 (v4si, v4si);
 v16qi __divmodv16qi4 (v16qi, v16qi, v16qi *);
+#if !defined(__lvxarch_lvx_2)
 v16qiu __udivmodv16qi4 (v16qiu, v16qiu, v16qiu *);
+#endif
 v32qi __divmodv32qi4 (v32qi, v32qi, v32qi *);
+#if !defined(__lvxarch_lvx_2)
 v32qiu __udivmodv32qi4 (v32qiu, v32qiu, v32qiu *);
+#endif
 v8hi __divmodv8hi4 (v8hi, v8hi, v8hi *);
 v8hiu __udivmodv8hi4 (v8hiu, v8hiu, v8hiu *);
 v16hi __divmodv16hi4 (v16hi, v16hi, v16hi *);
@@ -68,6 +72,12 @@ v2di __divmodv2di4 (v2di, v2di, v2di *);
 v2diu __udivmodv2di4 (v2diu, v2diu, v2diu *);
 v4di __divmodv4di4 (v4di, v4di, v4di *);
 v4diu __udivmodv4di4 (v4diu, v4diu, v4diu *);
+/* On lvx-2 the byte-lane helpers come from divmodvxqi.c instead: its STSU route
+   iterates once per bit of the lane, so eight iterations for an 8-bit lane beats
+   sixteen (or thirty-two) hardware divides -- measured 1.6x at 128 bits and 2.2x
+   at 256.  The crossover is between byte and half-word lanes; at 16 bits and
+   above one divmod per lane wins, which is why only the QI file is built.  */
+#if !defined(__lvxarch_lvx_2)
 v16qi __divv16qi3 (v16qi, v16qi);
 v16qi __modv16qi3 (v16qi, v16qi);
 v16qiu __udivv16qi3 (v16qiu, v16qiu);
@@ -76,6 +86,7 @@ v32qi __divv32qi3 (v32qi, v32qi);
 v32qi __modv32qi3 (v32qi, v32qi);
 v32qiu __udivv32qi3 (v32qiu, v32qiu);
 v32qiu __umodv32qi3 (v32qiu, v32qiu);
+#endif
 v8hi __divv8hi3 (v8hi, v8hi);
 v8hi __modv8hi3 (v8hi, v8hi);
 v8hiu __udivv8hi3 (v8hiu, v8hiu);
@@ -130,6 +141,7 @@ __divv4df3 (v4df a, v4df b)
    V32QI/V16HI/V8SI/V4DI calls one of these.  (divmodvx*.c, the bit-serial stsu
    versions, are a later optimisation: they predate the builtin renames.)  */
 
+#if !defined(__lvxarch_lvx_2)
 v16qi
 __divv16qi3 (v16qi a, v16qi b)
 {
@@ -177,6 +189,7 @@ __umodv32qi3 (v32qiu a, v32qiu b)
 {
   return (v32qiu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7], a[8] % b[8], a[9] % b[9], a[10] % b[10], a[11] % b[11], a[12] % b[12], a[13] % b[13], a[14] % b[14], a[15] % b[15], a[16] % b[16], a[17] % b[17], a[18] % b[18], a[19] % b[19], a[20] % b[20], a[21] % b[21], a[22] % b[22], a[23] % b[23], a[24] % b[24], a[25] % b[25], a[26] % b[26], a[27] % b[27], a[28] % b[28], a[29] % b[29], a[30] % b[30], a[31] % b[31] };
 }
+#endif//!__lvxarch_lvx_2
 v8hi
 __divv8hi3 (v8hi a, v8hi b)
 {
@@ -321,7 +334,8 @@ __umodv4di3 (v4diu a, v4diu b)
   return (v4diu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3] };
 }
 
-/* The combined divmod entry points.  LVX's DIVMOD* instructions return the
+/* The combined divmod entry points.  The signed byte-lane ones stay here on both
+   cores: divmodvxqi.c supplies the unsigned pair but not those.  LVX's DIVMOD* instructions return the
    quotient in the low half of a register pair and the remainder in the high,
    so one instruction per lane answers both -- calling __div<mode>3 and then
    __mod<mode>3 does the division twice.  The middle end does not currently
@@ -336,12 +350,14 @@ __divmodv16qi4 (v16qi a, v16qi b, v16qi *c)
   return (v16qi) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7], a[8] / b[8], a[9] / b[9], a[10] / b[10], a[11] / b[11], a[12] / b[12], a[13] / b[13], a[14] / b[14], a[15] / b[15] };
 }
 
+#if !defined(__lvxarch_lvx_2)
 v16qiu
 __udivmodv16qi4 (v16qiu a, v16qiu b, v16qiu *c)
 {
   *c = (v16qiu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7], a[8] % b[8], a[9] % b[9], a[10] % b[10], a[11] % b[11], a[12] % b[12], a[13] % b[13], a[14] % b[14], a[15] % b[15] };
   return (v16qiu) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7], a[8] / b[8], a[9] / b[9], a[10] / b[10], a[11] / b[11], a[12] / b[12], a[13] / b[13], a[14] / b[14], a[15] / b[15] };
 }
+#endif
 
 v32qi
 __divmodv32qi4 (v32qi a, v32qi b, v32qi *c)
@@ -350,12 +366,14 @@ __divmodv32qi4 (v32qi a, v32qi b, v32qi *c)
   return (v32qi) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7], a[8] / b[8], a[9] / b[9], a[10] / b[10], a[11] / b[11], a[12] / b[12], a[13] / b[13], a[14] / b[14], a[15] / b[15], a[16] / b[16], a[17] / b[17], a[18] / b[18], a[19] / b[19], a[20] / b[20], a[21] / b[21], a[22] / b[22], a[23] / b[23], a[24] / b[24], a[25] / b[25], a[26] / b[26], a[27] / b[27], a[28] / b[28], a[29] / b[29], a[30] / b[30], a[31] / b[31] };
 }
 
+#if !defined(__lvxarch_lvx_2)
 v32qiu
 __udivmodv32qi4 (v32qiu a, v32qiu b, v32qiu *c)
 {
   *c = (v32qiu) { a[0] % b[0], a[1] % b[1], a[2] % b[2], a[3] % b[3], a[4] % b[4], a[5] % b[5], a[6] % b[6], a[7] % b[7], a[8] % b[8], a[9] % b[9], a[10] % b[10], a[11] % b[11], a[12] % b[12], a[13] % b[13], a[14] % b[14], a[15] % b[15], a[16] % b[16], a[17] % b[17], a[18] % b[18], a[19] % b[19], a[20] % b[20], a[21] % b[21], a[22] % b[22], a[23] % b[23], a[24] % b[24], a[25] % b[25], a[26] % b[26], a[27] % b[27], a[28] % b[28], a[29] % b[29], a[30] % b[30], a[31] % b[31] };
   return (v32qiu) { a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3], a[4] / b[4], a[5] / b[5], a[6] / b[6], a[7] / b[7], a[8] / b[8], a[9] / b[9], a[10] / b[10], a[11] / b[11], a[12] / b[12], a[13] / b[13], a[14] / b[14], a[15] / b[15], a[16] / b[16], a[17] / b[17], a[18] / b[18], a[19] / b[19], a[20] / b[20], a[21] / b[21], a[22] / b[22], a[23] / b[23], a[24] / b[24], a[25] / b[25], a[26] / b[26], a[27] / b[27], a[28] / b[28], a[29] / b[29], a[30] / b[30], a[31] / b[31] };
 }
+#endif
 
 v8hi
 __divmodv8hi4 (v8hi a, v8hi b, v8hi *c)
