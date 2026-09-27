@@ -2764,48 +2764,61 @@
    (set_attr "issue" "lite")]
 )
 
-;; V2SF <-> V2SI, the word-pair conversions.  V2SF is the "not really SIMD"
-;; 64-bit mode that lives in one GPR (see lvx_vector_mode_supported_p), so
-;; these are exactly the scalar fixedw/floatw done on both lanes at once:
-;; FIXEDWP/FLOATWP and their unsigned forms, present on both cores.  Without
-;; them a V2SF<->V2SI cast is an unrecognizable insn that reaches split2 and
-;; ICEs -- the gap the vector dividers' test tripped over.  The pair form takes
-;; no shift operand, so unlike the scalar ones there is no ", 0" variant.
+;; V2SF <-> V2SI, on the 128-bit unit.
+;;
+;; These used to emit FIXEDWP/FLOATWP and their unsigned forms -- the 64-bit
+;; SIMD family -- and that was wrong code, not just a stale choice: every
+;; ALU_FWP* encoding is a strict subset of ALU_FWCOP's, so `fixedwp.rz`
+;; assembled to a word the machine executes as `faddwc.c.mi.rz`, a complex
+;; float add with a third register that was never written.  The wp family is
+;; retired for that reason (lvx-mds, 2026-09-27) and these go the way V2SF
+;; arithmetic already does: the operand into the low half of a zeroed 128-bit
+;; pair, one FIXEDWQ/FLOATWQ on all four lanes, the low half back out.
+;;
+;; The upper lanes must be ZERO rather than garbage.  Integer arithmetic raises
+;; nothing so v64vector.c's lanes may hold anything, but a conversion sets the
+;; CS exception flags: float(garbage) can round and raise Inexact, and
+;; fix(garbage float) can raise Invalid.  Zeroing costs one MAKED the register
+;; allocator usually hoists.
 
-(define_insn "fix_truncv2sfv2si2"
-  [(set (match_operand:V2SI 0 "register_operand" "=r")
-        (fix:V2SI (match_operand:V2SF 1 "register_operand" "r")))]
-  ""
-  "fixedwp.rz %0 = %1"
-  [(set_attr "type" "fcvt")
-   (set_attr "issue" "lite")]
+(define_expand "fix_truncv2sfv2si2"
+  [(set (match_operand:V2SI 0 "register_operand")
+        (fix:V2SI (match_operand:V2SF 1 "register_operand")))]
+  "LVX_2"
+  {
+    lvx_expand_cvt64 (FIX, V4SFmode, V4SImode, operands);
+    DONE;
+  }
 )
 
-(define_insn "fixuns_truncv2sfv2si2"
-  [(set (match_operand:V2SI 0 "register_operand" "=r")
-        (unsigned_fix:V2SI (match_operand:V2SF 1 "register_operand" "r")))]
-  ""
-  "fixeduwp.rz %0 = %1"
-  [(set_attr "type" "fcvt")
-   (set_attr "issue" "lite")]
+(define_expand "fixuns_truncv2sfv2si2"
+  [(set (match_operand:V2SI 0 "register_operand")
+        (unsigned_fix:V2SI (match_operand:V2SF 1 "register_operand")))]
+  "LVX_2"
+  {
+    lvx_expand_cvt64 (UNSIGNED_FIX, V4SFmode, V4SImode, operands);
+    DONE;
+  }
 )
 
-(define_insn "floatv2siv2sf2"
-  [(set (match_operand:V2SF 0 "register_operand" "=r")
-        (float:V2SF (match_operand:V2SI 1 "register_operand" "r")))]
-  ""
-  "floatwp.rn %0 = %1"
-  [(set_attr "type" "fcvt")
-   (set_attr "issue" "lite")]
+(define_expand "floatv2siv2sf2"
+  [(set (match_operand:V2SF 0 "register_operand")
+        (float:V2SF (match_operand:V2SI 1 "register_operand")))]
+  "LVX_2"
+  {
+    lvx_expand_cvt64 (FLOAT, V4SImode, V4SFmode, operands);
+    DONE;
+  }
 )
 
-(define_insn "floatunsv2siv2sf2"
-  [(set (match_operand:V2SF 0 "register_operand" "=r")
-        (unsigned_float:V2SF (match_operand:V2SI 1 "register_operand" "r")))]
-  ""
-  "floatuwp.rn %0 = %1"
-  [(set_attr "type" "fcvt")
-   (set_attr "issue" "lite")]
+(define_expand "floatunsv2siv2sf2"
+  [(set (match_operand:V2SF 0 "register_operand")
+        (unsigned_float:V2SF (match_operand:V2SI 1 "register_operand")))]
+  "LVX_2"
+  {
+    lvx_expand_cvt64 (UNSIGNED_FLOAT, V4SImode, V4SFmode, operands);
+    DONE;
+  }
 )
 
 (define_insn "truncsfhf2"

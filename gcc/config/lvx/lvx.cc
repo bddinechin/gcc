@@ -7011,6 +7011,31 @@ lvx_support_vector_misalignment (enum machine_mode, int, bool, bool)
 #define TARGET_VECTORIZE_SUPPORT_VECTOR_MISALIGNMENT \
   lvx_support_vector_misalignment
 
+/* A 64-bit vector conversion on the 128-bit unit: OPERANDS[1] goes into the low
+   half of a zeroed SMODE pair, one conversion runs on every lane, and the low
+   half of the DMODE result is the answer.
+
+   Here the zeroing is not optional, where lvx_expand_widen64 leaves the upper
+   lanes undefined: a conversion writes the CS exception flags, so garbage above
+   would raise Inexact (float of a value needing rounding) or Invalid (fix of a
+   NaN or an out-of-range float) for lanes the program never asked about.  */
+void
+lvx_expand_cvt64 (enum rtx_code code, machine_mode smode, machine_mode dmode,
+		  rtx *operands)
+{
+  machine_mode nmode = GET_MODE (operands[1]);
+  machine_mode omode = GET_MODE (operands[0]);
+
+  rtx wide = gen_reg_rtx (smode);
+  emit_move_insn (wide, CONST0_RTX (smode));
+  emit_move_insn (simplify_gen_subreg (nmode, wide, smode, 0),
+		  force_reg (nmode, operands[1]));
+
+  rtx dest = gen_reg_rtx (dmode);
+  emit_insn (gen_rtx_SET (dest, gen_rtx_fmt_e (code, dmode, wide)));
+  emit_move_insn (operands[0], simplify_gen_subreg (omode, dest, dmode, 0));
+}
+
 /* Expand OPERANDS[0] = (CODE OPERANDS[1] OPERANDS[2]) for a 64-bit vector
    mode by doing it on the 128-bit unit WMODE: each vector operand goes in
    the low half of a fresh pair, the packed instruction runs on all its
