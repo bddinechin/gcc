@@ -5660,10 +5660,19 @@ lvx_vector_mode_supported_p (enum machine_mode mode)
      was never told about, so the bitwise operations stay the one ANDD, IORD
      or EORD that the 64-bit container is.
 
-     The four-byte modes (V2HI, V4QI) stay out: passing one as an argument
-     ICEd in emit_move_multi_word, which is what the lower bound below was
-     added for (gcc.c-torture/execute/20050316-1.c).  */
-  if (mode == V8QImode || mode == V4HImode || mode == V2SImode)
+     V4HF joins them for the same reason (2026-09-28): four halves in a GPR
+     widen into V8HF's FADDHO/FSBFHO/FMULHO, seven instructions where the
+     element-wise lowering measured seventeen (eight LHZ, four FADDH, four
+     SH).  The expanders existed before the mode was claimed and were simply
+     unreachable -- an unclaimed mode is never offered to them.
+
+     None of these needs a mov<mode> pattern: at eight bytes they are moved
+     via the same-size integer (emit_move_via_integer), which is also why the
+     four-byte modes (V2HI, V4QI) stay out -- passing one as an argument ICEd
+     in emit_move_multi_word, which is what the lower bound below was added
+     for (gcc.c-torture/execute/20050316-1.c).  */
+  if (mode == V8QImode || mode == V4HImode || mode == V2SImode
+      || mode == V4HFmode)
     return true;
 
   unsigned size = GET_MODE_SIZE (mode);

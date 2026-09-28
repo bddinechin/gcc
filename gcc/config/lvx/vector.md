@@ -6842,15 +6842,18 @@
 )
 
 ;; -------------------------------------------------------------------------
-;; V2SF arithmetic, done on the 128-bit unit
+;; 64-bit FP arithmetic (V2SF, V4HF), done on the 128-bit unit
 ;;
 ;; V2SF is two floats in one GPR -- 64 bits, the `float complex' shape the
 ;; FMULWC family works on, and the one sub-128-bit vector mode
-;; lvx_vector_mode_supported_p claims (see the 128-bit lower bound there).
-;; There is no packed 2x32 FP instruction: the narrowest is FADDWQ/FSBFWQ/
-;; FMULWQ on a 4x32 pair.  Without a pattern the middle end lowers a V2SF
-;; add or multiply lane by lane -- four EXTFZD, two scalar ops, a MAKED and
-;; two INSFD, ten instructions for what one FADDWQ does.
+;; lvx_vector_mode_supported_p claims on lvx-1 (see the 128-bit lower bound
+;; there).  V4HF is the same shape one lane size down, four halves in a GPR.
+;; Neither has a packed instruction of its own: the narrowest FP lanes are
+;; FADDWQ/FSBFWQ/FMULWQ on a 4x32 pair and FADDHO/FSBFHO/FMULHO on an 8x16
+;; one.  Without a pattern the middle end lowers lane by lane -- for V2SF
+;; four EXTFZD, two scalar ops, a MAKED and two INSFD, ten instructions for
+;; what one FADDWQ does; for V4HF, measured, seventeen (eight LHZ, four
+;; FADDH, four SH) against the seven this expander produces.
 ;;
 ;; So widen: put each operand in the low half of a pair, run the 128-bit
 ;; instruction, take the low half of the result.  The upper lanes are
@@ -6866,30 +6869,35 @@
 ;; for before allocation is placed by the allocator like any other.
 ;; -------------------------------------------------------------------------
 
-(define_code_iterator V2SF_ARITH [plus minus mult])
-(define_code_attr v2sf_arith [(plus "add") (minus "sub") (mult "mul")])
+;; The two 64-bit FP shapes and their 128-bit counterparts, via DMODE:
+;; V2SF -> V4SF (FADDWQ/FSBFWQ/FMULWQ), V4HF -> V8HF (FADDHO/FSBFHO/FMULHO).
+(define_mode_iterator V64F [V2SF V4HF])
 
-(define_expand "<v2sf_arith>v2sf3"
-  [(set (match_operand:V2SF 0 "register_operand")
-        (V2SF_ARITH:V2SF (match_operand:V2SF 1 "register_operand")
-                         (match_operand:V2SF 2 "register_operand")))]
+(define_code_iterator V64F_ARITH [plus minus mult])
+(define_code_attr v64f_arith [(plus "add") (minus "sub") (mult "mul")])
+
+(define_expand "<v64f_arith><mode>3"
+  [(set (match_operand:V64F 0 "register_operand")
+        (V64F_ARITH:V64F (match_operand:V64F 1 "register_operand")
+                         (match_operand:V64F 2 "register_operand")))]
   "LVX_2"
   {
     rtx wide[3];
     for (int i = 1; i <= 2; i++)
       {
-        wide[i] = gen_reg_rtx (V4SFmode);
+        wide[i] = gen_reg_rtx (<DMODE>mode);
         /* The pair is zero but for its low half, which is the operand.  */
-        emit_move_insn (wide[i], CONST0_RTX (V4SFmode));
-        emit_move_insn (simplify_gen_subreg (V2SFmode, wide[i], V4SFmode, 0),
+        emit_move_insn (wide[i], CONST0_RTX (<DMODE>mode));
+        emit_move_insn (simplify_gen_subreg (<MODE>mode, wide[i],
+                                             <DMODE>mode, 0),
                         operands[i]);
       }
-    wide[0] = gen_reg_rtx (V4SFmode);
+    wide[0] = gen_reg_rtx (<DMODE>mode);
     emit_insn (gen_rtx_SET (wide[0],
-                            gen_rtx_fmt_ee (<CODE>, V4SFmode,
+                            gen_rtx_fmt_ee (<CODE>, <DMODE>mode,
                                             wide[1], wide[2])));
     emit_move_insn (operands[0],
-                    simplify_gen_subreg (V2SFmode, wide[0], V4SFmode, 0));
+                    simplify_gen_subreg (<MODE>mode, wide[0], <DMODE>mode, 0));
     DONE;
   }
 )
