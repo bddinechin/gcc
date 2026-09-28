@@ -1172,15 +1172,23 @@
    (set_attr "length" "4")]
 )
 
-;; The vectorizer queries the vrotl/vrotr optabs rather than rotl/rotr, so
-;; delegate them to the insn above: a rotate loop then uses ROL*/ROR* instead
-;; of the three-instruction lowering.
-(define_expand "vrot<rotm><mode>3"
-  [(set (match_operand:V128R 0 "register_operand")
-        (ROTCODE:V128R (match_operand:V128R 1 "register_operand")
-                       (match_operand:SI 2 "reg_shift_operand")))]
-  "LVX_2"
-  "")
+;; There is deliberately no vrotl/vrotr here, and that is not an omission.  The
+;; two optabs are different contracts: rotl<mode>3 takes a SCALAR count (one
+;; count for every lane), vrotl<mode>3 takes a VECTOR of per-lane counts
+;; (md.texi: "take vectors as operand 2 instead of a scalar type").  The LVX
+;; rotates are the scalar kind -- ALU_BXSWRR and its siblings give registerY as
+;; a singleReg -- and so is every packed shift, so there is nothing to lower a
+;; per-lane rotate to.
+;;
+;; A vrot<rotm><mode>3 expander used to sit here, declaring operand 2 as SI
+;; while claiming the vector-count optab.  It made the vectorizer commit to a
+;; per-lane rotate it then could not expand, and the operand-mode mismatch
+;; ICEd in convert_move (expr.cc:305, through expand_variable_shift ->
+;; expand_binop -> convert_modes).  Constant-count loops never needed it: an
+;; invariant count reaches the scalar optab above by itself, exactly as
+;; `a[i] << 3` reaches SLLBX, and a genuinely per-lane count now simply does
+;; not vectorize -- the same answer the shifts already give.
+;; `validation/tests/micro/rotlane-var.c` is the regression test.
 
 ;; The same at 256 bits, one native rotate per 128-bit half.
 (define_insn "rot<rotm><mode>3"
@@ -1195,13 +1203,6 @@
    (set_attr "issue" "lite2")
    (set_attr "length" "8")]
 )
-
-(define_expand "vrot<rotm><mode>3"
-  [(set (match_operand:V256R 0 "register_operand")
-        (ROTCODE:V256R (match_operand:V256R 1 "register_operand")
-                       (match_operand:SI 2 "reg_shift_operand")))]
-  "LVX_2"
-  "")
 
 ;; S128I (V8HI V4SI)
 
