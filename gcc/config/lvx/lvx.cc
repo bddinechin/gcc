@@ -597,6 +597,38 @@ lvx_extension_mode_p (enum machine_mode mode)
   return false;
 }
 
+/* Return true when a WIDTH-bit field at bit POS may be read from SRC by a
+   single extfsd/extfzd.  The instruction operates on the whole GPR, so the
+   field must not straddle a boundary the source does not intend.  For an
+   ordinary integer that is the mode: POS + WIDTH <= mode bits.
+
+   For a lane of a packed vector — SRC is a subreg of a vector mode, several
+   lanes sharing one GPR (pair) — a field is fine when it stays inside one
+   element (an ordinary sub-lane bitfield) OR is element-aligned and spans whole
+   elements (reading one or several lanes verbatim, which extfzd does correctly).
+   What is *not* fine is a field that starts mid-lane and runs past the element,
+   pulling in the neighbouring lane's bits.  combine forms exactly that: it folds
+   a right shift into a zero_extract's position without shrinking its width
+   (make_extraction), so lane0>>16 of a V4SI becomes zero_extract(subreg:DI, 32,
+   16) — 32 bits from bit 16, reaching into lane 1.  Rejecting it keeps combine
+   from using extfzd and the shift survives (the vqshrn_n_u32 -O3
+   over-saturation), while the element-aligned lane extracts vdup_lane relies on
+   still match.  */
+bool
+lvx_extract_field_ok_p (rtx src, HOST_WIDE_INT width, HOST_WIDE_INT pos)
+{
+  if (SUBREG_P (src) && VECTOR_MODE_P (GET_MODE (SUBREG_REG (src))))
+    {
+      unsigned HOST_WIDE_INT elem
+	= GET_MODE_UNIT_BITSIZE (GET_MODE (SUBREG_REG (src)));
+      if (elem == 0)
+	return false;
+      return (pos % elem) + width <= elem			/* within a lane */
+	     || (pos % elem == 0 && width % elem == 0);		/* whole lanes */
+    }
+  return pos + width <= GET_MODE_BITSIZE (GET_MODE (src));
+}
+
 /* Utils }}} */
 
 /* Options Handling {{{ */

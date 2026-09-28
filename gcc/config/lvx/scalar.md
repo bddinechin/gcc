@@ -668,23 +668,48 @@
    (set_attr "issue" "tiny")]
 )
 
-(define_insn "extv<mode>"
+;; A bitfield extract must lie within the operand's mode.  combine folds a right
+;; shift into the extract's offset (see make_extraction) without shrinking the
+;; width — turning zero_extract(x, 32, 0) applied to (x >> 16) into
+;; zero_extract(x, 32, 16), whose 48-bit reach runs past the SImode value.  On a
+;; packed SIMD register (a V4SI lane is an SImode subreg of a wider GPR) those
+;; extra bits are the *next lane*, so extfzd would read across the lane boundary
+;; (a saturating-narrow miscompile: vqshrn_n_u32 over-saturated at -O3).  The
+;; guard on the private insn rejects the out-of-mode field, so combine keeps the
+;; shift (which is correct); a legitimate extv/extzv from expand is always in
+;; range and matches.  The named expander keeps the standard optab available —
+;; its HAVE_* query must stay operand-independent, so the guard cannot live there.
+(define_expand "extv<mode>"
+  [(set (match_operand:SIDI 0 "register_operand")
+        (sign_extract:SIDI (match_operand:SIDI 1 "register_operand")
+                           (match_operand 2 "sixbits_unsigned_operand")
+                           (match_operand 3 "sixbits_unsigned_operand")))]
+  "")
+
+(define_insn "*extv<mode>"
   [(set (match_operand:SIDI 0 "register_operand" "=r")
         (sign_extract:SIDI (match_operand:SIDI 1 "register_operand" "r")
                            (match_operand 2 "sixbits_unsigned_operand" "i")
                            (match_operand 3 "sixbits_unsigned_operand" "i")))]
-  ""
+  "lvx_extract_field_ok_p (operands[1], INTVAL (operands[2]), INTVAL (operands[3]))"
   "extfsd %0 = %1, %2, %3"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
 
-(define_insn "extzv<mode>"
+(define_expand "extzv<mode>"
+  [(set (match_operand:SIDI 0 "register_operand")
+        (zero_extract:SIDI (match_operand:SIDI 1 "register_operand")
+                           (match_operand 2 "sixbits_unsigned_operand")
+                           (match_operand 3 "sixbits_unsigned_operand")))]
+  "")
+
+(define_insn "*extzv<mode>"
   [(set (match_operand:SIDI 0 "register_operand" "=r")
         (zero_extract:SIDI (match_operand:SIDI 1 "register_operand" "r")
                            (match_operand 2 "sixbits_unsigned_operand" "i")
                            (match_operand 3 "sixbits_unsigned_operand" "i")))]
-  ""
+  "lvx_extract_field_ok_p (operands[1], INTVAL (operands[2]), INTVAL (operands[3]))"
   "extfzd %0 = %1, %2, %3"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
@@ -1406,6 +1431,50 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
 )
+
+;; QI/HI logicals.  Only the lane-mask reaches these modes (see the QIHI
+;; iterator in iterators.md); the 32-bit word instruction computes the low
+;; bits, which is all a QI/HI value defines.  Register operands only — a
+;; constant mask is materialised into a register, which the mask paths never do.
+(define_insn "and<mode>3"
+  [(set (match_operand:QIHI 0 "register_operand" "=r")
+        (and:QIHI (match_operand:QIHI 1 "register_operand" "r")
+                  (match_operand:QIHI 2 "register_operand" "r")))]
+  ""
+  "andw %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
+(define_insn "ior<mode>3"
+  [(set (match_operand:QIHI 0 "register_operand" "=r")
+        (ior:QIHI (match_operand:QIHI 1 "register_operand" "r")
+                  (match_operand:QIHI 2 "register_operand" "r")))]
+  ""
+  "iorw %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
+(define_insn "xor<mode>3"
+  [(set (match_operand:QIHI 0 "register_operand" "=r")
+        (xor:QIHI (match_operand:QIHI 1 "register_operand" "r")
+                  (match_operand:QIHI 2 "register_operand" "r")))]
+  ""
+  "eorw %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
+(define_insn "one_cmpl<mode>2"
+  [(set (match_operand:QIHI 0 "register_operand" "=r")
+        (not:QIHI (match_operand:QIHI 1 "register_operand" "r")))]
+  ""
+  "notw %0 = %1"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
 (define_insn "lvx_stsuw"
   [(set (match_operand:SI 0 "register_operand" "=r")
         (unspec:SI [(match_operand:SI 1 "register_operand" "r")

@@ -199,6 +199,9 @@ extern int lvx_accumulator_bypass_p (rtx_insn *prod_insn, rtx_insn *cons_insn);
 
 extern int lvx_has_tls_reference (rtx x);
 
+extern bool lvx_extract_field_ok_p (rtx src, HOST_WIDE_INT width,
+				    HOST_WIDE_INT pos);
+
 extern bool lvx_float_fits_bits (const REAL_VALUE_TYPE *r, unsigned bitsz,
 				 enum machine_mode mode);
 

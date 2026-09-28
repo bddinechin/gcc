@@ -226,6 +226,15 @@
 ;; Iterator for SI, QI and HI modes
 (define_mode_iterator SHORT [  QI HI SI])
 
+;; Sub-word integer modes (QI, HI).  LVX has no native QI/HI arithmetic — C
+;; promotes narrow integer operands to int (SImode) — so these modes normally
+;; never reach RTL.  The exception is the lane-mask: get_mask_mode hands back a
+;; QImode (or HImode) bit-per-lane mask, and composing two masks with a boolean
+;; operator (e.g. _mm_cmpunord_pd = isnan(a) & isnan(b)) emits an (and:QI ...)
+;; that had no matching insn — an ICE at the vregs pass.  The 32-bit word
+;; logicals compute the low bits correctly, which is all a QI/HI value defines.
+(define_mode_iterator QIHI [  QI HI])
+
 ;; Iterator for floating-point compare modes (up to 64-bit)
 (define_mode_iterator ALLF [  SF DF])
 
