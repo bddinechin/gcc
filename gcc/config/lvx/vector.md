@@ -397,6 +397,55 @@
     DONE;
   })
 
+;; The float 128-bit modes take the same bit-per-lane GPR mask, from FCOMP*.
+;; vec_cmp goes through lvx_lower_comparison, which canonicalises the FP
+;; condition to what FCOMP* prints (float_comparison_operator) -- swapping
+;; operands or splitting UNORDERED/ORDERED into two compares joined by an
+;; AND/IOR of the packed masks -- and wraps each compare in UNSPEC_PACKCMP.
+(define_expand "vec_cmp<mode><lanemask>"
+  [(set (match_operand:<LANEMASK> 0 "register_operand")
+        (match_operator:<LANEMASK> 1 "comparison_operator"
+          [(match_operand:SIMD128F 2 "register_operand")
+           (match_operand:SIMD128F 3 "register_operand")]))]
+  "LVX_2"
+  {
+    lvx_lower_comparison (operands[0], operands[1], <MODE>mode);
+    DONE;
+  })
+
+(define_insn "*fcomp<mode><lanemask>"
+  [(set (match_operand:<LANEMASK> 0 "register_operand" "=r")
+        (unspec:<LANEMASK>
+          [(match_operator:<LANEMASK> 1 "float_comparison_operator"
+            [(match_operand:SIMD128F 2 "register_operand" "r")
+             (match_operand:SIMD128F 3 "register_operand" "r")])]
+          UNSPEC_PACKCMP))]
+  "LVX_2"
+  "fcomp<compx>.%F1 %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")])
+
+(define_expand "vcond_mask_<mode><lanemask>"
+  [(match_operand:SIMD128F 0 "register_operand")
+   (match_operand:SIMD128F 1 "register_operand")
+   (match_operand:SIMD128F 2 "register_operand")
+   (match_operand:<LANEMASK> 3 "register_operand")]
+  "LVX_2"
+  {
+    /* BLEND* is a lane bit-select on the register bits, type-agnostic, so view
+       the float operands as their integer sibling and reuse the integer blend:
+       seed dst with the false value, blend in the true one where the mask set.  */
+    machine_mode im = <vintmode>mode;
+    rtx dst = simplify_gen_subreg (im, operands[0], <MODE>mode, 0);
+    rtx op1 = simplify_gen_subreg (im, operands[1], <MODE>mode, 0);
+    rtx op2 = simplify_gen_subreg (im, operands[2], <MODE>mode, 0);
+    gcc_assert (dst && op1 && op2);
+    if (!rtx_equal_p (dst, op2))
+      emit_move_insn (dst, op2);
+    emit_insn (gen_lvx_blend<compx> (dst, dst, op1, operands[3]));
+    DONE;
+  })
+
 ;; -------------------------------------------------------------------------
 ;; Masked load/store (MASKM).  MASKM is a BCU prefix over a plain lq/sq whose
 ;; byte-enable mask says which bytes to touch.  The vectorizer's mask is a lane

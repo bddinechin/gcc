@@ -634,16 +634,29 @@
 ;; the COMP*/BLEND* mnemonic suffix for the lane width.
 (define_mode_iterator SIMD128I [V16QI V8HI V4SI V2DI])
 
+;; The 128-bit float SIMD modes take the same GPR bit-mask, produced by FCOMP*
+;; (no byte float, so no bx), and their selects blend through the int sibling.
+(define_mode_iterator SIMD128F [V8HF V4SF V2DF])
+
 (define_mode_attr LANEMASK [
   (V16QI "HI") (V8HI "QI") (V4SI "QI") (V2DI "QI")
+  (V8HF "QI") (V4SF "QI") (V2DF "QI")
 ])
 
 (define_mode_attr lanemask [
   (V16QI "hi") (V8HI "qi") (V4SI "qi") (V2DI "qi")
+  (V8HF "qi") (V4SF "qi") (V2DF "qi")
 ])
 
 (define_mode_attr compx [
   (V16QI "bx") (V8HI "ho") (V4SI "wq") (V2DI "dp")
+  (V8HF "ho") (V4SF "wq") (V2DF "dp")
+])
+
+;; A float SIMD mode's integer sibling of the same lane width, for the bitcast
+;; that lets a float select reuse the integer BLEND* (a lane bit-select).
+(define_mode_attr vintmode [
+  (V8HF "V8HI") (V4SF "V4SI") (V2DF "V2DI")
 ])
 
 (define_mode_attr WIDE [

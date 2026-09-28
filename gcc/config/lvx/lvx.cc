@@ -2147,6 +2147,17 @@ lvx_lower_timode_comparison (rtx pred, rtx comp, machine_mode comp_mode)
 }
 
 
+/* Wrap a vector comparison C in UNSPEC_PACKCMP when PACK -- i.e. when the result
+   is a bit-per-lane mask in a GPR (a scalar int mode), not a full-width 0/-1
+   vector.  A bare scalar-mode comparison has nonzero_bits 1, so combine would
+   mistake the packed mask for a 0/1 boolean; the unspec keeps its lane bits.  */
+static rtx
+lvx_pack_cmp (rtx c, machine_mode mask_mode, bool pack)
+{
+  return (pack && COMPARISON_P (c))
+	 ? gen_rtx_UNSPEC (mask_mode, gen_rtvec (1, c), UNSPEC_PACKCMP) : c;
+}
+
 /* Lower a comparison COMP between CMP_MODE rtx(es) into a predicate register PRED.
  * In case of floating-point lowering, the left and right operands may be swapped.  */
 void
@@ -2173,6 +2184,7 @@ lvx_lower_comparison (rtx pred, rtx comp, machine_mode comp_mode)
     }
 
   machine_mode pred_mode = GET_MODE (pred);
+  bool pack = SCALAR_INT_MODE_P (pred_mode) && VECTOR_MODE_P (comp_mode);
   rtx cmp =
     gen_rtx_fmt_ee (comp_code, pred_mode, force_reg (comp_mode, left),
 		    force_reg (comp_mode, right));
@@ -2207,8 +2219,8 @@ lvx_lower_comparison (rtx pred, rtx comp, machine_mode comp_mode)
 		  gcc_unreachable ();
 		}
 
-	      emit_insn (gen_rtx_SET (tmp, cmp));
-	      emit_insn (gen_rtx_SET (tmp2, cmp2));
+	      emit_insn (gen_rtx_SET (tmp, lvx_pack_cmp (cmp, pred_mode, pack)));
+	      emit_insn (gen_rtx_SET (tmp2, lvx_pack_cmp (cmp2, pred_mode, pack)));
 	      cmp = gen_rtx_fmt_ee (join_code, pred_mode, tmp, tmp2);
 	    }
 	  else
@@ -2221,8 +2233,11 @@ lvx_lower_comparison (rtx pred, rtx comp, machine_mode comp_mode)
 		      || float_comparison_operator (cmp, VOIDmode));
 	}
 
-      XEXP (cmp, 0) = force_reg (comp_mode, XEXP (cmp, 0));
-      XEXP (cmp, 1) = force_reg (comp_mode, XEXP (cmp, 1));
+      if (!pack || COMPARISON_P (cmp))
+	{
+	  XEXP (cmp, 0) = force_reg (comp_mode, XEXP (cmp, 0));
+	  XEXP (cmp, 1) = force_reg (comp_mode, XEXP (cmp, 1));
+	}
     }
   else if (VECTOR_MODE_P (comp_mode))
     {
@@ -2230,7 +2245,7 @@ lvx_lower_comparison (rtx pred, rtx comp, machine_mode comp_mode)
       XEXP (cmp, 1) = force_reg (comp_mode, XEXP (cmp, 1));
     }
 
-  emit_insn (gen_rtx_SET (pred, cmp));
+  emit_insn (gen_rtx_SET (pred, lvx_pack_cmp (cmp, pred_mode, pack)));
 }
 
 /* Emulate V<n>QI cond moves by expanding them to V<n/2>HI cond moves. */
@@ -7099,8 +7114,9 @@ lvx_vectorize_preferred_simd_mode (scalar_mode mode)
 static opt_machine_mode
 lvx_get_mask_mode (machine_mode mode)
 {
-  if (LVX_2 && GET_MODE_CLASS (mode) == MODE_VECTOR_INT
-      && GET_MODE_SIZE (mode) == 16 && GET_MODE_NUNITS (mode) >= 2)
+  if (LVX_2 && GET_MODE_SIZE (mode) == 16 && GET_MODE_NUNITS (mode) >= 2
+      && (GET_MODE_CLASS (mode) == MODE_VECTOR_INT
+	  || GET_MODE_CLASS (mode) == MODE_VECTOR_FLOAT))
     {
       unsigned nunits = GET_MODE_NUNITS (mode);
       return int_mode_for_size (nunits < 8 ? 8 : nunits, 0).require ();
