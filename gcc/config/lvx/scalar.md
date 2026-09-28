@@ -788,6 +788,29 @@
    (set_attr "length"      "4,          8")]
 )
 
+;; MULN* is a multiply whose result is negated, so `-(a * b)` is one
+;; instruction instead of a multiply and a NEG.
+;;
+;; These match (mult (neg A) B), NOT (neg (mult A B)).  md.texi "Insn
+;; Canonicalizations" moves a neg *inside* a mult as far as it will go --
+;; "(neg (mult A B)) is canonicalized as (mult (neg A) B)" -- so a pattern
+;; written the outside-in way is never offered and silently never fires.
+;;
+;; There is also no immediate alternative anywhere in this family, although
+;; MULND/MULNW/MULN<lane> all have one in the ISA: with a constant operand the
+;; negation folds into the constant instead (`-(a * 5)` becomes `a * -5`), so
+;; the plain multiply already covers it and the MULN immediate encoding is
+;; unreachable from C.  Only the register-register forms are selectable.
+(define_insn "mulnegsi3<arith_zx><arith_sx>"
+  [(set (match_operand:SI 0 "register_operand" "=r")
+        (mult:SI (neg:SI (match_operand:SI 1 "register_operand" "r"))
+                 (match_operand:SI 2 "register_operand" "r")))]
+  ""
+  "mulnw<_sx> %0 = %1, %2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite")]
+)
+
 (define_insn "mulsidi3"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (mult:DI (sign_extend:DI (match_operand:SI 1 "register_operand" "r"))
@@ -814,6 +837,48 @@
                  (sign_extend:DI (match_operand:SI 2 "register_operand" "r"))))]
   ""
   "mulxwd.su %0 = %2, %1"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "mulnegsidi3"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (mult:DI (neg:DI (sign_extend:DI (match_operand:SI 1 "register_operand" "r")))
+                 (sign_extend:DI (match_operand:SI 2 "register_operand" "r"))))]
+  ""
+  "mulnxwd %0 = %1, %2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "umulnegsidi3"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (mult:DI (neg:DI (zero_extend:DI (match_operand:SI 1 "register_operand" "r")))
+                 (zero_extend:DI (match_operand:SI 2 "register_operand" "r"))))]
+  ""
+  "mulnxwd.u %0 = %1, %2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite")]
+)
+
+;; .su prints the sign-extended source first, and the neg can sit on either
+;; operand -- mult is commutative, so both orders reach recog.
+(define_insn "usmulnegsidi3"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (mult:DI (neg:DI (sign_extend:DI (match_operand:SI 1 "register_operand" "r")))
+                 (zero_extend:DI (match_operand:SI 2 "register_operand" "r"))))]
+  ""
+  "mulnxwd.su %0 = %1, %2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "usmulnegsidi3_rev"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (mult:DI (neg:DI (zero_extend:DI (match_operand:SI 1 "register_operand" "r")))
+                 (sign_extend:DI (match_operand:SI 2 "register_operand" "r"))))]
+  ""
+  "mulnxwd.su %0 = %2, %1"
   [(set_attr "type" "imul")
    (set_attr "issue" "lite")]
 )
@@ -1460,6 +1525,16 @@
    (set_attr "length"      "4,          8")]
 )
 
+(define_insn "mulnegdi3"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (mult:DI (neg:DI (match_operand:DI 1 "register_operand" "r"))
+                 (match_operand:DI 2 "register_operand" "r")))]
+  ""
+  "mulnd %0 = %1, %2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite")]
+)
+
 (define_expand "divdi3"
   [(set (match_operand:DI 0 "register_operand" "")
         (div:DI (match_operand:DI 1 "register_operand" "")
@@ -1695,6 +1770,48 @@
                  (sign_extend:TI (match_operand:DI 2 "register_operand" "r"))))]
   ""
   "mulxdq.su %0 = %2, %1"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "mulnegditi3"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (mult:TI (neg:TI (sign_extend:TI (match_operand:DI 1 "register_operand" "r")))
+                 (sign_extend:TI (match_operand:DI 2 "register_operand" "r"))))]
+  ""
+  "mulnxdq %0 = %1, %2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "umulnegditi3"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (mult:TI (neg:TI (zero_extend:TI (match_operand:DI 1 "register_operand" "r")))
+                 (zero_extend:TI (match_operand:DI 2 "register_operand" "r"))))]
+  ""
+  "mulnxdq.u %0 = %1, %2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite")]
+)
+
+;; .su prints the sign-extended source first, and the neg can sit on either
+;; operand -- mult is commutative, so both orders reach recog.
+(define_insn "usmulnegditi3"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (mult:TI (neg:TI (sign_extend:TI (match_operand:DI 1 "register_operand" "r")))
+                 (zero_extend:TI (match_operand:DI 2 "register_operand" "r"))))]
+  ""
+  "mulnxdq.su %0 = %1, %2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "usmulnegditi3_rev"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (mult:TI (neg:TI (zero_extend:TI (match_operand:DI 1 "register_operand" "r")))
+                 (sign_extend:TI (match_operand:DI 2 "register_operand" "r"))))]
+  ""
+  "mulnxdq.su %0 = %2, %1"
   [(set_attr "type" "imul")
    (set_attr "issue" "lite")]
 )

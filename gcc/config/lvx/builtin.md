@@ -339,6 +339,45 @@
    (set_attr "length" "8")]
 )
 
+;; The negating widening forms -- MULNXBHO, MULNXHWQ, MULNXWDP -- issued the
+;; same way, two 128-bit halves of one 256-bit result.  These are RTL
+;; (neg (mult (extend) (extend))) rather than an unspec, so combine reaches
+;; them from `-(a * b)` on widened lanes as well as from the builtin -- in the
+;; canonical (mult (neg A) B) shape, which is what md.texi's canonicalization
+;; leaves a negated product as.
+(define_insn "lvx_muln<widenx>"
+  [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
+        (mult:<WIDE> (neg:<WIDE> (sign_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r")))
+                     (sign_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r"))))]
+  ""
+  "mulnx<hwidenx> %L0 = %x1, %x2\n\tmulnx<hwidenx> %M0 = %y1, %y2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
+)
+
+(define_insn "lvx_mulnu<widenx>"
+  [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
+        (mult:<WIDE> (neg:<WIDE> (zero_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r")))
+                     (zero_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r"))))]
+  ""
+  "mulnx<hwidenx>.u %L0 = %x1, %x2\n\tmulnx<hwidenx>.u %M0 = %y1, %y2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
+)
+
+(define_insn "lvx_mulnsu<widenx>"
+  [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
+        (mult:<WIDE> (neg:<WIDE> (sign_extend:<WIDE> (match_operand:S128I 1 "register_operand" "r")))
+                     (zero_extend:<WIDE> (match_operand:S128I 2 "register_operand" "r"))))]
+  ""
+  "mulnx<hwidenx>.su %L0 = %x1, %x2\n\tmulnx<hwidenx>.su %M0 = %y1, %y2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
+)
+
 
 ;; MADDX*
 

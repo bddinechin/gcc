@@ -1415,6 +1415,22 @@
    (set_attr "length" "4,8")]
 )
 
+;; ... and the negating twin at every lane shape: MULNBX, MULNHO, MULNWQ,
+;; MULNDP, so `-(a * b)` on a vector is one instruction instead of a multiply
+;; and a NEG*.  Written as (mult (neg A) B) because that is the canonical form
+;; -- md.texi moves a neg inside a mult -- and register-register only, since a
+;; constant operand absorbs the negation itself (`-(a * K)` becomes `a * -K`)
+;; and reaches the plain MUL<lane> with the splat of -K.
+(define_insn "mulneg<mode>3"
+  [(set (match_operand:V128I 0 "register_operand" "=r")
+        (mult:V128I (neg:V128I (match_operand:V128I 1 "register_operand" "r"))
+                    (match_operand:V128I 2 "register_operand" "r")))]
+  "LVX_2"
+  "muln<suffix> %0 = %1, %2"
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite")]
+)
+
 
 ;; V128J (V8HI V4SI V2DI)
 
@@ -4806,6 +4822,30 @@
    (set_attr "issue" "lite")]
 )
 
+;; The negating twin at 256 bits, two MULN<lane> halves.  This one earns its
+;; place: the vectorizer's preferred width for these loops is 256-bit, so
+;; without it a `-(a[i] * b[i])` loop keeps a MUL + NEG pair per half and the
+;; 128-bit `mulneg<mode>3` below never sees the body at all -- which is exactly
+;; what happened when only the 128-bit pattern existed.
+(define_insn_and_split "mulneg<mode>3"
+  [(set (match_operand:V256J 0 "register_operand" "=r")
+        (mult:V256J (neg:V256J (match_operand:V256J 1 "register_operand" "r"))
+                    (match_operand:V256J 2 "register_operand" "r")))]
+  "LVX_2"
+  "#"
+  "reload_completed"
+  [(set (subreg:<HALF> (match_dup 0) 0)
+        (mult:<HALF> (neg:<HALF> (subreg:<HALF> (match_dup 1) 0))
+                     (subreg:<HALF> (match_dup 2) 0)))
+   (set (subreg:<HALF> (match_dup 0) 16)
+        (mult:<HALF> (neg:<HALF> (subreg:<HALF> (match_dup 1) 16))
+                     (subreg:<HALF> (match_dup 2) 16)))]
+  ""
+  [(set_attr "type" "imul")
+   (set_attr "issue" "lite2")
+   (set_attr "length" "8")]
+)
+
 
 
 ;; V4DI
@@ -6783,10 +6823,11 @@
   }
 )
 
-;; MUL reaches every width, but not equally.  The ISA's packed multiplies are
-;; MULHO, MULWQ and MULDP -- there is no MULBX -- so V4HI and V2SI widen into
-;; one instruction each, while V8QI widens into the V16QI multiply, itself
-;; synthesised from two MULHO and a mask.  That is still worth doing: eleven
+;; MUL reaches every width, but not equally.  V4HI and V2SI widen into one
+;; packed multiply each; V8QI widens into the V16QI one.  (Until 2026-09-28
+;; there was no MULBX at all and the V16QI multiply was itself synthesised from
+;; two MULHO and a mask -- MULBX exists now, so that synthesis is gone and this
+;; path is one instruction shorter.)  That is still worth doing: eleven
 ;; instructions against the thirty-three the middle end's lowering takes.
 (define_expand "mul<mode>3"
   [(set (match_operand:V64I 0 "register_operand")
