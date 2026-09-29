@@ -1933,6 +1933,81 @@
    (set_attr "issue" "lite")]
 )
 
+;; Bitwise select: for each set bit of the mask take the value's bit, else keep
+;; the base's.  BSELQ does exactly that -- (val & mask) | (base & ~mask) -- but
+;; the RTL to match is the XOR form, base ^ ((base ^ val) & mask), because
+;; match.pd canonicalises the and/or/not spelling into it: three operations
+;; instead of four.  Written as ior/and/not this never matches and the sequence
+;; stays eorq + andq + eorq.
+;;
+;; The base appears twice, so it is a match_dup rather than a second operand,
+;; and it carries the "0" constraint because BSELQ reads its destination -- no
+;; LVX format has four register operands, so every three-input ALU instruction
+;; is RMW.  LRA inserts a copy only where the base is live past the select.
+;;
+;; Both orders of the inner XOR occur: its two operands are plain registers of
+;; equal commutative_operand_precedence, so nothing canonicalises them and the
+;; order is whichever the source wrote.  Measured, (b & ~m) | (v & m) gives
+;; base-first and (v & m) | (b & ~m) gives value-first.
+(define_insn "*bselq"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (xor:TI
+          (and:TI (xor:TI (match_operand:TI 1 "register_operand" "0")
+                          (match_operand:TI 2 "register_operand" "r"))
+                  (match_operand:TI 3 "register_operand" "r"))
+          (match_dup 1)))]
+  ""
+  "bselq %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "*bselq_v"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (xor:TI
+          (and:TI (xor:TI (match_operand:TI 2 "register_operand" "r")
+                          (match_operand:TI 1 "register_operand" "0"))
+                  (match_operand:TI 3 "register_operand" "r"))
+          (match_dup 1)))]
+  ""
+  "bselq %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+;; The 64-bit partner.  Same XOR form, same match_dup base on a "0" constraint;
+;; ALU_TINY rather than ALU_LITE, so the issue class differs from *bselq.
+;;
+;; The SIDI iterator gives SImode too, emitting the same bseld: a mask confined
+;; to the low 32 bits leaves bits 32..63 taking the base's, which an SImode value
+;; does not care about -- the same reason insv<mode> serves both widths with one
+;; insfd.  There is no bselw.
+(define_insn "*bseld<mode>"
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (xor:SIDI
+          (and:SIDI (xor:SIDI (match_operand:SIDI 1 "register_operand" "0")
+                              (match_operand:SIDI 2 "register_operand" "r"))
+                    (match_operand:SIDI 3 "register_operand" "r"))
+          (match_dup 1)))]
+  ""
+  "bseld %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
+(define_insn "*bseld<mode>_v"
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (xor:SIDI
+          (and:SIDI (xor:SIDI (match_operand:SIDI 2 "register_operand" "r")
+                              (match_operand:SIDI 1 "register_operand" "0"))
+                    (match_operand:SIDI 3 "register_operand" "r"))
+          (match_dup 1)))]
+  ""
+  "bseld %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
 (define_insn "mulditi3"
   [(set (match_operand:TI 0 "register_operand" "=r")
         (mult:TI (sign_extend:TI (match_operand:DI 1 "register_operand" "r"))

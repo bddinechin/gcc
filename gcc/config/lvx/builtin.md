@@ -1417,7 +1417,7 @@
   ""
   "cmoved%4 %3? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
+   (set_attr "issue" "tiny")
    (set_attr "length"      "4")]
 )
 
@@ -1430,7 +1430,7 @@
   ""
   "cmoved%4 %3? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
+   (set_attr "issue" "tiny")
    (set_attr "length"      "4")]
 )
 
@@ -1443,7 +1443,7 @@
   ""
   "cmoved%4 %3? %x0 = %x1\n\tcmoved%4 %3? %y0 = %y1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
+   (set_attr "issue" "tiny2")
    (set_attr "length"         "8")]
 )
 
@@ -1773,7 +1773,7 @@
   ""
   "cmoved%4 %3? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
+   (set_attr "issue" "tiny")
    (set_attr "length"      "4")]
 )
 
@@ -1786,7 +1786,7 @@
   ""
   "cmoved%4 %3? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
+   (set_attr "issue" "tiny")
    (set_attr "length"      "4")]
 )
 

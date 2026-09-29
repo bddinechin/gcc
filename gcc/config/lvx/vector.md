@@ -2283,6 +2283,40 @@
    (set_attr "length" "4,8")]
 )
 
+;; Bitwise select over a full-width mask -- one BSELQ where the lowering is
+;; eorq + andq + eorq.  See *bselq in scalar.md for why the RTL is the XOR form
+;; and why the base is a match_dup with a "0" constraint.  This is the lane
+;; select lvx-1 lacks in the ISA sense, but GCC cannot reach it there: vector
+;; modes exist only under LVX_2 (lvx_vector_mode_supported_p), so the gate is
+;; required and the lvx-1 path is the TImode pattern.
+(define_insn "*bsel<mode>3"
+  [(set (match_operand:V128L 0 "register_operand" "=r")
+        (xor:V128L
+          (and:V128L (xor:V128L (match_operand:V128L 1 "register_operand" "0")
+                                (match_operand:V128L 2 "register_operand" "r"))
+                     (match_operand:V128L 3 "register_operand" "r"))
+          (match_dup 1)))]
+  "LVX_2"
+  "bselq %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
+)
+
+(define_insn "*bsel<mode>3_v"
+  [(set (match_operand:V128L 0 "register_operand" "=r")
+        (xor:V128L
+          (and:V128L (xor:V128L (match_operand:V128L 2 "register_operand" "r")
+                                (match_operand:V128L 1 "register_operand" "0"))
+                     (match_operand:V128L 3 "register_operand" "r"))
+          (match_dup 1)))]
+  "LVX_2"
+  "bselq %0 = %2, %3"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
+)
+
 (define_insn "ior<mode>3"
   [(set (match_operand:V128L 0 "register_operand" "=r,r")
         (ior:V128L (match_operand:V128L 1 "register_operand" "r,r")

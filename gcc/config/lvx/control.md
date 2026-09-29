@@ -933,8 +933,8 @@
            "fcompd.%F1 %z0 = %z2, %z3\n\tfcompd.%F1 %t0 = %t2, %t3";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny4")
-   (set_attr "length"        "16")]
+   (set_attr "issue" "lite2")
+   (set_attr "length"         "8")]
 )
 
 (define_insn "*fcompdq_s2"
@@ -948,8 +948,8 @@
            "fcompd.%F1 %z0 = %2, %z3\n\tfcompd.%F1 %t0 = %2, %t3";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny4")
-   (set_attr "length"        "16")]
+   (set_attr "issue" "lite2")
+   (set_attr "length"         "8")]
 )
 
 (define_insn "*fcompdq_s3"
@@ -963,8 +963,8 @@
            "fcompd.%F1 %z0 = %z2, %3\n\tfcompd.%F1 %t0 = %t2, %3";
   }
   [(set_attr "type" "alu")
-   (set_attr "issue" "tiny4")
-   (set_attr "length"        "16")]
+   (set_attr "issue" "lite2")
+   (set_attr "length"         "8")]
 )
 
 ;; not selectionable
@@ -1293,7 +1293,7 @@
   "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
   [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "lite, lite, lite_x, lite_x2")
+   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
    (set_attr "length"      "4,       4,         8,        12")]
 )
 (define_insn "*cmov<SIDI:mode>.<FITGPR:mode>"
@@ -1306,7 +1306,7 @@
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
   [(set_attr "type" "alu, alu")
-   (set_attr "issue" "lite, lite_x")
+   (set_attr "issue" "tiny, tiny_x")
    (set_attr "length"      "4,         8")]
 )
 
@@ -1320,7 +1320,7 @@
   "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
   [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "lite, lite, lite_x, lite_x2")
+   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
    (set_attr "length"      "4,       4,         8,        12")]
 )
 (define_insn "*cmov<SIDI:mode>.<FITGPR:mode>.<EQNE:evenodd>"
@@ -1333,36 +1333,51 @@
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
   [(set_attr "type" "alu, alu")
-   (set_attr "issue" "lite, lite_x")
+   (set_attr "issue" "tiny, tiny_x")
    (set_attr "length"      "4,         8")]
 )
 
+;; One cmoveq, not two cmoved over %x/%y.  CMOVEQ has existed all along and this
+;; port never emitted it; the pair cost two instructions and both ALU slots
+;; (issue tiny2) for what the quadword form does in one.
+;;
+;; The value operand gains the two immediate readings of ALU_QCMWRR.M, which is
+;; also new: I32 is the word the machine sign-extends across the operand, SXW the
+;; word it replicates (printed with %W and the .@ marker).  That subsumes the
+;; rS01 this pattern used to carry -- 0 and -1 are reachable both ways -- and it
+;; is why the predicate is the .M one the TImode bitwise patterns already use.
 (define_insn "*cmov<SIDI:mode>.<ALL128:mode>"
-  [(set (match_operand:ALL128 0 "register_operand" "=r")
+  [(set (match_operand:ALL128 0 "register_operand" "=r,r,r")
         (if_then_else:ALL128 (match_operator 2 "zero_comparison_operator"
-                                               [(match_operand:SIDI 3 "register_operand" "r")
+                                               [(match_operand:SIDI 3 "register_operand" "r,r,r")
                                                 (const_int 0)])
-                             (match_operand:ALL128 1 "reg_zero_mone_operand" "rS01")
-                             (match_operand:ALL128 4 "register_operand" "0")))]
+                             (match_operand:ALL128 1 "reg_or_splat32_or_imm32_operand" "r,I32,SXW")
+                             (match_operand:ALL128 4 "register_operand" "0,0,0")))]
   ""
-  "cmoved.<SIDI:suffix>%2z %3? %x0 = %x1\n\tcmoved.<SIDI:suffix>%2z %3? %y0 = %y1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length"         "8")]
+  "@
+   cmoveq.<SIDI:suffix>%2z %3? %0 = %1
+   cmoveq.<SIDI:suffix>%2z %3? %0 = %1
+   cmoveq.<SIDI:suffix>%2z %3? %0 = %W1.@"
+  [(set_attr "type" "alu,alu,alu")
+   (set_attr "issue" "lite,lite_x,lite_x")
+   (set_attr "length"    "4,     8,      8")]
 )
 
 (define_insn "*cmov<SIDI:mode>.<ALL128:mode>.<EQNE:evenodd>"
-  [(set (match_operand:ALL128 0 "register_operand" "=r")
-        (if_then_else:ALL128 (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r")
+  [(set (match_operand:ALL128 0 "register_operand" "=r,r,r")
+        (if_then_else:ALL128 (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r,r")
                                                       (const_int 1) (const_int 0))
                                    (const_int 0))
-                             (match_operand:ALL128 1 "reg_zero_mone_operand" "rS01")
-                             (match_operand:ALL128 3 "register_operand" "0")))]
+                             (match_operand:ALL128 1 "reg_or_splat32_or_imm32_operand" "r,I32,SXW")
+                             (match_operand:ALL128 3 "register_operand" "0,0,0")))]
   ""
-  "cmoved.<EQNE:evenodd> %2? %x0 = %x1\n\tcmoved.<EQNE:evenodd> %2? %y0 = %y1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length"         "8")]
+  "@
+   cmoveq.<EQNE:evenodd> %2? %0 = %1
+   cmoveq.<EQNE:evenodd> %2? %0 = %1
+   cmoveq.<EQNE:evenodd> %2? %0 = %W1.@"
+  [(set_attr "type" "alu,alu,alu")
+   (set_attr "issue" "lite,lite_x,lite_x")
+   (set_attr "length"    "4,     8,      8")]
 )
 
 (define_insn_and_split "*cmov<SIDI:mode>.<ALL256:mode>"
@@ -1423,16 +1438,15 @@
         (if_then_else:ALL256 (match_operator 2 "zero_comparison_operator"
                                                 [(match_operand:SIDI 3 "register_operand" "r")
                                                  (const_int 0)])
-                             (match_operand:ALL256 1 "reg_zero_mone_operand" "rS01")
+                             (match_operand:ALL256 1 "reg_zero_mone_operand" "r,S01")
                              (match_operand:ALL256 4 "register_operand" "0")))]
   "LVX_2 && (HAVE_LVX_COND_MOV_<ALL256:MODE>)"
   {
-    return "cmoved.<SIDI:suffix>%2z %3? %x0 = %x1\n\tcmoved.<SIDI:suffix>%2z %3? %y0 = %y1\n\t"
-           "cmoved.<SIDI:suffix>%2z %3? %z0 = %z1\n\tcmoved.<SIDI:suffix>%2z %3? %t0 = %t1";
+    return "cmoveq.<SIDI:suffix>%2z %3? %L0 = %L1\n\tcmoveq.<SIDI:suffix>%2z %3? %M0 = %M1";
   }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu,alu")
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length"      "8,16")]
 )
 
 (define_insn_and_split "*cmov<SIDI:mode>.<ALL256:mode>.<EQNE:evenodd>"
@@ -1501,16 +1515,15 @@
         (if_then_else:ALL256 (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r")
                                                       (const_int 1) (const_int 0))
                                    (const_int 0))
-                             (match_operand:ALL256 1 "reg_zero_mone_operand" "rS01")
+                             (match_operand:ALL256 1 "reg_zero_mone_operand" "r,S01")
                              (match_operand:ALL256 3 "register_operand" "0")))]
   "LVX_2 && (HAVE_LVX_COND_MOV_<ALL256:MODE>)"
   {
-    return "cmoved.<EQNE:evenodd> %2? %x0 = %x1\n\tcmoved.<EQNE:evenodd> %2? %y0 = %y1\n\t"
-           "cmoved.<EQNE:evenodd> %2? %z0 = %z1\n\tcmoved.<EQNE:evenodd> %2? %t0 = %t1";
+    return "cmoveq.<EQNE:evenodd> %2? %L0 = %L1\n\tcmoveq.<EQNE:evenodd> %2? %M0 = %M1";
   }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny4")
-   (set_attr "length"        "16")]
+  [(set_attr "type" "alu,alu")
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length"      "8,16")]
 )
 
 (define_insn_and_split "*cmov<SIDI:mode>.<ALL512:mode>"
@@ -1943,7 +1956,7 @@
   "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
   [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "lite, lite, lite_x, lite_x2")
+   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
    (set_attr "length"      "4,       4,         8,        12")
    (set_attr "predicable" "no")]
 )
@@ -1957,7 +1970,7 @@
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
   [(set_attr "type" "alu, alu")
-   (set_attr "issue" "lite, lite_x")
+   (set_attr "issue" "tiny, tiny_x")
    (set_attr "length"      "4,         8")
    (set_attr "predicable" "no")]
 )
@@ -1972,7 +1985,7 @@
   "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
   [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "lite, lite, lite_x, lite_x2")
+   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
    (set_attr "length"      "4,       4,         8,        12")
    (set_attr "predicable" "no")]
 )
@@ -1986,7 +1999,7 @@
   "HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
   "cmoved.<EQNE:evenodd> %2? %0 = %1"
   [(set_attr "type" "alu, alu")
-   (set_attr "issue" "lite, lite_x")
+   (set_attr "issue" "tiny, tiny_x")
    (set_attr "length"      "4,         8")
    (set_attr "predicable" "no")]
 )
@@ -1999,10 +2012,10 @@
      (set (match_operand:ALL128 0 "register_operand" "=r")
           (match_operand:ALL128 1 "reg_zero_mone_operand" "rS01")))]
   ""
-  "cmoved.<SIDI:suffix>%2z %3? %x0 = %x1\n\tcmoved.<SIDI:suffix>%2z %3? %y0 = %y1"
+  "cmoveq.<SIDI:suffix>%2z %3? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length"         "8")
+   (set_attr "issue" "lite")
+   (set_attr "length"         "4")
    (set_attr "predicable" "no")]
 )
 
@@ -2014,10 +2027,10 @@
      (set (match_operand:ALL128 0 "register_operand" "=r")
           (match_operand:ALL128 1 "reg_zero_mone_operand" "rS01")))]
   ""
-  "cmoved.<EQNE:evenodd> %2? %x0 = %x1\n\tcmoved.<EQNE:evenodd> %2? %y0 = %y1"
+  "cmoveq.<EQNE:evenodd> %2? %0 = %1"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length"         "8")
+   (set_attr "issue" "lite")
+   (set_attr "length"         "4")
    (set_attr "predicable" "no")]
 )
 
@@ -2027,15 +2040,14 @@
       [(match_operand:SIDI 3 "register_operand" "r")
        (const_int 0)])
      (set (match_operand:ALL256 0 "register_operand" "=r")
-          (match_operand:ALL256 1 "reg_zero_mone_operand" "rS01")))]
+          (match_operand:ALL256 1 "reg_zero_mone_operand" "r,S01")))]
   "LVX_2 && (HAVE_LVX_COND_MOV_<ALL256:MODE>)"
   {
-    return "cmoved.<SIDI:suffix>%2z %3? %x0 = %x1\n\tcmoved.<SIDI:suffix>%2z %3? %y0 = %y1\n\t"
-           "cmoved.<SIDI:suffix>%2z %3? %z0 = %z1\n\tcmoved.<SIDI:suffix>%2z %3? %t0 = %t1";
+    return "cmoveq.<SIDI:suffix>%2z %3? %L0 = %L1\n\tcmoveq.<SIDI:suffix>%2z %3? %M0 = %M1";
   }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny4")
-   (set_attr "length"        "16")
+  [(set_attr "type" "alu,alu")
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length"      "8,16")
    (set_attr "predicable" "no")]
 )
 
@@ -2045,15 +2057,14 @@
                               (const_int 1) (const_int 0))
            (const_int 0))
      (set (match_operand:ALL256 0 "register_operand" "=r")
-          (match_operand:ALL256 1 "reg_zero_mone_operand" "rS01")))]
+          (match_operand:ALL256 1 "reg_zero_mone_operand" "r,S01")))]
   "LVX_2 && (HAVE_LVX_COND_MOV_<ALL256:MODE>)"
   {
-    return "cmoved.<EQNE:evenodd> %2? %x0 = %x1\n\tcmoved.<EQNE:evenodd> %2? %y0 = %y1\n\t"
-           "cmoved.<EQNE:evenodd> %2? %z0 = %z1\n\tcmoved.<EQNE:evenodd> %2? %t0 = %t1";
+    return "cmoveq.<EQNE:evenodd> %2? %L0 = %L1\n\tcmoveq.<EQNE:evenodd> %2? %M0 = %M1";
   }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny4")
-   (set_attr "length"        "16")
+  [(set_attr "type" "alu,alu")
+   (set_attr "issue" "lite2,lite2_x2")
+   (set_attr "length"      "8,16")
    (set_attr "predicable" "no")]
 )
 
