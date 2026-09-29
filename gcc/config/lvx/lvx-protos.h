@@ -202,6 +202,12 @@ extern int lvx_has_tls_reference (rtx x);
 extern bool lvx_extract_field_ok_p (rtx src, HOST_WIDE_INT width,
 				    HOST_WIDE_INT pos);
 
+extern bool lvx_insf_mask_p (machine_mode mode, rtx basemask, rtx insmask,
+			     rtx shift);
+extern bool lvx_insf_topmask_p (machine_mode mode, rtx basemask, rtx shift);
+extern const char *lvx_output_insf (unsigned HOST_WIDE_INT mask,
+				    machine_mode mode, int valop);
+
 extern bool lvx_float_fits_bits (const REAL_VALUE_TYPE *r, unsigned bitsz,
 				 enum machine_mode mode);
 

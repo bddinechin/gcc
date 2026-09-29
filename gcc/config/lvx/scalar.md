@@ -726,6 +726,126 @@
    (set_attr "issue" "tiny")]
 )
 
+;; The same insert written out by hand -- (base & ~M) | ((val << pos) & M) --
+;; never reaches insv.  combine's make_field_assignment recognises only an
+;; assignment whose destination *is* the base (rtx_equal_for_field_assignment_p),
+;; so an insert producing a new value is invisible to it and stayed four
+;; instructions: slld + andd + andd + iord.  Only the C-bitfield path, which
+;; reaches insv straight from store_bit_field, got the single insfd.
+;;
+;; combine does offer the whole expression to recog, so match it here.  Four
+;; things about the shape:
+;;
+;; - the destination is a full register and base wears a "0" constraint, not a
+;;   zero_extract destination with "+r".  Same instruction, but the RTL is a
+;;   total def: no partial write for dataflow to reason about, and LRA inserts
+;;   the copy only where base is live past the insert (5.6% of the insfd in
+;;   newlib+libgcc+libm+libstdc++).  insv has to keep the zero_extract form
+;;   because that is the optab's contract.
+;; - the width and the position live in the mask, not in operands of their own,
+;;   so the template is a C block (mnemonic: insfd -- the text audit in
+;;   ../../../../CLAUDE.md cannot see it).  lvx_insf_mask_p is the whole
+;;   correctness condition; insfd masks the source itself, so the value needs no
+;;   bits cleared above the field, but a discontiguous mask, a mask pair that is
+;;   not an exact complement, and a shift count disagreeing with the mask
+;;   position must all be refused.
+;; - IOR is commutative and both operand orders occur, so each shape needs its
+;;   mirror.  commutative_operand_precedence ranks the two ANDs equally, so
+;;   nothing canonicalises them: measured, a value in a register comes out
+;;   base-first while an in-place insert through memory comes out value-first.
+;;   One pattern catches half the cases and looks like it works.
+;; - the mask on the shifted value disappears when the field runs to the top of
+;;   the mode, since the shift has then already cleared everything outside it.
+;;   lvx_insf_topmask_p is that case; without it "replace the high word" stays
+;;   three instructions.
+
+(define_insn "*insf<mode>_ior"
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (ior:SIDI
+          (and:SIDI (match_operand:SIDI 1 "register_operand" "0")
+                    (match_operand 2 "const_int_operand"))
+          (and:SIDI (ashift:SIDI (match_operand:SIDI 3 "register_operand" "r")
+                                 (match_operand 4 "const_int_operand"))
+                    (match_operand 5 "const_int_operand"))))]
+  "lvx_insf_mask_p (<MODE>mode, operands[2], operands[5], operands[4])"
+  { return lvx_output_insf (UINTVAL (operands[5]), <MODE>mode, 3); }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
+(define_insn "*insf<mode>_ior_v"
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (ior:SIDI
+          (and:SIDI (ashift:SIDI (match_operand:SIDI 3 "register_operand" "r")
+                                 (match_operand 4 "const_int_operand"))
+                    (match_operand 5 "const_int_operand"))
+          (and:SIDI (match_operand:SIDI 1 "register_operand" "0")
+                    (match_operand 2 "const_int_operand"))))]
+  "lvx_insf_mask_p (<MODE>mode, operands[2], operands[5], operands[4])"
+  { return lvx_output_insf (UINTVAL (operands[5]), <MODE>mode, 3); }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
+;; A field at bit 0 leaves combine no ashift to fold in.  The two ANDs are then
+;; interchangeable in shape as well as in order, so lvx_insf_mask_p is what
+;; decides which operand is the base: it requires the value's mask to be the low
+;; run of ones and the base's to be its exact complement, which only one
+;; assignment of the pair can satisfy.
+(define_insn "*insf<mode>_ior0"
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (ior:SIDI
+          (and:SIDI (match_operand:SIDI 1 "register_operand" "0")
+                    (match_operand 2 "const_int_operand"))
+          (and:SIDI (match_operand:SIDI 3 "register_operand" "r")
+                    (match_operand 4 "const_int_operand"))))]
+  "lvx_insf_mask_p (<MODE>mode, operands[2], operands[4], NULL_RTX)"
+  { return lvx_output_insf (UINTVAL (operands[4]), <MODE>mode, 3); }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
+(define_insn "*insf<mode>_ior0_v"
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (ior:SIDI
+          (and:SIDI (match_operand:SIDI 3 "register_operand" "r")
+                    (match_operand 4 "const_int_operand"))
+          (and:SIDI (match_operand:SIDI 1 "register_operand" "0")
+                    (match_operand 2 "const_int_operand"))))]
+  "lvx_insf_mask_p (<MODE>mode, operands[2], operands[4], NULL_RTX)"
+  { return lvx_output_insf (UINTVAL (operands[4]), <MODE>mode, 3); }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
+;; Field at the top of the mode: the shift has cleared everything below it, so
+;; combine drops the mask on the value and the base's mask is all that is left.
+(define_insn "*insf<mode>_iortop"
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (ior:SIDI
+          (and:SIDI (match_operand:SIDI 1 "register_operand" "0")
+                    (match_operand 2 "const_int_operand"))
+          (ashift:SIDI (match_operand:SIDI 3 "register_operand" "r")
+                       (match_operand 4 "const_int_operand"))))]
+  "lvx_insf_topmask_p (<MODE>mode, operands[2], operands[4])"
+  { return lvx_output_insf (~UINTVAL (operands[2]), <MODE>mode, 3); }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
+(define_insn "*insf<mode>_iortop_v"
+  [(set (match_operand:SIDI 0 "register_operand" "=r")
+        (ior:SIDI
+          (ashift:SIDI (match_operand:SIDI 3 "register_operand" "r")
+                       (match_operand 4 "const_int_operand"))
+          (and:SIDI (match_operand:SIDI 1 "register_operand" "0")
+                    (match_operand 2 "const_int_operand"))))]
+  "lvx_insf_topmask_p (<MODE>mode, operands[2], operands[4])"
+  { return lvx_output_insf (~UINTVAL (operands[2]), <MODE>mode, 3); }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
+)
+
 
 ;; SI
 

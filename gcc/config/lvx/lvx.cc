@@ -629,6 +629,106 @@ lvx_extract_field_ok_p (rtx src, HOST_WIDE_INT width, HOST_WIDE_INT pos)
   return pos + width <= GET_MODE_BITSIZE (GET_MODE (src));
 }
 
+/* Decompose MASK, read in MODE, into one contiguous run of set bits: *POSP its
+   lowest bit, *WIDTHP how many.  The empty and the full mask are rejected --
+   neither describes a field, and combine has folded both away long before a
+   field insert reaches recog.  */
+
+static bool
+lvx_field_mask_p (machine_mode mode, unsigned HOST_WIDE_INT mask,
+		  int *posp, int *widthp)
+{
+  unsigned HOST_WIDE_INT m = mask & GET_MODE_MASK (mode);
+  if (m == 0 || m == GET_MODE_MASK (mode))
+    return false;
+
+  int pos = ctz_hwi (m);
+  unsigned HOST_WIDE_INT run = m >> pos;
+  if (run & (run + 1))				/* more than one run of ones */
+    return false;
+
+  *posp = pos;
+  *widthp = popcount_hwi (m);
+  return true;
+}
+
+/* True when
+
+     (base & BASEMASK) | ((val << SHIFT) & INSMASK)
+
+   is the insert insfd performs: INSMASK one contiguous field at SHIFT, and
+   BASEMASK its exact complement.  SHIFT is NULL_RTX for a field at bit 0,
+   where combine leaves no ashift behind.
+
+   insfd masks the source itself -- ((val << pos) & mask) | (base & ~mask), see
+   INSFD's Behavior in lvx-mds -- so VAL needs no bits cleared above the field,
+   and the two masks are the whole of the correctness condition.  A width of 64
+   is out because bitwidth encodes six bits, and it would be a plain move.  */
+
+bool
+lvx_insf_mask_p (machine_mode mode, rtx basemask, rtx insmask, rtx shift)
+{
+  int pos, width;
+
+  if (!CONST_INT_P (basemask) || !CONST_INT_P (insmask))
+    return false;
+
+  if (!lvx_field_mask_p (mode, UINTVAL (insmask), &pos, &width))
+    return false;
+
+  if (((UINTVAL (basemask) ^ ~UINTVAL (insmask)) & GET_MODE_MASK (mode)) != 0)
+    return false;
+
+  if (shift ? INTVAL (shift) != pos : pos != 0)
+    return false;
+
+  return width < 64;
+}
+
+/* True when
+
+     (base & BASEMASK) | (val << SHIFT)
+
+   is that same insert with the mask on the shifted value folded away, which
+   combine does when the field runs to the top of the mode and the mask is
+   therefore redundant.  BASEMASK is then the only mask left, and the condition
+   that made the elision valid is that base keeps exactly the bits below the
+   field -- so BASEMASK must be SHIFT ones.  The field insfd writes is
+   everything from SHIFT up, which is what the elided mask said.  */
+
+bool
+lvx_insf_topmask_p (machine_mode mode, rtx basemask, rtx shift)
+{
+  if (!CONST_INT_P (basemask) || !CONST_INT_P (shift))
+    return false;
+
+  HOST_WIDE_INT pos = INTVAL (shift);
+  if (pos <= 0 || pos >= 64)
+    return false;
+
+  return ((UINTVAL (basemask) & GET_MODE_MASK (mode))
+	  == (HOST_WIDE_INT_1U << pos) - 1);
+}
+
+/* Output template for those inserts, with VALOP the operand number holding the
+   value and MASK the field (the complement of the base's mask for the elided
+   form above).  The width and position are carried by the mask rather than by
+   operands of their own, so they cannot be printed with a % code and this
+   returns a template with them already substituted.  Mnemonic: insfd.  */
+
+const char *
+lvx_output_insf (unsigned HOST_WIDE_INT mask, machine_mode mode, int valop)
+{
+  static char buf[32];
+  int pos, width;
+
+  if (!lvx_field_mask_p (mode, mask, &pos, &width))
+    gcc_unreachable ();
+
+  snprintf (buf, sizeof buf, "insfd %%0 = %%%d, %d, %d", valop, width, pos);
+  return buf;
+}
+
 /* Utils }}} */
 
 /* Options Handling {{{ */
