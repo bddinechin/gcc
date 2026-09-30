@@ -447,6 +447,76 @@
   })
 
 ;; -------------------------------------------------------------------------
+;; The 256-bit lane-mask path.  A COMP*/FCOMP* only reaches 128 bits, so a
+;; 256-bit compare runs one per half and stitches their masks with INSFD
+;; (lvx_lower_comparison -> lvx_lower_256_comparison); a 256-bit select blends
+;; each half with its slice of that mask (lvx_expand_256_blend).  These are
+;; expanders (the 128-bit integer vec_cmp<lanemask> above is a single insn).
+;; -------------------------------------------------------------------------
+
+(define_expand "vec_cmp<mode><lanemask>"
+  [(set (match_operand:<LANEMASK> 0 "register_operand")
+        (match_operator:<LANEMASK> 1 "comparison_operator"
+          [(match_operand:SIMD256I 2 "register_operand")
+           (match_operand:SIMD256I 3 "register_operand")]))]
+  "LVX_2"
+  {
+    lvx_lower_comparison (operands[0], operands[1], <MODE>mode);
+    DONE;
+  })
+
+(define_expand "vec_cmpu<mode><lanemask>"
+  [(set (match_operand:<LANEMASK> 0 "register_operand")
+        (match_operator:<LANEMASK> 1 "comparison_operator"
+          [(match_operand:SIMD256I 2 "register_operand")
+           (match_operand:SIMD256I 3 "register_operand")]))]
+  "LVX_2"
+  {
+    lvx_lower_comparison (operands[0], operands[1], <MODE>mode);
+    DONE;
+  })
+
+(define_expand "vec_cmp<mode><lanemask>"
+  [(set (match_operand:<LANEMASK> 0 "register_operand")
+        (match_operator:<LANEMASK> 1 "comparison_operator"
+          [(match_operand:SIMD256F 2 "register_operand")
+           (match_operand:SIMD256F 3 "register_operand")]))]
+  "LVX_2"
+  {
+    lvx_lower_comparison (operands[0], operands[1], <MODE>mode);
+    DONE;
+  })
+
+(define_expand "vcond_mask_<mode><lanemask>"
+  [(match_operand:SIMD256I 0 "register_operand")
+   (match_operand:SIMD256I 1 "register_operand")
+   (match_operand:SIMD256I 2 "register_operand")
+   (match_operand:<LANEMASK> 3 "register_operand")]
+  "LVX_2"
+  {
+    lvx_expand_256_blend (operands[0], operands[1], operands[2], operands[3]);
+    DONE;
+  })
+
+(define_expand "vcond_mask_<mode><lanemask>"
+  [(match_operand:SIMD256F 0 "register_operand")
+   (match_operand:SIMD256F 1 "register_operand")
+   (match_operand:SIMD256F 2 "register_operand")
+   (match_operand:<LANEMASK> 3 "register_operand")]
+  "LVX_2"
+  {
+    /* BLEND* is a type-agnostic lane bit-select, so view the float halves as
+       their integer sibling and reuse the integer 256-bit blend.  */
+    machine_mode im = <vintmode>mode;
+    rtx d = simplify_gen_subreg (im, operands[0], <MODE>mode, 0);
+    rtx t = simplify_gen_subreg (im, operands[1], <MODE>mode, 0);
+    rtx f = simplify_gen_subreg (im, operands[2], <MODE>mode, 0);
+    gcc_assert (d && t && f);
+    lvx_expand_256_blend (d, t, f, operands[3]);
+    DONE;
+  })
+
+;; -------------------------------------------------------------------------
 ;; Masked load/store (MASKM).  MASKM is a BCU prefix over a plain lq/sq whose
 ;; byte-enable mask says which bytes to touch.  The vectorizer's mask is a lane
 ;; bit-mask (lvx_get_mask_mode); EXTB{2,4,8}D expand each lane bit into its

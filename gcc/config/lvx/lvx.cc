@@ -2290,11 +2290,89 @@ lvx_pack_cmp (rtx c, machine_mode mask_mode, bool pack)
 	 ? gen_rtx_UNSPEC (mask_mode, gen_rtvec (1, c), UNSPEC_PACKCMP) : c;
 }
 
+/* A 256-bit comparison has no COMP*, FCOMP*: the ISA compares 128 bits at a
+   time.  Compare the two 128-bit halves separately -- each COMP*, FCOMP* packs
+   nunits/2 lane bits into a GPR -- then stitch the two masks into one with a
+   single INSFD, the high half's bits inserted just above the low half's.  The
+   combined GPR bit-mask is what a masked 256-bit lo/so consumes.  */
+static void
+lvx_lower_256_comparison (rtx pred, rtx comp, machine_mode comp_mode)
+{
+  enum rtx_code code = GET_CODE (comp);
+  rtx left  = force_reg (comp_mode, XEXP (comp, 0));
+  rtx right = force_reg (comp_mode, XEXP (comp, 1));
+
+  unsigned nunits = GET_MODE_NUNITS (comp_mode);
+  unsigned half = nunits / 2;
+  scalar_mode inner = GET_MODE_INNER (comp_mode);
+  machine_mode half_mode = mode_for_vector (inner, half).require ();
+  machine_mode half_pred = int_mode_for_size (half < 8 ? 8 : half, 0).require ();
+
+  rtx masks[2];
+  for (int h = 0; h < 2; h++)
+    {
+      /* The two 128-bit halves live at byte offsets 0 and 16.  */
+      rtx l = simplify_gen_subreg (half_mode, left, comp_mode, h * 16);
+      rtx r = simplify_gen_subreg (half_mode, right, comp_mode, h * 16);
+      masks[h] = gen_reg_rtx (half_pred);
+      lvx_lower_comparison (masks[h],
+			    gen_rtx_fmt_ee (code, half_pred, l, r), half_mode);
+    }
+
+  /* pred = masks[0] | (masks[1] << half), the whole of which is one INSFD once
+     the low half already sits in the accumulator.  */
+  rtx acc = gen_reg_rtx (SImode);
+  emit_move_insn (acc, convert_to_mode (SImode, masks[0], 1));
+  rtx hi = convert_to_mode (SImode, masks[1], 1);
+  emit_insn (gen_insvsi (acc, GEN_INT (half), GEN_INT (half), hi));
+  emit_move_insn (pred, gen_lowpart (GET_MODE (pred), acc));
+}
+
+/* Blend for a 256-bit select: DST = MASK ? OP1 : OP2, where MASK is the packed
+   GPR lane mask lvx_lower_256_comparison produced.  BLEND* only reaches 128
+   bits, so blend each half on its own -- the low half reads the mask's low
+   bits, the high half the bits above them, brought down by nunits/2.  */
+void
+lvx_expand_256_blend (rtx dst, rtx op1, rtx op2, rtx mask)
+{
+  machine_mode mode = GET_MODE (dst);
+  unsigned nunits = GET_MODE_NUNITS (mode);
+  unsigned half = nunits / 2;
+  scalar_mode inner = GET_MODE_INNER (mode);
+  machine_mode half_mode = mode_for_vector (inner, half).require ();
+  machine_mode half_mask = int_mode_for_size (half < 8 ? 8 : half, 0).require ();
+
+  for (int h = 0; h < 2; h++)
+    {
+      rtx d = simplify_gen_subreg (half_mode, dst, mode, h * 16);
+      rtx t = simplify_gen_subreg (half_mode, op1, mode, h * 16);
+      rtx f = simplify_gen_subreg (half_mode, op2, mode, h * 16);
+      rtx m = mask;
+      if (h == 1)
+	m = expand_shift (RSHIFT_EXPR, GET_MODE (mask), mask, half, NULL_RTX, 1);
+      m = gen_lowpart (half_mask, m);
+
+      /* BLEND* is dst = mask ? src : dst; seed dst with the false value.  */
+      if (!rtx_equal_p (d, f))
+	emit_move_insn (d, force_reg (half_mode, f));
+      emit_insn (gen_rtx_SET
+		 (d, gen_rtx_UNSPEC (half_mode, gen_rtvec (3, d, t, m),
+				     UNSPEC_LVX_BLEND)));
+    }
+}
+
 /* Lower a comparison COMP between CMP_MODE rtx(es) into a predicate register PRED.
  * In case of floating-point lowering, the left and right operands may be swapped.  */
 void
 lvx_lower_comparison (rtx pred, rtx comp, machine_mode comp_mode)
 {
+  if (VECTOR_MODE_P (comp_mode) && GET_MODE_SIZE (comp_mode) == 32
+      && SCALAR_INT_MODE_P (GET_MODE (pred)))
+    {
+      lvx_lower_256_comparison (pred, comp, comp_mode);
+      return;
+    }
+
   rtx left = XEXP (comp, 0);
   rtx right = XEXP (comp, 1);
   enum rtx_code comp_code = GET_CODE (comp);
@@ -7255,10 +7333,13 @@ lvx_vectorize_preferred_simd_mode (scalar_mode mode)
 static opt_machine_mode
 lvx_get_mask_mode (machine_mode mode)
 {
-  if (LVX_2 && GET_MODE_SIZE (mode) == 16 && GET_MODE_NUNITS (mode) >= 2
+  if (LVX_2 && (GET_MODE_SIZE (mode) == 16 || GET_MODE_SIZE (mode) == 32)
+      && GET_MODE_NUNITS (mode) >= 2
       && (GET_MODE_CLASS (mode) == MODE_VECTOR_INT
 	  || GET_MODE_CLASS (mode) == MODE_VECTOR_FLOAT))
     {
+      /* One bit per lane in a GPR.  A 256-bit vector's mask is the two 128-bit
+	 halves' COMP*, FCOMP* masks stitched with INSFD (lvx_lower_comparison).  */
       unsigned nunits = GET_MODE_NUNITS (mode);
       return int_mode_for_size (nunits < 8 ? 8 : nunits, 0).require ();
     }

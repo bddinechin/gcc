@@ -647,25 +647,42 @@
 ;; (no byte float, so no bx), and their selects blend through the int sibling.
 (define_mode_iterator SIMD128F [V8HF V4SF V2DF])
 
+;; The 256-bit modes wear the same bit-per-lane GPR mask, but a COMP*/FCOMP*
+;; only reaches 128 bits: their vec_cmp compares the two halves and stitches the
+;; masks with INSFD (lvx_lower_comparison), and their vcond_mask blends each
+;; 128-bit half with its slice of that mask (lvx_expand_256_blend).
+(define_mode_iterator SIMD256I [V32QI V16HI V8SI V4DI])
+(define_mode_iterator SIMD256F [V16HF V8SF V4DF])
+
 (define_mode_attr LANEMASK [
   (V16QI "HI") (V8HI "QI") (V4SI "QI") (V2DI "QI")
   (V8HF "QI") (V4SF "QI") (V2DF "QI")
+  (V32QI "SI") (V16HI "HI") (V8SI "QI") (V4DI "QI")
+  (V16HF "HI") (V8SF "QI") (V4DF "QI")
 ])
 
 (define_mode_attr lanemask [
   (V16QI "hi") (V8HI "qi") (V4SI "qi") (V2DI "qi")
   (V8HF "qi") (V4SF "qi") (V2DF "qi")
+  (V32QI "si") (V16HI "hi") (V8SI "qi") (V4DI "qi")
+  (V16HF "hi") (V8SF "qi") (V4DF "qi")
 ])
 
+;; The COMP*/BLEND* lane-shape suffix.  It is set by the element, not the
+;; vector width, so a 256-bit mode carries its 128-bit sibling's suffix -- what
+;; its per-half COMP*/BLEND* use.
 (define_mode_attr compx [
   (V16QI "bx") (V8HI "ho") (V4SI "wq") (V2DI "dp")
   (V8HF "ho") (V4SF "wq") (V2DF "dp")
+  (V32QI "bx") (V16HI "ho") (V8SI "wq") (V4DI "dp")
+  (V16HF "ho") (V8SF "wq") (V4DF "dp")
 ])
 
 ;; A float SIMD mode's integer sibling of the same lane width, for the bitcast
 ;; that lets a float select reuse the integer BLEND* (a lane bit-select).
 (define_mode_attr vintmode [
   (V8HF "V8HI") (V4SF "V4SI") (V2DF "V2DI")
+  (V16HF "V16HI") (V8SF "V8SI") (V4DF "V4DI")
 ])
 
 (define_mode_attr WIDE [

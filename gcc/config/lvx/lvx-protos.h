@@ -169,6 +169,8 @@ extern void lvx_expand_conditional_move (rtx target, rtx select1, rtx select2, r
 extern void lvx_expand_masked_move (rtx target, rtx select1, rtx select2,
 				    rtx mask);
 
+extern void lvx_expand_256_blend (rtx dst, rtx op1, rtx op2, rtx mask);
+
 extern void lvx_expand_vector_insert (rtx target, rtx source, rtx where);
 
 extern void lvx_expand_vector_extract (rtx target, rtx source, rtx where);
