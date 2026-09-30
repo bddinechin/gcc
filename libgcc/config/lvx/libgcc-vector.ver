@@ -45,11 +45,10 @@ GCC_12.0.0 {
   __udivmodv8si4
   __divv8si3
   __modv8si3
-  __udivv4hi3
-  __umodv4hi3
-  __udivmodv4hi4
-  __divv4hi3
-  __modv4hi3
+  # No __*v4hi* or __*v8qi*: the 64-bit vector modes reach no helper.  GCC
+  # lowers a divide in those modes element-wise rather than calling out -- the
+  # V16QI and V8HI entries below are what a 128-bit one uses -- so nothing in
+  # this directory defines them and nothing can reference them.
   __udivv8hi3
   __umodv8hi3
   __udivmodv8hi4
@@ -65,11 +64,6 @@ GCC_12.0.0 {
 %if defined(__lvxarch_lvx_1)
 %inherit GCC_12.0.0 GCC_7.0.0
 GCC_12.0.0 {
-  __udivv8qi3
-  __umodv8qi3
-  __udivmodv8qi4
-  __divv8qi3
-  __modv8qi3
   __udivv16qi3
   __umodv16qi3
   __udivmodv16qi4
