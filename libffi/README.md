@@ -61,9 +61,9 @@ tested:
 | CSKY            | Linux            | GCC                     |
 | HPPA            | HPUX             | GCC                     |
 | HPPA64          | HPUX             | GCC                     |
-| KVX             | Linux            | GCC                     |
 | IA-64           | Linux            | GCC                     |
 | LoongArch64     | Linux            | GCC                     |
+| LVX             | MBR              | GCC                     |
 | M68K            | FreeMiNT         | GCC                     |
 | M68K            | Linux            | GCC                     |
 | M68K            | RTEMS            | GCC                     |
