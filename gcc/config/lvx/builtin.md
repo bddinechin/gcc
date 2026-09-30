@@ -711,7 +711,7 @@
 
 ;; ---- WIDEN*: LVX SIMD lane extension ---------------------------------------
 ;;
-;; These replace the KVX sxl/sxm and zxl/zxm pairs.  Each reads a 128-bit
+;; These replace the inherited sxl/sxm and zxl/zxm pairs.  Each reads a 128-bit
 ;; vector, selects its least or most significant half via the mostsig modifier
 ;; (operand 2: "" or ".m"), widens those lanes to the next element size and
 ;; writes a 128-bit result -- one instruction, no partial bundle.  The EXTL*

@@ -81,7 +81,7 @@ LVX_BUILTIN_DIRECT   (msbfxhwo, V8SI_FTYPE_V8HI_V8HI_V8SI_EXTENDMUL,, lvx_2) // 
 LVX_BUILTIN_DIRECT   (msbfxwdq, V4DI_FTYPE_V4SI_V4SI_V4DI_EXTENDMUL,, lvx_2) // Vector
 
 // mm212w and mma212w are gone: the byte-matrix-multiply instructions they
-// named are KVX, not LVX (opcodes/lvx-opc.c has no "mm" .as_op at all), and
+// named do not exist in LVX (opcodes/lvx-opc.c has no "mm" .as_op at all), and
 // the patterns that defined them no longer exist.  mms212w still has a
 // pattern in builtin.md but emits an equally absent mnemonic; it is left
 // for the wider builtin audit rather than removed piecemeal here.

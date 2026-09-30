@@ -1,7 +1,7 @@
 /* -----------------------------------------------------------------------
    ffitarget.h - Copyright (c) 2020 Kalray
 
-   KVX Target configuration macros
+   LVX Target configuration macros
 
    Permission is hereby granted, free of charge, to any person obtaining
    a copy of this software and associated documentation files (the
@@ -47,15 +47,15 @@ typedef enum ffi_abi {
 /* Those values are set depending on return type
  * they are used in the assembly code in sysv.S
  */
-typedef enum kvx_intext_method {
-  KVX_RET_NONE = 0,
-  KVX_RET_SXBD = 1,
-  KVX_RET_SXHD = 2,
-  KVX_RET_SXWD = 3,
-  KVX_RET_ZXBD = 4,
-  KVX_RET_ZXHD = 5,
-  KVX_RET_ZXWD = 6
-} kvx_intext_method;
+typedef enum lvx_intext_method {
+  LVX_RET_NONE = 0,
+  LVX_RET_SXBD = 1,
+  LVX_RET_SXHD = 2,
+  LVX_RET_SXWD = 3,
+  LVX_RET_ZXBD = 4,
+  LVX_RET_ZXHD = 5,
+  LVX_RET_ZXWD = 6
+} lvx_intext_method;
 
 #endif
 

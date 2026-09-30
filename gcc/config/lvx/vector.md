@@ -5176,8 +5176,8 @@
     rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
     rtx rn = gen_rtx_CONST_STRING (VOIDmode, ".rn");
     rtx a = operands[1], b = operands[2];
-    /* No unguarded 1.0/b shortcut.  KVX had frec*, an exact reciprocal, and
-       LVX generalises that to the fdiv* instructions -- but only at scalar
+    /* No unguarded 1.0/b shortcut.  frec*, an exact reciprocal, is not an LVX
+       instruction -- the fdiv* instructions generalise it -- but only at scalar
        width, so there is nothing exact to use here.  fsrec* is a *seed*, so
        using it unconditionally would silently approximate a division the
        user did not ask to have approximated.  The flag-guarded paths below

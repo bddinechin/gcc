@@ -256,8 +256,9 @@
 ;; ...and the insn the expander above produces, which did not exist here:
 ;; every value of these modes that had to be stored -- returning one is enough
 ;; -- reached vregs as (set (mem:V2OI) (reg:V2OI)) and died as an
-;; unrecognizable insn.  KVX carries this pattern and lvx_split_tca_moves'
-;; counterpart; LVX had kept the expander and lost both.
+;; unrecognizable insn.  The port this one derives from carries this pattern
+;; and lvx_split_tca_moves' counterpart; LVX had kept the expander and lost
+;; both.
 
 (define_insn_and_split "*mov<mode>"
   [(set (match_operand:XMOVM 0 "nonimmediate_operand" "=x,x,x,x,a,b,m,r,x")

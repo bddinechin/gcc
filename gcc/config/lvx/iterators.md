@@ -1146,7 +1146,7 @@
 ;; Iterator for the 128-bit vector integer modes.  The byte lanes belong here: ADDBX, SBFBX, MINBX,
 ;; MAXBX, ABSBX, NEGBX and the saturating forms all exist -- they were left
 ;; out while the byte modes went through the VXQI half-word synthesis this
-;; port inherited from KVX, which the LVX ISA makes unnecessary.
+;; port inherited, which the LVX ISA makes unnecessary.
 (define_mode_iterator V128J [
   V16QI V8HI V4SI V2DI
 ])
@@ -1244,7 +1244,7 @@
 ;; Iterator for the 256-bit vector integer modes.  The byte lanes belong here: ADDBX, SBFBX, MINBX,
 ;; MAXBX, ABSBX, NEGBX and the saturating forms all exist -- they were left
 ;; out while the byte modes went through the VXQI half-word synthesis this
-;; port inherited from KVX, which the LVX ISA makes unnecessary.
+;; port inherited, which the LVX ISA makes unnecessary.
 (define_mode_iterator V256J [
   V32QI V16HI V8SI V4DI
 ])

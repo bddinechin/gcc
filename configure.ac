@@ -1000,6 +1000,9 @@ case "${target}" in
   kvx-*-cos)
     libgloss_dir=kvx-cos
     ;;
+  lvx-*-mbr)
+    libgloss_dir=lvx-mbr
+    ;;
   hppa*-*-*)
     libgloss_dir=pa
     ;;

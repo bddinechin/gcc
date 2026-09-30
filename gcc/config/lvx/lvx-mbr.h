@@ -35,7 +35,7 @@
    porting and other libc.
 
    There is deliberately no bare-runtime library and no linker script here.
-   The KVX-derived spec this replaces named -lmppahal, -lmppabareruntime and
+   The inherited spec this replaces named -lmppahal, -lmppabareruntime and
    mppabareruntime.ld; none of the three exists for LVX, so every default link
    failed:
 
@@ -50,7 +50,7 @@
    boot/exception/MMU machinery a real bare runtime provides is reachable.
 
    When that runtime does exist, add its library and script back here.  The
-   KVX spec picked between two scripts on -mhal; that option selected nothing
+   inherited spec picked between two scripts on -mhal; that option selected nothing
    else, so it went with them.  */
 #undef LIB_SPEC
 #define LIB_SPEC                                                               \

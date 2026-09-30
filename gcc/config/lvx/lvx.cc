@@ -1902,8 +1902,8 @@ lvx_split_128bits_move (rtx dst, rtx src)
    through UNSPEC_XCOPY; anything touching memory is a plain set, which the
    256-bit *mov pattern then turns into xlo or xso.
 
-   KVX picks a wider chunk for the register case when the ISA has one
-   (HAVE_KVX_EXT_COPY_V2OI, V4OI).  LVX removed xcopyx and xcopyv, so
+   A port whose ISA has wider extension copies picks a bigger chunk for the
+   register case (the V2OI and V4OI variants).  LVX removed xcopyx and xcopyv, so
    HAVE_LVX_EXT_COPY_V1OI is the only one left and V1OI is the only chunk.  */
 
 void
@@ -3348,7 +3348,7 @@ lvx_expand_unpack (rtx op0, rtx op1, bool signed_p, bool hi_p)
      instructions apply directly: they read a 128-bit vector, select its least
      or most significant half via the mostsig modifier -- exactly HI_P -- widen
      those lanes and write a 128-bit result.  This used to bottom out at 64
-     bits on the KVX sxl/sxm and zxl/zxm pairs, which LVX does not have.  */
+     bits on the inherited sxl/sxm and zxl/zxm pairs, which LVX does not have.  */
   rtx mostsig = gen_rtx_CONST_STRING (VOIDmode, hi_p ? ".m" : "");
 
   switch (op0_mode)
@@ -10934,7 +10934,7 @@ lvx_loop_unroll_adjust (unsigned nunroll, struct loop *loop)
 
 /* 18.xx Complex Number Support {{{ */
 
-/* These complex-number target hooks are KVX extensions not in standard GCC 14.
+/* These complex-number target hooks are local extensions not in standard GCC.
    Define compatibility shims so the functions compile (they are dead code
    unless the hooks are also added to target.def / targhooks).  */
 typedef int complex_part_t;

@@ -2161,7 +2161,7 @@
    (set_attr "issue" "lite")]
 )
 
-;; No "*madduzdt": the KVX .uz form accumulated into the high half of the
+;; No "*madduzdt": the inherited .uz form accumulated into the high half of the
 ;; 128-bit accumulator (note the lshiftrt by 64 above).  LVX expresses the
 ;; widening multiply flavour through the widemult modifier, whose only
 ;; members are "." , ".U" and ".SU" -- there is no ".UZ" -- so this shape has

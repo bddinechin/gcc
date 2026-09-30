@@ -436,7 +436,7 @@
 ;;   COMPN{BX,HO,WQ,DP}  writes registerM, a 128-bit pair: the full 0/-1 mask,
 ;;                       one lane-width element per lane.  That is what a
 ;;                       vector comparison is in RTL, so the bare (cmp) pattern
-;;                       below emits it, one instruction where the KVX-inherited
+;;                       below emits it, one instruction where the inherited
 ;;                       form used a pair of 64-bit COMPN* over the halves.
 ;;   COMP{BX,HO,WQ,DP}   writes registerW, a *single* register: one **bit** per
 ;;                       lane, packed.  It is not a vector value at all, so it
