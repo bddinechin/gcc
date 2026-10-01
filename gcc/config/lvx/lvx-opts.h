@@ -725,11 +725,11 @@ enum lvx_arch_type
 #define HAVE_LVX_SS_PLUS_V8SI (1)
 #define HAVE_LVX_SS_PLUS_V16HI (1)
 
-#define HAVE_LVX_STSU_DI (1)
-#define HAVE_LVX_STSU_V2DI (1)
+#define HAVE_LVX_STSU_DI (0) // stsud -- removed from the ISA
+#define HAVE_LVX_STSU_V2DI (0) // stsudp -- removed from the ISA
 #define HAVE_LVX_STSU_V2SI (1)
 #define HAVE_LVX_STSU_V4HI (1)
-#define HAVE_LVX_STSU_V4DI (1)
+#define HAVE_LVX_STSU_V4DI (0) // two stsudp -- removed from the ISA
 
 #define HAVE_LVX_EXT_ANDN_V1OI (0) // xandno -- removed from the ISA
 #define HAVE_LVX_EXT_AND_V1OI (0) // xando -- removed from the ISA

@@ -1959,11 +1959,15 @@
    (set_attr "length" "4")]
 )
 
+;; The aggregate forms split down to the V2DI element operation, so they cannot
+;; be available when that one is not: without the HAVE_LVX_STSU_V2DI test the
+;; expand succeeds, lvx_stsudq_1 splits, and the V2DI unspec it produces matches
+;; nothing -- "unrecognizable insn" rather than "not supported on this target".
 (define_expand "lvx_stsudq"
   [(set (match_operand:V4DI 0 "register_operand" "")
         (unspec:V4DI [(match_operand:V4DI 1 "register_operand" "")
                       (match_operand:V4DI 2 "register_operand" "")] UNSPEC_STSU))]
-  "LVX_2"
+  "LVX_2 && HAVE_LVX_STSU_V2DI"
   ""
 )
 
@@ -1971,9 +1975,9 @@
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V4DI 1 "register_operand" "r")
                       (match_operand:V4DI 2 "register_operand" "r")] UNSPEC_STSU))]
-  "!HAVE_LVX_STSU_V4DI"
+  "!HAVE_LVX_STSU_V4DI && HAVE_LVX_STSU_V2DI"
   "#"
-  "!HAVE_LVX_STSU_V4DI && reload_completed"
+  "!HAVE_LVX_STSU_V4DI && HAVE_LVX_STSU_V2DI && reload_completed"
   [(set (subreg:V2DI (match_dup 0) 0)
         (unspec:V2DI [(subreg:V2DI (match_dup 1) 0)
                       (subreg:V2DI (match_dup 2) 0)] UNSPEC_STSU))
@@ -2002,7 +2006,7 @@
   [(set (match_operand:V8DI 0 "register_operand" "=r")
         (unspec:V8DI [(match_operand:V8DI 1 "register_operand" "r")
                       (match_operand:V8DI 2 "register_operand" "r")] UNSPEC_STSU))]
-  "LVX_2"
+  "LVX_2 && HAVE_LVX_STSU_V2DI"
   "#"
   ""
   [(set (subreg:V4DI (match_dup 0) 0)
