@@ -257,15 +257,15 @@ LVX_BUILTIN_DIRECT   (select128s, V128_FTYPE_V128_V128_UINT64_MOVECOND,, lvx_2) 
 LVX_BUILTIN_DIRECT   (select256s, V256_FTYPE_V256_V256_UINT64_MOVECOND,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (select512s, V512_FTYPE_V512_V512_UINT64_MOVECOND,, lvx_2) // Vector
 
-LVX_BUILTIN_DIRECT   (fsignh, copysignhf3, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fsignho, copysignv8hf3, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fsignhx, copysignv16hf3, V16HF_FTYPE_V16HF_V16HF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fsignw, copysignsf3, FLOAT32_FTYPE_FLOAT32_FLOAT32,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fsignwq, copysignv4sf3, V4SF_FTYPE_V4SF_V4SF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fsignwo, copysignv8sf3, V8SF_FTYPE_V8SF_V8SF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fsignd, copysigndf3, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
-LVX_BUILTIN_DIRECT   (fsigndp, copysignv2df3, V2DF_FTYPE_V2DF_V2DF,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (fsigndq, copysignv4df3, V4DF_FTYPE_V4DF_V4DF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fsignch, copysignhf3, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fsigncho, copysignv8hf3, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fsignchx, copysignv16hf3, V16HF_FTYPE_V16HF_V16HF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fsigncw, copysignsf3, FLOAT32_FTYPE_FLOAT32_FLOAT32,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fsigncwq, copysignv4sf3, V4SF_FTYPE_V4SF_V4SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fsigncwo, copysignv8sf3, V8SF_FTYPE_V8SF_V8SF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fsigncd, copysigndf3, FLOAT64_FTYPE_FLOAT64_FLOAT64,, true) // Scalar
+LVX_BUILTIN_DIRECT   (fsigncdp, copysignv2df3, V2DF_FTYPE_V2DF_V2DF,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fsigncdq, copysignv4df3, V4DF_FTYPE_V4DF_V4DF,, lvx_2) // Vector
 
 LVX_BUILTIN_DIRECT   (fsignnh, lvx_fsignnh, FLOAT16_FTYPE_FLOAT16_FLOAT16,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fsignnho, lvx_fsignnho, V8HF_FTYPE_V8HF_V8HF,, lvx_2) // Vector

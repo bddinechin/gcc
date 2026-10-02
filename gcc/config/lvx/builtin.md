@@ -5204,10 +5204,14 @@
   }
 )
 
-;; FSIGN, FSIGNM, FSIGNN: copysign and xorsign are one instruction each.
+;; FSIGNC, FSIGNM, FSIGNN: copysign and xorsign are one instruction each.  The C
+;; is for copy, and it is there to keep the family out of reading distance of the
+;; integer SIGN*/SIGNS* instructions, which do something else entirely.  Only the
+;; copy family carries it: FSIGNM is a sign *multiply* and FSIGNN a negated copy,
+;; so a C in either would be a lie.
 ;;
-;; copysign(a, b) is (a & ~sign) | (b & sign), which is FSIGN{H,W,D} and, at 128
-;; bits, FSIGN{HO,WQ,DP}; xorsign(a, b) is a ^ (b & sign), FSIGNM*.  They used
+;; copysign(a, b) is (a & ~sign) | (b & sign), which is FSIGNC{H,W,D} and, at 128
+;; bits, FSIGNC{HO,WQ,DP}; xorsign(a, b) is a ^ (b & sign), FSIGNM*.  They used
 ;; to be spelled out: the scalars as an extfs/insf pair (two cycles, dependent),
 ;; xorsign as a maked/andd/eord chain, and the vector copysign as
 ;; fabs/fneg/lanes.ltz -- three instructions and three cycles for what the ISA
@@ -5218,8 +5222,8 @@
 ;; __builtin_lvx_fsignn* names it.  256 bits split in two halves as the
 ;; min/max families do.
 ;;
-;; The builtins are named after the instructions -- fsign*, fsignm*, fsignn* --
-;; not after the RTL codes, so __builtin_lvx_fsignd is FSIGND and
+;; The builtins are named after the instructions -- fsignc*, fsignm*, fsignn* --
+;; not after the RTL codes, so __builtin_lvx_fsigncd is FSIGNCD and
 ;; __builtin_lvx_fsignmd is FSIGNMD.  The *patterns* keep GCC's standard names
 ;; (copysign<mode>3, xorsign<mode>3): those are optab names the middle end looks
 ;; up, and renaming them would simply unhook the optabs.
@@ -5229,7 +5233,7 @@
         (copysign:FLOATM (match_operand:FLOATM 1 "register_operand" "r")
                          (match_operand:FLOATM 2 "register_operand" "r")))]
   ""
-  "fsign<suffix> %0 = %1, %2"
+  "fsignc<suffix> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
 )
@@ -5239,7 +5243,7 @@
         (copysign:V128F (match_operand:V128F 1 "register_operand" "r")
                         (match_operand:V128F 2 "register_operand" "r")))]
   "LVX_2"
-  "fsign<suffix> %0 = %1, %2"
+  "fsignc<suffix> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
 )
