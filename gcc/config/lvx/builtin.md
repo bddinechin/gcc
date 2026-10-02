@@ -5215,8 +5215,14 @@
 ;; combine can see through it; xorsign has none, so it is an unspec.  FSIGNN,
 ;; a with the NEGATED sign of b, is copysign(a, -b): combine reaches it
 ;; through (copysign a (neg b)) and (neg (copysign a b)), and
-;; __builtin_lvx_copysignn* names it.  256 bits split in two halves as the
+;; __builtin_lvx_fsignn* names it.  256 bits split in two halves as the
 ;; min/max families do.
+;;
+;; The builtins are named after the instructions -- fsign*, fsignm*, fsignn* --
+;; not after the RTL codes, so __builtin_lvx_fsignd is FSIGND and
+;; __builtin_lvx_fsignmd is FSIGNMD.  The *patterns* keep GCC's standard names
+;; (copysign<mode>3, xorsign<mode>3): those are optab names the middle end looks
+;; up, and renaming them would simply unhook the optabs.
 
 (define_insn "copysign<mode>3"
   [(set (match_operand:FLOATM 0 "register_operand" "=r")
