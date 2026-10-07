@@ -172,24 +172,23 @@ LVX_BUILTIN_DIRECT   (widenwdo, V8DI_FTYPE_V8SI_WIDENINT,, lvx_2) // Vector
    libgcc vector divide/modulo helpers are written against them.  The wider
    spellings (hbv, whx, dwo) have no instruction -- see lvx_trunc<truncx>,
    which is over S128L for that reason -- so they are composed from two of
-   these plus a cat256 in the helper.  */
-LVX_BUILTIN_DIRECT   (narrowhbx, lvx_trunchbx, V16QI_FTYPE_V16HI,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (narrowwho, lvx_truncwho, V8HI_FTYPE_V8SI,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (narrowdwq, lvx_truncdwq, V4SI_FTYPE_V4DI,, lvx_2) // Vector
+   these plus a cat256 in the helper.  Named after the instruction since
+   2026-10: Builtin.yml spelled them narrow* and the ISA TRUNC*, and the
+   divergence bought nothing.  FRACT* is the other half of the pair -- TRUNC*
+   drops each lane's high bits, FRACT* its low bits.  */
+LVX_BUILTIN_DIRECT   (trunchbx, V16QI_FTYPE_V16HI,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (truncwho, V8HI_FTYPE_V8SI,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (truncdwq, V4SI_FTYPE_V4DI,, lvx_2) // Vector
 
-LVX_BUILTIN_DIRECT   (widenebho, V8HI_FTYPE_V16QI_WIDENINT,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (widenebhx, V16HI_FTYPE_V32QI_WIDENINT,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (widenehwq, V4SI_FTYPE_V8HI_WIDENINT,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (widenehwo, V8SI_FTYPE_V16HI_WIDENINT,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (widenewdp, V2DI_FTYPE_V4SI_WIDENINT,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (widenewdq, V4DI_FTYPE_V8SI_WIDENINT,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fracthbx, V16QI_FTYPE_V16HI,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fractwho, V8HI_FTYPE_V8SI,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fractdwq, V4SI_FTYPE_V4DI,, lvx_2) // Vector
 
-LVX_BUILTIN_DIRECT   (widenobho, V8HI_FTYPE_V16QI_WIDENINT,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (widenobhx, V16HI_FTYPE_V32QI_WIDENINT,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (widenohwq, V4SI_FTYPE_V8HI_WIDENINT,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (widenohwo, V8SI_FTYPE_V16HI_WIDENINT,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (widenowdp, V2DI_FTYPE_V4SI_WIDENINT,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (widenowdq, V4DI_FTYPE_V8SI_WIDENINT,, lvx_2) // Vector
+/* TAILD builds a packed lane mask from an index and a bound in one ALU_TINY
+   syllable: lane i is set iff index + i <u bound, bits above the lanecount
+   cleared.  On both cores -- the mask is a GPR bit mask, not a lane-wise
+   datapath -- so the predicate is `true`, not lvx_2.  */
+LVX_BUILTIN_DIRECT   (taild, UINT64_FTYPE_UINT64_UINT64_LANECOUNT,, true) // Scalar
 
 
 LVX_BUILTIN_INDIRECT (shiftbx, V16QI_FTYPE_V16QI_INT32_INT8,, lvx_2, (SHIFT, E_V16QImode, E_QImode)) // Vector

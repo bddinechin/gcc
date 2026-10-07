@@ -208,6 +208,7 @@ struct lvx_modmap
 #define LVX_MOD_SATURATE   lvx_modmap_saturate
 #define LVX_MOD_SHIFTLEFT  lvx_modmap_shiftleft
 #define LVX_MOD_SHIFTRIGHT lvx_modmap_shiftright
+#define LVX_MOD_LANECOUNT  lvx_modmap_lanecount
 #define LVX_MOD_MOSTSIG    lvx_modmap_mostsig
 #define LVX_MOD_SIGNEDSAT  lvx_modmap_signedsat
 #define LVX_MOD_SIMDCOND   lvx_modmap_simdcond
@@ -485,6 +486,17 @@ const struct lvx_modmap lvx_modmap_variant_all = {
   lvx_mod_variant, lvx_mod_variant
 };
 const struct lvx_modmap *lvx_modmap_variant = &lvx_modmap_variant_all;
+
+/* TAILD's lane count: the number of low lanes the mask covers, the bits above
+   them cleared.  The modifier is the count itself, not its log2 -- that is the
+   encoding's business, not the builtin's.  */
+const char *lvx_mod_lanecount[] = {
+ ".v1", ".v2", ".v4", ".v8", ".v16", ".v32", ".v64", ".v128", NULL
+};
+const struct lvx_modmap lvx_modmap_lanecount_all = {
+  lvx_mod_lanecount, lvx_mod_lanecount
+};
+const struct lvx_modmap *lvx_modmap_lanecount = &lvx_modmap_lanecount_all;
 
 const char *lvx_mod_widenint[] = {
  "", ".z", ".q", NULL
@@ -853,6 +865,7 @@ tree lvx_builtin_types[LVX_BTI_MAX];
 #define LVX_ATYPE_TRANSPOSE LVX_ATYPE_STRING
 #define LVX_ATYPE_UNUSED LVX_ATYPE_STRING
 #define LVX_ATYPE_VARIANT LVX_ATYPE_STRING
+#define LVX_ATYPE_LANECOUNT LVX_ATYPE_STRING
 #define LVX_ATYPE_WIDENINT LVX_ATYPE_STRING
 #define LVX_ATYPE_XCHANNEL LVX_ATYPE_STRING
 #define LVX_ATYPE_XCHANNELS LVX_ATYPE_STRING

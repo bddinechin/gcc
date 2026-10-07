@@ -69,6 +69,7 @@
         UNSPEC_TRUNCL
         UNSPEC_TRUNCM
         UNSPEC_FRACT
+        UNSPEC_TAILD
         UNSPEC_FWIDEN
         UNSPEC_FNARROW
         UNSPEC_ADDD

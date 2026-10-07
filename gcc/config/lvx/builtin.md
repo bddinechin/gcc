@@ -802,48 +802,10 @@
 )
 
 
-;; WIDENE*, SXE*, ZXE*, QXE*
-
-(define_expand "lvx_widene<hwidenx>"
-  [(match_operand:<HWIDE> 0 "register_operand" "")
-   (match_operand:WIDENI 1 "register_operand" "")
-   (match_operand 2 "" "")]
-  ""
-  {
-    const char *xstr = XSTR (operands[2], 0);
-    if (!*xstr)
-      {
-        scalar_mode inner_mode = GET_MODE_INNER (<MODE>mode);
-        unsigned inner_mode_size = GET_MODE_SIZE (inner_mode);
-        if (inner_mode_size * 2 < UNITS_PER_WORD)
-          {
-            rtx op1 = simplify_gen_subreg (<HWIDE>mode, operands[1], <MODE>mode, 0);
-            rtx bits = GEN_INT (inner_mode_size * BITS_PER_UNIT);
-            emit_insn (gen_ashl<hwide>3 (operands[0], op1, bits));
-            emit_insn (gen_ashr<hwide>3 (operands[0], operands[0], bits));
-          }
-        else if (inner_mode == SImode)
-          {
-            unsigned mode_size = GET_MODE_SIZE (<MODE>mode);
-            for (unsigned offset = 0; offset < mode_size; offset += UNITS_PER_WORD)
-              {
-                rtx op1_i = simplify_gen_subreg (SImode, operands[1], <MODE>mode, offset);
-                rtx op0_i = simplify_gen_subreg (DImode, operands[0], <HWIDE>mode, offset);
-                emit_insn (gen_extendsidi2 (op0_i, op1_i));
-              }
-          }
-        else
-          gcc_unreachable ();
-      }
-    else if (xstr[1] == 'z')
-      emit_insn (gen_lvx_zxe<hwidenx> (operands[0], operands[1]));
-    else if (xstr[1] == 'q')
-      emit_insn (gen_lvx_qxe<hwidenx> (operands[0], operands[1]));
-    else
-      gcc_unreachable ();
-    DONE;
-  }
-)
+;; SXE*, ZXE*, QXE*: select the even lanes and extend.  There is no WIDENE*
+;; instruction -- the lvx_widene<hwidenx> builtin entry point that used to
+;; stand here synthesised it, and Builtin.yml dropped widene*/wideno* in
+;; 2026-10.  These insns stay: the madd/mulx expanders below still emit them.
 
 ;; EXTLZ* is exactly what these do: select the even or odd lanes and
 ;; zero-extend them to the next width.  They used to be hand-built from a
@@ -1016,32 +978,10 @@
 )
 
 
-;; WIDENO*, SXO*, ZXO*, QXO*
-
-(define_expand "lvx_wideno<hwidenx>"
-  [(match_operand:<HWIDE> 0 "register_operand" "")
-   (match_operand:WIDENI 1 "register_operand" "")
-   (match_operand 2 "" "")]
-  ""
-  {
-    const char *xstr = XSTR (operands[2], 0);
-    if (!*xstr)
-      {
-        rtx op1 = simplify_gen_subreg (<HWIDE>mode, operands[1], <MODE>mode, 0);
-        scalar_mode inner_mode = GET_MODE_INNER (<MODE>mode);
-        unsigned inner_mode_size = GET_MODE_SIZE (inner_mode);
-        rtx bits = GEN_INT (inner_mode_size * BITS_PER_UNIT);
-        emit_insn (gen_ashr<hwide>3 (operands[0], op1, bits));
-      }
-    else if (xstr[1] == 'z')
-      emit_insn (gen_lvx_zxo<hwidenx> (operands[0], operands[1]));
-    else if (xstr[1] == 'q')
-      emit_insn (gen_lvx_qxo<hwidenx> (operands[0], operands[1]));
-    else
-      gcc_unreachable ();
-    DONE;
-  }
-)
+;; SXO*, ZXO*, QXO*: select the odd lanes and extend.  There is no WIDENO*
+;; instruction -- the lvx_wideno<hwidenx> builtin entry point that used to
+;; stand here synthesised it, and Builtin.yml dropped widene*/wideno* in
+;; 2026-10.  These insns stay: the madd/mulx expanders below still emit them.
 
 (define_insn "lvx_zxobho"
   [(set (match_operand:V8HI 0 "register_operand" "=r")
@@ -6490,6 +6430,26 @@
   "fract<truncx> %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
+)
+
+;; ---- TAILD, the tail mask --------------------------------------------------
+;; One ALU_TINY syllable for what `(1 << n) - 1` costs four, and it does not
+;; misread a count of 64 or a negative one: lane i is set iff %1 + i <u %2,
+;; unsigned and without the increment wrapping, and the bits above the
+;; lanecount are cleared.  On both cores -- the result is a GPR bit mask, so it
+;; needs no lane-wise datapath -- hence no LVX_2 condition.  The lanecount
+;; arrives as a const_string (".v1" ... ".v128") and prints as the mnemonic
+;; suffix, the same way the widen*/add* modifiers do.
+(define_insn "lvx_taild"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+        (unspec:DI [(match_operand:DI 1 "register_operand" "r")
+                    (match_operand:DI 2 "register_operand" "r")
+                    (match_operand 3 "" "")]
+                   UNSPEC_TAILD))]
+  ""
+  "taild%3 %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
 )
 
 (define_expand "trunc<wide><mode>2"
