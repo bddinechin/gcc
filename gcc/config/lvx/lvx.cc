@@ -5708,13 +5708,64 @@ lvx_get_arg_info (struct lvx_arg_info *info, cumulative_args_t cum_v,
 /* Implements TARGET_FUNCTION_ARG.
    Returns a reg rtx pointing at first argument register to be
    used for given argument or NULL_RTX if argument must be stacked
-   because there is no argument slot in registers free. */
+   because there is no argument slot in registers free.
+
+   A multi-word argument whose first register cannot hold its mode is handed
+   back as a PARALLEL of word-sized pieces rather than as one wide REG.  The
+   ABI puts a multi-word argument at the first free argument register whatever
+   its parity, so anything consuming one register ahead of a pair starts that
+   pair odd: with `int c' in $r0 an __int128 argument lands on $r1$r2, and a
+   256-bit one on $r1..$r4.  That placement is the ABI -- clang agrees on it,
+   and changing it would break calls between the two compilers -- but a wide
+   REG at a register number TARGET_HARD_REGNO_MODE_OK rejects is not valid RTL:
+   no instruction can name $r1$r2 as a pair, and one that reaches print_operand
+   with it dies in lvx_pgr_reg_name.  A PARALLEL is the standard way to say
+   "these registers, in this order" without claiming a wide register exists;
+   the middle end moves the pieces with emit_group_load/store and the value
+   reaches a correctly aligned pseudo at both ends of the call.
+
+   Fixing this at the pattern level instead -- an lvx_hardreg_aligned_p guard
+   on whatever cannot name the pair, the way the wide moves in vector.md and
+   the predicated wide load/store in control.md are guarded -- does not hold up
+   here, which is worth recording.  That idiom comes from KVX, where the only
+   instructions naming a wide register were the wide move and the wide
+   load/store, everything else being split into 64-bit halves.  LVX has a
+   quadword ALU and 128-bit SIMD, so an outgoing argument register is the
+   destination of ordinary arithmetic: `f (c, x | y, ...)' puts an IORTI3
+   straight into $r3, with no move anywhere to split.  Covering that means
+   guarding every wide-destination pattern in the port rather than a handful,
+   and missing one is a silent ICE in final.  Making the misaligned wide hard
+   register not exist is the whole fix; making each consumer refuse it is not.
+
+   Aligned starts keep the plain REG, so the common case is untouched, and so
+   does an argument split between registers and the stack -- that one is
+   assembled in memory, so no wide hard register is formed for it either.  Both
+   hooks must agree in shape: a sibling call loads its arguments through
+   TARGET_FUNCTION_INCOMING_ARG's rtl (calls.cc's tail_call_reg) and
+   emit_group_move requires both sides to be PARALLELs, so returning a PARALLEL
+   from one and a REG from the other segfaults expand on the first such tail
+   call.  TARGET_FUNCTION_INCOMING_ARG defaults to this hook, which is what
+   keeps them in step.  */
 
 static rtx
 lvx_function_arg (cumulative_args_t cum_v, const function_arg_info &arg)
 {
   struct lvx_arg_info info = { 0, 0, 0 };
-  return lvx_get_arg_info (&info, cum_v, arg);
+  rtx reg = lvx_get_arg_info (&info, cum_v, arg);
+
+  if (reg == NULL_RTX
+      || info.num_regs <= 1
+      || info.num_stack != 0
+      || lvx_hard_regno_mode_ok (REGNO (reg), arg.mode))
+    return reg;
+
+  rtx par = gen_rtx_PARALLEL (arg.mode, rtvec_alloc (info.num_regs));
+  for (int i = 0; i < info.num_regs; i++)
+    XVECEXP (par, 0, i)
+      = gen_rtx_EXPR_LIST (VOIDmode,
+			   gen_rtx_REG (word_mode, REGNO (reg) + i),
+			   GEN_INT (i * UNITS_PER_WORD));
+  return par;
 }
 
 #undef TARGET_FUNCTION_ARG
