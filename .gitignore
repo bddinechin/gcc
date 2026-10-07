@@ -75,7 +75,7 @@ stamp-*
 # Generated into the build directory by config/lvx/t-lvx from lvx-builtins.def.
 /gcc/config/lvx/lvx-ftypes.def
 
-# Delivered by lvx-mds from lvx-refs (superproject: make export); not versioned here.
+# Delivered by lvx-mds from lvx-refs (superproject: make refresh); not versioned here.
 /gcc/config/lvx/lvx-registers.h
 /gcc/config/lvx/lvx-registers.md
 /gcc/config/lvx/scheduling-isa.md
