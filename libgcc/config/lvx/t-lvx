@@ -31,20 +31,32 @@ softfp_exclude_libgcc2 := n
 # divmodvxqi.c is the STSU alternative, and it is built as well.  divv.c guards
 # its own byte-lane helpers off on lvx-2, so the two never define one symbol.
 #
-# divmodvxhi.c and divmodvxsi.c stay out on those numbers, not because they are
-# broken -- both are now correct (see below) and compile and assemble clean.
-# They are kept so the measurement can be repeated if the STSU latency or the
-# LITE slot count ever changes.  What was wrong with them, and is now fixed:
+# divmodvxhi.c stays out on those numbers, not because it is broken -- it is
+# correct (see below) and compiles and assembles clean at -march=lvx-2.  It is
+# kept so the measurement can be repeated if the STSU latency or the LITE slot
+# count ever changes.  What was wrong with it, and is now fixed:
 # an inverted `#if defined(__lvxarch_lvx_1)` guard that compiled SIMD code on
-# the core without SIMD and nothing on the core with it; a branch in the HI file
-# that widened to FOUR times the lane width and called STSUDO (four STSUDP
-# each); 256-bit paths that formed 512-bit values with no register home; and
+# the core without SIMD and nothing on the core with it; a branch that widened
+# to FOUR times the lane width and called STSUDO (four STSUDP each); 256-bit
+# paths that formed 512-bit values with no register home; and
 # calls to __builtin_lvx_any*, which never existed -- harmless only because
 # DIV_BY_ZERO_MAY_TRAP discards its arguments.
 #
-# A 64-bit lane cannot use this route at all: it would need a 128-bit STSU and
-# the widest is STSUDP at 64.  divv.c covers V2DI/V4DI with two or four
-# divmodd, which is cheap anyway.
+# divmodvxsi.c stays out and no longer compiles, which is now an ISA fact
+# rather than a bug in it: the 32-bit lane route widens to 64-bit lanes and
+# iterates STSUD, and STSUD/STSUDP were retired from the ISA (lvx-gcc
+# 34302a6e7fa, encoding 1111 freed in both the D and DP blocks), so stsudq and
+# stsudo have nothing to emit and no successor.  Its 256-bit half also calls a
+# `narrowdwo'/`truncdwo' that has never existed -- the 256-bit narrowing
+# spellings (hbv, whx, dwo) have no instruction, as lvx-builtins.def says where
+# TRUNC* is declared.  Reviving the file means a different algorithm, not a
+# rename; divv.c already covers V4SI/V8SI with one divmodw per lane.  Its
+# narrow* -> trunc* calls were renamed with the rest so the remaining errors
+# are only the three that need an ISA answer.
+#
+# A 64-bit lane cannot use this route at all either: it would need a 128-bit
+# STSU, and even before STSUD went the widest was STSUDP at 64.  divv.c covers
+# V2DI/V4DI with two or four divmodd, which is cheap anyway.
 #
 # divmoddi.c and divmodsi.c are retired: they implemented 32- and 64-bit
 # divide/modulo in software, by Newton-Raphson refinement of a reciprocal

@@ -66,8 +66,8 @@ uint32x4_divmod (uint32x4_t a, uint32x4_t b)
     {
       acc = __builtin_lvx_stsudq (src, acc);
     }
-  uint32x4_t q = __builtin_lvx_narrowdwq (acc, "");
-  uint32x4_t r = __builtin_lvx_narrowdwq (acc >> 32, "");
+  uint32x4_t q = __builtin_lvx_truncdwq (acc);
+  uint32x4_t r = __builtin_lvx_truncdwq (acc >> 32);
   return __builtin_lvx_cat256 (q, r);
 }
 

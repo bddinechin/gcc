@@ -69,8 +69,8 @@ uint8x16_divmod (uint8x16_t a, uint8x16_t b)
     {
       acc = __builtin_lvx_stsuhx (src, acc);
     }
-  uint8x16_t q = __builtin_lvx_narrowhbx (acc);
-  uint8x16_t r = __builtin_lvx_narrowhbx (acc >> 8);
+  uint8x16_t q = __builtin_lvx_trunchbx (acc);
+  uint8x16_t r = __builtin_lvx_trunchbx (acc >> 8);
   return __builtin_lvx_cat256 (q, r);
 }
 
