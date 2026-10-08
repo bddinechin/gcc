@@ -9394,6 +9394,7 @@ proc check_effective_target_vect_check_ptrs { } {
 proc check_effective_target_vect_fully_masked { } {
     return [expr { [check_effective_target_aarch64_sve]
 		   || [istarget amdgcn*-*-*]
+		   || [check_effective_target_lvx2]
 		   || [check_effective_target_riscv_v] }]
 }
 

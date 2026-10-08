@@ -1137,11 +1137,27 @@ vect_set_loop_condition_partial_vectors_avx512 (class loop *loop,
 	    }
 
 	  /* Now AND out the bits that are within the number of skipped
-	     items.  */
+	     items.
+
+	     NITERS_SKIP counts scalar ITERATIONS, while BIAS counts the ITEMS
+	     the previous controls of this rgroup cover -- for a group of N
+	     interleaved accesses one iteration is N items.  Both the test
+	     below and the shift amount must therefore be in items, which
+	     means converting NITERS_SKIP before comparing it or subtracting
+	     BIAS from it, not afterwards.  Where MAX_NSCALARS_PER_ITER is 1
+	     the two orders agree, which is every non-grouped access and so
+	     everything SVE and AVX-512 ordinarily exercise; with a group it
+	     is the difference between masking the skipped lanes off and
+	     leaving them live.  Getting it wrong let a control whose BIAS
+	     exceeded NITERS_SKIP skip the AND entirely and keep an all-ones
+	     initial mask, so the first iteration of a loop peeled for
+	     alignment stored lanes that lie before the vector's own data --
+	     see gcc.dg/vect/pr64252.c on a target whose
+	     TARGET_VECTORIZE_GET_MASK_MODE gives an integer-mode mask.  */
 	  poly_uint64 const_skip;
 	  if (niters_skip
 	      && !(poly_int_tree_p (niters_skip, &const_skip)
-		   && known_le (const_skip, bias)))
+		   && known_le (const_skip * rgc.max_nscalars_per_iter, bias)))
 	    {
 	      /* For integer mode masks it's cheaper to shift out the bits
 		 since that avoids loading a constant.  */
@@ -1153,14 +1169,14 @@ vect_set_loop_condition_partial_vectors_avx512 (class loop *loop,
 	      /* ???  But when the shift amount isn't constant this requires
 		 a round-trip to GRPs.  We could apply the bias to either
 		 side of the compare instead.  */
-	      tree shift = gimple_build (&preheader_seq, MINUS_EXPR,
+	      tree shift = gimple_build (&preheader_seq, MULT_EXPR,
 					 TREE_TYPE (niters_skip), niters_skip,
 					 build_int_cst (TREE_TYPE (niters_skip),
-							bias));
-	      shift = gimple_build (&preheader_seq, MULT_EXPR,
+							rgc.max_nscalars_per_iter));
+	      shift = gimple_build (&preheader_seq, MINUS_EXPR,
 				    TREE_TYPE (niters_skip), shift,
 				    build_int_cst (TREE_TYPE (niters_skip),
-						   rgc.max_nscalars_per_iter));
+						   bias));
 	      init_ctrl = gimple_build (&preheader_seq, LSHIFT_EXPR,
 					TREE_TYPE (init_ctrl),
 					init_ctrl, shift);
