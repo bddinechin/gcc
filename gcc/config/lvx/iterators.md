@@ -668,6 +668,28 @@
   (V16HF "hi") (V8SF "qi") (V4DF "qi")
 ])
 
+;; The byte-enable mask a MASKM-prefixed access carries: one bit per byte of the
+;; access, so it is the *access width* in bytes and not the lane count -- HI for
+;; a 128-bit access, SI for a 256-bit one.  Distinct from <LANEMASK>, which is
+;; the lane count: V4SI and V8SI share a QI lane mask but need HI and SI byte
+;; masks, which is why the EXTB*D patterns come in (in,out) pairs.
+(define_mode_attr BYTEMASK [
+  (V16QI "HI") (V8HI "HI") (V4SI "HI") (V2DI "HI")
+  (V32QI "SI") (V16HI "SI") (V8SI "SI") (V4DI "SI")
+])
+
+(define_mode_attr bytemask [
+  (V16QI "hi") (V8HI "hi") (V4SI "hi") (V2DI "hi")
+  (V32QI "si") (V16HI "si") (V8SI "si") (V4DI "si")
+])
+
+;; Every integer vector a MASKM access can carry, both widths.  The optab
+;; expanders are shared; the insns they pick differ (lq/sq against lo/so).
+(define_mode_iterator MASKMEM [
+  V16QI V8HI V4SI V2DI
+  V32QI V16HI V8SI V4DI
+])
+
 ;; The COMP*/BLEND* lane-shape suffix.  It is set by the element, not the
 ;; vector width, so a 256-bit mode carries its 128-bit sibling's suffix -- what
 ;; its per-half COMP*/BLEND* use.

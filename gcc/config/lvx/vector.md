@@ -527,23 +527,50 @@
 ;; EXTB{2,4,8}D issue as TINY, not LITE: the ISA gives all three
 ;; Scheduling-ALU_TINY, and claiming a LITE slot they do not need only costs
 ;; bundle density (MDS/BE/GCC/BIN/check-scheduling.py reported it).
-(define_insn "lvx_extb2d"
+;; In (lane mask) and out (byte mask) modes are an explicit pair per pattern,
+;; because the same lane-mask mode serves two access widths: V4SI and V8SI both
+;; have a QI lane mask, and need HI and SI byte masks respectively.  The
+;; instruction itself is width-agnostic -- EXTB4D extends each of sixteen input
+;; bits to four adjacent bits, writing a doubleword -- so only the RTL modes
+;; differ, and the 256-bit forms use more of the same instruction's input.
+(define_insn "lvx_extb2d_hi"
   [(set (match_operand:HI 0 "register_operand" "=r")
         (unspec:HI [(match_operand:QI 1 "register_operand" "r")] UNSPEC_EXTB2))]
   "LVX_2"
   "extb2d %0 = %1"
   [(set_attr "type" "alu") (set_attr "issue" "tiny") (set_attr "length" "4")])
 
-(define_insn "lvx_extb4d"
+(define_insn "lvx_extb2d_si"
+  [(set (match_operand:SI 0 "register_operand" "=r")
+        (unspec:SI [(match_operand:HI 1 "register_operand" "r")] UNSPEC_EXTB2))]
+  "LVX_2"
+  "extb2d %0 = %1"
+  [(set_attr "type" "alu") (set_attr "issue" "tiny") (set_attr "length" "4")])
+
+(define_insn "lvx_extb4d_hi"
   [(set (match_operand:HI 0 "register_operand" "=r")
         (unspec:HI [(match_operand:QI 1 "register_operand" "r")] UNSPEC_EXTB4))]
   "LVX_2"
   "extb4d %0 = %1"
   [(set_attr "type" "alu") (set_attr "issue" "tiny") (set_attr "length" "4")])
 
-(define_insn "lvx_extb8d"
+(define_insn "lvx_extb4d_si"
+  [(set (match_operand:SI 0 "register_operand" "=r")
+        (unspec:SI [(match_operand:QI 1 "register_operand" "r")] UNSPEC_EXTB4))]
+  "LVX_2"
+  "extb4d %0 = %1"
+  [(set_attr "type" "alu") (set_attr "issue" "tiny") (set_attr "length" "4")])
+
+(define_insn "lvx_extb8d_hi"
   [(set (match_operand:HI 0 "register_operand" "=r")
         (unspec:HI [(match_operand:QI 1 "register_operand" "r")] UNSPEC_EXTB8))]
+  "LVX_2"
+  "extb8d %0 = %1"
+  [(set_attr "type" "alu") (set_attr "issue" "tiny") (set_attr "length" "4")])
+
+(define_insn "lvx_extb8d_si"
+  [(set (match_operand:SI 0 "register_operand" "=r")
+        (unspec:SI [(match_operand:QI 1 "register_operand" "r")] UNSPEC_EXTB8))]
   "LVX_2"
   "extb8d %0 = %1"
   [(set_attr "type" "alu") (set_attr "issue" "tiny") (set_attr "length" "4")])
@@ -583,13 +610,49 @@
    (set_attr "issue" "lsu_memw_auxr,lsu_memw_auxr_x,lsu_memw_auxr_x2")
    (set_attr "length" "4,8,12")])
 
+;; The same prefix over lo/so, for a 256-bit access.  MASKM's mask is one bit
+;; per byte of the access (Instruction.yml: "holds one bit per byte"), so 32
+;; bytes want 32 bits and the operand is SI rather than HI -- the only
+;; difference from the pair above besides the mnemonic.  A 256-bit access is one
+;; instruction and not two halves: lo/so carry the whole quad, so this is not a
+;; split the way *mov<mode> is.
+(define_insn "lvx_maskload<mode>"
+  [(set (match_operand:SIMD256I 0 "register_operand" "=r,r,r")
+        (unspec:SIMD256I
+          [(match_operand:SIMD256I 1 "memory_operand" "a,b,m")
+           (match_operand:SI 2 "register_operand" "r,r,r")]
+          UNSPEC_MASKM_LOAD))
+   (use (unspec:SI [(match_dup 2) (const_int 1)] UNSPEC_MASKM))]
+  "LVX_2"
+  "maskm.mt %2? lo%V1 %0 = %1"
+  [(set_attr "masked" "yes")
+   (set_attr "predicable" "no")
+   (set_attr "type" "load,load,load")
+   (set_attr "issue" "lsu_auxw,lsu_auxw_x,lsu_auxw_x2")
+   (set_attr "length" "4,8,12")])
+
+(define_insn "lvx_maskstore<mode>"
+  [(set (match_operand:SIMD256I 0 "memory_operand" "=a,b,m")
+        (unspec:SIMD256I
+          [(match_operand:SIMD256I 1 "register_operand" "r,r,r")
+           (match_operand:SI 2 "register_operand" "r,r,r")]
+          UNSPEC_MASKM_STORE))
+   (use (unspec:SI [(match_dup 2) (const_int 1)] UNSPEC_MASKM))]
+  "LVX_2"
+  "maskm.mt %2? so%X0 %0 = %1"
+  [(set_attr "masked" "yes")
+   (set_attr "predicable" "no")
+   (set_attr "type" "store,store,store")
+   (set_attr "issue" "lsu_memw_auxr,lsu_memw_auxr_x,lsu_memw_auxr_x2")
+   (set_attr "length" "4,8,12")])
+
 ;; The optabs the vectorizer requests.  Bridge the lane mask to byte enables
 ;; (EXTB*D, or identity for a byte vector) then emit the prefixed lq/sq.
 (define_expand "maskload<mode><lanemask>"
-  [(match_operand:SIMD128I 0 "register_operand")
-   (match_operand:SIMD128I 1 "memory_operand")
+  [(match_operand:MASKMEM 0 "register_operand")
+   (match_operand:MASKMEM 1 "memory_operand")
    (match_operand:<LANEMASK> 2 "register_operand")
-   (match_operand:SIMD128I 3 "maskload_else_operand")]
+   (match_operand:MASKMEM 3 "maskload_else_operand")]
   "LVX_2"
   {
     /* operands[3] is the else value; LVX supports only the undefined case
@@ -600,18 +663,18 @@
       bytes = operands[2];
     else
       {
-        bytes = gen_reg_rtx (HImode);
-        if (elt == 2)      emit_insn (gen_lvx_extb2d (bytes, operands[2]));
-        else if (elt == 4) emit_insn (gen_lvx_extb4d (bytes, operands[2]));
-        else               emit_insn (gen_lvx_extb8d (bytes, operands[2]));
+        bytes = gen_reg_rtx (<BYTEMASK>mode);
+        if (elt == 2)      emit_insn (gen_lvx_extb2d_<bytemask> (bytes, operands[2]));
+        else if (elt == 4) emit_insn (gen_lvx_extb4d_<bytemask> (bytes, operands[2]));
+        else               emit_insn (gen_lvx_extb8d_<bytemask> (bytes, operands[2]));
       }
     emit_insn (gen_lvx_maskload<mode> (operands[0], operands[1], bytes));
     DONE;
   })
 
 (define_expand "maskstore<mode><lanemask>"
-  [(match_operand:SIMD128I 0 "memory_operand")
-   (match_operand:SIMD128I 1 "register_operand")
+  [(match_operand:MASKMEM 0 "memory_operand")
+   (match_operand:MASKMEM 1 "register_operand")
    (match_operand:<LANEMASK> 2 "register_operand")]
   "LVX_2"
   {
@@ -621,10 +684,10 @@
       bytes = operands[2];
     else
       {
-        bytes = gen_reg_rtx (HImode);
-        if (elt == 2)      emit_insn (gen_lvx_extb2d (bytes, operands[2]));
-        else if (elt == 4) emit_insn (gen_lvx_extb4d (bytes, operands[2]));
-        else               emit_insn (gen_lvx_extb8d (bytes, operands[2]));
+        bytes = gen_reg_rtx (<BYTEMASK>mode);
+        if (elt == 2)      emit_insn (gen_lvx_extb2d_<bytemask> (bytes, operands[2]));
+        else if (elt == 4) emit_insn (gen_lvx_extb4d_<bytemask> (bytes, operands[2]));
+        else               emit_insn (gen_lvx_extb8d_<bytemask> (bytes, operands[2]));
       }
     emit_insn (gen_lvx_maskstore<mode> (operands[0], operands[1], bytes));
     DONE;
