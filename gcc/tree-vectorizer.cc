@@ -313,8 +313,17 @@ adjust_simduid_builtins (hash_table<simduid_to_vf> *htab, function *fun)
 	  simduid_to_vf *p = NULL, data;
 	  data.simduid = DECL_UID (SSA_NAME_VAR (arg));
 	  /* Need to nullify loop safelen field since it's value is not
-	     valid after transformation.  */
-	  if (bb->loop_father && bb->loop_father->safelen > 0)
+	     valid after transformation.  INT_MAX is the exception, for the
+	     same reason as in vect_transform_loop: a finite safelen is a
+	     distance that the transformation consumes, while INT_MAX is how
+	     #pragma GCC ivdep and annot_expr_parallel_kind spell "no two
+	     iterations conflict at ANY distance" (tree-cfg.cc:242,258).  That
+	     is scale-invariant and stays true afterwards, so clearing it here
+	     would discard a still-valid user assertion -- and this test looks
+	     only at the value, not at where it came from, so an ivdep loop
+	     reaching this path would lose its annotation.  */
+	  if (bb->loop_father && bb->loop_father->safelen > 0
+	      && bb->loop_father->safelen != INT_MAX)
 	    bb->loop_father->safelen = 0;
 	  if (htab)
 	    {

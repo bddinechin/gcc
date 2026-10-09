@@ -11546,8 +11546,31 @@ vect_transform_loop (loop_vec_info loop_vinfo, gimple *loop_vectorized_call)
     vect_free_slp_instance (instance);
   LOOP_VINFO_SLP_INSTANCES (loop_vinfo).release ();
   /* Clear-up safelen field since its value is invalid after vectorization
-     since vectorized loop can have loop-carried dependencies.  */
-  loop->safelen = 0;
+     since vectorized loop can have loop-carried dependencies.
+
+     INT_MAX is the exception and must survive.  A finite safelen is a
+     distance -- iterations I and J may run concurrently while J - I <
+     safelen -- and vectorizing by VF consumes VF of that distance, so the
+     old value is indeed invalid afterwards.  INT_MAX does not mean "a very
+     large distance", it is how #pragma GCC ivdep and annot_expr_parallel_kind
+     spell "no two iterations conflict at ANY distance" (tree-cfg.cc:242,258).
+     That property is scale-invariant: it stays true of the vectorized loop and
+     of its epilogue.  Clearing it throws away a still-valid user assertion,
+     and the epilogue -- which this clearing was introduced alongside, in
+     r242491 "Support non-masked epilogue vectoriziation" -- then has to
+     rediscover independence it was explicitly given, or give up.
+
+     Where this bites hardest is SOFTWARE PIPELINING.  A modulo scheduler
+     overlaps iterations of the loop it is given, so it needs exactly the fact
+     safelen == INT_MAX states; on a VLIW, pipelining the vectorized loop is
+     where the remaining throughput is.  Clearing the field hands the pipeliner
+     a loop whose independence has to be re-proven from the vectorized IR,
+     which is strictly harder than from the source the user annotated.  Note
+     the ordering is why this is not observable in the vectorizer's own output:
+     the assignment runs at the END of vect_transform_loop, after this loop has
+     already been vectorized, so only later consumers can see the difference.  */
+  if (loop->safelen != INT_MAX)
+    loop->safelen = 0;
 
   if (epilogue)
     {
