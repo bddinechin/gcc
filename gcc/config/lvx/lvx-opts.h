@@ -725,11 +725,19 @@ enum lvx_arch_type
 #define HAVE_LVX_SS_PLUS_V8SI (1)
 #define HAVE_LVX_SS_PLUS_V16HI (1)
 
-#define HAVE_LVX_STSU_DI (0) // stsud -- removed from the ISA
-#define HAVE_LVX_STSU_V2DI (0) // stsudp -- removed from the ISA
+/* STSUD and STSUDP came back to the ISA on 2026-10-09, after a week out.  The
+   mode in these names is the *element group*, not the builtin's: _V2SI gates
+   the V4SI stsuwq and _V4HI the V8HI stsuho, a leftover of the retired 64-bit
+   SIMD family.  _DI and _V2DI are the two restored instructions themselves,
+   scalar stsud (ALU_DWRRS, ALU_TINY) and packed stsudp (ALU_DPWRRS, ALU_LITE);
+   _V4DI stays at 0 because there is no native 256-bit form -- Builtin.yml
+   ascribes stsudq to STSUDP with `split:', so the quad goes through
+   lvx_stsudq_1 and splits into two stsudp after reload.  */
+#define HAVE_LVX_STSU_DI (1)
+#define HAVE_LVX_STSU_V2DI (1)
 #define HAVE_LVX_STSU_V2SI (1)
 #define HAVE_LVX_STSU_V4HI (1)
-#define HAVE_LVX_STSU_V4DI (0) // two stsudp -- removed from the ISA
+#define HAVE_LVX_STSU_V4DI (0) // no native 256-bit stsu: two stsudp
 
 #define HAVE_LVX_EXT_ANDN_V1OI (0) // xandno -- removed from the ISA
 #define HAVE_LVX_EXT_AND_V1OI (0) // xando -- removed from the ISA
