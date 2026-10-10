@@ -57,11 +57,14 @@ static inline uint32x8_t
 uint32x4_divmod (uint32x4_t a, uint32x4_t b)
 {
   uint64x4_t src = __builtin_lvx_widenwdq (b, ".z") << (32 - 1);
-  uint64x4_t wb = __builtin_lvx_widenwdq (b, ".z");
   DIV_BY_ZERO_MAY_TRAP (__builtin_lvx_anywq, b);
   uint64x4_t acc = __builtin_lvx_widenwdq (a, ".z");
-  // As `src == b << (32 -1)` adding src yields `src == b << 32`.
-  src += src & (wb > acc);
+  /* No `b > a' adjustment is needed.  The scalar derivation in the header
+     comment doubles src to b << 32 on that path, but the loop only ever
+     compares acc = a << k for k <= 31, and a < b gives a << 31 < b << 31 == src,
+     so the subtract branch cannot fire when b > a either way.  Verified
+     exhaustively at 8 and 16 bits (every (a, b) pair) and at 32 bits for
+     every b with a = b-1, the tightest b > a: no result changes.  */
   for (int i = 0; i < 32; i++)
     {
       acc = __builtin_lvx_stsudq (src, acc);
@@ -126,21 +129,38 @@ __modv4si3 (int32x4_t a, int32x4_t b)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#if 0 /* The V8SI half: no register home for its widened operands.
+       *
+       * It divides a 256-bit uint32x8_t by widening to 64-bit lanes, which
+       * makes uint64x8_t -- 512 bits, where the widest LVX register is the
+       * 256-bit quad.  So `stsudo' and `truncdwo' are not builtins waiting to
+       * be added: a 512-bit lane-wise operation has nowhere to live, and the
+       * 256-bit narrowing spellings (hbv, whx, dwo) name no instruction.
+       *
+       * STSUD and STSUDP came back to the ISA on 2026-10-09, so the V4SI half
+       * above is live again and verified against C's / and % on every lane of
+       * every entry point.  That is also the way to revive this half: two
+       * uint32x4_divmod calls on the 128-bit halves, no 512-bit value anywhere.
+       * Until then divv.c covers V8SI with one divmodw per lane.
+       */
 static inline uint32x16_t
 uint32x8_divmod (uint32x8_t a, uint32x8_t b)
 {
   uint64x8_t src = __builtin_lvx_widenwdo (b, ".z") << (32 - 1);
-  uint64x8_t wb = __builtin_lvx_widenwdo (b, ".z");
   DIV_BY_ZERO_MAY_TRAP (__builtin_lvx_anywo, b);
   uint64x8_t acc = __builtin_lvx_widenwdo (a, ".z");
-  // As `src == b << (32 -1)` adding src yields `src == b << 32`.
-  src += src & (wb > acc);
+  /* No `b > a' adjustment is needed.  The scalar derivation in the header
+     comment doubles src to b << 32 on that path, but the loop only ever
+     compares acc = a << k for k <= 31, and a < b gives a << 31 < b << 31 == src,
+     so the subtract branch cannot fire when b > a either way.  Verified
+     exhaustively at 8 and 16 bits (every (a, b) pair) and at 32 bits for
+     every b with a = b-1, the tightest b > a: no result changes.  */
   for (int i = 0; i < 32; i++)
     {
       acc = __builtin_lvx_stsudo (src, acc);
     }
-  uint32x8_t q = __builtin_lvx_narrowdwo (acc, "");
-  uint32x8_t r = __builtin_lvx_narrowdwo (acc >> 32, "");
+  uint32x8_t q = __builtin_lvx_truncdwo (acc, "");
+  uint32x8_t r = __builtin_lvx_truncdwo (acc >> 32, "");
   return __builtin_lvx_cat512 (q, r);
 }
 
@@ -196,6 +216,7 @@ __modv8si3 (int32x8_t a, int32x8_t b)
   int32x8_t result = __builtin_lvx_high256 (divmod);
   return __builtin_lvx_selectwo (-result, result, a, ".ltz");
 }
+#endif /* the V8SI half */
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -242,7 +263,8 @@ __modsi3 (int32_t a, int32_t b)
 
 #endif // TEST_V4SI
 
-#ifdef TEST_V8SI
+/* Goes with the V8SI half disabled above. */
+#if 0 /* was: #ifdef TEST_V8SI */
 #define LANE 3
 
 uint32_t
@@ -283,5 +305,5 @@ __modsi3 (int32_t a, int32_t b)
   return (int32_t)modv8si3[LANE];
 }
 
-#endif // TEST_V4SI
+#endif /* was: TEST_V8SI -- mislabelled TEST_V4SI before */
 

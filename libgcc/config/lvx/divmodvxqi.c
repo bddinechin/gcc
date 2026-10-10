@@ -58,12 +58,15 @@ static inline uint8x32_t
 uint8x16_divmod (uint8x16_t a, uint8x16_t b)
 {
   uint16x16_t src = __builtin_lvx_widenbhx (b, ".z") << (8 - 1);
-  uint16x16_t wb = __builtin_lvx_widenbhx (b, ".z");
   /* Division by zero returns zero rather than trapping -- see
      divmodtypes.h; LVX has no divide-by-zero trap to raise here.  */
   uint16x16_t acc = __builtin_lvx_widenbhx (a, ".z");
-  // As `src == b << (8 -1)` adding src yields `src == b << 8`.
-  src += src & (wb > acc);
+  /* No `b > a' adjustment is needed.  The scalar derivation in the header
+     comment doubles src to b << 8 on that path, but the loop only ever
+     compares acc = a << k for k <= 7, and a < b gives a << 7 < b << 7 == src,
+     so the subtract branch cannot fire when b > a either way.  Verified
+     exhaustively at 8 and 16 bits (every (a, b) pair) and at 32 bits for
+     every b with a = b-1, the tightest b > a: no result changes.  */
 #pragma GCC unroll 8
   for (int i = 0; i < 8; i++)
     {
