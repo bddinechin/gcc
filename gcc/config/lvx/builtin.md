@@ -4868,19 +4868,18 @@
    (set_attr "issue" "lite")]
 )
 
-(define_expand "lvx_fsrecdp"
-  [(match_operand:V2DF 0 "register_operand" "")
-   (match_operand:V2DF 1 "register_operand" "")]
+;; fsrecdp/fsrsrdp became real instructions on 2026-10-11.  These were
+;; expanders emitting two scalar fsrecd/fsrsrd, and the V4DF forms four, since
+;; the packed f64 seed did not exist -- which is also why a V2DF/V4DF divide
+;; had no reciprocal path at all and always went to __divv4df3, where the f32
+;; one has used fsrecwq since it was written.
+(define_insn "lvx_fsrecdp"
+  [(set (match_operand:V2DF 0 "register_operand" "=r")
+        (unspec:V2DF [(match_operand:V2DF 1 "register_operand" "r")] UNSPEC_FSREC))]
   "LVX_2"
-  {
-    for (int i = 0; i < 2; i++)
-      {
-        rtx opnd0 = gen_rtx_SUBREG (DFmode, operands[0], i*8);
-        rtx opnd1 = gen_rtx_SUBREG (DFmode, operands[1], i*8);
-        emit_insn (gen_lvx_fsrecd (opnd0, opnd1));
-      }
-    DONE;
-  }
+  "fsrecdp %0 = %1"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "lvx_fsrecdq"
@@ -4888,11 +4887,11 @@
    (match_operand:V4DF 1 "register_operand" "")]
   "LVX_2"
   {
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 2; i++)
       {
-        rtx opnd0 = gen_rtx_SUBREG (DFmode, operands[0], i*8);
-        rtx opnd1 = gen_rtx_SUBREG (DFmode, operands[1], i*8);
-        emit_insn (gen_lvx_fsrecd (opnd0, opnd1));
+        rtx opnd0 = gen_rtx_SUBREG (V2DFmode, operands[0], i*16);
+        rtx opnd1 = gen_rtx_SUBREG (V2DFmode, operands[1], i*16);
+        emit_insn (gen_lvx_fsrecdp (opnd0, opnd1));
       }
     DONE;
   }
@@ -4928,19 +4927,13 @@
    (set_attr "issue" "lite")]
 )
 
-(define_expand "lvx_fsrsrdp"
-  [(match_operand:V2DF 0 "register_operand" "")
-   (match_operand:V2DF 1 "register_operand" "")]
+(define_insn "lvx_fsrsrdp"
+  [(set (match_operand:V2DF 0 "register_operand" "=r")
+        (unspec:V2DF [(match_operand:V2DF 1 "register_operand" "r")] UNSPEC_FSRSR))]
   "LVX_2"
-  {
-    for (int i = 0; i < 2; i++)
-      {
-        rtx opnd0 = gen_rtx_SUBREG (DFmode, operands[0], i*8);
-        rtx opnd1 = gen_rtx_SUBREG (DFmode, operands[1], i*8);
-        emit_insn (gen_lvx_fsrsrd (opnd0, opnd1));
-      }
-    DONE;
-  }
+  "fsrsrdp %0 = %1"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
 )
 
 (define_expand "lvx_fsrsrdq"
@@ -4948,11 +4941,11 @@
    (match_operand:V4DF 1 "register_operand" "")]
   "LVX_2"
   {
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 2; i++)
       {
-        rtx opnd0 = gen_rtx_SUBREG (DFmode, operands[0], i*8);
-        rtx opnd1 = gen_rtx_SUBREG (DFmode, operands[1], i*8);
-        emit_insn (gen_lvx_fsrsrd (opnd0, opnd1));
+        rtx opnd0 = gen_rtx_SUBREG (V2DFmode, operands[0], i*16);
+        rtx opnd1 = gen_rtx_SUBREG (V2DFmode, operands[1], i*16);
+        emit_insn (gen_lvx_fsrsrdp (opnd0, opnd1));
       }
     DONE;
   }

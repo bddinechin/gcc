@@ -3225,7 +3225,6 @@
    (match_operand:HF 1 "register_operand" "")]
   ""
   {
-    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
     rtx a = gen_reg_rtx (SFmode);
     rtx r = gen_reg_rtx (SFmode);
     operands[1] = force_reg (GET_MODE (operands[1]), operands[1]);

@@ -5357,7 +5357,6 @@
    (match_operand:VXSF 1 "register_operand" "")]
   "LVX_2"
   {
-    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
     emit_insn (gen_lvx_fsrsr<suffix> (operands[0], operands[1]));
     DONE;
   }
@@ -5372,6 +5371,24 @@
                   (match_operand:VXDF 2 "register_operand" "")))]
   "LVX_2"
   {
+    /* Under -freciprocal-math, a * rsec(b).  fsrecdp became a real
+       instruction on 2026-10-11; before that there was no packed f64 seed and
+       this expander had no choice but the library call, which is why the f32
+       divide has used fsrecwq since it was written and this one did not.
+       fsrec* is a *seed*, so this is only legitimate behind the flag -- there
+       is no exact packed reciprocal to use unconditionally, the same reason
+       the VXSF expander above gives.  */
+    if (flag_reciprocal_math)
+      {
+	rtx t = gen_reg_rtx (<MODE>mode);
+	emit_insn (gen_lvx_fsrec<suffix> (t, operands[2]));
+	emit_insn (gen_mul<mode>3 (operands[0], operands[1], t));
+	DONE;
+      }
+    /* Otherwise libgcc: there is no packed f64 divide instruction, and
+       divv.c's one fdivd per lane is still well ahead of a scalar loop
+       (measured 2.9x), so the call is the right fallback rather than a
+       lowering to scalar.  */
     emit_library_call_value
       (gen_rtx_SYMBOL_REF (Pmode, "__div<mode>3"),
        operands[0], LCT_CONST, <MODE>mode,
