@@ -79,14 +79,18 @@ softfp_exclude_libgcc2 := n
 #
 # Which means the three files are not one decision:
 #   divmodvxqi.c  w= 8  STSU wins by ~2x      built, and correctly so
-#   divmodvxhi.c  w=16  STSU wins by 1.2-1.5x NOT built -- it should be
+#   divmodvxhi.c  w=16  STSU wins by 1.2-1.5x built as of 2026-10-11
 #   divmodvxsi.c  w=32  native wins           correctly not built
 #
-# So divmodvxhi.c is the one kept "so the measurement can be repeated" whose
-# measurement now says to enable it.  Doing that needs divv.c's v8hi block
-# given the !__lvxarch_lvx_2 guard its byte-lane block already has, or each of
-# the six symbols is defined twice on lvx-2; the same applies to its v4si block
-# if divmodvxsi.c were ever wanted, which on these numbers it is not.
+# divmodvxhi.c is now built on that measurement, which is what it was kept for.
+# Note what that needed: unlike the byte lanes, where divv.c keeps
+# __divmodv16qi4 and divmodvxqi.c supplies the other five, divmodvxhi.c defines
+# all TWELVE hi symbols -- div/mod/udiv/umod and divmod/udivmod, at v8hi and
+# v16hi -- so divv.c's six hi regions (three prototype blocks and three
+# definition blocks) all carry the !__lvxarch_lvx_2 guard now.  Checked both
+# ways: on lvx-2 divv.o defines none of the twelve, on lvx-1 it still defines
+# all of them.  The same would apply to its v4si block if divmodvxsi.c were
+# ever wanted, which on these numbers it is not.
 #
 # divmodvxsi.c now carries `#pragma GCC unroll 32' like its siblings.  Without
 # it the 32 iterations paid loop overhead each time and the route cost 216
@@ -110,6 +114,7 @@ softfp_exclude_libgcc2 := n
 lvx-libgcc-funcs := \
   divv \
   divmodvxqi \
+  divmodvxhi \
   $(softfp_func_exclude)
 
 lvx-libgcc-c := $(addsuffix .c,$(lvx-libgcc-funcs))
