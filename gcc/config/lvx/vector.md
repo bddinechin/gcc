@@ -5347,18 +5347,10 @@
   }
 )
 
-(define_expand "sqrt<mode>2"
-  [(match_operand:VXSF 0 "register_operand" "")
-   (match_operand:VXSF 1 "register_operand" "")]
-  "LVX_2 && (flag_reciprocal_math)"
-  {
-    rtx temp = gen_reg_rtx (<MODE>mode);
-    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
-    emit_insn (gen_lvx_fsrsr<suffix> (temp, operands[1]));
-    emit_insn (gen_mul<mode>3 (operands[0], operands[1], temp));
-    DONE;
-  }
-)
+;; sqrt<mode>2 lives with the other packed FP rounding patterns below, which
+;; is also where the -freciprocal-math path that used to be here went: GCC
+;; permits one pattern per name and mode, and the exact instruction now covers
+;; the same modes, so the two had to merge rather than sit side by side.
 
 (define_expand "rsqrt<mode>2"
   [(match_operand:VXSF 0 "register_operand" "")
@@ -5618,6 +5610,307 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")
    (set_attr "length" "4")]
+)
+
+;; FRINT*/FROUND*/FSQRT* at every lane shape (dp/wq/ho), the packed twins of
+;; the scalar patterns in scalar.md, and for the same reason: FROUND is
+;; IEEE-754 roundToIntegral and FRINT roundToIntegralExact, so FROUND with a
+;; directed modifier is what floor/ceil/trunc/round/roundeven/nearbyint need
+;; and FRINT is rint.  Before these, a loop containing any of them refused to
+;; vectorize at all -- GCC reported "unsupported SLP instances", which is it
+;; saying the operation has no vector form.
+;;
+;; All LVX_2: the packed forms do not exist on lvx-1, and an ungated SIMD
+;; pattern makes the lane-wise lowering believe in an optab the core has not
+;; got.
+
+(define_insn "lvx_frint<suffix>"
+  [(set (match_operand:V128F 0 "register_operand" "=r")
+        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
+                       (match_operand 2 "" "")] UNSPEC_FRINT))]
+  "LVX_2"
+  "frint<suffix>%2 %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
+)
+
+(define_insn "lvx_fround<suffix>"
+  [(set (match_operand:V128F 0 "register_operand" "=r")
+        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
+                       (match_operand 2 "" "")] UNSPEC_FROUND))]
+  "LVX_2"
+  "fround<suffix>%2 %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")
+   (set_attr "length" "4")]
+)
+
+(define_insn "lvx_fsqrt<suffix>"
+  [(set (match_operand:V128F 0 "register_operand" "=r")
+        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
+                       (match_operand 2 "" "")] UNSPEC_FSQRT))]
+  "LVX_2"
+  "fsqrt<suffix>%2 %0 = %1"
+  [(set_attr "type" "fdiv")
+   (set_attr "issue" "full")
+   (set_attr "length" "4")]
+)
+
+(define_expand "floor<mode>2"
+  [(set (match_operand:V128F 0 "register_operand" "")
+        (match_operand:V128F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rd");
+    emit_insn (gen_lvx_fround<suffix> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "ceil<mode>2"
+  [(set (match_operand:V128F 0 "register_operand" "")
+        (match_operand:V128F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".ru");
+    emit_insn (gen_lvx_fround<suffix> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "btrunc<mode>2"
+  [(set (match_operand:V128F 0 "register_operand" "")
+        (match_operand:V128F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rz");
+    emit_insn (gen_lvx_fround<suffix> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "round<mode>2"
+  [(set (match_operand:V128F 0 "register_operand" "")
+        (match_operand:V128F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    /* Ties away from zero, which is .RM -- "to Nearest, ties to Max
+       Magnitude" -- and not .RN.  */
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rm");
+    emit_insn (gen_lvx_fround<suffix> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "roundeven<mode>2"
+  [(set (match_operand:V128F 0 "register_operand" "")
+        (match_operand:V128F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rn");
+    emit_insn (gen_lvx_fround<suffix> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "nearbyint<mode>2"
+  [(set (match_operand:V128F 0 "register_operand" "")
+        (match_operand:V128F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
+    emit_insn (gen_lvx_fround<suffix> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "rint<mode>2"
+  [(set (match_operand:V128F 0 "register_operand" "")
+        (match_operand:V128F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
+    emit_insn (gen_lvx_frint<suffix> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "sqrt<mode>2"
+  [(set (match_operand:V128F 0 "register_operand" "")
+        (sqrt:V128F (match_operand:V128F 1 "register_operand" "")))]
+  "LVX_2"
+  {
+    /* Under -freciprocal-math, x * rsqrt(x) beats the exact instruction:
+       fsrsrwq is latency 1 and the multiply 4, against fsqrtwq's 13.  Only
+       the 32-bit lane shape has a seed -- there is no fsrsrdp or fsrsrho --
+       so the other two always take the exact instruction.  This is the path
+       that used to be a separate VXSF sqrt<mode>2 expander.  */
+    if (flag_reciprocal_math && <MODE>mode == E_V4SFmode)
+      {
+	rtx temp = gen_reg_rtx (<MODE>mode);
+	emit_insn (gen_lvx_fsrsrwq (temp, operands[1]));
+	emit_insn (gen_mul<mode>3 (operands[0], operands[1], temp));
+	DONE;
+      }
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
+    emit_insn (gen_lvx_fsqrt<suffix> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+;; The 256-bit forms: two 128-bit instructions, since the ISA stops at the
+;; 128-bit lane shapes -- there is no frintdq/frintwo/frinthx.
+
+(define_expand "sqrt<mode>2"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (sqrt:V256F (match_operand:V256F 1 "register_operand" "")))]
+  "LVX_2"
+  {
+    if (flag_reciprocal_math && <MODE>mode == E_V8SFmode)
+      {
+	rtx temp = gen_reg_rtx (<MODE>mode);
+	emit_insn (gen_lvx_fsrsrwo (temp, operands[1]));
+	emit_insn (gen_mul<mode>3 (operands[0], operands[1], temp));
+	DONE;
+      }
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
+    for (int half = 0; half < 2; half++)
+      {
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode,
+				     half * 16);
+	rtx s = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode,
+				     half * 16);
+	emit_insn (gen_lvx_fsqrt<hsuffix> (d, s, rm));
+      }
+    DONE;
+  }
+)
+
+(define_expand "floor<mode>2"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (match_operand:V256F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rd");
+    for (int half = 0; half < 2; half++)
+      {
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode,
+				     half * 16);
+	rtx s = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode,
+				     half * 16);
+	emit_insn (gen_lvx_fround<hsuffix> (d, s, rm));
+      }
+    DONE;
+  }
+)
+
+(define_expand "ceil<mode>2"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (match_operand:V256F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".ru");
+    for (int half = 0; half < 2; half++)
+      {
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode,
+				     half * 16);
+	rtx s = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode,
+				     half * 16);
+	emit_insn (gen_lvx_fround<hsuffix> (d, s, rm));
+      }
+    DONE;
+  }
+)
+
+(define_expand "btrunc<mode>2"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (match_operand:V256F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rz");
+    for (int half = 0; half < 2; half++)
+      {
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode,
+				     half * 16);
+	rtx s = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode,
+				     half * 16);
+	emit_insn (gen_lvx_fround<hsuffix> (d, s, rm));
+      }
+    DONE;
+  }
+)
+
+(define_expand "round<mode>2"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (match_operand:V256F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rm");
+    for (int half = 0; half < 2; half++)
+      {
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode,
+				     half * 16);
+	rtx s = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode,
+				     half * 16);
+	emit_insn (gen_lvx_fround<hsuffix> (d, s, rm));
+      }
+    DONE;
+  }
+)
+
+(define_expand "roundeven<mode>2"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (match_operand:V256F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rn");
+    for (int half = 0; half < 2; half++)
+      {
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode,
+				     half * 16);
+	rtx s = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode,
+				     half * 16);
+	emit_insn (gen_lvx_fround<hsuffix> (d, s, rm));
+      }
+    DONE;
+  }
+)
+
+(define_expand "nearbyint<mode>2"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (match_operand:V256F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
+    for (int half = 0; half < 2; half++)
+      {
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode,
+				     half * 16);
+	rtx s = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode,
+				     half * 16);
+	emit_insn (gen_lvx_fround<hsuffix> (d, s, rm));
+      }
+    DONE;
+  }
+)
+
+(define_expand "rint<mode>2"
+  [(set (match_operand:V256F 0 "register_operand" "")
+        (match_operand:V256F 1 "register_operand" ""))]
+  "LVX_2"
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
+    for (int half = 0; half < 2; half++)
+      {
+	rtx d = simplify_gen_subreg (<HALF>mode, operands[0], <MODE>mode,
+				     half * 16);
+	rtx s = simplify_gen_subreg (<HALF>mode, operands[1], <MODE>mode,
+				     half * 16);
+	emit_insn (gen_lvx_frint<hsuffix> (d, s, rm));
+      }
+    DONE;
+  }
 )
 
 
