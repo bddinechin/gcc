@@ -3246,33 +3246,6 @@
    (set_attr "issue" "lite")]
 )
 
-(define_expand "roundevensf2"
-  [(set (match_operand:SF 0 "register_operand" "")
-        (match_operand:SF 1 "register_operand" ""))]
-  ""
-  {
-    rtx cs_val = gen_reg_rtx (DImode);
-    rtx tempsi = gen_reg_rtx (SImode);
-    rtx tempsf = gen_reg_rtx (SFmode);
-    rtx cs = gen_rtx_REG (DImode, 68);
-    rtx rn = gen_rtx_CONST_STRING (VOIDmode, ".rn");
-    rtx deqz = gen_rtx_CONST_STRING (VOIDmode, ".deqz");
-    /* 1. Reset the error bits (IO and XIO) we check in CS */
-    emit_insn (gen_lvx_get (cs_val, cs));
-    emit_insn (gen_anddi3 (cs_val, cs_val, GEN_INT (0xfffffffffffffdfd)));
-    emit_insn (gen_lvx_set (cs, cs_val));
-    /* 2. Convert floating point to fixed point */
-    emit_insn (gen_lvx_fixedw (tempsi, operands[1], const0_rtx, rn));
-    emit_insn (gen_lvx_get (cs_val, cs));
-    emit_insn (gen_anddi3 (cs_val, cs_val, GEN_INT (0x202)));
-    /* 3. Convert back to floating point, and take into account corner cases. */
-    emit_insn (gen_lvx_floatw (tempsf, tempsi, const0_rtx, rn));
-    emit_insn (gen_lvx_selectfw (operands[0], tempsf, operands[1], cs_val, deqz));
-    DONE;
-  }
-)
-
-
 ;; DF
 
 (define_insn "adddf3"
@@ -3450,32 +3423,6 @@
    (set_attr "issue" "lite")]
 )
 
-(define_expand "roundevendf2"
-  [(set (match_operand:DF 0 "register_operand" "")
-        (match_operand:DF 1 "register_operand" ""))]
-  ""
-  {
-    rtx cs_val = gen_reg_rtx (DImode);
-    rtx tempdi = gen_reg_rtx (DImode);
-    rtx tempdf = gen_reg_rtx (DFmode);
-    rtx cs = gen_rtx_REG (DImode, 68);
-    rtx rn = gen_rtx_CONST_STRING (VOIDmode, ".rn");
-    rtx deqz = gen_rtx_CONST_STRING (VOIDmode, ".deqz");
-    /* 1. Reset the error bits (IO and XIO) we check in CS */
-    emit_insn (gen_lvx_get (cs_val, cs));
-    emit_insn (gen_anddi3 (cs_val, cs_val, GEN_INT (0xfffffffffffffdfd)));
-    emit_insn (gen_lvx_set (cs, cs_val));
-    /* 2. Convert floating point to fixed point */
-    emit_insn (gen_lvx_fixedd (tempdi, operands[1], const0_rtx, rn));
-    emit_insn (gen_lvx_get (cs_val, cs));
-    emit_insn (gen_anddi3 (cs_val, cs_val, GEN_INT (2)));
-    /* 3. Convert back to floating point, and take into account corner cases. */
-    emit_insn (gen_lvx_floatd (tempdf, tempdi, const0_rtx, rn));
-    emit_insn (gen_lvx_selectfd (operands[0], tempdf, operands[1], cs_val, deqz));
-    DONE;
-  }
-)
-
 ;; ---- DIVMOD*: hardware integer divide/modulo ------------------------------
 ;;
 ;; divmodw / divmoduw / divmodd / divmodud compute the quotient and the
@@ -3616,11 +3563,18 @@
 ; call to the library rint() even though the instruction exists -- found by
 ; auditing which ISA mnemonics the back end never emits (2026-08-04).
 ;
-; Only rint() is provided, deliberately.  nearbyint() must not raise the
-; inexact exception, and this instruction "may raise exception bits in the CS
-; register" (Description.yml), so it cannot implement nearbyint.  The
-; directed-rounding modifiers (.rz/.rd/.ru/.rm) would likewise give
-; btrunc/floor/ceil/round, which are worth adding but are a separate change.
+; FRINT is rint() and only rint().  It is IEEE-754's roundToIntegralExact and
+; raises inexact when the rounding changed the value, which is what rint is
+; defined to do and what disqualifies it from every other rounding function:
+; nearbyint, floor, ceil, trunc, round and roundeven are all exact operations
+; that must not raise inexact.
+;
+; The instruction for those is FROUND, which is "FRINTD without the inexact
+; exception" (Instruction.yml) -- roundToIntegral -- with the direction in the
+; floatmode modifier.  See lvx_fround<fmode> below; the six of them were added
+; 2026-10-11, where before floor/ceil/trunc had no pattern at all and went to
+; libm (measured 5.1x slower than the instruction) and roundeven was a
+; twenty-instruction CS-save/integer-round-trip/CS-restore sequence.
 
 (define_insn "lvx_frint<fmode>"
   [(set (match_operand:FLOATM 0 "register_operand" "=r")
@@ -3640,6 +3594,101 @@
   {
     rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
     emit_insn (gen_lvx_frint<fmode> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_insn "lvx_fround<fmode>"
+  [(set (match_operand:FLOATM 0 "register_operand" "=r")
+        (unspec:FLOATM [(match_operand:FLOATM 1 "register_operand" "r")
+                        (match_operand 2 "" "")] UNSPEC_FROUND))]
+  ""
+  "fround<fmode>%2 %0 = %1"
+  [(set_attr "type" "fcvt")
+   (set_attr "issue" "lite")]
+)
+
+;; FROUND is FRINT without the inexact exception: IEEE-754's roundToIntegral
+;; against roundToIntegralExact (Instruction.yml, FROUNDD).  That is exactly
+;; what C requires of floor/ceil/trunc/round/nearbyint, all of which are exact
+;; operations that must not raise inexact -- and exactly why FRINT cannot
+;; implement them, which is the note a few patterns up.  FRINT is rint, and
+;; stays rint.
+;;
+;; The direction is the floatmode modifier, so each one is a single
+;; instruction: .RZ toward zero, .RD downward, .RU upward, .RM to nearest with
+;; ties to max magnitude (which is C's round, ties away from zero), .RN to
+;; nearest with ties to even, and the empty modifier takes CS.RM.
+;;
+;; Before this they were library calls -- floor, ceil and trunc had no pattern
+;; at all -- and roundeven was a twenty-instruction sequence that saved CS,
+;; round-tripped through an integer and restored it.
+
+(define_expand "floor<mode>2"
+  [(set (match_operand:FLOATM 0 "register_operand" "")
+        (match_operand:FLOATM 1 "register_operand" ""))]
+  ""
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rd");
+    emit_insn (gen_lvx_fround<fmode> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "ceil<mode>2"
+  [(set (match_operand:FLOATM 0 "register_operand" "")
+        (match_operand:FLOATM 1 "register_operand" ""))]
+  ""
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".ru");
+    emit_insn (gen_lvx_fround<fmode> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "btrunc<mode>2"
+  [(set (match_operand:FLOATM 0 "register_operand" "")
+        (match_operand:FLOATM 1 "register_operand" ""))]
+  ""
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rz");
+    emit_insn (gen_lvx_fround<fmode> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "round<mode>2"
+  [(set (match_operand:FLOATM 0 "register_operand" "")
+        (match_operand:FLOATM 1 "register_operand" ""))]
+  ""
+  {
+    /* C's round() is ties away from zero, which is .RM -- "to Nearest, ties
+       to Max Magnitude" (Modifier.yml, floatmode) -- and not .RN.  */
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rm");
+    emit_insn (gen_lvx_fround<fmode> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "roundeven<mode>2"
+  [(set (match_operand:FLOATM 0 "register_operand" "")
+        (match_operand:FLOATM 1 "register_operand" ""))]
+  ""
+  {
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, ".rn");
+    emit_insn (gen_lvx_fround<fmode> (operands[0], operands[1], rm));
+    DONE;
+  }
+)
+
+(define_expand "nearbyint<mode>2"
+  [(set (match_operand:FLOATM 0 "register_operand" "")
+        (match_operand:FLOATM 1 "register_operand" ""))]
+  ""
+  {
+    /* The current mode from CS.RM, and quiet, which is what nearbyint is.  */
+    rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
+    emit_insn (gen_lvx_fround<fmode> (operands[0], operands[1], rm));
     DONE;
   }
 )

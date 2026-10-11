@@ -219,6 +219,7 @@
         ;; emit the signed instruction.
         UNSPEC_FSQRT      ;; fsqrth / fsqrtw / fsqrtd
         UNSPEC_FRINT      ;; frinth / frintw / frintd
+        UNSPEC_FROUND     ;; froundh / froundw / froundd
 
         UNSPEC_DIVMOD     ;; divmodw  / divmodd
         UNSPEC_DIVMODU    ;; divmoduw / divmodud
