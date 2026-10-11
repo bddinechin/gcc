@@ -66,9 +66,15 @@ softfp_exclude_libgcc2 := n
 #
 #     latency (dependent)                throughput (independent)
 #  w   base  native      STSU            base  native      STSU
-#   8  12.00 54.00(42.0) 23.00(11.0)     16.00 61.00(45.0) 30.00(14.0)
-#  16  14.00 43.00(29.0) 29.00(15.0)     16.50 45.00(28.5) 38.50(22.0)
-#  32  12.00 41.00(29.0) 43.00(31.0)     15.00 43.00(28.0) 53.50(38.5)
+#   8  12.00 66.00(54.0) 23.00(11.0)     16.00 74.00(58.0) 30.00(14.0)
+#  16  14.00 47.00(33.0) 29.00(15.0)     16.50 55.00(38.5) 38.50(22.0)
+#  32  12.00 34.00(22.0) 43.00(31.0)     15.00 40.00(25.0) 53.50(38.5)
+#
+# Re-measured after GCC's divmod latency went from a modelled 1 to the described
+# 11.  The STSU column did not move at any width in either shape; the native one
+# did, getting worse at w=8 and w=16 and better at w=32, which is the scheduler
+# reacting to the truth rather than the machine changing.  Same crossover, and
+# STSU's margin at w=16 roughly doubled.
 #
 # The reason is structural.  The STSU chain is w serially dependent bundles, so
 # it costs more as the lane widens; the native route is 128/w divides, so it
@@ -78,9 +84,9 @@ softfp_exclude_libgcc2 := n
 # sixteen of them do not beat an 8-long one.
 #
 # Which means the three files are not one decision:
-#   divmodvxqi.c  w= 8  STSU wins by ~2x      built, and correctly so
-#   divmodvxhi.c  w=16  STSU wins by 1.2-1.5x built as of 2026-10-11
-#   divmodvxsi.c  w=32  native wins           correctly not built
+#   divmodvxqi.c  w= 8  STSU wins by 4.1-4.9x built, and correctly so
+#   divmodvxhi.c  w=16  STSU wins by 1.8-2.2x  built as of 2026-10-11
+#   divmodvxsi.c  w=32  native wins by 1.4-1.5x correctly not built
 #
 # divmodvxhi.c is now built on that measurement, which is what it was kept for.
 # Note what that needed: unlike the byte lanes, where divv.c keeps
