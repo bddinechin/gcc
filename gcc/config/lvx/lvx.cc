@@ -7296,6 +7296,54 @@ lvx_support_vector_misalignment (enum machine_mode, int, bool, bool)
 #define TARGET_VECTORIZE_SUPPORT_VECTOR_MISALIGNMENT \
   lvx_support_vector_misalignment
 
+/* Implements TARGET_VECTORIZE_BUILTIN_VECTORIZATION_COST {{{
+
+   The generic costs in targhooks.cc charge an unaligned vector access twice an
+   aligned one.  LVX does not: lq/sq take any address the LSU accepts -- only
+   the sized atomics check alignment, and they THROW MISALIGN rather than run
+   slowly -- and the description gives each one latency without an alignment
+   term, which is what the ISS charges too (gem5's MinorCPU takes opLat from
+   the write stage).  lvx_support_vector_misalignment already tells the
+   vectorizer the hardware supports it; charging double for it afterwards is
+   the one place LVX was paying a cost it does not have.
+
+   It is not a rounding error at 64-bit lanes.  A V2DF body is two lanes, so it
+   is weighed against two scalar iterations, and two cost units out of nine is
+   the difference between a saving of 1 per vector iteration and a saving of 3
+   -- which at -O2, where the cost model is `very-cheap' and demands the static
+   profitability threshold be no more than the vectorization factor, decides
+   the loop.  syrk and syr2k at double are exactly that case.
+
+   Everything else keeps the generic value deliberately.  The costs that could
+   also be argued down -- vec_construct for a strided access, vec_perm -- are
+   the ones a VLIW hides best by packing them into otherwise idle slots, but
+   "hidden by the bundler" is a claim about the scheduler, not about the
+   instruction, and it wants its own measurement before it goes in here.  */
+
+static int
+lvx_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
+				tree vectype, int misalign)
+{
+  switch (type_of_cost)
+    {
+    case unaligned_load:
+    case unaligned_store:
+      /* The same as the aligned access this would otherwise have been.  With
+	 -mstrict-align the vectorizer never asks: lvx_support_vector_
+	 misalignment refuses the access and it is peeled or scalarized.  */
+      return 1;
+
+    default:
+      return default_builtin_vectorization_cost (type_of_cost, vectype,
+						 misalign);
+    }
+}
+
+#undef TARGET_VECTORIZE_BUILTIN_VECTORIZATION_COST
+#define TARGET_VECTORIZE_BUILTIN_VECTORIZATION_COST \
+  lvx_builtin_vectorization_cost
+/* Implements TARGET_VECTORIZE_BUILTIN_VECTORIZATION_COST }}} */
+
 /* A 64-bit vector conversion on the 128-bit unit: OPERANDS[1] goes into the low
    half of a zeroed SMODE pair, one conversion runs on every lane, and the low
    half of the DMODE result is the answer.
