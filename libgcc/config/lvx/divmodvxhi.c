@@ -69,7 +69,7 @@ uint16x8_divmod (uint16x8_t a, uint16x8_t b)
      so the subtract branch cannot fire when b > a either way.  Verified
      exhaustively at 8 and 16 bits (every (a, b) pair) and at 32 bits for
      every b with a = b-1, the tightest b > a: no result changes.  */
-#pragma GCC unroll 16
+#pragma GCC unroll 32
   for (int i = 0; i < 16; i++)
     {
       acc = __builtin_lvx_stsuwo (src, acc);

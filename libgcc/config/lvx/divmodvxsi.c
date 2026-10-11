@@ -65,6 +65,7 @@ uint32x4_divmod (uint32x4_t a, uint32x4_t b)
      so the subtract branch cannot fire when b > a either way.  Verified
      exhaustively at 8 and 16 bits (every (a, b) pair) and at 32 bits for
      every b with a = b-1, the tightest b > a: no result changes.  */
+#pragma GCC unroll 32
   for (int i = 0; i < 32; i++)
     {
       acc = __builtin_lvx_stsudq (src, acc);
