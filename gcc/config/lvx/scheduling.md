@@ -19,14 +19,23 @@
 ;; lvx-1 at all and is ALU_LITE on lvx-2, so the guard removed the reservation
 ;; on precisely the core that has the instruction.
 
-(define_insn_reservation "lvx_all_all" 1 (and (eq_attr "type" "all") (eq_attr "issue" "all")) "lvx_all_r")
+(define_insn_reservation "lvx_all_all" 5 (and (eq_attr "type" "all") (eq_attr "issue" "all")) "lvx_all_r")
 (define_insn_reservation "lvx_alu_full" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "full")) "lvx_full_r")
+;; The integer divider.  divmodw/divmoduw/divmodd/divmodud write their result
+;; at stage SF (12) against a read at RR (1), so latency 11 -- an order of
+;; magnitude off the 1 they had while typed plain alu.  ALU_FULL, so one per
+;; bundle: N of them cost N bundles of issue plus 11, which is why four
+;; native divides beat a 32-step STSU chain and sixteen do not.
+(define_insn_reservation "lvx_idiv_full" 11 (and (eq_attr "type" "idiv") (eq_attr "issue" "full")) "lvx_full_r")
 (define_insn_reservation "lvx_alu_full_x" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "full_x")) "lvx_full_x_r")
-(define_insn_reservation "lvx_fdiv_full" 15 (and (eq_attr "type" "fdiv") (eq_attr "issue" "full")) "lvx_full_r")
+;; The FP divider: fdiv{h,w,d} and fsqrt{h,w,d} commit at FD (stage 14)
+;; against a read at RR, so latency 13.  They are the only instructions this
+;; type covers -- the fsrec*/fsrsr* seeds are latency 1 and typed alu.
+(define_insn_reservation "lvx_fdiv_full" 13 (and (eq_attr "type" "fdiv") (eq_attr "issue" "full")) "lvx_full_r")
 (define_insn_reservation "lvx_alu_lite" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_alu_lite_x" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
 (define_insn_reservation "lvx_xmoveto_lite_misc" 1 (and (eq_attr "type" "xmoveto") (eq_attr "issue" "lite_misc")) "lvx_lite_misc_r")
-(define_insn_reservation "lvx_fdiv_lite" 15 (and (eq_attr "type" "fdiv") (eq_attr "issue" "lite")) "lvx_lite_r")
+(define_insn_reservation "lvx_fdiv_lite" 13 (and (eq_attr "type" "fdiv") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_alu_lite_x2" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "lite_x2")) "lvx_lite_x2_r")
 (define_insn_reservation "lvx_alu_lite2" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "lite2")) "lvx_lite2_r")
 (define_insn_reservation "lvx_alu_lite2_x2" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "lite2_x2")) "lvx_lite2_x2_r")
@@ -96,16 +105,16 @@
 (define_insn_reservation "lvx_imul_lite" 2 (and (eq_attr "type" "imul") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_imul_lite_x" 2 (and (eq_attr "type" "imul") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
 (define_insn_reservation "lvx_imul_lite2" 2 (and (eq_attr "type" "imul") (eq_attr "issue" "lite2")) "lvx_lite2_r")
-(define_insn_reservation "lvx_fmuls_lite" 3 (and (eq_attr "type" "fmuls") (eq_attr "issue" "lite")) "lvx_lite_r")
-(define_insn_reservation "lvx_fmuls_lite_x" 3 (and (eq_attr "type" "fmuls") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
+(define_insn_reservation "lvx_fmuls_lite" 4 (and (eq_attr "type" "fmuls") (eq_attr "issue" "lite")) "lvx_lite_r")
+(define_insn_reservation "lvx_fmuls_lite_x" 4 (and (eq_attr "type" "fmuls") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
 (define_insn_reservation "lvx_fmuld_lite" 4 (and (eq_attr "type" "fmuld") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_fmuld_lite_x" 4 (and (eq_attr "type" "fmuld") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
 (define_insn_reservation "lvx_fcvt_lite" 4 (and (eq_attr "type" "fcvt") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_imadd_lite" 2 (and (eq_attr "type" "imadd") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_imadd_lite_x" 2 (and (eq_attr "type" "imadd") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
 (define_insn_reservation "lvx_imadd_lite2" 2 (and (eq_attr "type" "imadd") (eq_attr "issue" "lite2")) "lvx_lite2_r")
-(define_insn_reservation "lvx_fmadds_lite" 3 (and (eq_attr "type" "fmadds") (eq_attr "issue" "lite")) "lvx_lite_r")
-(define_insn_reservation "lvx_fmadds_lite_x" 3 (and (eq_attr "type" "fmadds") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
+(define_insn_reservation "lvx_fmadds_lite" 4 (and (eq_attr "type" "fmadds") (eq_attr "issue" "lite")) "lvx_lite_r")
+(define_insn_reservation "lvx_fmadds_lite_x" 4 (and (eq_attr "type" "fmadds") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
 (define_insn_reservation "lvx_fmaddd_lite" 4 (and (eq_attr "type" "fmaddd") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_fmaddd_lite_x" 4 (and (eq_attr "type" "fmaddd") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
 (define_insn_reservation "lvx_branch_bcu_brrp" 1 (and (eq_attr "type" "branch") (eq_attr "issue" "bcu_brrp") (match_test "TARGET_DUAL_BCU")) "lvx_bcu_brrp_r")
@@ -114,14 +123,14 @@
 (define_insn_reservation "lvx_ijump_bcu_xfer_brrp" 1 (and (eq_attr "type" "ijump") (eq_attr "issue" "bcu_xfer_brrp") (match_test "TARGET_DUAL_BCU")) "lvx_bcu_xfer_brrp_r")
 (define_insn_reservation "lvx_branch_bcu2_x" 1 (and (eq_attr "type" "branch") (eq_attr "issue" "bcu2_x")) "lvx_bcu2_x_r")
 (define_insn_reservation "lvx_jump_bcu2_x" 1 (and (eq_attr "type" "jump") (eq_attr "issue" "bcu2_x")) "lvx_bcu2_x_r")
-(define_insn_reservation "lvx_branch2_bcu2" 1 (and (eq_attr "type" "branch2") (eq_attr "issue" "bcu2")) "lvx_bcu2_r")
+(define_insn_reservation "lvx_branch2_bcu2" 5 (and (eq_attr "type" "branch2") (eq_attr "issue" "bcu2")) "lvx_bcu2_r")
 (define_insn_reservation "lvx_sysget_bcu2_tiny_lsu" 1 (and (eq_attr "type" "sysget") (eq_attr "issue" "bcu2_tiny_lsu")) "lvx_bcu2_tiny_lsu_r")
 (define_insn_reservation "lvx_branch_bcu_brrp_nd" 1 (and (eq_attr "type" "branch") (eq_attr "issue" "bcu_brrp") (match_test "!TARGET_DUAL_BCU")) "lvx_bcu_brrp_r + lvx_bcu_x2_u")
 (define_insn_reservation "lvx_branch_bcu_brrp2_nd" 1 (and (eq_attr "type" "branch") (eq_attr "issue" "bcu_brrp2") (match_test "!TARGET_DUAL_BCU")) "lvx_bcu_brrp2_r + lvx_bcu_x2_u")
 (define_insn_reservation "lvx_jump_bcu_xfer_nd" 1 (and (eq_attr "type" "jump") (eq_attr "issue" "bcu_xfer") (match_test "!TARGET_DUAL_BCU")) "lvx_bcu_xfer_r + lvx_bcu_x2_u")
 (define_insn_reservation "lvx_ijump_bcu_xfer_brrp_nd" 1 (and (eq_attr "type" "ijump") (eq_attr "issue" "bcu_xfer_brrp") (match_test "!TARGET_DUAL_BCU")) "lvx_bcu_xfer_brrp_r + lvx_bcu_x2_u")
 (define_insn_reservation "lvx_xmovef_ext_misc_auxw" 3 (and (eq_attr "type" "xmovef") (eq_attr "issue" "ext_misc_auxw")) "lvx_ext_misc_auxw_r")
-(define_insn_reservation "lvx_xcopy_ext_misc_auxw" 1 (and (eq_attr "type" "xcopy") (eq_attr "issue" "ext_misc_auxw")) "lvx_ext_misc_auxw_r")
+(define_insn_reservation "lvx_xcopy_ext_misc_auxw" 3 (and (eq_attr "type" "xcopy") (eq_attr "issue" "ext_misc_auxw")) "lvx_ext_misc_auxw_r")
 (define_insn_reservation "lvx_ext_int_ext" 3 (and (eq_attr "type" "ext_int") (eq_attr "issue" "ext")) "lvx_ext_r")
 
 ;; Bypasses.

@@ -3242,7 +3242,7 @@
                    UNSPEC_FRSR))]
   ""
   "fsrsrw %0 = %1"
-  [(set_attr "type" "fdiv")
+  [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
 )
 
@@ -3499,7 +3499,7 @@
                     (match_operand:SI 2 "register_operand" "r")] UNSPEC_DIVMOD))]
   ""
   "divmodw.sx %0 = %1, %2"
-  [(set_attr "type" "alu")
+  [(set_attr "type" "idiv")
    (set_attr "issue" "full")]
 )
 
@@ -3509,7 +3509,7 @@
                     (match_operand:SI 2 "register_operand" "r")] UNSPEC_DIVMODU))]
   ""
   "divmoduw.sx %0 = %1, %2"
-  [(set_attr "type" "alu")
+  [(set_attr "type" "idiv")
    (set_attr "issue" "full")]
 )
 
@@ -3519,7 +3519,7 @@
                     (match_operand:DI 2 "register_operand" "r")] UNSPEC_DIVMOD))]
   ""
   "divmodd %0 = %1, %2"
-  [(set_attr "type" "alu")
+  [(set_attr "type" "idiv")
    (set_attr "issue" "full")]
 )
 
@@ -3529,7 +3529,7 @@
                     (match_operand:DI 2 "register_operand" "r")] UNSPEC_DIVMODU))]
   ""
   "divmodud %0 = %1, %2"
-  [(set_attr "type" "alu")
+  [(set_attr "type" "idiv")
    (set_attr "issue" "full")]
 )
 
@@ -3628,7 +3628,7 @@
                         (match_operand 2 "" "")] UNSPEC_FRINT))]
   ""
   "frint<fmode>%2 %0 = %1"
-  [(set_attr "type" "alu")
+  [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
 

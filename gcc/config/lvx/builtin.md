@@ -4966,7 +4966,7 @@
         (unspec:SI [(match_operand:DI 1 "register_operand" "r")] UNSPEC_READY))]
   ""
   "iord %0 = %1, %1"
-  [(set_attr "type" "ghost")
+  [(set_attr "type" "alu")
    (set_attr "issue" "tiny")
    (set_attr "length"          "4")
    (set_attr "predicable" "no")]
@@ -4978,7 +4978,7 @@
                     (match_operand:DI 2 "register_operand" "r")] UNSPEC_READY))]
   ""
   "iord %0 = %1, %2"
-  [(set_attr "type" "ghost")
+  [(set_attr "type" "alu")
    (set_attr "issue" "tiny")
    (set_attr "length"          "4")
    (set_attr "predicable" "no")]
@@ -4991,7 +4991,7 @@
                     (match_operand:DI 3 "register_operand" "r")] UNSPEC_READY))]
   ""
   "iord %0 = %1, %2\n\tiord %0 = %3, %3"
-  [(set_attr "type" "ghost")
+  [(set_attr "type" "alu")
    (set_attr "issue" "tiny2")
    (set_attr "length"             "8")
    (set_attr "predicable" "no")]
@@ -5005,7 +5005,7 @@
                     (match_operand:DI 4 "register_operand" "r")] UNSPEC_READY))]
   ""
   "iord %0 = %1, %2\n\tiord %0 = %3, %4"
-  [(set_attr "type" "ghost")
+  [(set_attr "type" "alu")
    (set_attr "issue" "tiny2")
    (set_attr "length"             "8")
    (set_attr "predicable" "no")]

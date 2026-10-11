@@ -7513,17 +7513,18 @@ static int lvx_cost_factor = 0;
    a load is 3 cached and 24 uncached, and the MEM arm reads the address
    space to tell them apart.  */
 static const int lvx_type_latency[] = {
-  1,   /* TYPE_ALL      */  1,   /* TYPE_NOP      */  0,   /* TYPE_GHOST    */
+  5,   /* TYPE_ALL      */  1,   /* TYPE_NOP      */  0,   /* TYPE_GHOST    */
   1,   /* TYPE_ALU      */  2,   /* TYPE_IMUL     */  2,   /* TYPE_IMADD    */
-  3,   /* TYPE_FMULS    */  3,   /* TYPE_FMADDS   */  4,   /* TYPE_FMULD    */
+  11,  /* TYPE_IDIV     */  4,   /* TYPE_FMULS    */  4,   /* TYPE_FMADDS   */
+  4,   /* TYPE_FMULD    */
   4,   /* TYPE_FMADDD   */  4,   /* TYPE_FCVT     */  4,   /* TYPE_FDOTP    */
-  4,   /* TYPE_FDMDA    */  15,  /* TYPE_FDIV     */  3,   /* TYPE_LOAD     */
+  4,   /* TYPE_FDMDA    */  13,  /* TYPE_FDIV     */  3,   /* TYPE_LOAD     */
   4,   /* TYPE_XLOAD    */  1,   /* TYPE_STORE    */  1,   /* TYPE_XSTORE   */
   24,  /* TYPE_ALOAD    */  24,  /* TYPE_ALOADC   */  24,  /* TYPE_ATOMIC   */
   3,   /* TYPE_COPY     */  1,   /* TYPE_CACHE    */  1,   /* TYPE_PREFETCH */
-  1,   /* TYPE_BRANCH   */  1,   /* TYPE_BRANCH2  */  1,   /* TYPE_JUMP     */
+  1,   /* TYPE_BRANCH   */  5,   /* TYPE_BRANCH2  */  1,   /* TYPE_JUMP     */
   1,   /* TYPE_IJUMP    */  1,   /* TYPE_SYSGET   */  1,   /* TYPE_XMOVETO  */
-  3,   /* TYPE_XMOVEF   */  1,   /* TYPE_XCOPY    */  1,   /* TYPE_EXT      */
+  3,   /* TYPE_XMOVEF   */  3,   /* TYPE_XCOPY    */  1,   /* TYPE_EXT      */
   3,   /* TYPE_EXT_INT  */  3,   /* TYPE_EXT_FLOAT */
 };
 

@@ -12,6 +12,7 @@
   alu,
   imul,
   imadd,
+  idiv,
   fmuls,
   fmadds,
   fmuld,
