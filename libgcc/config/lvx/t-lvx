@@ -58,12 +58,27 @@ softfp_exclude_libgcc2 := n
 # already take for their 256-bit entry points -- two 128-bit halves, no 512-bit
 # value anywhere -- not a rename.
 #
-# It still stays out of lvx-libgcc-funcs, but now for a link reason rather than
-# a compile one: divv.c defines all six V4SI symbols unguarded (unlike its
-# byte-lane ones), so building both would define each twice on lvx-2.  Wiring
-# it in means giving divv.c's V4SI block the same !__lvxarch_lvx_2 guard, and
-# then measuring 32 STSUDP against four divmodw -- which is the open question,
-# the same one divmodvxhi.c is kept for.
+# It stays out of lvx-libgcc-funcs, and that is now a measurement rather than
+# an open question: divv.c's native route is faster.  Cycles per __udivv4si3
+# call under LVX_CPU=minor, net of an empty-call baseline, from
+# validation/bench/divmodvx.c:
+#
+#     shape                     divv.c   STSU   STSU/divv.c
+#     dependent (latency)         27.0   31.0       1.15
+#     independent (throughput)    42.0   53.0       1.26
+#
+# and that is the STSU route at its best, with `#pragma GCC unroll 32' added.
+# divmodvxsi.c does not carry that pragma (divmodvxqi.c and divmodvxhi.c carry
+# `unroll 8' and `unroll 16'), and without it the route costs 216 cycles
+# against 39, a factor of 5.5.  Even unrolled it loses: 32 serially dependent
+# bundles cannot beat four independent divmodw that pipeline, however cheap
+# each link is -- divmodw is latency 11 and ALU_FULL, stsudp latency 1 and
+# ALU_LITE, and __udivv4si3 is 15 instructions in 8 bundles.
+#
+# So there is nothing to wire in.  Were it ever wanted anyway, it would also
+# need divv.c's V4SI block given the same !__lvxarch_lvx_2 guard its byte-lane
+# block has -- divv.c defines all six V4SI symbols unguarded, so building both
+# would define each twice on lvx-2.
 #
 # A 64-bit lane cannot use this route at all: it would need a 128-bit STSU, and
 # the widest is STSUDP at 64.  divv.c covers V2DI/V4DI with two or four
