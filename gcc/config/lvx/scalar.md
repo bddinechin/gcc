@@ -913,9 +913,15 @@
 
 (define_insn "ussubsi3_2<arith_zx><arith_sx>"
   [(set (match_operand:SI 0 "register_operand" "=r,r")
-        (us_minus:SI (match_operand:SI 1 "register_operand" "r,r")
-                     (match_operand:SI 2 "register_w32_operand" "r,W32")))]
+        (us_minus:SI (match_operand:SI 1 "register_w32_operand" "r,W32")
+                     (match_operand:SI 2 "register_operand" "r,r")))]
   "HAVE_LVX_US_MINUS_SI"
+  ;; The .M immediate is the operand printed *last*, as in ussubdi3_2 -- and
+  ;; this template prints "%0 = %2, %1", so it has to sit on operand 1.  With
+  ;; the predicates the other way round the second alternative emitted
+  ;; `sbfusw $r17 = 8, $r5`, which gas rejects: the slot printed first is
+  ;; register-only.  Expansion never hit it (ussub<mode>3 force_regs operand
+  ;; 2 for exactly this reason) but combine matches the insn directly.
   "sbfusw<_sx> %0 = %2, %1"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
