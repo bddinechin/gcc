@@ -4809,6 +4809,85 @@
 )
 
 
+;; FROUND*/FSQRT* at 256 bits.  The ISA stops at the 128-bit lane shapes, so
+;; each of these is its 128-bit instruction on both halves -- the shape
+;; `lvx_fsrecwo` below has had since the f32 seeds, and the same reason: the
+;; builtin exists at a width the hardware does not.
+;;
+;; These four are builtins at all because FROUND and FSQRT carry a floatmode.
+;; `floor()` cannot ask for `.rd`, so an operator cannot reach them, which is
+;; what distinguishes them from the 256-bit `&`, `*` and `<<` -- those are
+;; composites in lvx-mds's Builtin.yml and deliberately *not* builtins here
+;; (its header says why).
+
+(define_expand "lvx_froundwo"
+  [(match_operand:V8SF 0 "register_operand" "")
+   (match_operand:V8SF 1 "register_operand" "")
+   (match_operand 2 "" "")]
+  "LVX_2"
+  {
+    /* No froundwo in the ISA: 256 bits is two 128-bit froundwq.  */
+    for (int i = 0; i < 2; i++)
+      emit_insn (gen_lvx_froundwq (simplify_gen_subreg (V4SFmode, operands[0],
+                                                        V8SFmode, i * 16),
+                                   simplify_gen_subreg (V4SFmode, operands[1],
+                                                        V8SFmode, i * 16),
+                                   operands[2]));
+    DONE;
+  }
+)
+
+(define_expand "lvx_frounddq"
+  [(match_operand:V4DF 0 "register_operand" "")
+   (match_operand:V4DF 1 "register_operand" "")
+   (match_operand 2 "" "")]
+  "LVX_2"
+  {
+    /* No frounddq in the ISA: 256 bits is two 128-bit frounddp.  */
+    for (int i = 0; i < 2; i++)
+      emit_insn (gen_lvx_frounddp (simplify_gen_subreg (V2DFmode, operands[0],
+                                                        V4DFmode, i * 16),
+                                   simplify_gen_subreg (V2DFmode, operands[1],
+                                                        V4DFmode, i * 16),
+                                   operands[2]));
+    DONE;
+  }
+)
+
+(define_expand "lvx_fsqrtwo"
+  [(match_operand:V8SF 0 "register_operand" "")
+   (match_operand:V8SF 1 "register_operand" "")
+   (match_operand 2 "" "")]
+  "LVX_2"
+  {
+    /* No fsqrtwo in the ISA: 256 bits is two 128-bit fsqrtwq.  */
+    for (int i = 0; i < 2; i++)
+      emit_insn (gen_lvx_fsqrtwq (simplify_gen_subreg (V4SFmode, operands[0],
+                                                       V8SFmode, i * 16),
+                                  simplify_gen_subreg (V4SFmode, operands[1],
+                                                       V8SFmode, i * 16),
+                                  operands[2]));
+    DONE;
+  }
+)
+
+(define_expand "lvx_fsqrtdq"
+  [(match_operand:V4DF 0 "register_operand" "")
+   (match_operand:V4DF 1 "register_operand" "")
+   (match_operand 2 "" "")]
+  "LVX_2"
+  {
+    /* No fsqrtdq in the ISA: 256 bits is two 128-bit fsqrtdp.  */
+    for (int i = 0; i < 2; i++)
+      emit_insn (gen_lvx_fsqrtdp (simplify_gen_subreg (V2DFmode, operands[0],
+                                                       V4DFmode, i * 16),
+                                  simplify_gen_subreg (V2DFmode, operands[1],
+                                                       V4DFmode, i * 16),
+                                  operands[2]));
+    DONE;
+  }
+)
+
 ;; FSREC*
 
 (define_expand "lvx_fsrecwo"

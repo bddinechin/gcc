@@ -459,6 +459,11 @@ LVX_BUILTIN_DIRECT   (fconjdc, V2DF_FTYPE_V2DF,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (fconjdcp, V4DF_FTYPE_V4DF,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (fconjdcq, V8DF_FTYPE_V8DF,, lvx_2) // Vector
 
+LVX_BUILTIN_DIRECT   (froundwo, V8SF_FTYPE_V8SF_FLOATINGS,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (frounddq, V4DF_FTYPE_V4DF_FLOATINGS,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fsqrtwo, V8SF_FTYPE_V8SF_FLOATINGS,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (fsqrtdq, V4DF_FTYPE_V4DF_FLOATINGS,, lvx_2) // Vector
+
 LVX_BUILTIN_DIRECT   (fsrecw, FLOAT32_FTYPE_FLOAT32,, true) // Scalar
 LVX_BUILTIN_DIRECT   (fsrecwq, V4SF_FTYPE_V4SF,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (fsrecwo, V8SF_FTYPE_V8SF,, lvx_2) // Vector
