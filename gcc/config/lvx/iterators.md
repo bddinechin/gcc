@@ -661,6 +661,13 @@
 ;; unrelated reason (the widths MASKM can address); an access width and an
 ;; arithmetic lane shape are free to diverge, and a single iterator standing for
 ;; both would hide it when they do.
+;; The scalar integer modes lvx_get_mask_mode hands out as lane masks: QI for 2, 4
+;; and 8 lanes, HI for 16, SI for 32.  One mode serves several lane counts, which
+;; is exactly why `while_ult<m><n>' takes the lane count as operand 3 whenever the
+;; mask mode is not a vector mode (internal-fn.cc, "the exact vector length may not
+;; be clear to the backend").
+(define_mode_iterator LANEMASKM [QI HI SI])
+
 (define_mode_iterator CONDOP [
   V16QI V8HI V8HF V4SI V2DI V4SF V2DF
   V32QI V16HI V16HF V8SI V4DI V8SF V4DF

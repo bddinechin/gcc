@@ -385,6 +385,66 @@
 ;; so the allocator is free to pick any register, where lvx_blend<compx> must
 ;; constrain operand 1 to "0".
 ;; -------------------------------------------------------------------------
+;; while_ult: the loop mask, straight onto TAILD.
+;;
+;; `taild.v<n> $rW = $rZ, $rY' sets lane i iff $rZ + i <u $rY, bits above the
+;; lanecount cleared -- which is md.texi's while_ult to the letter, including
+;; its monotonicity (`operand0[i] = operand0[i-1] && (operand1 + i < operand2)'):
+;; the increment does not wrap, so once $rZ + i reaches $rY it stays there.
+;; One ALU_TINY syllable for the whole mask.
+;;
+;; Defining this moves the loop onto GCC's `while_ult' partial-vector style --
+;; vect_verify_full_masking is tried before the avx512 one -- where the mask is
+;; this single call instead of the splat/compare/and triple the avx512 control
+;; generator builds.  That triple is where a masked loop's cost actually sits:
+;; 20 of the 46 instructions in a masked f64 reduction body, against 8 for the
+;; arithmetic and 2 for the select.
+;;
+;; Two mode iterators, because the optab is keyed on (index mode, mask mode) and
+;; one mask mode serves several lane counts -- QI is 2, 4 and 8 lanes alike.  The
+;; lane count therefore arrives as operand 3, a CONST_INT, and picks the modifier.
+;; TAILD's operands are doublewords, so a SImode index is zero-extended first:
+;; that makes the 64-bit unsigned compare agree with the 32-bit one the optab
+;; asked for, and the vectorizer bounds the index so the increment cannot wrap
+;; (vect_iv_limit_for_partial_vectors).
+;; -------------------------------------------------------------------------
+
+(define_expand "while_ult<SIDI:mode><LANEMASKM:mode>"
+  [(match_operand:LANEMASKM 0 "register_operand")
+   (match_operand:SIDI 1 "register_operand")
+   (match_operand:SIDI 2 "register_operand")
+   (match_operand 3 "const_int_operand")]
+  "LVX_2"
+  {
+    const char *lanes = lvx_taild_lanecount (UINTVAL (operands[3]));
+    /* Every vector length on this target is a power of two no greater than
+       128, so the modifier can always name it; expand_insn would abort on a
+       FAIL here, so this is an assert rather than a bail-out.  */
+    gcc_assert (lanes);
+
+    rtx start = operands[1], end = operands[2];
+    if (<SIDI:MODE>mode != DImode)
+      {
+        rtx s = gen_reg_rtx (DImode), e = gen_reg_rtx (DImode);
+        convert_move (s, start, 1);
+        convert_move (e, end, 1);
+        start = s;
+        end = e;
+      }
+    else
+      {
+        start = force_reg (DImode, start);
+        end = force_reg (DImode, end);
+      }
+
+    rtx res = gen_reg_rtx (DImode);
+    emit_insn (gen_lvx_taild (res, start, end,
+                              gen_rtx_CONST_STRING (VOIDmode, lanes)));
+    emit_move_insn (operands[0], gen_lowpart (<LANEMASKM:MODE>mode, res));
+    DONE;
+  })
+
+;; -------------------------------------------------------------------------
 ;; TAILD for the partial-vector loop mask.
 ;;
 ;; A fully masked loop recomputes its lane mask every iteration, and GCC's

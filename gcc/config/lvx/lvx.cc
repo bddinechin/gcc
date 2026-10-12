@@ -2361,6 +2361,27 @@ lvx_expand_256_blend (rtx dst, rtx op1, rtx op2, rtx mask)
     }
 }
 
+/* The `lanecount' modifier spelling for an N-lane TAILD, or NULL if N is not a
+   lane count the modifier can name.  Members are .V1 .. .V128, the encoded
+   value being log2 of the count, so every power of two up to 128 is sayable --
+   which is every vector length this target has.  */
+const char *
+lvx_taild_lanecount (unsigned HOST_WIDE_INT n)
+{
+  switch (n)
+    {
+    case 1:   return ".v1";
+    case 2:   return ".v2";
+    case 4:   return ".v4";
+    case 8:   return ".v8";
+    case 16:  return ".v16";
+    case 32:  return ".v32";
+    case 64:  return ".v64";
+    case 128: return ".v128";
+    default:  return NULL;
+    }
+}
+
 /* DST = MASK ? SRC : 0, lane-wise, with BLENDZ*.
 
    This is the zeroing select, and the reason it is worth an instruction of its
@@ -7439,6 +7460,35 @@ lvx_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
 	 -mstrict-align the vectorizer never asks: lvx_support_vector_
 	 misalignment refuses the access and it is peeled or scalarized.  */
       return 1;
+
+    case vec_to_scalar:
+      /* A horizontal reduction, and on this target it is not one instruction.
+	 There is no reduc_plus_scal_<mode> here, so GCC reduces with its
+	 generic log-step shift-and-add tree over vec_shr_<mode> and then
+	 extracts lane 0: log2(nunits) shift-and-add steps plus the extract.
+	 Measured for V4DF -- two shift steps, two FADDDP and a COPYD, seven
+	 instructions with two dependent FP adds on the chain.
+
+	 The default charges 1, and that is what made a masked epilogue look
+	 free: a vectorized reduction epilogue needs its OWN horizontal
+	 reduction, so the whole tree was priced at 1 and GCC put the
+	 profitability threshold at a single iteration.  Measured, that
+	 epilogue costs ~25-30 cycles more than the scalar tail it replaces
+	 when the tail is one to three elements (validation/bench/condadd.c:
+	 258 against 233 at n=65).
+
+	 Three per step rather than two: a shift below 64-bit lanes is one
+	 SRLQ but at 64-bit lanes it is a pair of register moves, and the add
+	 sits on the FP latency.  Scaled by lane count rather than fixed, so a
+	 2-lane reduction is not charged what an 8-lane one costs.  */
+      if (vectype)
+	{
+	  unsigned HOST_WIDE_INT n;
+	  if (TYPE_VECTOR_SUBPARTS (vectype).is_constant (&n) && n > 1)
+	    return 3 * ceil_log2 (n) + 1;
+	}
+      return default_builtin_vectorization_cost (type_of_cost, vectype,
+						 misalign);
 
     default:
       return default_builtin_vectorization_cost (type_of_cost, vectype,
