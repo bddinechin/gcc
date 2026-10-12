@@ -1099,6 +1099,42 @@ vect_verify_full_masking (loop_vec_info loop_vinfo)
       return false;
     }
 
+  /* vect_get_loop_mask reuses an rgroup's mask for a narrower vectype with a
+     VIEW_CONVERT_EXPR, which is a reinterpretation and therefore needs the two
+     mask types to have the same size.  That holds where a mask type's size is
+     the target's predicate register rather than its lane count -- SVE -- and
+     not where the mask is a packed integer, one bit per lane: there 16 lanes
+     is a 16-bit type and 8 lanes an 8-bit one, and verify_gimple rejects the
+     conversion ("conversion of register to a different size", tree-cfg.cc).
+
+     So check here what that reuse will need, using the same TYPE_SIZE
+     comparison verify_gimple will apply, and decline the style rather than
+     emit invalid gimple.  The caller then falls through to
+     vect_verify_full_masking_avx512, which indexes its rgroups by
+     scalars-per-iteration and needs no conversion -- so a loop mixing lane
+     widths still gets partial vectors, by the other control generator.
+
+     Found on lvx-2, whose lane mask is a GPR bit-per-lane, by a widening
+     horizontal subtract (bytes in, half-words out) in SIMDe's xop test:
+       for (i) d[i] = (short) a[2*i] - (short) a[2*i+1];
+     which ICEd at -O2 with partial vectors on.  */
+  for (auto mask : LOOP_VINFO_MASKS (loop_vinfo).mask_set)
+    {
+      tree want = truth_type_for (mask.first);
+      rgroup_controls *rgm_chk
+	= &LOOP_VINFO_MASKS (loop_vinfo).rgc_vec[mask.second - 1];
+      if (rgm_chk->type != NULL_TREE
+	  && TYPE_SIZE (want) != TYPE_SIZE (rgm_chk->type))
+	{
+	  if (dump_enabled_p ())
+	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+			     "cannot reuse a loop mask across these vector"
+			     " types: the mask types differ in size.\n");
+	  LOOP_VINFO_MASKS (loop_vinfo).rgc_vec.release ();
+	  return false;
+	}
+    }
+
   LOOP_VINFO_RGROUP_COMPARE_TYPE (loop_vinfo) = cmp_type;
   LOOP_VINFO_RGROUP_IV_TYPE (loop_vinfo) = iv_type;
   LOOP_VINFO_PARTIAL_VECTORS_STYLE (loop_vinfo) = vect_partial_vectors_while_ult;
