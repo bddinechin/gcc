@@ -171,7 +171,6 @@ extern void lvx_expand_masked_move (rtx target, rtx select1, rtx select2,
 
 extern void lvx_expand_256_blend (rtx dst, rtx op1, rtx op2, rtx mask);
 extern void lvx_expand_blendz (rtx dst, rtx src, rtx mask);
-extern const char *lvx_taild_lanecount (unsigned HOST_WIDE_INT);
 
 extern void lvx_expand_vector_insert (rtx target, rtx source, rtx where);
 

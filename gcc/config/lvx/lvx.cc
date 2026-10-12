@@ -2361,27 +2361,6 @@ lvx_expand_256_blend (rtx dst, rtx op1, rtx op2, rtx mask)
     }
 }
 
-/* The `lanecount' modifier spelling for an N-lane TAILD, or NULL if N is not a
-   lane count the modifier can name.  Members are .V1 .. .V128, the encoded
-   value being log2 of the count, so every power of two up to 128 is sayable --
-   which is every vector length this target has.  */
-const char *
-lvx_taild_lanecount (unsigned HOST_WIDE_INT n)
-{
-  switch (n)
-    {
-    case 1:   return ".v1";
-    case 2:   return ".v2";
-    case 4:   return ".v4";
-    case 8:   return ".v8";
-    case 16:  return ".v16";
-    case 32:  return ".v32";
-    case 64:  return ".v64";
-    case 128: return ".v128";
-    default:  return NULL;
-    }
-}
-
 /* DST = MASK ? SRC : 0, lane-wise, with BLENDZ*.
 
    This is the zeroing select, and the reason it is worth an instruction of its
