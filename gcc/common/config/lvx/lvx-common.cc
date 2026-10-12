@@ -50,6 +50,20 @@ static const struct default_options lvx_option_optimization_table[] =
     {OPT_LEVELS_2_PLUS, OPT_fsched2_use_superblocks, NULL, 1},
     {OPT_LEVELS_2_PLUS, OPT_ftree_loop_if_convert, NULL, 1},
 
+    /* `cheap' rather than the generic -O2 default of `very-cheap'.
+       very-cheap refuses a loop whose static profitability threshold exceeds
+       the vectorization factor, which at 64-bit lanes means 2 -- and with a
+       scalar epilogue to pay for, almost nothing clears it.  That is why
+       PolyBench vectorized 40 of 73 inner loops at f32 and only 37 at f64 on
+       this target: fifteen of the f64 misses were the cost model alone, and
+       syrk, syr2k and durbin vectorize at f32 and not at f64 for no reason
+       but this threshold.  With `cheap' both widths reach 44 of 73 and the
+       asymmetry disappears.  Measured geomean over 22 timed kernels: 1.054x
+       at f32, 1.012x at f64.  An explicit -fvect-cost-model= still wins, and
+       -O3 still selects `dynamic'.  */
+    {OPT_LEVELS_2_PLUS_SPEED_ONLY, OPT_fvect_cost_model_, NULL,
+     VECT_COST_MODEL_CHEAP},
+
     {OPT_LEVELS_3_PLUS, OPT_funroll_loops, NULL, 1},
 
     {OPT_LEVELS_NONE, 0, NULL, 0}
