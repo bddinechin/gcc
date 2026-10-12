@@ -85,6 +85,16 @@
         UNSPEC_QXE
         UNSPEC_OROE
         UNSPEC_LVX_BLEND
+
+        ;; BLENDZ*: the zeroing lane select, dst = mask ? src : 0, added to the
+        ;; ISA 2026-10-12.  Distinct from UNSPEC_LVX_BLEND because the
+        ;; destination is NOT read -- that is the whole difference, and it is
+        ;; why this one takes two operands where BLEND* takes three and ties
+        ;; its first.  One ALU_LITE syllable and no BCU prefix, against the
+        ;; MASKS-prefixed alternative's two syllables and a BCU slot, or the
+        ;; BLEND* route's extra instructions to materialise the all-zero
+        ;; operand it has to be seeded with.
+        UNSPEC_LVX_BLENDZ
         UNSPEC_MM
         UNSPEC_MMA
         UNSPEC_MMS

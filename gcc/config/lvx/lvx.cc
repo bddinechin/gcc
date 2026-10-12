@@ -2361,6 +2361,73 @@ lvx_expand_256_blend (rtx dst, rtx op1, rtx op2, rtx mask)
     }
 }
 
+/* DST = MASK ? SRC : 0, lane-wise, with BLENDZ*.
+
+   This is the zeroing select, and the reason it is worth an instruction of its
+   own rather than a BLEND* against a zero register: BLEND* reads its
+   destination to supply the lanes the mask leaves out, so building `mask ? src
+   : 0' with it means seeding a register with zero first -- and GCC
+   rematerialises that constant inside the loop (four MAKED per iteration at
+   256 bits) rather than keeping a live zero register.  BLENDZ* does not read
+   its destination, so the constant never exists.  Measured on
+   validation/bench/condadd.c: the BLEND route cost 386 cycles on a 64-element
+   f64 sum against 219 unmasked, and the four MAKED are most of the gap.
+
+   MODE may be 128- or 256-bit and integer or float.  BLENDZ* is a lane
+   bit-select on the register bits and type-agnostic, so a float vector is
+   viewed as its integer sibling of the same lane width; a 256-bit vector is
+   two 128-bit halves, each with its own slice of the lane mask, exactly as
+   lvx_expand_256_blend splits one -- minus the seeding move, which is the
+   point.  */
+void
+lvx_expand_blendz (rtx dst, rtx src, rtx mask)
+{
+  machine_mode mode = GET_MODE (dst);
+  unsigned nunits = GET_MODE_NUNITS (mode);
+
+  if (GET_MODE_CLASS (mode) == MODE_VECTOR_FLOAT)
+    {
+      scalar_int_mode iinner
+	= int_mode_for_size (GET_MODE_UNIT_BITSIZE (mode), 0).require ();
+      machine_mode imode = mode_for_vector (iinner, nunits).require ();
+      rtx d = simplify_gen_subreg (imode, dst, mode, 0);
+      rtx s = simplify_gen_subreg (imode, src, mode, 0);
+      gcc_assert (d && s);
+      dst = d;
+      src = s;
+      mode = imode;
+    }
+  src = force_reg (mode, src);
+
+  if (GET_MODE_SIZE (mode) == 16)
+    {
+      emit_insn (gen_rtx_SET (dst,
+			      gen_rtx_UNSPEC (mode, gen_rtvec (2, src, mask),
+					      UNSPEC_LVX_BLENDZ)));
+      return;
+    }
+
+  unsigned half = nunits / 2;
+  machine_mode half_mode
+    = mode_for_vector (GET_MODE_INNER (mode), half).require ();
+  machine_mode half_mask
+    = int_mode_for_size (half < 8 ? 8 : half, 0).require ();
+
+  for (int h = 0; h < 2; h++)
+    {
+      rtx d = simplify_gen_subreg (half_mode, dst, mode, h * 16);
+      rtx s = simplify_gen_subreg (half_mode, src, mode, h * 16);
+      gcc_assert (d && s);
+      rtx m = mask;
+      if (h == 1)
+	m = expand_shift (RSHIFT_EXPR, GET_MODE (mask), mask, half, NULL_RTX, 1);
+      m = force_reg (half_mask, gen_lowpart (half_mask, m));
+      emit_insn (gen_rtx_SET (d,
+			      gen_rtx_UNSPEC (half_mode, gen_rtvec (2, s, m),
+					      UNSPEC_LVX_BLENDZ)));
+    }
+}
+
 /* Lower a comparison COMP between CMP_MODE rtx(es) into a predicate register PRED.
  * In case of floating-point lowering, the left and right operands may be swapped.  */
 void
@@ -3062,6 +3129,46 @@ lvx_expand_vector_shift (rtx target, rtx source, rtx chunk,
     }
 
   unsigned offset = bits / BITS_PER_UNIT;
+
+  /* A 128-bit vector shifted by a count that is not a whole number of 64-bit
+     words is ONE SLLQ/SRLQ on the TImode view (ashlti3/lshrti3 in scalar.md),
+     where the word-at-a-time synthesis below spends four instructions moving
+     the bits across the word boundary -- two SRLD/SLLD and two INSFD.  That is
+     what a reduction epilogue pays for its last steps: GCC has no
+     reduc_plus_scal_<mode> here, so it reduces with the generic log-step
+     shift-and-add tree over vec_shr_<mode>, and at lane widths below 64 bits
+     the final shifts by one, two or four lanes are all sub-word.
+
+     The word-ALIGNED counts are deliberately left to the code below: there
+     they are plain register moves, which is already optimal and better than a
+     shift, and a count of 64 or more does not fit SLLQ's 6-bit immediate in any
+     case (it would need the register form, costing a MAKED to materialise).
+
+     Only the zero-fill shifts take this path.  vec_shl_insert passes the lane
+     it shifts in as CHUNK, and placing that still needs the insert the word
+     code does, so it keeps the old route rather than growing a second one.  */
+  if (mode_size == 16
+      && chunk == const0_rtx
+      && (offset % UNITS_PER_WORD) != 0)
+    {
+      rtx ti_target = simplify_gen_subreg (TImode, target, mode, 0);
+      rtx ti_source = simplify_gen_subreg (TImode, source, mode, 0);
+      if (ti_target && ti_source)
+	{
+	  /* U06 holds 0..63; a wider count has to go through a register, which
+	     the pattern's "r" alternative takes and the hardware masks to the
+	     7 bits a 128-bit shift needs.  */
+	  rtx count = GEN_INT (bits);
+	  if (bits >= 64)
+	    count = force_reg (SImode, count);
+	  if (left)
+	    emit_insn (gen_ashlti3 (ti_target, ti_source, count));
+	  else
+	    emit_insn (gen_lshrti3 (ti_target, ti_source, count));
+	  return;
+	}
+    }
+
   unsigned aligned = offset & -UNITS_PER_WORD;
   if (aligned == offset)
     {
@@ -10072,6 +10179,22 @@ lvx_option_override (void)
   SET_OPTION_IF_UNSET (&global_options, &global_options_set,
 		       param_l1_cache_size, 16);
 #endif
+
+  /* Partial vectors in the EPILOGUE only, never in the main loop.  The
+     generic default is 2 -- mask every loop -- and LVX started inheriting it
+     the moment cond_add<mode> made reductions eligible for partial vectors at
+     all: every sum loop's main body became a masked one, recomputing a lane
+     mask per iteration (COMP*, ANDW, EXTB*D), loading through a MASKM prefix
+     and merging each accumulator with a BLEND*, where an unmasked body needs
+     none of that.  At 1 the main loop keeps full vectors and only the tail is
+     masked, which is where masking pays for itself: there it replaces a scalar
+     epilogue rather than taxing the hot path.
+
+     SET_OPTION_IF_UNSET, so --param=vect-partial-vector-usage=2 still asks for
+     the fully masked form -- the knob is how the two were measured against each
+     other, and the pin is only which one is the default.  */
+  SET_OPTION_IF_UNSET (&global_options, &global_options_set,
+		       param_vect_partial_vector_usage, 1);
 
   lvx_arch_schedule = LVX_2 ? ARCH_LVX_2 : ARCH_LVX_1;
 

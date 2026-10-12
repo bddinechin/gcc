@@ -381,6 +381,114 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")])
 
+;; The zeroing twin.  No tied operand: BLENDZ* does not read its destination,
+;; so the allocator is free to pick any register, where lvx_blend<compx> must
+;; constrain operand 1 to "0".
+;; -------------------------------------------------------------------------
+;; TAILD for the partial-vector loop mask.
+;;
+;; A fully masked loop recomputes its lane mask every iteration, and GCC's
+;; AVX-512-style loop control spells that as a splat compared against the lane
+;; ramp:  _31 = {rem,rem,rem,rem};  _34 = _31 >u {0,1,2,3}.  That lowers to
+;; SPLATWQ + COMPWQ.GTU + ANDW -- three ALU_LITE syllables -- per masked
+;; access, and measured on validation/bench/condadd.c it is where a masked
+;; reduction's cost actually is: 20 of the 46 instructions in the f64 loop body
+;; are mask generation, against 2 for the select and 8 for the arithmetic.
+;;
+;; TAILD is the whole triple in one ALU_TINY syllable: lane i set iff
+;; %1 + i <u %2, with the bits above the lanecount cleared.  With a zero base
+;; it is exactly `rem >u i'.  TINY rather than LITE matters as much as the
+;; count here -- LITE has two slots per bundle and TINY four, counting the two
+;; LSU slots, so this stops the mask competing with the packed arithmetic.
+;;
+;; Matched after combine has folded the splat into the compare; the dump
+;; confirms it offers precisely this shape (`Trying 14, 13 -> 15').  The splat
+;; source arrives as a SImode subreg of the DImode register the counter already
+;; lives in, so TAILD needs no extension -- which is why this matches the
+;; subreg rather than taking an <INNER> operand and zero-extending it, a
+;; per-iteration instruction that would have eaten the saving.
+;; -------------------------------------------------------------------------
+
+;; Matched as the PARALLEL combine actually offers, not as a bare set.  In the
+;; two-insn attempt (`Trying 13 -> 15') the ramp is still a register, because
+;; the generic compare's operand predicate demands one; the literal arrives
+;; only in the three-insn `Trying 14, 13 -> 15', which keeps the constant live
+;; in its own set because the loop's other compare still reads it.  So the
+;; pattern carries that second set and the split re-emits it -- and when every
+;; compare in the loop has become a TAILD the constant has no readers left and
+;; DCE deletes it, which is the case worth having: the ramp costs two MAKEDs.
+(define_insn_and_split "*lvx_taild_loop_mask"
+  [(set (match_operand:QI 0 "register_operand" "=r")
+        (unspec:QI
+          [(gtu:QI (vec_duplicate:V4SI
+                     (subreg:SI (match_operand:DI 1 "register_operand" "r") 0))
+                   (match_operand:V4SI 2 "lvx_lane_ramp_operand" "i"))]
+          UNSPEC_PACKCMP))
+   (set (match_operand:V4SI 3 "register_operand" "=r") (match_dup 2))]
+  "LVX_2"
+  "#"
+  "&& can_create_pseudo_p ()"
+  [(const_int 0)]
+  {
+    rtx zero = force_reg (DImode, const0_rtx);
+    rtx res = gen_reg_rtx (DImode);
+    emit_insn (gen_lvx_taild (res, zero, operands[1],
+                              gen_rtx_CONST_STRING (VOIDmode, ".v4")));
+    emit_move_insn (operands[0], gen_lowpart (QImode, res));
+    emit_move_insn (operands[3], operands[2]);
+    DONE;
+  }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")])
+
+;; The same, for the in-loop mask.  The prologue splats the bound, which lives
+;; in a DImode register, so the pattern above sees a SImode subreg of it and
+;; hands TAILD the register as it stands; the per-iteration mask splats the
+;; countdown `ivtmp', a plain SImode pseudo, so it needs widening first.
+;;
+;; ZERO extension, which makes TAILD's 64-bit unsigned compare literally the
+;; 32-bit unsigned compare it replaces.  (Sign extension would also agree --
+;; a 32-bit value whose top bit is set sign-extends to at least 2^63, and both
+;; readings then exceed every lane index -- but zero extension needs no such
+;; argument.)  The widening is one ALU_TINY syllable and pass_ree deletes it
+;; where the producer already left the register extended.
+(define_insn_and_split "*lvx_taild_loop_mask_si"
+  [(set (match_operand:QI 0 "register_operand" "=r")
+        (unspec:QI
+          [(gtu:QI (vec_duplicate:V4SI
+                     (match_operand:SI 1 "register_operand" "r"))
+                   (match_operand:V4SI 2 "lvx_lane_ramp_operand" "i"))]
+          UNSPEC_PACKCMP))
+   (set (match_operand:V4SI 3 "register_operand" "=r") (match_dup 2))]
+  "LVX_2"
+  "#"
+  "&& can_create_pseudo_p ()"
+  [(const_int 0)]
+  {
+    rtx zero = force_reg (DImode, const0_rtx);
+    rtx bound = gen_reg_rtx (DImode);
+    convert_move (bound, operands[1], 1);
+    rtx res = gen_reg_rtx (DImode);
+    emit_insn (gen_lvx_taild (res, zero, bound,
+                              gen_rtx_CONST_STRING (VOIDmode, ".v4")));
+    emit_move_insn (operands[0], gen_lowpart (QImode, res));
+    emit_move_insn (operands[3], operands[2]);
+    DONE;
+  }
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")])
+
+(define_insn "lvx_blendz<compx>"
+  [(set (match_operand:SIMD128I 0 "register_operand" "=r")
+        (unspec:SIMD128I
+          [(match_operand:SIMD128I 1 "register_operand" "r")
+           (match_operand:<LANEMASK> 2 "register_operand" "r")]
+          UNSPEC_LVX_BLENDZ))]
+  "LVX_2"
+  "blendz<compx> %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")])
+
 (define_expand "vcond_mask_<mode><lanemask>"
   [(match_operand:SIMD128I 0 "register_operand")
    (match_operand:SIMD128I 1 "register_operand")
@@ -690,6 +798,112 @@
         else               emit_insn (gen_lvx_extb8d_<bytemask> (bytes, operands[2]));
       }
     emit_insn (gen_lvx_maskstore<mode> (operands[0], operands[1], bytes));
+    DONE;
+  })
+
+;; -------------------------------------------------------------------------
+;; Conditional arithmetic: cond_<optab>, the optab the vectorizer needs before
+;; it will put a reduction on partial vectors.  Without it every reduction loop
+;; reports "can't operate on partial vectors because no conditional operation is
+;; available" (tree-vect-loop.cc, vect_reduction_update_partial_vector_usage)
+;; and the loop keeps a scalar epilogue.
+;;
+;; md.texi's contract is  op0[i] = op1[i] ? op (op2[i], op3[i]) : op4[i]  -- a
+;; MERGE with an arbitrary else value, and for a reduction the vectorizer passes
+;; the ACCUMULATOR as that else (tree-vect-loop.cc builds the call with
+;; vop[reduc_index] in operand 4).  So the MASKS prefix does not implement this,
+;; although it is the ISA's masked-arithmetic feature and the obvious candidate:
+;; MASKS *clears* the lanes that are not enabled ("the previous contents of the
+;; destination are not preserved"), and a cleared accumulator lane loses the
+;; partial sum the main loop put there.
+;;
+;; WHICH OPERAND CARRIES THE MASK IS THE WHOLE PERFORMANCE QUESTION, and it was
+;; measured rather than reasoned about.  Merging the RESULT -- add unmasked, then
+;; BLEND* the else value back over the inactive lanes -- is correct and is what
+;; this expander did first, but it puts the blend between the add and the
+;; accumulator:
+;;
+;;     fadddp  $r38r39 = $r0r1, $r32r33      ;; (end cycle 5)
+;;     blenddp $r0r1   = $r38r39, $r36       ;; (end cycle 9)
+;;
+;; The accumulator is read by the add and written by the blend, so the blend
+;; joins the loop-carried dependency chain and roughly doubles it.  Measured on
+;; validation/bench/condadd.c (lvx-2, LVX_CPU=minor, cycles per call): a 64-
+;; element f64 sum cost 438 that way against 219 unmasked, 2x, and only the
+;; n=6/n=7 cases -- where one masked iteration removes the tail outright -- came
+;; out ahead.
+;;
+;; Masking the ADDEND instead is the same value and leaves the chain alone,
+;; because 0 is the identity of +:
+;;
+;;     cond_add (mask, a, acc, acc)  ==  acc + (mask ? a : 0)
+;;
+;; The select depends on the loaded vector, not on the accumulator, so it sits
+;; off the critical path and dual-issues beside the add.  That rewrite needs the
+;; else value to BE one of the addends, which is exactly the reduction shape, and
+;; it is the only shape where this form applies -- hence the two paths below.
+;;
+;; For the float modes it also needs signed zeros not to matter: acc + 0.0 is acc
+;; for every value except -0.0, which it turns into +0.0, and the blend-the-
+;; result form has no such condition because it keeps the inactive lanes
+;; bit-for-bit.  So HONOR_SIGNED_ZEROS sends a float reduction back to the merge
+;; form, correctness before speed; -ffast-math (which an f64 sum reduction needs
+;; before it vectorizes at all, reassociation being the real gate) clears it.
+;;
+;; BLEND* is the merge in both paths, and it is an ALU_LITE instruction with the
+;; mask in a GPR rather than a BCU prefix, so neither path spends a BCU slot.
+;; Both halves already exist for all fourteen modes -- the adds and
+;; vcond_mask_<mode><lanemask>, which carries the float int-sibling view and the
+;; 256-bit two-half blend -- so this adds no insn of its own.
+;; -------------------------------------------------------------------------
+
+(define_expand "cond_add<mode>"
+  [(match_operand:CONDOP 0 "register_operand")
+   (match_operand:<LANEMASK> 1 "register_operand")
+   (match_operand:CONDOP 2 "register_operand")
+   (match_operand:CONDOP 3 "register_operand")
+   (match_operand:CONDOP 4 "register_operand")]
+  "LVX_2"
+  {
+    rtx mask = force_reg (<LANEMASK>mode, operands[1]);
+    bool els_is_2 = rtx_equal_p (operands[4], operands[2]);
+    bool els_is_3 = rtx_equal_p (operands[4], operands[3]);
+    rtx sum;
+
+    if ((els_is_2 || els_is_3)
+        && (!FLOAT_MODE_P (<MODE>mode) || !HONOR_SIGNED_ZEROS (<MODE>mode)))
+      {
+        /* Reduction shape: mask the addend the else value is not, and add it
+           unmasked.  The select is off the loop-carried chain.
+
+           BLENDZ* is the whole select -- one ALU_LITE instruction, no zero
+           operand anywhere.  Through vcond_mask against a zero vector this
+           needed a register seeded with zero (BLEND* reads its destination),
+           and GCC rematerialised that constant per iteration: four MAKED at
+           256 bits, more instructions than the blend they fed.  */
+        rtx other = force_reg (<MODE>mode,
+                               els_is_2 ? operands[3] : operands[2]);
+        rtx sel = gen_reg_rtx (<MODE>mode);
+        lvx_expand_blendz (sel, other, mask);
+        sum = expand_simple_binop (<MODE>mode, PLUS, operands[4], sel,
+                                   operands[0], false, OPTAB_DIRECT);
+        gcc_assert (sum);
+        if (sum != operands[0])
+          emit_move_insn (operands[0], sum);
+        DONE;
+      }
+
+    /* General case: the else value is unrelated to the addends, so there is
+       nothing to fold it into -- add unmasked and merge the result.  Through
+       expand_simple_binop rather than gen_add<mode>3 directly: the add patterns
+       take a splat32 or zero immediate in operand 2, gen_* checks no predicate,
+       and handing one an operand it cannot match is unrecognizable RTL at the
+       end of expand rather than a diagnostic.  */
+    sum = expand_simple_binop (<MODE>mode, PLUS, operands[2], operands[3],
+                               gen_reg_rtx (<MODE>mode), false, OPTAB_DIRECT);
+    gcc_assert (sum);
+    rtx els = force_reg (<MODE>mode, operands[4]);
+    emit_insn (gen_vcond_mask_<mode><lanemask> (operands[0], sum, els, mask));
     DONE;
   })
 

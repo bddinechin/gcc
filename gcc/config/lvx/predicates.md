@@ -344,3 +344,28 @@
        (match_operand 0 "reg_or_splat32_operand")
        (and (match_code "const_int")
             (match_test "SIGNED_INT_FITS_N_BITS (INTVAL (op), 32)"))))
+
+;; The lane-index ramp { 0, 1, 2, ... n-1 }, which is what GCC's AVX-512-style
+;; partial-vector loop control compares a splatted remaining-count against to
+;; build the loop mask (tree-vect-loop-manip.cc,
+;; vect_set_loop_condition_partial_vectors_avx512, emitting
+;; `_34 = {rem,rem,rem,rem} > {0,1,2,3}').  Recognising it is what lets TAILD
+;; replace that SPLAT*/COMP*/AND triple, since `rem >u i' for every lane i is
+;; exactly TAILD's `0 + i <u rem'.
+(define_predicate "lvx_lane_ramp_operand"
+  (match_code "const_vector")
+{
+  /* CONST_VECTOR_ENCODED_ELT is the wrong accessor here: GCC stores a ramp in
+     a compressed stepped encoding whose encoded element count is smaller than
+     the lane count (three for {0,1,2,3}), so reading the encoding directly
+     both under-counts the lanes and returns the pattern rather than the
+     values.  CONST_VECTOR_ELT decodes.  */
+  unsigned n = GET_MODE_NUNITS (mode);
+  for (unsigned i = 0; i < n; i++)
+    {
+      rtx e = CONST_VECTOR_ELT (op, i);
+      if (!CONST_INT_P (e) || UINTVAL (e) != i)
+        return false;
+    }
+  return true;
+})

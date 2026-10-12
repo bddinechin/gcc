@@ -654,6 +654,18 @@
 (define_mode_iterator SIMD256I [V32QI V16HI V8SI V4DI])
 (define_mode_iterator SIMD256F [V16HF V8SF V4DF])
 
+;; The modes a conditional (masked) arithmetic optab is offered for -- the union
+;; of the four iterators above, which is every mode that has both an `add<mode>3'
+;; and a `vcond_mask_<mode><lanemask>', the two halves cond_<optab> is built from.
+;; Not shared with MASKMEM, which happens to hold the same fourteen modes for an
+;; unrelated reason (the widths MASKM can address); an access width and an
+;; arithmetic lane shape are free to diverge, and a single iterator standing for
+;; both would hide it when they do.
+(define_mode_iterator CONDOP [
+  V16QI V8HI V8HF V4SI V2DI V4SF V2DF
+  V32QI V16HI V16HF V8SI V4DI V8SF V4DF
+])
+
 (define_mode_attr LANEMASK [
   (V16QI "HI") (V8HI "QI") (V4SI "QI") (V2DI "QI")
   (V8HF "QI") (V4SF "QI") (V2DF "QI")
