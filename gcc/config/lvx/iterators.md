@@ -674,20 +674,30 @@
 ;; the lane count: V4SI and V8SI share a QI lane mask but need HI and SI byte
 ;; masks, which is why the EXTB*D patterns come in (in,out) pairs.
 (define_mode_attr BYTEMASK [
-  (V16QI "HI") (V8HI "HI") (V4SI "HI") (V2DI "HI")
-  (V32QI "SI") (V16HI "SI") (V8SI "SI") (V4DI "SI")
+  (V16QI "HI") (V8HI "HI") (V8HF "HI") (V4SI "HI") (V2DI "HI")
+                                       (V4SF "HI") (V2DF "HI")
+  (V32QI "SI") (V16HI "SI") (V16HF "SI") (V8SI "SI") (V4DI "SI")
+                                         (V8SF "SI") (V4DF "SI")
 ])
 
 (define_mode_attr bytemask [
-  (V16QI "hi") (V8HI "hi") (V4SI "hi") (V2DI "hi")
-  (V32QI "si") (V16HI "si") (V8SI "si") (V4DI "si")
+  (V16QI "hi") (V8HI "hi") (V8HF "hi") (V4SI "hi") (V2DI "hi")
+                                       (V4SF "hi") (V2DF "hi")
+  (V32QI "si") (V16HI "si") (V16HF "si") (V8SI "si") (V4DI "si")
+                                         (V8SF "si") (V4DF "si")
 ])
 
-;; Every integer vector a MASKM access can carry, both widths.  The optab
-;; expanders are shared; the insns they pick differ (lq/sq against lo/so).
+;; Every vector a MASKM access can carry, both widths and both element kinds.
+;; The optab expanders are shared; the insns they pick differ (lq/sq against
+;; lo/so).  The float modes belong here for the same reason their mask does:
+;; MASKM takes byte enables, and EXTB{2,4,8}D widens a lane mask by element
+;; SIZE, so a V2DF access is byte-for-byte a V2DI one.  Without them the
+;; vectorizer cannot use partial vectors on a float loop at all -- it reports
+;; "the target doesn't have the appropriate partial vectorization load or
+;; store" and falls back to a scalar epilogue.
 (define_mode_iterator MASKMEM [
-  V16QI V8HI V4SI V2DI
-  V32QI V16HI V8SI V4DI
+  V16QI V8HI V8HF V4SI V2DI V4SF V2DF
+  V32QI V16HI V16HF V8SI V4DI V8SF V4DF
 ])
 
 ;; The COMP*/BLEND* lane-shape suffix.  It is set by the element, not the

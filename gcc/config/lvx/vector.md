@@ -581,9 +581,9 @@
 ;; is the lq/sq's own size, as for a guarded op -- the prefix syllable is
 ;; accounted by the scheduler (masked attr -> bcu_used), not counted here.
 (define_insn "lvx_maskload<mode>"
-  [(set (match_operand:SIMD128I 0 "register_operand" "=r,r,r")
-        (unspec:SIMD128I
-          [(match_operand:SIMD128I 1 "memory_operand" "a,b,m")
+  [(set (match_operand:SIMD128 0 "register_operand" "=r,r,r")
+        (unspec:SIMD128
+          [(match_operand:SIMD128 1 "memory_operand" "a,b,m")
            (match_operand:HI 2 "register_operand" "r,r,r")]
           UNSPEC_MASKM_LOAD))
    (use (unspec:HI [(match_dup 2) (const_int 1)] UNSPEC_MASKM))]
@@ -596,9 +596,9 @@
    (set_attr "length" "4,8,12")])
 
 (define_insn "lvx_maskstore<mode>"
-  [(set (match_operand:SIMD128I 0 "memory_operand" "=a,b,m")
-        (unspec:SIMD128I
-          [(match_operand:SIMD128I 1 "register_operand" "r,r,r")
+  [(set (match_operand:SIMD128 0 "memory_operand" "=a,b,m")
+        (unspec:SIMD128
+          [(match_operand:SIMD128 1 "register_operand" "r,r,r")
            (match_operand:HI 2 "register_operand" "r,r,r")]
           UNSPEC_MASKM_STORE))
    (use (unspec:HI [(match_dup 2) (const_int 1)] UNSPEC_MASKM))]
@@ -617,9 +617,9 @@
 ;; instruction and not two halves: lo/so carry the whole quad, so this is not a
 ;; split the way *mov<mode> is.
 (define_insn "lvx_maskload<mode>"
-  [(set (match_operand:SIMD256I 0 "register_operand" "=r,r,r")
-        (unspec:SIMD256I
-          [(match_operand:SIMD256I 1 "memory_operand" "a,b,m")
+  [(set (match_operand:SIMD256 0 "register_operand" "=r,r,r")
+        (unspec:SIMD256
+          [(match_operand:SIMD256 1 "memory_operand" "a,b,m")
            (match_operand:SI 2 "register_operand" "r,r,r")]
           UNSPEC_MASKM_LOAD))
    (use (unspec:SI [(match_dup 2) (const_int 1)] UNSPEC_MASKM))]
@@ -632,9 +632,9 @@
    (set_attr "length" "4,8,12")])
 
 (define_insn "lvx_maskstore<mode>"
-  [(set (match_operand:SIMD256I 0 "memory_operand" "=a,b,m")
-        (unspec:SIMD256I
-          [(match_operand:SIMD256I 1 "register_operand" "r,r,r")
+  [(set (match_operand:SIMD256 0 "memory_operand" "=a,b,m")
+        (unspec:SIMD256
+          [(match_operand:SIMD256 1 "register_operand" "r,r,r")
            (match_operand:SI 2 "register_operand" "r,r,r")]
           UNSPEC_MASKM_STORE))
    (use (unspec:SI [(match_dup 2) (const_int 1)] UNSPEC_MASKM))]
