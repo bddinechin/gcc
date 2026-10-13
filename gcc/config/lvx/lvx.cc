@@ -7421,11 +7421,20 @@ lvx_support_vector_misalignment (enum machine_mode, int, bool, bool)
    profitability threshold be no more than the vectorization factor, decides
    the loop.  syrk and syr2k at double are exactly that case.
 
-   Everything else keeps the generic value deliberately.  The costs that could
-   also be argued down -- vec_construct for a strided access, vec_perm -- are
-   the ones a VLIW hides best by packing them into otherwise idle slots, but
+   vector_stmt is charged per ALU slot, not per operation: see the case below.
+
+   vec_construct and vec_deconstruct now have the measurement the previous
+   version of this comment asked for, and it says leave them alone.  Building a
+   V4SF from four GPR-resident lanes is two INSFD and two COPYD, and taking one
+   apart is two ZXWD and two EXTFZD -- n instructions for n lanes, against the
+   generic n-1 (targhooks.cc).  One instruction in four is not worth a target
+   hook, and PolyBench's symm, the loop that prompted the measurement, is
+   mispriced by far more than that at the width level.
+
+   vec_perm keeps the generic value, and is the one still owed a measurement:
+   it is what a VLIW hides best by packing into otherwise idle slots, but
    "hidden by the bundler" is a claim about the scheduler, not about the
-   instruction, and it wants its own measurement before it goes in here.  */
+   instruction.  */
 
 static int
 lvx_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
@@ -7439,6 +7448,41 @@ lvx_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
 	 -mstrict-align the vectorizer never asks: lvx_support_vector_
 	 misalignment refuses the access and it is peeled or scalarized.  */
       return 1;
+
+    case vector_stmt:
+      /* A 256-bit ALU operation is TWO LITE halves issued together -- `issue
+	 lite2' in the machine description, which reserves lvx_tiny_x2_u +
+	 lvx_lite_x2_u, i.e. both ALU slots -- so the quad buys no ALU
+	 throughput over the pair.  That is not a new claim: it is what
+	 lvx_autovectorize_vector_modes says when it offers V32QI as an
+	 alternative rather than imposing it, and what it relies on
+	 VECT_COMPARE_COSTS to act on.  What the quad genuinely buys is on the
+	 memory side -- one lo/so per 32 bytes instead of two lq/sq, one L*SO
+	 broadcast, half the iterations.
+
+	 Charging a quad operation the same 1 as a pair operation told the
+	 comparison the opposite.  Per element a 256-bit body came out cheaper
+	 by construction, so the quad won loops with no memory-side gain to pay
+	 for it -- including loops with no vector memory access at all.
+	 PolyBench's symm at MINI/float is the case that found this: its k-loop
+	 walks C[k][j] and B[k][j] down a column, stride N, so every lane is a
+	 separate LWZ and there is no lo/so anywhere in the body.  The
+	 vectorizer costed V4SF at 34 for 4 lanes (8.50/lane) against V32QI at
+	 66 for 8 (8.25/lane), preferred the quad by that 0.25, and paid for it
+	 with a 4-element epilogue costed 47 on a loop whose average trip count
+	 is 9.5 -- measured, 75966 -> 104270 kernel cycles, +37.3%.
+
+	 With the four body statements charged 2 instead of 1, V32QI is 70/8 =
+	 8.75 and the pair wins, which is what the mode-offering hook intended.
+	 The margin either way is thin, and deliberately so: this restores the
+	 comparison the quad was meant to lose when the memory side does not
+	 carry it, and leaves it winning when it does.  */
+      if (vectype
+	  && known_eq (GET_MODE_SIZE (TYPE_MODE (vectype)),
+		       (unsigned HOST_WIDE_INT) 32))
+	return 2;
+      return default_builtin_vectorization_cost (type_of_cost, vectype,
+						 misalign);
 
     case vec_to_scalar:
       /* A horizontal reduction, and on this target it is not one instruction.
