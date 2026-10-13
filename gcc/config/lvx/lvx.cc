@@ -78,6 +78,7 @@
 #include "stor-layout.h"
 #include "stringpool.h"
 #include "tm-constrs.h"
+#include "tree-vectorizer.h"
 #include "varasm.h"
 
 #define NULL_BLOCK ((basic_block) NULL)
@@ -7523,6 +7524,137 @@ lvx_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
 #define TARGET_VECTORIZE_BUILTIN_VECTORIZATION_COST \
   lvx_builtin_vectorization_cost
 /* Implements TARGET_VECTORIZE_BUILTIN_VECTORIZATION_COST }}} */
+
+/* Implements TARGET_VECTORIZE_CREATE_COSTS {{{
+
+   LVX has no gather and no scatter.  When the vectorizer meets a strided
+   access it therefore scalarises it: one LWZ or SW per lane, then INSFD and
+   COPYD to assemble the pair, and ZXWD/EXTFZD to take a result apart again.
+   The generic model prices that at its instruction count and no more --
+   n scalar accesses at 1 each plus n-1 for the vec_construct -- and the
+   instruction count is right.  The cost is not, because the assembly is a
+   dependence chain on the critical path:
+
+     lwz -> insfd -> copyd -> ffmawq -> zxwd/extfzd -> sw
+
+   while the scalar loop it replaces has independent iterations that the
+   bundler packs.  "Hidden by the bundler" is the usual VLIW argument for
+   charging such glue less; this is the case where the argument runs the other
+   way, and it is the scalar alternative that packs.
+
+   PolyBench symm at MINI is the measured case.  Its k-loop walks C[k][j] and
+   B[k][j] down a column, and at V4SF the model totals 34 for four lanes
+   against a scalar 44 -- so it vectorises, and loses by 26% (75966 -> 96108
+   kernel cycles on the ISS).  The emitted instruction counts agree with both
+   figures; only the cycles disagree.
+
+   builtin_vectorization_cost cannot fix this, which is why this class exists:
+   its arguments are (kind, vectype, misalign), and a scalarised strided
+   access asks for exactly the same scalar_load/vec_construct an ordinary
+   vector build from unrelated scalars asks for.  The access type lives on the
+   SLP node, and add_stmt_cost is the only cost interface that is handed one.
+   rs6000 (rs6000.cc, "Power processors do not currently have instructions for
+   strided and elementwise loads ... This leads to undercounting of the cost")
+   and i386 both do the same surcharge in the same place.
+
+   The surcharge is LVX_STRIDED_LANE_COST per lane on the construct or
+   deconstruct, i.e. a charge per lane rather than the generic n-1 for the
+   whole group, and it applies only to VMAT_ELEMENTWISE and VMAT_STRIDED_SLP.
+   A contiguous access is untouched by construction, which is what keeps this
+   away from the loops the 128-bit SIMD actually wins: gemm, syrk, syr2k and
+   the stencils are all contiguous.
+
+   Unlike i386 this does not also require DR_STEP to be non-constant.  i386
+   penalises only an unknown stride; symm's stride is a compile-time constant
+   at MINI and is scalarised just the same, so the guard would make this hook
+   do nothing for the case that motivated it.  rs6000 has no such guard
+   either.  */
+
+/* Charged per lane of a scalarised strided construct or deconstruct, on top
+   of the generic group cost.
+
+   One, and it is the minimum that works rather than a free parameter.  symm's
+   V4SF body has to exceed the scalar 44 to be declined, and with four
+   scalarised groups at the generic 3 that is 34 - 12 + 4 * (3 + s) > 44, so
+   s > 2.5: a per-lane charge of 1 gives s = 4 and flips it, and nothing
+   smaller does.
+
+   Two was tried first, following rs6000's "for each scalar load, we use 2 as
+   penalized cost", and overshoots to s = 8.  It fixes symm just as well and
+   takes syrk and syr2k with it -- kernels whose strided accesses vectorise
+   *profitably* here.  Measured over the four lvx-2 cells, 2 against 1:
+
+                               cost=2     cost=1
+     syrk   double -restrict   +23.95%     0.00%
+     syr2k  double -restrict   +20.35%    -0.09%
+     syr2k  double              +8.06%    +0.20%
+     syrk   float               +7.06%     0.00%
+     syr2k  float -restrict     +3.88%     0.00%
+     cholesky double -restrict  +1.15%     0.00%
+
+   and at 2 the -restrict series -- the one that measures the compiler rather
+   than PolyBench's own aliasing -- came out net *worse* than with no surcharge
+   at all.  So the number is load-bearing in both directions, and symm alone
+   cannot set it: symm is satisfied by anything above 2.5, and what picks 1 out
+   of that range is the four kernels that must not move.  */
+#define LVX_STRIDED_LANE_COST 1
+
+class lvx_vector_costs : public vector_costs
+{
+public:
+  using vector_costs::vector_costs;
+
+  unsigned int add_stmt_cost (int count, vect_cost_for_stmt kind,
+			      stmt_vec_info stmt_info, slp_tree node,
+			      tree vectype, int misalign,
+			      vect_cost_model_location where) override;
+};
+
+/* The extra cost, if any, of KIND on NODE beyond what the generic model
+   charges.  Non-zero only for the lane assembly of a scalarised strided
+   access.  */
+static unsigned int
+lvx_strided_lane_surcharge (vect_cost_for_stmt kind, slp_tree node,
+			    tree vectype)
+{
+  if (kind != vec_construct && kind != vec_deconstruct)
+    return 0;
+  if (!node || !vectype)
+    return 0;
+
+  vect_memory_access_type mat = SLP_TREE_MEMORY_ACCESS_TYPE (node);
+  if (mat != VMAT_ELEMENTWISE && mat != VMAT_STRIDED_SLP)
+    return 0;
+
+  /* A one-lane "vector" needs no assembly, and penalising it would charge for
+     work that is not emitted -- rs6000 hit this as PR103702.  */
+  unsigned HOST_WIDE_INT nunits;
+  if (!TYPE_VECTOR_SUBPARTS (vectype).is_constant (&nunits) || nunits <= 1)
+    return 0;
+
+  return LVX_STRIDED_LANE_COST * nunits;
+}
+
+unsigned int
+lvx_vector_costs::add_stmt_cost (int count, vect_cost_for_stmt kind,
+				 stmt_vec_info stmt_info, slp_tree node,
+				 tree vectype, int misalign,
+				 vect_cost_model_location where)
+{
+  unsigned int cost = builtin_vectorization_cost (kind, vectype, misalign);
+  cost += lvx_strided_lane_surcharge (kind, node, vectype);
+  return record_stmt_cost (stmt_info, where, cost * count);
+}
+
+static vector_costs *
+lvx_vectorize_create_costs (vec_info *vinfo, bool costing_for_scalar)
+{
+  return new lvx_vector_costs (vinfo, costing_for_scalar);
+}
+
+#undef TARGET_VECTORIZE_CREATE_COSTS
+#define TARGET_VECTORIZE_CREATE_COSTS lvx_vectorize_create_costs
+/* Implements TARGET_VECTORIZE_CREATE_COSTS }}} */
 
 /* A 64-bit vector conversion on the 128-bit unit: OPERANDS[1] goes into the low
    half of a zeroed SMODE pair, one conversion runs on every lane, and the low
