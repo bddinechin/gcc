@@ -30,36 +30,12 @@
    (match_operand:SIDI 2 "<imm32pred>" "")]
   ""
   {
-    if (!HAVE_LVX_US_PLUS_<MODE>)
-      emit_insn (gen_usadd<mode>3_1 (operands[0], operands[1], operands[2]));
-    else
-      emit_insn (gen_usadd<mode>3_2 (operands[0], operands[1], operands[2]));
+    emit_insn (gen_usadd<mode>3_2 (operands[0], operands[1], operands[2]));
     DONE;
   }
 )
 
-(define_insn_and_split "usadd<mode>3_1"
-  [(set (match_operand:SIDI 0 "register_operand" "=r")
-        (us_plus:SIDI (match_operand:SIDI 1 "register_operand" "r")
-                      (match_operand:SIDI 2 "register_operand" "r")))
-   (clobber (match_scratch:SIDI 3 "=&r"))]
-  "!HAVE_LVX_US_PLUS_<MODE>"
-  "#"
-  "!HAVE_LVX_US_PLUS_<MODE>"
-  [(set (match_dup 0)
-        (plus:SIDI (match_dup 1) (match_dup 2)))
-   (set (match_dup 3)
-        (ltu:SIDI (match_dup 0) (match_dup 1)))
-   (set (match_dup 0)
-        (if_then_else:SIDI
-            (ne (match_dup 3) (const_int 0))
-            (const_int -1)
-            (match_dup 0)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (<MODE>mode);
-  }
-)
+
 
 (define_expand "ussub<mode>3"
   [(match_operand:SIDI 0 "register_operand" "")
@@ -67,37 +43,16 @@
    (match_operand:SIDI 2 "<imm32pred>" "")]
   ""
   {
-    if (!HAVE_LVX_US_MINUS_<MODE>)
-      emit_insn (gen_ussub<mode>3_1 (operands[0], operands[1], operands[2]));
-    else
-      {
-	/* sbfus prints "%0 = %2, %1", so operand 2 lands in the register-only
-	   slot while operand 1 takes the .M immediate.  gen_* does not check
-	   predicates, so a constant operand 2 must be forced here.  */
-	rtx op2 = force_reg (<MODE>mode, operands[2]);
-	emit_insn (gen_ussub<mode>3_2 (operands[0], operands[1], op2));
-      }
+    /* sbfus prints "%0 = %2, %1", so operand 2 lands in the register-only
+       slot while operand 1 takes the .M immediate.  gen_* does not check
+       predicates, so a constant operand 2 must be forced here.  */
+    rtx op2 = force_reg (<MODE>mode, operands[2]);
+    emit_insn (gen_ussub<mode>3_2 (operands[0], operands[1], op2));
     DONE;
   }
 )
 
-(define_insn_and_split "ussub<mode>3_1"
-  [(set (match_operand:SIDI 0 "register_operand" "=r")
-        (us_minus:SIDI (match_operand:SIDI 1 "register_operand" "r")
-                       (match_operand:SIDI 2 "register_operand" "r")))
-   (clobber (match_scratch:SIDI 3 "=&r"))]
-  "!HAVE_LVX_US_MINUS_<MODE>"
-  "#"
-  "!HAVE_LVX_US_MINUS_<MODE>"
-  [(set (match_dup 3)
-        (umin:SIDI (match_dup 1) (match_dup 2)))
-   (set (match_dup 0)
-        (minus:SIDI (match_dup 1) (match_dup 3)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (<MODE>mode);
-  }
-)
+
 
 (define_expand "usashl<mode>3"
   [(match_operand:SIDI 0 "register_operand" "")
@@ -105,41 +60,12 @@
    (match_operand:SI 2 "reg_shift_operand" "")]
   ""
   {
-    if (!HAVE_LVX_US_ASHIFT_<MODE>)
-      emit_insn (gen_usashl<mode>3_1 (operands[0], operands[1], operands[2]));
-    else
-      emit_insn (gen_usashl<mode>3_2 (operands[0], operands[1], operands[2]));
+    emit_insn (gen_usashl<mode>3_2 (operands[0], operands[1], operands[2]));
     DONE;
   }
 )
 
-(define_insn_and_split "usashl<mode>3_1"
-  [(set (match_operand:SIDI 0 "register_operand" "=r")
-        (us_ashift:SIDI (match_operand:SIDI 1 "register_operand" "r")
-                        (match_operand:SI 2 "reg_shift_operand" "rU06")))
-   (clobber (match_scratch:SIDI 3 "=&r"))
-   (clobber (match_scratch:SIDI 4 "=&r"))]
-  "!HAVE_LVX_US_ASHIFT_<MODE>"
-  "#"
-  "!HAVE_LVX_US_ASHIFT_<MODE>"
-  [(set (match_dup 0)
-        (ashift:SIDI (match_dup 1) (match_dup 2)))
-   (set (match_dup 3)
-        (lshiftrt:SIDI (match_dup 0) (match_dup 2)))
-   (set (match_dup 4)
-        (ne:SIDI (match_dup 3) (match_dup 1)))
-   (set (match_dup 0)
-        (if_then_else:SIDI
-            (ne (match_dup 4) (const_int 0))
-            (const_int -1)
-            (match_dup 0)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (<MODE>mode);
-    if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (<MODE>mode);
-  }
-)
+
 
 (define_insn "negdi2"
   [(set (match_operand:DI 0 "register_operand" "=r")
@@ -194,31 +120,17 @@
    (match_operand:SIDI 1 "register_operand" "")]
   ""
   {
-    if (!HAVE_LVX_SS_ABS_<MODE>)
-      emit_insn (gen_ssabs<mode>2_1 (operands[0], operands[1]));
-    else
-      emit_insn (gen_ssabs<mode>2_2 (operands[0], operands[1]));
+    emit_insn (gen_ssabs<mode>2_2 (operands[0], operands[1]));
     DONE;
   }
 )
 
-(define_insn_and_split "ssabs<mode>2_1"
-  [(set (match_operand:SIDI 0 "register_operand" "=r")
-        (ss_abs:SIDI (match_operand:SIDI 1 "register_operand" "r")))]
-  "!HAVE_LVX_SS_ABS_<MODE>"
-  "#"
-  "!HAVE_LVX_SS_ABS_<MODE>"
-  [(set (match_dup 0)
-        (ss_neg:SIDI (match_dup 1)))
-   (set (match_dup 0)
-        (abs:SIDI (match_dup 0)))]
-  ""
-)
+
 
 (define_insn "ssabs<mode>2_2<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r")
         (ss_abs:SIDI (match_operand:SIDI 1 "register_operand" "r")))]
-  "HAVE_LVX_SS_ABS_<MODE>"
+  ""
   "abss<suffix><_sx> %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "tiny")]
@@ -266,44 +178,19 @@
    (match_operand:SIDI 2 "<imm32pred>" "")]
   ""
   {
-    if (!HAVE_LVX_SS_ABD_<MODE>)
-      emit_insn (gen_abds<mode>3_1 (operands[0], operands[1], operands[2]));
-    else
-      emit_insn (gen_abds<mode>3_2 (operands[0], operands[1], operands[2]));
+    emit_insn (gen_abds<mode>3_2 (operands[0], operands[1], operands[2]));
     DONE;
   }
 )
 
-(define_insn_and_split "abds<mode>3_1"
-  [(set (match_operand:SIDI 0 "register_operand" "=r")
-        (ss_minus:SIDI (smax:SIDI (match_operand:SIDI 1 "register_operand" "r")
-                                  (match_operand:SIDI 2 "register_operand" "r"))
-                       (smin:SIDI (match_dup 1) (match_dup 2))))
-   (clobber (match_scratch:SIDI 3 "=&r"))
-   (clobber (match_scratch:SIDI 4 "=&r"))]
-  "!HAVE_LVX_SS_ABD_<MODE>"
-  "#"
-  "!HAVE_LVX_SS_ABD_<MODE>"
-  [(set (match_dup 3)
-        (smax:SIDI (match_dup 1) (match_dup 2)))
-   (set (match_dup 4)
-        (smin:SIDI (match_dup 1) (match_dup 2)))
-   (set (match_dup 0)
-        (ss_minus:SIDI (match_dup 3) (match_dup 4)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (<MODE>mode);
-    if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (<MODE>mode);
-  }
-)
+
 
 (define_insn "abds<mode>3_2<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (ss_minus:SIDI (smax:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
                                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>"))
                        (smin:SIDI (match_dup 1) (match_dup 2))))]
-  "HAVE_LVX_SS_ABD_<MODE>"
+  ""
   "abds<suffix><_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
@@ -879,7 +766,7 @@
   [(set (match_operand:SI 0 "register_operand" "=r,r")
         (us_plus:SI (match_operand:SI 1 "register_operand" "r,r")
                     (match_operand:SI 2 "register_w32_operand" "r,W32")))]
-  "HAVE_LVX_US_PLUS_SI"
+  ""
   "addusw<_sx> %0 = %1, %2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "tiny, tiny_x")
@@ -915,7 +802,7 @@
   [(set (match_operand:SI 0 "register_operand" "=r,r")
         (us_minus:SI (match_operand:SI 1 "register_w32_operand" "r,W32")
                      (match_operand:SI 2 "register_operand" "r,r")))]
-  "HAVE_LVX_US_MINUS_SI"
+  ""
   ;; The .M immediate is the operand printed *last*, as in ussubdi3_2 -- and
   ;; this template prints "%0 = %2, %1", so it has to sit on operand 1.  With
   ;; the predicates the other way round the second alternative emitted
@@ -1228,7 +1115,7 @@
   [(set (match_operand:SI 0 "register_operand" "=r")
         (us_ashift:SI (match_operand:SI 1 "register_operand" "r")
                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "HAVE_LVX_US_ASHIFT_SI"
+  ""
   "slusw<_sx> %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
@@ -1642,7 +1529,7 @@
   [(set (match_operand:DI 0 "register_operand" "=r,r")
         (us_plus:DI (match_operand:DI 1 "register_operand" "r,r")
                     (match_operand:DI 2 "register_s32_operand" "r,I32")))]
-  "HAVE_LVX_US_PLUS_DI"
+  ""
   ;; ALU_DWRR1.M gives a sign-extended 32-bit immediate in the third slot --
   ;; the operand printed last.  Any Format ending .W or .M enables it.  These
   ;; have no ALU_DWRI variant, so unlike addd/sbfd there is no s10/s37/s64.
@@ -1680,7 +1567,7 @@
   [(set (match_operand:DI 0 "register_operand" "=r,r")
         (us_minus:DI (match_operand:DI 1 "register_s32_operand" "r,I32")
                      (match_operand:DI 2 "register_operand" "r,r")))]
-  "HAVE_LVX_US_MINUS_DI"
+  ""
   ;; ALU_DWRR1.M gives a sign-extended 32-bit immediate in the third slot --
   ;; the operand printed last.  Any Format ending .W or .M enables it.  These
   ;; have no ALU_DWRI variant, so unlike addd/sbfd there is no s10/s37/s64.
@@ -2277,7 +2164,7 @@
   [(set (match_operand:DI 0 "register_operand" "=r")
         (us_ashift:DI (match_operand:DI 1 "register_operand" "r")
                       (match_operand:SI 2 "reg_shift_operand" "rU06")))]
-  "HAVE_LVX_US_ASHIFT_DI"
+  ""
   "slusd %0 = %1, %2"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]

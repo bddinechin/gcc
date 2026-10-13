@@ -93,7 +93,7 @@
   (ne "any")
 ])
 
-;; Binary shift left and right code iterator for the 1 VXQI LITE patterns.
+;; Binary saturating shift code iterator, for the byte-lane LITE patterns.
 (define_code_iterator BINSHLRL [
   ss_ashift
   us_ashift
@@ -102,17 +102,6 @@
 (define_code_attr binshlrl [
   (ss_ashift "SS_ASHIFT")
   (us_ashift "US_ASHIFT")
-])
-
-;; Rotate left and right code iterator for the 1 VXQI patterns.
-(define_code_iterator ROTATE [
-  rotate
-  rotatert
-])
-
-(define_code_attr rotate [
-  (rotate "ROTATE")
-  (rotatert "ROTATERT")
 ])
 
 ;; Code attribute for mapping ALU code to prefix of pattern name.
@@ -184,45 +173,6 @@
   (rotatert "ror")
 ])
 
-;; Int iterator for the AVG operators of VXQI patterns.
-(define_int_iterator UNSPEC_AVGI [
-  UNSPEC_AVG
-  UNSPEC_AVGU
-  UNSPEC_AVGR
-  UNSPEC_AVGRU
-])
-
-;; Int attribute for the AVG prefix of VXQI patterns.
-(define_int_attr avgpre [
-  (UNSPEC_AVG "avg")
-  (UNSPEC_AVGU "uavg")
-  (UNSPEC_AVGR "avg")
-  (UNSPEC_AVGRU "uavg")
-])
-
-(define_int_attr AVGPRE [
-  (UNSPEC_AVG "AVG")
-  (UNSPEC_AVGU "UAVG")
-  (UNSPEC_AVGR "AVG")
-  (UNSPEC_AVGRU "UAVG")
-])
-
-;; Int attribute for the AVG postfix of VXQI patterns.
-(define_int_attr avgpost [
-  (UNSPEC_AVG "3_floor")
-  (UNSPEC_AVGU "3_floor")
-  (UNSPEC_AVGR "3_ceil")
-  (UNSPEC_AVGRU "3_ceil")
-])
-
-;; Int attribute for the AVG mnemonic of VXQI patterns.
-(define_int_attr avgm [
-  (UNSPEC_AVG "avg")
-  (UNSPEC_AVGU "avgu")
-  (UNSPEC_AVGR "avgr")
-  (UNSPEC_AVGRU "avgru")
-])
-
 ;; Iterator for SI, QI and HI modes
 (define_mode_iterator SHORT [  QI HI SI])
 
@@ -285,7 +235,6 @@
   (QI "W32") (HI "W32") (HF "W32") (SI "W32") (SF "W32")
   (DI "I32") (DF "I32")
 ])
-
 
 ;; Type suffix and length for materializing a symbol depending on pointer
 ;; size.  Alternatives using these should only be enabled for valid
@@ -1168,6 +1117,12 @@
 ;; Iterator for the small-element 128-bit vector integer modes -- the shifts,
 ;; which exist at every lane width including the byte (SLLBX, SRABX, SRLBX and
 ;; the saturating forms).
+;;
+;; The averages share it, and for the same reason rather than by coincidence:
+;; AVGBX, AVGHO and AVGWQ exist but there is no AVGDP, so a 64-bit lane has no
+;; average to name.  That used to be carried by HAVE_LVX_AVG_V2DI and friends
+;; being 0 while the small-element ones were 1; the macros are gone and the
+;; iterator is the record.
 (define_mode_iterator S128I [
   V16QI V8HI V4SI
 ])
@@ -1199,22 +1154,17 @@
   V4SF V2DF
 ])
 
-;; Iterator for the non-byte non-standard 128-bit vector integer modes.
-(define_mode_iterator V128I [
-  V16QI V8HI V4SI V2DI
-])
-
 ;; Iterator for the 128-bit vector integer modes.  The byte lanes belong here: ADDBX, SBFBX, MINBX,
 ;; MAXBX, ABSBX, NEGBX and the saturating forms all exist -- they were left
-;; out while the byte modes went through the VXQI half-word synthesis this
-;; port inherited, which the LVX ISA makes unnecessary.
+;; out while the byte modes were synthesised from half-word ones, the way this
+;; port inherited from KV3_1, which the LVX ISA makes unnecessary.
 (define_mode_iterator V128J [
   V16QI V8HI V4SI V2DI
 ])
 
 ;; Every 128-bit lane shape has a native rotate now that ROLBX/RORBX and
-;; ROLHO/RORHO joined ROLWQ/RORWQ and ROLDP/RORDP: V16QI went through the VXQI
-;; half-word synthesis and V8HI was lowered to shift-left/shift-right/or.
+;; ROLHO/RORHO joined ROLWQ/RORWQ and ROLDP/RORDP: V16QI was synthesised from
+;; half-word rotates and V8HI was lowered to shift-left/shift-right/or.
 (define_mode_iterator V128R [
   V16QI V8HI V4SI V2DI
 ])
@@ -1248,7 +1198,6 @@
   V16QI V8HI V4SI V2DI
 ])
 
-;; Iterator V128I.
 ;; The integer multiply-add widths.  V4SI was conditioned out of both of
 ;; these while the ISA had no MADDWQ/MSBFWQ; it has since 2026-09-11.
 (define_mode_iterator V128M [
@@ -1297,15 +1246,10 @@
   V8SF V4DF
 ])
 
-;; Iterator for the non-byte non-standard 256-bit vector integer modes.
-(define_mode_iterator V256I [
-  V16HI V4DI
-])
-
 ;; Iterator for the 256-bit vector integer modes.  The byte lanes belong here: ADDBX, SBFBX, MINBX,
 ;; MAXBX, ABSBX, NEGBX and the saturating forms all exist -- they were left
-;; out while the byte modes went through the VXQI half-word synthesis this
-;; port inherited, which the LVX ISA makes unnecessary.
+;; out while the byte modes were synthesised from half-word ones, the way this
+;; port inherited from KV3_1, which the LVX ISA makes unnecessary.
 (define_mode_iterator V256J [
   V32QI V16HI V8SI V4DI
 ])
@@ -1333,7 +1277,7 @@
   V32QI V16HI V8SI V4DI
 ])
 
-;; Iterator V256I.
+;; The integer multiply-add widths at 256 bits.
 (define_mode_iterator V256M [
   V32QI V16HI V8SI V4DI
 ])
@@ -1396,13 +1340,6 @@
   V4DF
 ])
 
-;; Iterator for the vector QI modes.
-(define_mode_iterator VXQI [
-  V16QI
-  V32QI
-])
-
-;; Iterator for the VXQI and V64QI modes.
 ;; The 512-bit byte mode alone: V16QI and V32QI reach the general V128J and
 ;; V256J patterns now, and HAVE_LVX_SELECT_* is 1 at every width, so the
 ;; half-word synthesis these carried was already unreachable.
