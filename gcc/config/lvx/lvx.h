@@ -711,7 +711,33 @@ void lvx_profile_hook (void);
 
 /* A C expression that is nonzero if on this machine the number of bits actually
    used for the count of a shift operation is equal to the number of bits needed
-   to represent the size of the object being shifted.  */
+   to represent the size of the object being shifted.
+
+   This is 1 because it is TRUE here, of every shift the port has, and the
+   reason is worth recording: the generic truncation mask is
+   GET_MODE_UNIT_BITSIZE (mode) - 1 (targhooks.cc, default_shift_truncation_mask
+   -- the LANE width, not the vector width), and LVX's shifts truncate by
+   exactly that.  Instruction.yml: SLLD is "shifted left by the %3 modulo 64",
+   SLLW modulo 32, and the packed forms modulo their lane -- SLLDP 64, SLLWQ 32,
+   SLLHO 16, SLLBX 8.  So the promise holds for the scalar and the vector
+   shifts alike.
+
+   Do not copy riscv here.  That port sets this to 0 and re-expresses the
+   truncation with QImode shift counts plus mask-absorbing patterns, because
+   upstream considers the blunt target-wide form of this macro discouraged --
+   not because 1 would be wrong for riscv.  For LVX, 0 would discard a fact
+   that is uniformly true and buy nothing: with the macro set, expand_shift_1
+   (expmed.cc) already folds an out-of-range constant count and strips a
+   lowpart SUBREG off a register count, which is precisely what riscv's QImode
+   counts exist to achieve.
+
+   The port that genuinely cannot define this is aarch64, which uses
+   (!TARGET_SIMD) and then overrides TARGET_SHIFT_TRUNCATION_MASK per mode:
+   NEON's register shifts take a SIGNED count and do not truncate, so the
+   promise would be a lie for its vector modes.  mips does the same for
+   Loongson MMI.  If an LVX vector shift ever acquires semantics like those,
+   the answer is their mode-dependent hook override, not flipping this macro
+   and rebuilding the truncation out of patterns.  */
 #define SHIFT_COUNT_TRUNCATED 1
 
 #define STORE_FLAG_VALUE 1
