@@ -42,17 +42,7 @@
       }
   }
 )
-(define_insn "*cstoredi4"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
-        (match_operator:DI 1 "comparison_operator"
-         [(match_operand:DI 2 "register_operand" "r,r,r,r")
-          (match_operand:DI 3 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")]))]
-  "!HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE"
-  "compd.%1 %0 = %2, %3"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length"      "4,       4,         8,        12")]
-)
+
 (define_insn "*cstoredi4"
   [(set (match_operand:DI 0 "register_operand" "=r,r")
         (match_operator:DI 1 "comparison_operator"
@@ -106,19 +96,7 @@
    (set_attr "length"      "4,         8")]
 )
 
-(define_insn "*lvx_comp_anyd"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
-        (ne:DI
-          (and:DI
-            (match_operand:DI 1 "register_operand" "r,r,r,r")
-            (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))
-          (const_int 0)))]
-  "!HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE"
-  "compd.any %0 = %1, %2"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length"      "4,       4,         8,        12")]
-)
+
 (define_insn "*lvx_comp_anyd"
   [(set (match_operand:DI 0 "register_operand" "=r,r")
         (ne:DI
@@ -147,19 +125,7 @@
    (set_attr "length"      "4,         8")]
 )
 
-(define_insn "*lvx_comp_noned"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
-        (eq:DI
-          (and:DI
-            (match_operand:DI 1 "register_operand" "r,r,r,r")
-            (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))
-          (const_int 0)))]
-  "!HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE"
-  "compd.none %0 = %1, %2"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length"      "4,       4,         8,        12")]
-)
+
 (define_insn "*lvx_comp_noned"
   [(set (match_operand:DI 0 "register_operand" "=r,r")
         (eq:DI
@@ -188,19 +154,7 @@
    (set_attr "length"      "4,         8")]
 )
 
-(define_insn "*lvx_comp_alld"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
-        (eq:DI
-          (and:DI
-            (not:DI (match_operand:DI 1 "register_operand" "r,r,r,r"))
-            (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))
-          (const_int 0)))]
-  "HAVE_LVX_COMP_SIDI_ALL_NALL && !HAVE_LVX_COMPD_MAX_IMMEDIATE_I32"
-  "compd.all %0 = %1, %2"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length"      "4,       4,         8,        12")]
-)
+
 (define_insn "*lvx_comp_alld"
   [(set (match_operand:DI 0 "register_operand" "=r,r")
         (eq:DI
@@ -229,19 +183,7 @@
    (set_attr "length"      "4,         8")]
 )
 
-(define_insn "*lvx_comp_nalld"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
-        (ne:DI
-          (and:DI
-            (not:DI (match_operand:DI 1 "register_operand" "r,r,r,r"))
-            (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))
-          (const_int 0)))]
-  "HAVE_LVX_COMP_SIDI_ALL_NALL && !HAVE_LVX_COMPD_MAX_IMMEDIATE_I32"
-  "compd.nall %0 = %1, %2"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length"      "4,       4,         8,        12")]
-)
+
 (define_insn "*lvx_comp_nalld"
   [(set (match_operand:DI 0 "register_operand" "=r,r")
         (ne:DI
@@ -662,39 +604,9 @@
 ;;    (set_attr "length"        "16")]
 ;; )
 
-(define_insn_and_split "*compndq"
-  [(set (match_operand:V4DI 0 "register_operand" "=r")
-        (match_operator:V4DI 1 "comparison_operator"
-         [(match_operand:V4DI 2 "register_operand" "r")
-          (match_operand:V4DI 3 "reg_zero_mone_operand" "rS01")]))]
-  "!HAVE_LVX_NEG_CMP_V4DI"
-  "#"
-  "!HAVE_LVX_NEG_CMP_V4DI && reload_completed"
-  [(set (match_dup 0)
-        (neg:V4DI (match_op_dup 1 [(match_dup 2) (match_dup 3)])))
-   (set (match_dup 0)
-        (neg:V4DI (match_dup 0)))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny4")]
-)
 
-(define_insn_and_split "*compndq_s2"
-  [(set (match_operand:V4DI 0 "register_operand" "=&r")
-        (match_operator:V4DI 1 "comparison_operator"
-         [(vec_duplicate:V4DI (match_operand:DI 2 "nonmemory_operand" "r"))
-          (match_operand:V4DI 3 "reg_zero_mone_operand" "rS01")]))]
-  "!HAVE_LVX_NEG_CMP_V4DI"
-  "#"
-  "!HAVE_LVX_NEG_CMP_V4DI && reload_completed"
-  [(set (match_dup 0)
-        (neg:V4DI (match_op_dup 1 [(vec_duplicate:V4DI (match_dup 2)) (match_dup 3)])))
-   (set (match_dup 0)
-        (neg:V4DI (match_dup 0)))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny4")]
-)
+
+
 
 ;; not selectionable
 ;; (define_insn_and_split "*compndq_s3"
@@ -1283,19 +1195,7 @@
 
 ;; CMOVED
 
-(define_insn "*cmov<SIDI:mode>.<FITGPR:mode>"
-  [(set (match_operand:FITGPR 0 "register_operand" "=r,r,r,r")
-        (if_then_else:FITGPR (match_operator 2 "zero_comparison_operator"
-                                               [(match_operand:SIDI 3 "register_operand" "r,r,r,r")
-                                                (const_int 0)])
-                             (match_operand:FITGPR 1 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")
-                             (match_operand:FITGPR 4 "register_operand" "0,0,0,0")))]
-  "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
-  "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length"      "4,       4,         8,        12")]
-)
+
 (define_insn "*cmov<SIDI:mode>.<FITGPR:mode>"
   [(set (match_operand:FITGPR 0 "register_operand" "=r,r")
         (if_then_else:FITGPR (match_operator 2 "zero_comparison_operator"
@@ -1310,19 +1210,7 @@
    (set_attr "length"      "4,         8")]
 )
 
-(define_insn "*cmov<SIDI:mode>.<FITGPR:mode>.<EQNE:evenodd>"
-  [(set (match_operand:FITGPR 0 "register_operand" "=r,r,r,r")
-        (if_then_else:FITGPR (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r,r,r")
-                                                      (const_int 1) (const_int 0))
-                                   (const_int 0))
-                             (match_operand:FITGPR 1 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")
-                             (match_operand:FITGPR 3 "register_operand" "0,0,0,0")))]
-  "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
-  "cmoved.<EQNE:evenodd> %2? %0 = %1"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length"      "4,       4,         8,        12")]
-)
+
 (define_insn "*cmov<SIDI:mode>.<FITGPR:mode>.<EQNE:evenodd>"
   [(set (match_operand:FITGPR 0 "register_operand" "=r,r")
         (if_then_else:FITGPR (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r")
@@ -1946,20 +1834,7 @@
 
 ;; COND_EXEC MOVE
 
-(define_insn "*cond_exec_move<FITGPR:mode>"
-  [(cond_exec
-     (match_operator 2 "zero_comparison_operator"
-      [(match_operand:SIDI 3 "register_operand" "r,r,r,r")
-       (const_int 0)])
-     (set (match_operand:FITGPR 0 "register_operand" "=r,r,r,r")
-          (match_operand:FITGPR 1 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
-  "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
-  "cmoved.<SIDI:suffix>%2z %3? %0 = %1"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length"      "4,       4,         8,        12")
-   (set_attr "predicable" "no")]
-)
+
 (define_insn "*cond_exec_move<FITGPR:mode>"
   [(cond_exec
      (match_operator 2 "zero_comparison_operator"
@@ -1975,20 +1850,7 @@
    (set_attr "predicable" "no")]
 )
 
-(define_insn "*cond_exec_move<FITGPR:mode>.<EQNE:evenodd>"
-  [(cond_exec
-     (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r,r,r")
-                              (const_int 1) (const_int 0))
-           (const_int 0))
-     (set (match_operand:FITGPR 0 "register_operand" "=r,r,r,r")
-          (match_operand:FITGPR 1 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
-  "!HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32"
-  "cmoved.<EQNE:evenodd> %2? %0 = %1"
-  [(set_attr "type" "alu, alu, alu, alu")
-   (set_attr "issue" "tiny, tiny, tiny_x, tiny_x2")
-   (set_attr "length"      "4,       4,         8,        12")
-   (set_attr "predicable" "no")]
-)
+
 (define_insn "*cond_exec_move<FITGPR:mode>.<EQNE:evenodd>"
   [(cond_exec
      (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r")

@@ -1640,16 +1640,7 @@
 )
 
 ;; fixme: try merging those two.
-(define_insn "muldi3_1"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
-        (mult:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                 (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
-  "!HAVE_LVX_MULD_ONLY_I32_IMMEDIATE"
-  "muld %0 = %1, %2"
-  [(set_attr "type" "imul, imul, imul, imul")
-   (set_attr "issue" "lite, lite, lite_x, lite_x2")
-   (set_attr "length"      "4,        4,          8,         12")]
-)
+
 (define_insn "muldi3_4"
   [(set (match_operand:DI 0 "register_operand" "=r,r")
         (mult:DI (match_operand:DI 1 "register_operand" "r,r")

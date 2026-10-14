@@ -128,38 +128,7 @@
   }
 )
 
-(define_insn "*mov<mode>"
-  [(set (match_operand:X256 0 "nonimmediate_operand" "=x,x,x,x,a,b,m,r,x,r")
-        (match_operand:X256 1 "nonimmediate_operand"  "x,a,b,m,x,x,x,x,r,r"))]
-  "LVX_2 && (!HAVE_LVX_EXT_CACHED_LOAD)"
-  {
-    switch (which_alternative)
-      {
-      case 0:
-        return "xcopyo %0 = %1";
-      case 1: case 2: case 3:
-        return "xlo.u%X1 %0 = %1";
-      case 4: case 5: case 6:
-        return "xso%X0 %0 = %1";
-      case 7:
-        return "xmovefo %0 = %1";
-      case 8:
-        return "#";
-      case 9:
-        return "copyo %0 = %1";
-      default:
-        gcc_unreachable ();
-      }
-  }
-  ;; XLO has no cached form on this core, so its .u is part of the mnemonic
-  ;; rather than a variant read off the operand: say so, since nothing in the
-  ;; RTL does.  Only the xload alternatives consult "variant".
-  [(set_attr "variant" "uncached")
-   (set_attr "type" "xcopy, xload, xload, xload, xstore, xstore, xstore, xmovef, xmoveto, copy")
-   (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_x2, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2, ext_misc_auxw, lite2_misc, lsu_auxr_auxw")
-   (set_attr "length"                "4,                4,                  8,                 12,             4,               8,              12,                 4,                    8,            4")
-   (set_attr "predicable" "no")]
-)
+
 
 (define_insn "*mov<mode>"
   [(set (match_operand:X256 0 "nonimmediate_operand" "=x,x,x,x,a,b,m,r,x,r")
