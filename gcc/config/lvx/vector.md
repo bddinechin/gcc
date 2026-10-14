@@ -1827,7 +1827,45 @@
    (set_attr "length" "4,8")]
 )
 
-(define_insn "sub<mode>3"
+;; `a - CONST' is `a + (-CONST)', and only the second form can carry the constant:
+;; SBF's .S twin puts its immediate in registerO -- the %3 slot, which the
+;; mnemonic reads as the MINUEND -- so a constant SUBTRAHEND has nowhere to go,
+;; while ADD's immediate sits on either operand because addition commutes.
+;;
+;; GCC's own folding already does this for UNSIGNED lanes and not for signed
+;; ones, where negating a constant looks like it might overflow.  In RTL the
+;; arithmetic is modular and there is nothing to guard, so the rewrite is
+;; unconditional here -- it was MAKEDP + SBF against one ADD for signed `a - 3'
+;; at every one of bx/ho/wq, which is most integer SIMD code.
+;;
+;; The guard that remains is encodability, not signedness: the negation has to be
+;; one repeated 32-bit word itself, which it is at 32-bit lanes and narrower but
+;; not at 64 (-3 is 0xFFFFFFFF_FFFFFFFD, whose halves differ), so V2DI/V4DI fall
+;; through to SBF with the constant in a register, as before.
+(define_expand "sub<mode>3"
+  [(set (match_operand:V128J 0 "register_operand")
+        (minus:V128J (match_operand:V128J 1 "reg_or_splat32_operand")
+                     (match_operand:V128J 2 "nonmemory_operand")))]
+  "LVX_2"
+  {
+    if (CONSTANT_P (operands[2]))
+      {
+	rtx neg = simplify_unary_operation (NEG, <MODE>mode, operands[2],
+					    <MODE>mode);
+	if (neg != NULL_RTX && lvx_splat32_const_p (neg))
+	  {
+	    emit_insn (gen_add<mode>3 (operands[0],
+				       force_reg (<MODE>mode, operands[1]),
+				       neg));
+	    DONE;
+	  }
+	operands[2] = force_reg (<MODE>mode, operands[2]);
+      }
+    emit_insn (gen_sub<mode>3_insn (operands[0], operands[1], operands[2]));
+    DONE;
+  })
+
+(define_insn "sub<mode>3_insn"
   [(set (match_operand:V128J 0 "register_operand" "=r,r")
         (minus:V128J (match_operand:V128J 1 "reg_or_splat32_operand" "r,SXW")
                      (match_operand:V128J 2 "register_operand" "r,r")))]
@@ -3347,7 +3385,30 @@
    (set_attr "length" "8,16")]
 )
 
-(define_insn "sub<mode>3"
+(define_expand "sub<mode>3"
+  [(set (match_operand:V256J 0 "register_operand")
+        (minus:V256J (match_operand:V256J 1 "reg_or_splat32_operand")
+                     (match_operand:V256J 2 "nonmemory_operand")))]
+  "LVX_2"
+  {
+    if (CONSTANT_P (operands[2]))
+      {
+	rtx neg = simplify_unary_operation (NEG, <MODE>mode, operands[2],
+					    <MODE>mode);
+	if (neg != NULL_RTX && lvx_splat32_const_p (neg))
+	  {
+	    emit_insn (gen_add<mode>3 (operands[0],
+				       force_reg (<MODE>mode, operands[1]),
+				       neg));
+	    DONE;
+	  }
+	operands[2] = force_reg (<MODE>mode, operands[2]);
+      }
+    emit_insn (gen_sub<mode>3_insn (operands[0], operands[1], operands[2]));
+    DONE;
+  })
+
+(define_insn "sub<mode>3_insn"
   [(set (match_operand:V256J 0 "register_operand" "=r,r")
         (minus:V256J (match_operand:V256J 1 "reg_or_splat32_operand" "r,SXW")
                      (match_operand:V256J 2 "register_operand" "r,r")))]
