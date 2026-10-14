@@ -200,6 +200,7 @@ struct lvx_modmap
 #define LVX_MOD_COUNTING   lvx_modmap_counting
 #define LVX_MOD_EXTENDMUL  lvx_modmap_extendmul
 #define LVX_MOD_FLOATINGS  lvx_modmap_floatings
+#define LVX_MOD_INTCOMP    lvx_modmap_intcomp
 #define LVX_MOD_LANEWISE   lvx_modmap_lanewise
 #define LVX_MOD_LOADCOND   lvx_modmap_loadcond
 #define LVX_MOD_MOVECOND   lvx_modmap_movecond
@@ -376,6 +377,19 @@ const struct lvx_modmap lvx_modmap_mulxdt_all = {
   lvx_mod_mulxdt, lvx_mod_mulxdt
 };
 const struct lvx_modmap *lvx_modmap_mulxdt = &lvx_modmap_mulxdt_all;
+
+/* COMP*'s lane comparison.  The ISA's intcomp also has .ANY and .NONE --
+   "any"/"no bits set after AND-ing" -- and they are deliberately absent here:
+   they are not relational, so there is no RTX comparison code to carry them
+   through the `vec_cmp' pattern these expand to.  The ten that remain are
+   exactly GET_RTX_NAME of their codes, which is what prints the suffix.  */
+const char *lvx_mod_intcomp[] = {
+ ".lt", ".ge", ".ltu", ".geu", ".eq", ".ne", ".le", ".gt", ".leu", ".gtu", NULL
+};
+const struct lvx_modmap lvx_modmap_intcomp_all = {
+  lvx_mod_intcomp, lvx_mod_intcomp
+};
+const struct lvx_modmap *lvx_modmap_intcomp = &lvx_modmap_intcomp_all;
 
 const char *lvx_mod_narrowint[] = {
  "", ".q", ".s", ".us", NULL
@@ -850,6 +864,7 @@ tree lvx_builtin_types[LVX_BTI_MAX];
 #define LVX_ATYPE_EXTENDMUL LVX_ATYPE_STRING
 #define LVX_ATYPE_FLOATINGS LVX_ATYPE_STRING
 #define LVX_ATYPE_LANEWISE LVX_ATYPE_STRING
+#define LVX_ATYPE_INTCOMP LVX_ATYPE_STRING
 #define LVX_ATYPE_LOADCOND LVX_ATYPE_STRING
 #define LVX_ATYPE_MOVECOND LVX_ATYPE_STRING
 #define LVX_ATYPE_MULXDT LVX_ATYPE_STRING

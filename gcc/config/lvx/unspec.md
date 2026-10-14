@@ -249,6 +249,13 @@
         ;; (the vectorizer's masked-store skip guard) to `mask & 1'.
         UNSPEC_PACKCMP
 
+        ;; The same packed lane bit-mask, but asked for by name: COMP* with the
+        ;; comparison carried as a modifier string rather than as an rtx
+        ;; comparison code, which is what a builtin can pass.  Distinct from
+        ;; UNSPEC_PACKCMP so that nothing tries to read a comparison out of
+        ;; operand 0 -- here operand 0 is a vector, not a compare.
+        UNSPEC_LVX_COMP
+
         UNSPEC_EXTB2
         UNSPEC_EXTB4
         UNSPEC_EXTB8

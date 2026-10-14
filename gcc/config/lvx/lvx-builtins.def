@@ -246,6 +246,15 @@ LVX_BUILTIN_DIRECT   (xhigh4096, X4096_FTYPE_X8192,, lvx_2) // Extension
 
 LVX_BUILTIN_DIRECT   (splatq256, V256_FTYPE_V128,, lvx_2) // Vector
 
+/* COMP*: a lane compare packed one-bit-per-lane into a GPR, as a value.  The
+   vectorizer reaches these through `vec_cmp<mode><lanemask>'; these are for a
+   caller who wants the mask itself -- SIMDe's _mm_movemask_epi8 above all,
+   whose portable fallback is a serial 16-byte loop.  */
+LVX_BUILTIN_DIRECT   (compbx, UINT32_FTYPE_V16QI_V16QI_INTCOMP,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (compho, UINT32_FTYPE_V8HI_V8HI_INTCOMP,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (compwq, UINT32_FTYPE_V4SI_V4SI_INTCOMP,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (compdp, UINT32_FTYPE_V2DI_V2DI_INTCOMP,, lvx_2) // Vector
+
 LVX_BUILTIN_DIRECT   (selectbx, V16QI_FTYPE_V16QI_V16QI_V16QI_SIMDCOND,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (selectbv, V32QI_FTYPE_V32QI_V32QI_V32QI_SIMDCOND,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (selectbt, V64QI_FTYPE_V64QI_V64QI_V64QI_SIMDCOND,, lvx_2) // Vector

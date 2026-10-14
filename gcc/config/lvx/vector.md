@@ -423,103 +423,52 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")])
 
-;; The zeroing twin.  No tied operand: BLENDZ* does not read its destination,
-;; so the allocator is free to pick any register, where lvx_blend<compx> must
-;; constrain operand 1 to "0".
-;; -------------------------------------------------------------------------
-;; TAILD for the partial-vector loop mask.
+;; __builtin_lvx_comp{bx,ho,wq,dp} (a, b, ".cc") -- the lane compare as a
+;; builtin, so code that wants the packed mask *as a value* can have it without
+;; going through the vectorizer.  SIMDe's `_mm_movemask_epi8' is the motivating
+;; caller and the reason this exists: its portable fallback is a 16-iteration
+;; reduction over the bytes, which lowers to a serial load/shift/or chain and
+;; measured ~350 cycles -- while COMP* had already computed that exact value and
+;; the sequence was reconstructing it through a stack spill.  See
+;; lvx-simde's simde/x86/sse2.h.
 ;;
-;; A fully masked loop recomputes its lane mask every iteration, and GCC's
-;; AVX-512-style loop control spells that as a splat compared against the lane
-;; ramp:  _31 = {rem,rem,rem,rem};  _34 = _31 >u {0,1,2,3}.  That lowers to
-;; SPLATWQ + COMPWQ.GTU + ANDW -- three ALU_LITE syllables -- per masked
-;; access, and measured on validation/bench/condadd.c it is where a masked
-;; reduction's cost actually is: 20 of the 46 instructions in the f64 loop body
-;; are mask generation, against 2 for the select and 8 for the arithmetic.
+;; The result is an int, not the <LANEMASK> the vectorizer's `vec_cmp' uses, and
+;; it needs no widening: COMP* zeroes its whole destination GPR before writing
+;; lane bits ("new result1 = 0" in the ISA description -- the architectural
+;; statement, not an observation of one core), so the bits above the mask are
+;; already clear.
 ;;
-;; TAILD is the whole triple in one ALU_TINY syllable: lane i set iff
-;; %1 + i <u %2, with the bits above the lanecount cleared.  With a zero base
-;; it is exactly `rem >u i'.  TINY rather than LITE matters as much as the
-;; count here -- LITE has two slots per bundle and TINY four, counting the two
-;; LSU slots, so this stops the mask competing with the packed arithmetic.
+;; The second operand takes the .S splat form as well as a register, the way
+;; `*compn<suffix>' does: COMPBX's formats are ALU_BXCWRR and ALU_BXCWRR.S, so a
+;; compare against a repeated 32-bit word needs no register holding it.  Without
+;; the second alternative a compare against zero costs a MAKEDP into a register
+;; pair first, which is what the saturating ops still do.
 ;;
-;; Matched after combine has folded the splat into the compare; the dump
-;; confirms it offers precisely this shape (`Trying 14, 13 -> 15').  The splat
-;; source arrives as a SImode subreg of the DImode register the counter already
-;; lives in, so TAILD needs no extension -- which is why this matches the
-;; subreg rather than taking an <INNER> operand and zero-extending it, a
-;; per-iteration instruction that would have eaten the saving.
-;; -------------------------------------------------------------------------
-
-;; Matched as the PARALLEL combine actually offers, not as a bare set.  In the
-;; two-insn attempt (`Trying 13 -> 15') the ramp is still a register, because
-;; the generic compare's operand predicate demands one; the literal arrives
-;; only in the three-insn `Trying 14, 13 -> 15', which keeps the constant live
-;; in its own set because the loop's other compare still reads it.  So the
-;; pattern carries that second set and the split re-emits it -- and when every
-;; compare in the loop has become a TAILD the constant has no readers left and
-;; DCE deletes it, which is the case worth having: the ramp costs two MAKEDs.
-(define_insn_and_split "*lvx_taild_loop_mask"
-  [(set (match_operand:QI 0 "register_operand" "=r")
-        (unspec:QI
-          [(gtu:QI (vec_duplicate:V4SI
-                     (subreg:SI (match_operand:DI 1 "register_operand" "r") 0))
-                   (match_operand:V4SI 2 "lvx_lane_ramp_operand" "i"))]
-          UNSPEC_PACKCMP))
-   (set (match_operand:V4SI 3 "register_operand" "=r") (match_dup 2))]
+;; The two are a genuine tradeoff and the choice is left to the compiler: the
+;; splat rides in an IMMX syllable, so that alternative is 8 bytes against the
+;; register form's 4, while the register form ties up a pair.  Measured, it
+;; picks the immediate even in a loop, where a loop-invariant zero vector could
+;; have been hoisted instead -- so do not assume the hoist; check the asm.
+;;
+;; The comparison rides as a modifier string rather than an rtx comparison code,
+;; the way SELECT*/CMOVE do (`cmoved%4'), because that is what a builtin can
+;; hand down: a builtin argument is a value, and an rtx_code is not one.  That
+;; also means .ANY/.NONE could be added here without a comparison code to spell
+;; them -- see lvx_mod_intcomp, which leaves them out for now.
+(define_insn "lvx_comp<compx>"
+  [(set (match_operand:SI 0 "register_operand" "=r,r")
+	(unspec:SI [(match_operand:SIMD128I 1 "register_operand" "r,r")
+		    (match_operand:SIMD128I 2 "reg_or_splat32_operand" "r,SXW")
+		    (match_operand 3 "" "")] UNSPEC_LVX_COMP))]
   "LVX_2"
-  "#"
-  "&& can_create_pseudo_p ()"
-  [(const_int 0)]
-  {
-    rtx zero = force_reg (DImode, const0_rtx);
-    rtx res = gen_reg_rtx (DImode);
-    emit_insn (gen_lvx_taild (res, zero, operands[1],
-                              gen_rtx_CONST_STRING (VOIDmode, ".v4")));
-    emit_move_insn (operands[0], gen_lowpart (QImode, res));
-    emit_move_insn (operands[3], operands[2]);
-    DONE;
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")])
+  "comp<compx>%3 %0 = %1, %2"
+  [(set_attr "type" "alu, alu")
+   (set_attr "issue" "lite, lite_x")
+   (set_attr "length"      "4,       8")])
 
-;; The same, for the in-loop mask.  The prologue splats the bound, which lives
-;; in a DImode register, so the pattern above sees a SImode subreg of it and
-;; hands TAILD the register as it stands; the per-iteration mask splats the
-;; countdown `ivtmp', a plain SImode pseudo, so it needs widening first.
-;;
-;; ZERO extension, which makes TAILD's 64-bit unsigned compare literally the
-;; 32-bit unsigned compare it replaces.  (Sign extension would also agree --
-;; a 32-bit value whose top bit is set sign-extends to at least 2^63, and both
-;; readings then exceed every lane index -- but zero extension needs no such
-;; argument.)  The widening is one ALU_TINY syllable and pass_ree deletes it
-;; where the producer already left the register extended.
-(define_insn_and_split "*lvx_taild_loop_mask_si"
-  [(set (match_operand:QI 0 "register_operand" "=r")
-        (unspec:QI
-          [(gtu:QI (vec_duplicate:V4SI
-                     (match_operand:SI 1 "register_operand" "r"))
-                   (match_operand:V4SI 2 "lvx_lane_ramp_operand" "i"))]
-          UNSPEC_PACKCMP))
-   (set (match_operand:V4SI 3 "register_operand" "=r") (match_dup 2))]
-  "LVX_2"
-  "#"
-  "&& can_create_pseudo_p ()"
-  [(const_int 0)]
-  {
-    rtx zero = force_reg (DImode, const0_rtx);
-    rtx bound = gen_reg_rtx (DImode);
-    convert_move (bound, operands[1], 1);
-    rtx res = gen_reg_rtx (DImode);
-    emit_insn (gen_lvx_taild (res, zero, bound,
-                              gen_rtx_CONST_STRING (VOIDmode, ".v4")));
-    emit_move_insn (operands[0], gen_lowpart (QImode, res));
-    emit_move_insn (operands[3], operands[2]);
-    DONE;
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny")])
-
+;; The zeroing twin of BLEND*.  No tied operand: BLENDZ* does not read its
+;; destination, so the allocator is free to pick any register, where
+;; lvx_blend<compx> must constrain operand 1 to "0".
 (define_insn "lvx_blendz<compx>"
   [(set (match_operand:SIMD128I 0 "register_operand" "=r")
         (unspec:SIMD128I
