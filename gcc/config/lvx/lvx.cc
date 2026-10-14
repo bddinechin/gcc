@@ -1969,6 +1969,29 @@ lvx_split_256bits_move (rtx dst, rtx src)
 
 /* Build big RTX constants {{{ */
 
+/* Write VALUE to both double words of the 128-bit DST, which is a register of
+   some 128-bit mode.  One MAKEDP where the ISA has it and the pair is aligned,
+   two MAKEDs otherwise -- the fallback is what every 128-bit constant used
+   before MAKEDP existed, so lvx-1 and a misaligned pair keep exactly the code
+   they had.  */
+static void
+lvx_emit_64bit_halves (rtx dst, HOST_WIDE_INT value)
+{
+  machine_mode mode = GET_MODE (dst);
+  rtx pair = simplify_gen_subreg (V2DImode, dst, mode, 0);
+
+  if (LVX_2 && pair && lvx_hardreg_aligned_p (pair, V2DImode))
+    {
+      emit_insn (gen_lvx_makedp (pair, GEN_INT (value)));
+      return;
+    }
+
+  emit_insn (gen_movdi (simplify_gen_subreg (DImode, dst, mode, 0),
+                        GEN_INT (value)));
+  emit_insn (gen_movdi (simplify_gen_subreg (DImode, dst, mode, 8),
+                        GEN_INT (value)));
+}
+
 /* Make a 128bit constant from SRC into DST in DI chunks.  */
 void
 lvx_make_128bit_const (rtx dst, rtx src)
@@ -2004,6 +2027,15 @@ lvx_make_128bit_const (rtx dst, rtx src)
     }
 
   enum machine_mode mode = GET_MODE (dst);
+
+  /* Equal halves are one MAKEDP: the all-zero and all-ones vectors, and every
+     constant uniform at 32-bit lanes or narrower, land here.  */
+  if (value_0 == value_1)
+    {
+      lvx_emit_64bit_halves (dst, value_0);
+      return;
+    }
+
   rtx dst_0 = simplify_gen_subreg (DImode, dst, mode, 0);
   rtx dst_1 = simplify_gen_subreg (DImode, dst, mode, 8);
 
@@ -2054,15 +2086,31 @@ lvx_make_256bit_const (rtx dst, rtx src)
     }
 
   enum machine_mode mode = GET_MODE (dst);
-  rtx dst_0 = simplify_gen_subreg (DImode, dst, mode, 0);
-  rtx dst_1 = simplify_gen_subreg (DImode, dst, mode, 8);
-  rtx dst_2 = simplify_gen_subreg (DImode, dst, mode, 16);
-  rtx dst_3 = simplify_gen_subreg (DImode, dst, mode, 24);
 
-  emit_insn (gen_movdi (dst_0, GEN_INT (value_0)));
-  emit_insn (gen_movdi (dst_1, GEN_INT (value_1)));
-  emit_insn (gen_movdi (dst_2, GEN_INT (value_2)));
-  emit_insn (gen_movdi (dst_3, GEN_INT (value_3)));
+  /* A 256-bit quad is two pairs, and MAKEDP writes one pair, so the two halves
+     are decided separately: an all-zero or all-ones quad is two MAKEDPs, and a
+     quad uniform in one half only still saves the MAKED there.  */
+  for (int half = 0; half < 2; half++)
+    {
+      HOST_WIDE_INT lo = half ? value_2 : value_0;
+      HOST_WIDE_INT hi = half ? value_3 : value_1;
+      unsigned off = half * 16;
+
+      if (lo == hi)
+        {
+          rtx pair = simplify_gen_subreg (V2DImode, dst, mode, off);
+          if (pair)
+            {
+              lvx_emit_64bit_halves (pair, lo);
+              continue;
+            }
+        }
+
+      emit_insn (gen_movdi (simplify_gen_subreg (DImode, dst, mode, off),
+                            GEN_INT (lo)));
+      emit_insn (gen_movdi (simplify_gen_subreg (DImode, dst, mode, off + 8),
+                            GEN_INT (hi)));
+    }
 }
 
 /* Make a 512bit constant from SRC into DST in DI chunks.  */

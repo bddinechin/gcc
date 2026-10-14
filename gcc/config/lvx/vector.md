@@ -82,6 +82,48 @@
   }
 )
 
+;; The three *dup patterns above took `nonmemory_operand' against a "r"
+;; constraint, which a constant cannot satisfy -- and every caller force_regs
+;; its source, so no constant ever reached them by design.  What the loose
+;; predicate did reach was the MAKEDP insn below: `split_all_insns' tries every
+;; splitter against an insn's pattern rather than against the code recog chose,
+;; so a (vec_duplicate:V2DI (const_int)) matched *dup128's splitter and was
+;; expanded straight back into the two chunk stores it was meant to replace --
+;; inside the same split pass, which is why the dump showed no trace of it.
+;; The predicate now says what the constraint always said.
+
+;; MAKEDP, which sign-extends one immediate to 64 bits and writes it to both
+;; double words of a pair.  It is what every splattable 128-bit constant was
+;; costing twice: `lvx_make_128bit_const' builds a constant as two DImode
+;; moves, and when the two halves are equal -- which they are for the all-zero
+;; and all-ones vectors, and for any constant uniform at 32-bit lanes or
+;; narrower -- those are two identical MAKEDs.  One MAKEDP replaces them: one
+;; syllable instead of two, one ALU_LITE slot instead of two ALU_TINY ones, and
+;; a single definition of the pair rather than a definition of each half.
+;;
+;; The operand is a DImode immediate duplicated into V2DI, which is the shape
+;; the instruction has rather than the shape of whatever vector mode the
+;; constant came from: the two callers take a V2DI view of the destination, so
+;; one pattern covers every 128-bit lane shape, and the 256-bit case is this
+;; pattern twice.  A `vec_duplicate' of a constant is not canonical RTL -- the
+;; simplifiers fold it to a CONST_VECTOR -- which is harmless here because both
+;; callers run after reload, past the last pass that would rewrite it, and
+;; reach the pattern through `gen_lvx_makedp' rather than through recog.
+;;
+;; The destination must be an aligned pair, which a post-reload caller has to
+;; check rather than assume; `lvx_make_128bit_const' falls back to the two
+;; MAKEDs when it is not, exactly as it does on lvx-1, where MAKEDP does not
+;; exist.
+(define_insn "lvx_makedp"
+  [(set (match_operand:V2DI 0 "register_operand" "=r,r,r")
+        (vec_duplicate:V2DI (match_operand:DI 1 "immediate_operand" "I16,I43,i")))]
+  "LVX_2 && lvx_hardreg_aligned_p (operands[0], V2DImode)"
+  "makedp %0 = %1"
+  [(set_attr "type" "alu,alu,alu")
+   (set_attr "issue" "lite,lite_x,lite_x2")
+   (set_attr "length" "4,8,12")]
+)
+
 
 ;; 256-bit Vector Moves
 
@@ -1248,7 +1290,7 @@
 
 (define_insn_and_split "*dup128"
   [(set (match_operand:SIMD128 0 "register_operand" "=r")
-        (vec_duplicate:SIMD128 (match_operand:<CHUNK> 1 "nonmemory_operand" "r")))]
+        (vec_duplicate:SIMD128 (match_operand:<CHUNK> 1 "register_operand" "r")))]
   "LVX_2"
   "#"
   "reload_completed"
@@ -1262,7 +1304,7 @@
 
 (define_insn_and_split "*dup256"
   [(set (match_operand:SIMD256 0 "register_operand" "=r")
-        (vec_duplicate:SIMD256 (match_operand:<CHUNK> 1 "nonmemory_operand" "r")))]
+        (vec_duplicate:SIMD256 (match_operand:<CHUNK> 1 "register_operand" "r")))]
   "LVX_2"
   "#"
   "reload_completed"
@@ -1278,7 +1320,7 @@
 
 (define_insn_and_split "*dup512"
   [(set (match_operand:SIMD512 0 "register_operand" "=r")
-        (vec_duplicate:SIMD512 (match_operand:<CHUNK> 1 "nonmemory_operand" "r")))]
+        (vec_duplicate:SIMD512 (match_operand:<CHUNK> 1 "register_operand" "r")))]
   "LVX_2"
   "#"
   "reload_completed"
