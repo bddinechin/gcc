@@ -2942,7 +2942,9 @@ lvx_lane_const (rtx x, machine_mode inner_mode, scalar_int_mode int_inner)
  *
  * This used to emit UNSPEC_INITX4A..D / UNSPEC_INITX8A..H and VEC_CONCAT on the
  * 64-bit chunk, the departed 64-bit SIMD family, and none of those had a
- * pattern -- `v4si v = {a,b,c,d}` was an unrecognizable insn at every level.  */
+ * pattern -- `v4si v = {a,b,c,d}` was an unrecognizable insn at every level.
+ * Those unspecs are gone from unspec.md too, so the names above are history and
+ * will not be found by a grep.  */
 static void
 lvx_expand_chunk_insert (rtx target, rtx source, int index,
 			 machine_mode inner_mode)
