@@ -5018,6 +5018,18 @@
 ;; fmin/fmax are 754-2019 minimum/maximum and propagate a NaN, fminn/fmaxn are
 ;; 754-2008 minNum/maxNum and return the numeric operand.
 ;;
+;; All twelve 128-bit forms have a .S twin (FMIN/FMAX/FMINN/FMAXN at ho/wq/dp),
+;; so the second operand takes a splatted 32-bit constant here as well as a
+;; register -- `fmaxn %0 = %1, 0' rather than a MAKEDP feeding a register pair,
+;; which is what a clamp against a constant wants.  This had been an
+;; inconsistency rather than a gap in the ISA: `smin<mode>3'/`smax<mode>3' in
+;; vector.md emit the very same FMINN/FMAXN and already carried the alternative,
+;; so C's fmin/fmax got the immediate while __builtin_lvx_fminn*/fmaxn* did not.
+;;
+;; Only the 128-bit form: the scalar FLOATM insn below is not a lane-wise
+;; instruction and the 256-bit one is two halves issued together, where the
+;; subreg of each half has to be a register.
+;;
 ;; One define_insn per mode class covers all four, the way config/aarch64 does
 ;; it: an int iterator over the unspecs, and an attribute that spells both the
 ;; pattern name and the mnemonic.  aarch64 names the -2008 pair after the
@@ -5037,14 +5049,17 @@
 )
 
 (define_insn "lvx_<minmax><suffix>"
-  [(set (match_operand:V128F 0 "register_operand" "=r")
-        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r")
-                       (match_operand:V128F 2 "register_operand" "r")]
+  [(set (match_operand:V128F 0 "register_operand" "=r,r")
+        (unspec:V128F [(match_operand:V128F 1 "register_operand" "r,r")
+                       (match_operand:V128F 2 "reg_or_splat32_operand" "r,SXW")]
                       MINMAX))]
   "LVX_2"
-  "<minmax><suffix> %0 = %1, %2"
+  "@
+   <minmax><suffix> %0 = %1, %2
+   <minmax><suffix> %0 = %1, %W2"
   [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length" "4,8")]
 )
 
 ;; ...and at 256 bits, which the ISA does not have: two halves of the 128-bit
