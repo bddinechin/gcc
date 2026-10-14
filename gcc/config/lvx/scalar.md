@@ -2463,52 +2463,33 @@
    (set_attr "length" "4,4,8,12")]
 )
 
-(define_insn_and_split "rotldi3"
+;; ROLD and RORD, the scalar 64-bit rotates.  These were an unconditional
+;; define_insn_and_split emulating the rotate as neg + shift + shift + ior --
+;; four instructions and three scratch registers -- while the 32-bit siblings
+;; above were already one ROLW/RORW.  The ISA has had ROLD and RORD all along:
+;; ALU_TINY on *both* cores, taking a register or an unsigned 6-bit immediate,
+;; which is the same `reg_shift_operand'/"rU06" pair every scalar shift uses.
+;; check-opcodes listed rold and rord among the never-emitted instructions,
+;; which is what this was.
+
+(define_insn "rotldi3"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (rotate:DI (match_operand:DI 1 "register_operand" "r")
-                   (match_operand:SI 2 "register_operand" "r")))
-   (clobber (match_scratch:SI 3 "=&r"))
-   (clobber (match_scratch:DI 4 "=&r"))
-   (clobber (match_scratch:DI 5 "=&r"))]
+                   (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
-  "#"
-  ""
-  [(set (match_dup 3) (neg:SI (match_dup 2)))
-   (set (match_dup 4) (ashift:DI (match_dup 1) (match_dup 2)))
-   (set (match_dup 5) (lshiftrt:DI (match_dup 1) (match_dup 3)))
-   (set (match_dup 0) (ior:DI (match_dup 4) (match_dup 5)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (SImode);
-    if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (DImode);
-    if (GET_CODE (operands[5]) == SCRATCH)
-      operands[5] = gen_reg_rtx (DImode);
-  }
+  "rold %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
 )
 
-(define_insn_and_split "rotrdi3"
+(define_insn "rotrdi3"
   [(set (match_operand:DI 0 "register_operand" "=r")
         (rotatert:DI (match_operand:DI 1 "register_operand" "r")
-                     (match_operand:SI 2 "register_operand" "r")))
-   (clobber (match_scratch:SI 3 "=&r"))
-   (clobber (match_scratch:DI 4 "=&r"))
-   (clobber (match_scratch:DI 5 "=&r"))]
+                     (match_operand:SI 2 "reg_shift_operand" "rU06")))]
   ""
-  "#"
-  ""
-  [(set (match_dup 3) (neg:SI (match_dup 2)))
-   (set (match_dup 4) (lshiftrt:DI (match_dup 1) (match_dup 2)))
-   (set (match_dup 5) (ashift:DI (match_dup 1) (match_dup 3)))
-   (set (match_dup 0) (ior:DI (match_dup 4) (match_dup 5)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (SImode);
-    if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (DImode);
-    if (GET_CODE (operands[5]) == SCRATCH)
-      operands[5] = gen_reg_rtx (DImode);
-  }
+  "rord %0 = %1, %2"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "tiny")]
 )
 
 (define_insn "bswapdi2"
