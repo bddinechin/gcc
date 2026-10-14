@@ -1169,14 +1169,22 @@
   V16QI V8HI V4SI V2DI
 ])
 
+;; MINQ/MAXQ/MINUQ/MAXUQ: the 128-bit integer min and max, signed and unsigned.
+;; The SPN carries the signedness (smin/umin), the mnemonic spells it as a `u'
+;; infix, so the two attributes differ.
+(define_code_iterator MINMAXQ [smin smax umin umax])
+(define_code_attr minmaxq  [(smin "smin") (smax "smax") (umin "umin") (umax "umax")])
+(define_code_attr minmaxqm [(smin "min")  (smax "max")  (umin "minu") (umax "maxu")])
+
 ;; The two rotate directions, which differ only by a letter in the mnemonic.
 (define_code_iterator ROTCODE [rotate rotatert])
 (define_code_attr rotm [(rotate "l") (rotatert "r")])
 
-;; V128J without the byte lanes, for the bit-counting operations: CLZ, CLS, CTZ
-;; and CBS exist at DP, WQ and HO, but there is no BX form.
+;; The bit-counting operations: CLZ, CLS, CTZ and CBS.  The byte lanes belong here
+;; now -- CLZBX, CLSBX, CTZBX and CBSBX landed 2026-10-13, which is what this
+;; iterator was waiting for and why it used to be "V128J without the byte lanes".
 (define_mode_iterator V128CZ [
-  V8HI V4SI V2DI
+  V16QI V8HI V4SI V2DI
 ])
 
 ;; V128J minus V2DI: the 128-bit integer vector modes whose element add/sub/etc.
@@ -1254,10 +1262,10 @@
   V32QI V16HI V8SI V4DI
 ])
 
-;; The same at 256 bits: each half is a 128-bit bit-count, so the byte lanes
-;; have nowhere to split to.
+;; The same at 256 bits: each half is a 128-bit bit-count.  The byte lanes have
+;; somewhere to split to now that CLZBX and its siblings exist.
 (define_mode_iterator V256CZ [
-  V16HI V8SI V4DI
+  V32QI V16HI V8SI V4DI
 ])
 
 ;; The 256-bit rotate, two native 128-bit halves at a time.  Was: V256J minus

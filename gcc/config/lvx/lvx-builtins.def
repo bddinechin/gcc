@@ -153,6 +153,18 @@ LVX_BUILTIN_DIRECT   (shrdps, V2DI_FTYPE_V2DI_UINT32_SHIFTRIGHT,, lvx_2) // Vect
 LVX_BUILTIN_DIRECT   (shrdqs, V4DI_FTYPE_V4DI_UINT32_SHIFTRIGHT,, lvx_2) // Vector
 
 
+/* The byte and half-word lanes, 2026-10-14.  One builtin per lane shape gives
+   CLZ*, CLS*, CTZ* and CBS* through the `counting' modifier, which is what the
+   lvx_bitcnt<suffix> expanders select on.  The byte forms are new because
+   CLZBX/CLSBX/CTZBX/CBSBX are: before them V128CZ had no byte lanes to offer.
+   There is no scalar bitcntb/bitcnth -- the ISA counts bits in a byte or a
+   half-word only lane-wise.  CLSBX in particular is reachable ONLY this way:
+   __builtin_clrsb promotes to int, so plain C widens the bytes and gets
+   eight CLSWQ instead.  */
+LVX_BUILTIN_DIRECT   (bitcntbx, V16QI_FTYPE_V16QI_COUNTING,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (bitcntbv, V32QI_FTYPE_V32QI_COUNTING,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (bitcntho, V8HI_FTYPE_V8HI_COUNTING,, lvx_2) // Vector
+LVX_BUILTIN_DIRECT   (bitcnthx, V16HI_FTYPE_V16HI_COUNTING,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (bitcntw, INT32_FTYPE_INT32_COUNTING,, true) // Scalar
 LVX_BUILTIN_DIRECT   (bitcntwq, V4SI_FTYPE_V4SI_COUNTING,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (bitcntwo, V8SI_FTYPE_V8SI_COUNTING,, lvx_2) // Vector

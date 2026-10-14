@@ -427,6 +427,60 @@
    (set_attr "issue" "tiny, tiny_x")
    (set_attr "length" "     4,         8")]
 )
+;; ADDX128D and ADDX128W, added to the ISA 2026-10-13, extending the scaled adds
+;; past x64.  No HAVE_LVX_MUL128_ADD_<MODE> gate: both the D and the W form exist
+;; on both cores, so over SIDI the condition is always true -- and this port has
+;; just finished retiring the macros that only ever said so.
+(define_insn "*addx128<suffix><arith_zx><arith_sx>"
+  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
+        (plus:SIDI (ashift:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
+                                (const_int 7))
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
+  ""
+  "addx128<suffix><_sx> %0 = %1, %2"
+  [(set_attr "type" "alu, alu")
+   (set_attr "issue" "tiny, tiny_x")
+   (set_attr "length" "     4,         8")]
+)
+;; multiplicative version of addx128<suffix>
+(define_insn "*addx128<suffix>_m<arith_zx><arith_sx>"
+  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
+        (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
+                              (const_int 128))
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
+  ""
+  "addx128<suffix><_sx> %0 = %1, %2"
+  [(set_attr "type" "alu, alu")
+   (set_attr "issue" "tiny, tiny_x")
+   (set_attr "length" "     4,         8")]
+)
+;; ADDX256D and ADDX256W, added to the ISA 2026-10-13, extending the scaled adds
+;; past x64.  No HAVE_LVX_MUL256_ADD_<MODE> gate: both the D and the W form exist
+;; on both cores, so over SIDI the condition is always true -- and this port has
+;; just finished retiring the macros that only ever said so.
+(define_insn "*addx256<suffix><arith_zx><arith_sx>"
+  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
+        (plus:SIDI (ashift:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
+                                (const_int 8))
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
+  ""
+  "addx256<suffix><_sx> %0 = %1, %2"
+  [(set_attr "type" "alu, alu")
+   (set_attr "issue" "tiny, tiny_x")
+   (set_attr "length" "     4,         8")]
+)
+;; multiplicative version of addx256<suffix>
+(define_insn "*addx256<suffix>_m<arith_zx><arith_sx>"
+  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
+        (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
+                              (const_int 256))
+                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
+  ""
+  "addx256<suffix><_sx> %0 = %1, %2"
+  [(set_attr "type" "alu, alu")
+   (set_attr "issue" "tiny, tiny_x")
+   (set_attr "length" "     4,         8")]
+)
 (define_insn "lvx_land<suffix>"
   [(set (match_operand:SIDI 0 "register_operand" "=r")
         (and:SIDI (ne:SIDI (match_operand:SIDI 1 "register_operand" "%r") (const_int 0))
@@ -1722,6 +1776,34 @@
   "negq %0 = %1"
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")]
+)
+
+;; ABSQ, MINQ/MAXQ and the unsigned pair, added to the ISA 2026-10-13.  The
+;; __int128 min, max and absolute value were a compare-and-select sequence
+;; before; the quadword forms share ADDQ's formats (ALU_QWRR0 and its .M), so
+;; they take the same operand shapes addti3 does.
+
+(define_insn "absti2"
+  [(set (match_operand:TI 0 "register_operand" "=r")
+        (abs:TI (match_operand:TI 1 "register_operand" "r")))]
+  ""
+  "absq %0 = %1"
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite")]
+)
+
+(define_insn "<minmaxq>ti3"
+  [(set (match_operand:TI 0 "register_operand" "=r,r,r")
+        (MINMAXQ:TI (match_operand:TI 1 "register_operand" "r,r,r")
+                    (match_operand:TI 2 "reg_or_splat32_or_imm32_operand" "r,I32,SXW")))]
+  ""
+  "@
+   <minmaxqm>q %0 = %1, %2
+   <minmaxqm>q %0 = %1, %2
+   <minmaxqm>q %0 = %1, %W2.@"
+  [(set_attr "type" "alu,alu,alu")
+   (set_attr "issue" "lite,lite_x,lite_x")
+   (set_attr "length" "4,8,8")]
 )
 
 (define_insn "andti3"
