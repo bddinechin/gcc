@@ -147,40 +147,20 @@ enum lvx_arch_type
 #define HAVE_LVX_COND_MOV_V4DI (0)
 #define HAVE_LVX_COND_MOV_V4DF (0)
 
-#define HAVE_LVX_CPLX_FMA_V2SF (1)
-#define HAVE_LVX_CPLX_FMA_V4SF (0)
-#define HAVE_LVX_CPLX_FMS_V2SF (1)
-#define HAVE_LVX_CPLX_FMS_V4SF (0)
-#define HAVE_LVX_CPLX_CONJ_V16QI (1)
-#define HAVE_LVX_CPLX_CONJ_V4HI (0)
-#define HAVE_LVX_CPLX_CONJ_V4SI (0)
-#define HAVE_LVX_CPLX_CONJ_V8HI (0)
-#define HAVE_LVX_CPLX_CONJ_V8QI (1)
-#define HAVE_LVX_CPLX_FMA_V2SF_V2SF_V2SF (1)
+/* The eight CPLX macros a pattern still names.  The other 26 of the 34 that
+   were here went with the 64-bit SIMD family and its v2sf/v4hi/v8qi complex
+   forms: nothing referenced them in the machine description, in lvx.cc or in
+   the expanded dump.  What survives is the v2sf complex surface, which is
+   scalar and real (fmulwc, fconjwc), plus the v4sf/v2df forms whose (0) is
+   what tells a pattern the ISA no longer has them.  */
 #define HAVE_LVX_CPLX_FMA_V4SF_V4SF_V4SF (0) // ffmawcp -- removed from the ISA
-#define HAVE_LVX_CPLX_FMS_V2SF_V2SF_V2SF (1)
 #define HAVE_LVX_CPLX_FMS_V4SF_V4SF_V4SF (0)
 #define HAVE_LVX_CPLX_MINUS_V2DF (0) // fsbfdc -- removed from the ISA
 #define HAVE_LVX_CPLX_MINUS_V4SF (0) // fsbfwcp -- removed from the ISA
-#define HAVE_LVX_CPLX_MINUS_V2HI (0)
-#define HAVE_LVX_CPLX_MINUS_V2SI (0)
-#define HAVE_LVX_CPLX_MINUS_CONJ_V4HI (0)
 #define HAVE_LVX_CPLX_MULT_V2SF (1)
 #define HAVE_LVX_CPLX_MULT_V4SF (0)
-#define HAVE_LVX_CPLX_MULT_V2SI (0)
-#define HAVE_LVX_CPLX_MULT_V4SI (0)
 #define HAVE_LVX_CPLX_PLUS_V2DF (0)
-#define HAVE_LVX_CPLX_PLUS_V2HI (0)
-#define HAVE_LVX_CPLX_PLUS_V2SF (0)
-#define HAVE_LVX_CPLX_PLUS_V2SI (0)
 #define HAVE_LVX_CPLX_PLUS_V4SF (0)
-#define HAVE_LVX_CPLX_PLUS_CONJ_V4HI (0)
-#define HAVE_LVX_CPLX_PLUS_CONJ_V4SF (0)
-#define HAVE_LVX_CPLX_PLUS_CONJ_V2SF (0)
-#define HAVE_LVX_CPLX_PLUS_CONJ_V2DF (0)
-#define HAVE_LVX_CPLX_MINUS_CONJ_V2SF (0)
-#define HAVE_LVX_CPLX_MINUS_CONJ_V4SF (0)
-#define HAVE_LVX_CPLX_MINUS_CONJ_V2DF (0)
 
 #define HAVE_LVX_DIV_V16QI (1)
 #define HAVE_LVX_DIV_V32QI (1)
