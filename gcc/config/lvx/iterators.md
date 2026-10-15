@@ -248,10 +248,12 @@
 ;; Iterator for Atomic Integer modes
 (define_mode_iterator AI [  QI HI SI DI TI])
 
-;; Iterator for Atomic Integer modes supported by Compare And Swap
-;; Disable TI for now because it is not supported by QEMU.
-;; (define_mode_iterator ACSI [QI HI SI DI (TI "1")])
-(define_mode_iterator ACSI [  QI HI SI DI])
+;; Iterator for Atomic Integer modes supported by Compare And Swap.  TI is in:
+;; acswapq is a real instruction, and the ISS that could not run it was QEMU,
+;; which this project has not used since gem5 became the simulator.  Enabling
+;; it makes a 128-bit __atomic_compare_exchange lock-free, where it was a
+;; libatomic call -- something base RISC-V cannot do at all.
+(define_mode_iterator ACSI [  QI HI SI DI TI])
 
 ;; The modes the atomic read-modify-write instructions cover: a byte, a half
 ;; word, a word and a double word.  The ISA has al* and as* at all four, which

@@ -370,10 +370,14 @@
 ;; deriving success from a comparison -- which also removes the loop, a valued
 ;; CAS having no spurious failure.  That is a semantic change to the atomics
 ;; and is not done here.
-(define_mode_iterator ACSWAP_IN [SI DI TI])
-(define_mode_attr ACSWAP_EX [(SI "TI") (DI "TI") (TI "OI")])
-(define_mode_attr ACSWAP_RET [(SI "SI") (DI "DI") (TI "TI")])
-(define_mode_attr acswap_reg [(SI "x") (DI "x") (TI "q")])
+(define_mode_iterator ACSWAP_IN [QI HI SI DI TI])
+;; The register pair the instruction reads, and the quad at 128 bits.  A byte
+;; and a half word use a pair like a word does: only the low `size' bytes of
+;; each half are compared and written (the byteMask), so the bits above are
+;; immaterial and need no masking.
+(define_mode_attr ACSWAP_EX [(QI "TI") (HI "TI") (SI "TI") (DI "TI") (TI "OI")])
+(define_mode_attr ACSWAP_RET [(QI "QI") (HI "HI") (SI "SI") (DI "DI") (TI "TI")])
+(define_mode_attr acswap_reg [(QI "x") (HI "x") (SI "x") (DI "x") (TI "q")])
 
 (define_expand "lvx_acswap<lsusize>"
   [(parallel

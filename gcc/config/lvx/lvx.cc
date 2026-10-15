@@ -4070,252 +4070,77 @@ lvx_emit_post_barrier (rtx model)
 
 void
 lvx_expand_compare_and_swap (rtx ret_, rtx before_, rtx mem_, rtx expected_,
-			     rtx desired_, rtx weak_, rtx mm_succ_,
-			     rtx mm_fail_)
+			     rtx desired_, rtx weak_ ATTRIBUTE_UNUSED,
+			     rtx mm_succ_, rtx mm_fail_ ATTRIBUTE_UNUSED)
 {
-  /* MODE agnostic atomic load.  */
-  rtx (*ald) (rtx, rtx, rtx);
-  /* MODE agnostic atomic acswap.  */
-  rtx (*acswap) (rtx, rtx, rtx, rtx);
-  /* acswap modifier.  */
-  rtx modifier = gen_rtx_CONST_STRING (VOIDmode, "");
-
-  rtx cas_retry = gen_label_rtx ();
-  rtx cas_return = gen_label_rtx ();
-
-  /* Real mode of the operands.  */
   machine_mode mode = GET_MODE (mem_);
-  /* Extended mode of the operands.  This is the same as mode, except that
-     HImode and QImode are extended into SImode.  */
-  machine_mode xmode = VOIDmode;
-  /* Mode of RET_.  */
+  /* The instruction reads a register PAIR holding the new value and the
+     expected one, and writes its result over the pair's low half; at 128 bits
+     that is a quad holding two pairs.  */
   machine_mode ret_mode = mode == TImode ? OImode : TImode;
-  /* Mode of expected/desired.  */
   machine_mode half_mode = mode == TImode ? TImode : DImode;
+  rtx (*acswap) (rtx, rtx, rtx, rtx);
 
-  /* Address at which the acswap will happen.  */
-  rtx mem = NULL_RTX;
-
-  gcc_assert ((mode == QImode || mode == HImode || mode == SImode
-	       || mode == DImode || mode == TImode));
+  gcc_assert (mode == QImode || mode == HImode || mode == SImode
+	      || mode == DImode || mode == TImode);
 
   switch (mode)
     {
-    case E_TImode:
-      ald = gen_atomic_loadti;
-      acswap = gen_lvx_acswapq;
-      xmode = mode;
-      break;
-    case E_DImode:
-      ald = gen_atomic_loaddi;
-      acswap = gen_lvx_acswapd;
-      xmode = mode;
-      break;
-    case E_SImode:
-      ald = gen_atomic_loadsi;
-      acswap = gen_lvx_acswapw;
-      xmode = mode;
-      break;
-    case E_HImode:
-      ald = gen_atomic_loadhi;
-      acswap = gen_lvx_acswapw;
-      xmode = SImode;
-      break;
-    case E_QImode:
-      ald = gen_atomic_loadqi;
-      acswap = gen_lvx_acswapw;
-      xmode = SImode;
-      break;
-    default:
-      gcc_unreachable ();
-    }
-
-  /* Value at MEM.  */
-  rtx curval = gen_reg_rtx (xmode);
-  rtx expected_save = gen_reg_rtx (xmode);
-  rtx desired_save = gen_reg_rtx (xmode);
-
-  lvx_emit_pre_barrier (mm_succ_);
-
-  rtx oldval = NULL_RTX, newval = NULL_RTX;
-  rtx mask = gen_reg_rtx (xmode);
-
-  /* For QImode and HImode which are less than the size of a word we have to
-     handle proper word-alignment. We also have to handle the alignment of the
-     QImode or HImode value within SImode-sized OLDVAL and NEWVAL.  */
-
-  /* Position at which the QI or HI value will be inserted.  */
-  rtx intra_offset = gen_reg_rtx (Pmode);
-  /* Base register of the memory address subject to the compare and swap.  */
-  rtx load_reg = gen_reg_rtx (Pmode);
-  /* Base register of the memory address subject to the compare and swap.  */
-  rtx load_reg_al = gen_reg_rtx (Pmode);
-
-  if (mode == QImode || mode == HImode)
-    {
-      mem = change_address (mem_, SImode, NULL_RTX);
-      gcc_assert (mem != mem_);
-
-      expected_ = simplify_gen_subreg (xmode, expected_, mode, 0);
-      desired_ = simplify_gen_subreg (xmode, desired_, mode, 0);
-
-      emit_move_insn (expected_save, expected_);
-      emit_move_insn (desired_save, desired_);
-
-      /* Only loads of type BASE + OFFSET are supported.  */
-      if (GET_CODE (XEXP (mem_, 0)) == PLUS)
-	{
-	  rtx base = XEXP (XEXP (mem_, 0), 0);
-	  rtx offset = XEXP (XEXP (mem_, 0), 1);
-
-	  emit_move_insn (load_reg, base);
-	  emit_insn (gen_adddi3 (load_reg, load_reg, offset));
-	}
-      else if (GET_CODE (XEXP (mem_, 0)) == REG
-	       || GET_CODE (XEXP (mem_, 0)) == SUBREG)
-	{
-	  /* No offset.  */
-	  load_reg = XEXP (mem_, 0);
-	}
-      else
-	gcc_unreachable ();
-
-      emit_insn (gen_anddi3 (intra_offset, load_reg, GEN_INT (3)));
-
-      /* Realign the address to the nearest word.  */
-      emit_insn (gen_anddi3 (load_reg_al, load_reg, GEN_INT (-4)));
-
-      /* Change intra_offset mode to SImode for the following operations.  */
-      intra_offset = gen_lowpart (SImode, intra_offset);
-      emit_insn (gen_mulsi3 (intra_offset, intra_offset,
-			     GEN_INT (UNITS_PER_WORD)));
-      emit_insn (gen_ashlsi3 (expected_, expected_, intra_offset));
-      emit_insn (gen_ashlsi3 (desired_, desired_, intra_offset));
-
-      /* Create a word-aligned load.  */
-      mem = gen_rtx_MEM (xmode, load_reg_al);
-      MEM_VOLATILE_P (mem) = true;
-
-      /* Atomic load it */
-      emit_insn (ald (curval, mem, GEN_INT (MEMMODEL_RELAXED)));
-
-      emit_move_insn (mask, GEN_INT (mode == QImode ? 0xff : 0xffff));
-      emit_insn (gen_ashlsi3 (mask, mask, intra_offset));
-
-      /* If EXPECTED_ or DESIRED_ is inadvertently sign extended this leads to the
-         corruption of the neighboring bits and is highly undesirable, therefore
-         we make sure that no sign bits are on.  */
-      emit_insn (gen_andsi3 (expected_, expected_, mask));
-      emit_insn (gen_andsi3 (desired_, desired_, mask));
-      /* At this point EXPECTED_ and DESIRED_ have their final values, ie, a QI/HI
-         surrounded by 0 and retrofitted into an SI.  */
-
-      /* Clear the bits where we want to fit a QI/HI in the original word.  */
-      emit_insn (gen_one_cmplsi2 (mask, mask));
-      emit_insn (gen_andsi3 (curval, curval, mask));
-
-      /* And insert EXPECTED_ and DESIRED_ in the space we created.  */
-      oldval = gen_reg_rtx (xmode);
-      newval = gen_reg_rtx (xmode);
-      emit_insn (gen_iorsi3 (oldval, expected_, curval));
-      emit_insn (gen_iorsi3 (newval, desired_, curval));
-    }
-  else
-    {
-      oldval = expected_;
-      newval = desired_;
-      mem = mem_;
+    case E_QImode: acswap = gen_lvx_acswapb; break;
+    case E_HImode: acswap = gen_lvx_acswaph; break;
+    case E_SImode: acswap = gen_lvx_acswapw; break;
+    case E_DImode: acswap = gen_lvx_acswapd; break;
+    case E_TImode: acswap = gen_lvx_acswapq; break;
+    default: gcc_unreachable ();
     }
 
   rtx tmp = gen_reg_rtx (ret_mode);
   rtx low = gen_lowpart (half_mode, tmp);
-  /* We could be calling GEN_HIGHPART here but we would be triggering the
-     assertion since TImode is bigger than UNITS_PER_WORD.  */
-  int high_offset = subreg_highpart_offset (half_mode, GET_MODE (tmp));
+  /* GEN_HIGHPART would assert, TImode being wider than UNITS_PER_WORD.  */
+  int high_offset = subreg_highpart_offset (half_mode, ret_mode);
   rtx high = simplify_gen_subreg (half_mode, tmp, ret_mode, high_offset);
 
-  /* Packing data to swap for acswap[wdq] insns.  */
-  emit_label (cas_retry);
-  emit_move_insn (gen_lowpart (xmode, high), oldval);
-  emit_move_insn (gen_lowpart (xmode, low), newval);
+  /* Compare against our own copy of EXPECTED rather than against the pair's
+     high half: the insn declares the whole pair read-write, so nothing
+     entitles us to assume the half it does not write survives.  */
+  rtx expected = force_reg (mode, expected_);
+  rtx keep = gen_reg_rtx (mode);
+  emit_move_insn (keep, expected);
 
-  emit_insn (acswap (tmp, mem, modifier, const0_rtx));
+  lvx_emit_pre_barrier (mm_succ_);
 
-  /* If acswap succeeds (LOW is equal to 0x1), then return...  */
-  emit_cmp_and_jump_insns (gen_lowpart (mode, low), const1_rtx, EQ, NULL_RTX,
-			   xmode, true, cas_return);
+  /* The pair, in the order the instruction reads it: the new value in the low
+     half, the expected one in the high half.  MEM_atomic_cas takes `newval'
+     before `expected', and arguments.32[0] is the low register.  */
+  emit_move_insn (gen_lowpart (mode, low), force_reg (mode, desired_));
+  emit_move_insn (gen_lowpart (mode, high), expected);
 
-  /* ... else, the acswap has failed and we don't want spurious fails.  */
-  if (!INTVAL (weak_))
-    {
-      /* Reload MEM (atomically) to ensure that the value wasn't updated to the
-         expected one since.  */
-      emit_insn (ald (curval, mem, GEN_INT (MEMMODEL_RELAXED)));
+  emit_insn (acswap (tmp, mem_, gen_rtx_CONST_STRING (VOIDmode, ".V"),
+		     const0_rtx));
 
-      lvx_emit_post_barrier (mm_fail_);
+  /* `.V', the VALUED flavour: the result is the memory's previous contents, so
+     the low half now holds the old value.  The bare spelling would return a
+     success flag instead -- which is what this port used to ask for, and why
+     it needed a retry loop to tell a real failure from a stale compare.  A
+     valued compare-and-swap cannot fail spuriously, so success is one
+     comparison and WEAK_ makes no difference: a weak CAS and a strong one are
+     the same instruction here.  That is also why MM_FAIL_ is unused -- with no
+     branch there is nowhere to put a weaker barrier, and the standard requires
+     the failure ordering to be no stronger than the success ordering, so the
+     one emitted covers both.  */
+  lvx_emit_post_barrier (mm_succ_);
 
-      if (mode == QImode || mode == HImode)
-	{
-	  rtx curval_masked = gen_reg_rtx (xmode);
-	  emit_insn (gen_andsi3 (curval_masked, curval, mask));
+  rtx old = gen_lowpart (mode, low);
 
-	  /* And recreate OLDVAL and NEWVAL in the space we created.  */
-	  emit_insn (gen_iorsi3 (oldval, expected_, curval_masked));
-	  emit_insn (gen_iorsi3 (newval, desired_, curval_masked));
+  /* BEFORE_ is the memory's contents before the attempt, which is exactly what
+     came back.  Take it before RET_, since computing the flag may clobber.  */
+  emit_move_insn (before_, old);
 
-	  /* If the reloaded MEM is equal to the expected one, retry the
-	     acswap. */
-	  emit_cmp_and_jump_insns (curval, oldval, EQ, NULL_RTX,
-				   xmode, true, cas_retry);
-	}
-      else
-	{
-	  /* If the reloaded MEM is equal to the expected one (HIGH), retry the
-	     acswap. */
-	  emit_cmp_and_jump_insns (curval, gen_lowpart (xmode, high), EQ,
-				   NULL_RTX, xmode, true, cas_retry);
-	}
-
-      /* CAS failed:
-         Update HIGH with the current value of MEM,
-         LOW already contains the boolean to return,
-         then return. */
-      emit_move_insn (gen_lowpart (xmode, high), curval);
-    }
-  else
-    {
-      /* Reload MEM (atomically) to ensure that the value wasn't updated to the
-         expected one since.  */
-      emit_insn (ald (curval, mem, GEN_INT (MEMMODEL_RELAXED)));
-
-      lvx_emit_post_barrier (mm_fail_);
-      /* Weak variant, CAS failed.  Update HIGH with the current value of MEM. */
-      emit_move_insn (gen_lowpart (xmode, high), curval);
-    }
-
-  emit_label (cas_return);
-
-  // RET_ is an output operand which is set to true of false
-  // based on whether the operation succeeded.
-  emit_move_insn (ret_, gen_lowpart (SImode, low));
-
-  // BEFORE_ is an output operand which is set to the contents of
-  // the memory before the operation was attempted.
-  if (mode == HImode || mode == QImode)
-    {
-      rtx before = gen_reg_rtx (xmode);
-      rtx low_mask = gen_reg_rtx (xmode);
-      emit_move_insn (low_mask, GEN_INT (mode == QImode ? 0xff : 0xffff));
-      emit_insn (gen_ashrsi3
-		 (before, gen_lowpart (xmode, high), intra_offset));
-      emit_insn (gen_andsi3 (before, before, low_mask));
-      emit_move_insn (before_, gen_lowpart (mode, before));
-
-      emit_move_insn (expected_, expected_save);
-      emit_move_insn (desired_, desired_save);
-    }
-  else
-    emit_move_insn (before_, gen_lowpart (xmode, high));
+  /* RET_ is true when the swap happened, i.e. when the old value was the
+     expected one.  */
+  rtx flag = emit_store_flag_force (gen_reg_rtx (SImode), EQ,
+				    copy_to_reg (old), keep, mode, 0, 0);
+  emit_move_insn (ret_, gen_lowpart (SImode, flag));
 }
 
 /* The native read-modify-write instruction for CODE at MODE, or CODE_FOR_nothing
