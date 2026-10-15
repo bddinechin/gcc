@@ -192,8 +192,15 @@
   [(match_operand:SI 0 "const_int_operand" "")] ;; model
   ""
   {
-    /* LVX memory model is strong enough not to require any
-       barrier in order to synchronize a thread with itself. */
+    /* No hardware fence: a thread needs none to synchronise with itself, which
+       is all a signal fence is for.  But a COMPILER blockage is the whole
+       point, and defining this optab suppresses the asm memory blockage GCC
+       would otherwise emit for __atomic_signal_fence -- riscv defines no
+       mem_signal_fence at all and gets that fallback.  The IL-level barrier
+       already stops the tree passes (both stores survive either way), so this
+       is belt and braces against an RTL pass moving memory across it; it costs
+       no instruction.  */
+    emit_insn (gen_lvx_mem_clobber ());
     DONE;
   }
 )
@@ -205,12 +212,15 @@
 )
 
 ;; Atomic Load
+;; al exists at b, h, w and d.  The condition was HAVE_LVX_ATOMIC_LOAD_<MODE>,
+;; defined for SI and DI only, which is the KV3 restriction again -- not a
+;; property of this ISA.
 (define_insn "lvx_al<lsusize>"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r,r")
-     (unspec_volatile:SIDI [(match_operand:SIDI 1 "mematomic_operand" "c,d,e")
+  [(set (match_operand:AMO 0 "register_operand" "=r,r,r")
+     (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "c,d,e")
                             (match_operand 2 "" "")] UNSPEC_ALOAD))
    (use (match_dup 1))]
-  "HAVE_LVX_ATOMIC_LOAD_<MODE>"
+  ""
   "al<lsusize>%2%X1 %0 = %O1"
   [(set_attr "type" "aload, aload, aload")
    (set_attr "issue" "lsu_memw_auxw, lsu_memw_auxw_x, lsu_memw_auxw_x2")
@@ -220,11 +230,11 @@
 
 ;; Atomic Store
 (define_insn "lvx_as<lsusize>"
-  [(set (match_operand:SIDI 1 "mematomic_operand"  "=c,d,e")
-        (unspec_volatile:SIDI [(match_operand:SIDI 0 "register_operand" "r,r,r")
+  [(set (match_operand:AMO 1 "mematomic_operand"  "=c,d,e")
+        (unspec_volatile:AMO [(match_operand:AMO 0 "register_operand" "r,r,r")
                                (match_operand 2 "" "")] UNSPEC_ASTORE))
    (clobber (match_dup 1))]
-  "HAVE_LVX_ATOMIC_STORE_<MODE>"
+  ""
   "as<lsusize>%2%X1 %O1 = %0"
   [(set_attr "type" "store, store, store")
    (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
@@ -234,8 +244,8 @@
 
 ;; Atomic Load and Clear
 (define_expand "lvx_alclr<lsusize>"
-  [(set (match_operand:SIDI 0 "register_operand" "")
-        (unspec_volatile:SIDI [(match_operand:SIDI 1 "mematomic_operand" "")
+  [(set (match_operand:AMO 0 "register_operand" "")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "")
                                (match_operand 2 "" "")] UNSPEC_ALCLR))]
   ""
   ""
@@ -244,8 +254,8 @@
 
 
 (define_insn "alclr<lsusize>_2"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r,r")
-        (unspec_volatile:SIDI [(match_operand:SIDI 1 "mematomic_operand" "c,d,e")
+  [(set (match_operand:AMO 0 "register_operand" "=r,r,r")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "c,d,e")
                                (match_operand 2 "" "")] UNSPEC_ALCLR))]
   ""
   "alclr<lsusize>%2%X1 %0 = %O1"
@@ -258,12 +268,12 @@
 ;; Atomic Load and Add
 (define_expand "lvx_aladd<lsusize>"
   [(parallel
-    [(set (match_operand:SIDI 0 "register_operand" "")
-          (unspec_volatile:SIDI [(match_operand:SIDI 1 "mematomic_operand" "")
+    [(set (match_operand:AMO 0 "register_operand" "")
+          (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "")
                                  (match_operand 3 "" "")] UNSPEC_ALADD))
      (set (match_dup 1)
-          (plus:SIDI (match_dup 1)
-                     (match_operand:SIDI 2 "nonmemory_operand" "")))]
+          (plus:AMO (match_dup 1)
+                     (match_operand:AMO 2 "nonmemory_operand" "")))]
   )]
   ""
   ""
@@ -305,14 +315,24 @@
 )
 
 ;; The same operation with the old value discarded: one as<op>, no result
-;; register, so nothing is tied and the value operand is read-only.
-(define_insn "as<amo_mnemonic><lsusize>_amo"
-  [(set (match_operand:AMO 0 "mematomic_operand" "+c,d,e")
-        (unspec_volatile:AMO [(amo_op:AMO (match_dup 0)
-                                          (match_operand:AMO 1 "register_operand" "r,r,r"))
-                              (match_operand 2 "" "")] UNSPEC_AMO_NOFETCH))]
+;; register.  C cannot ask for this -- GCC always expands an atomic
+;; read-modify-write through the FETCH optab and lets dead-code elimination
+;; drop the unused result, so the atomic_<op><mode> optab is never chosen and a
+;; pattern reachable only from it would be dead.  These therefore exist for the
+;; builtins, whose whole purpose is the operations C has no syntax for: an
+;; atomic add that does not report the old value frees the register and the
+;; dependency on it.
+;;
+;; Operand order follows lvx_as<lsusize>, because LVX_EXPAND_BUILTIN_ASTORE
+;; calls gen_<name> (value, memory, modifier).
+(define_insn "lvx_as<amo_mnemonic><lsusize>"
+  [(set (match_operand:AMO 1 "mematomic_operand" "=c,d,e")
+        (unspec_volatile:AMO [(amo_op:AMO (match_dup 1)
+                                          (match_operand:AMO 0 "register_operand" "r,r,r"))
+                              (match_operand 2 "" "")] UNSPEC_AMO_NOFETCH))
+   (clobber (match_dup 1))]
   ""
-  "as<amo_mnemonic><lsusize>%2%X0 %O0 = %1"
+  "as<amo_mnemonic><lsusize>%2%X1 %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
    (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
    (set_attr "length"                  "4,                     8,                    12")
@@ -320,15 +340,16 @@
 )
 
 ;; The atomic swap, store-only: aswap writes memory and returns nothing, so it
-;; serves atomic_exchange only when the result is unused.  A returning
-;; exchange needs the compare-and-swap loop, this being the one place the LVX
-;; atomics are behind RISC-V's amoswap.
-(define_insn "aswap<lsusize>_amo"
-  [(set (match_operand:AMO 0 "mematomic_operand" "+c,d,e")
-        (unspec_volatile:AMO [(match_operand:AMO 1 "register_operand" "r,r,r")
-                              (match_operand 2 "" "")] UNSPEC_AMO_NOFETCH))]
+;; cannot serve atomic_exchange, which must yield the old value -- that keeps
+;; the compare-and-swap loop, the one place these atomics are behind RISC-V's
+;; amoswap.  As a builtin it is exactly the "swap and do not tell me" operation.
+(define_insn "lvx_aswap<lsusize>"
+  [(set (match_operand:AMO 1 "mematomic_operand" "=c,d,e")
+        (unspec_volatile:AMO [(match_operand:AMO 0 "register_operand" "r,r,r")
+                              (match_operand 2 "" "")] UNSPEC_AMO_NOFETCH))
+   (clobber (match_dup 1))]
   ""
-  "aswap<lsusize>%2%X0 %O0 = %1"
+  "aswap<lsusize>%2%X1 %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
    (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
    (set_attr "length"                  "4,                     8,                    12")
@@ -336,12 +357,12 @@
 )
 
 (define_insn "aladd<lsusize>_2"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r,r")
-        (unspec_volatile:SIDI [(match_operand:SIDI 1 "mematomic_operand" "+c,d,e")
+  [(set (match_operand:AMO 0 "register_operand" "=r,r,r")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d,e")
                                (match_operand 3 "" "")] UNSPEC_ALADD))
    (set (match_dup 1)
-        (plus:SIDI (match_dup 1)
-                   (match_operand:SIDI 2 "nonmemory_operand" "0,0,0")))]
+        (plus:AMO (match_dup 1)
+                   (match_operand:AMO 2 "nonmemory_operand" "0,0,0")))]
   ""
   "aladd<lsusize>%3%X1 %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")

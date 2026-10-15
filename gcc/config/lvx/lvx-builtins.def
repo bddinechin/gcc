@@ -560,6 +560,20 @@ LVX_BUILTIN_DIRECT   (dflushsw, VOID_FTYPE_UINT64_UINT64_CACHELEV,, true) // Mem
 LVX_BUILTIN_INDIRECT (fence, VOID_FTYPE, ACCESSES, true) // Memory
 LVX_BUILTIN_INDIRECT (ready, BOOL_FTYPE,_, true) // Memory
 
+/* The byte and half-word atomics, 2026-10-15.  The ISA has al, as, alclr,
+   aladd and acswap at b and h as well as w and d; only w and d had builtins,
+   which is the KV3 restriction (no 8- or 16-bit atomic access) outliving the
+   hardware that had it.  */
+LVX_BUILTIN_INDIRECT (alb, UINT8_FTYPE_CVPTR, COHERENCY, true, (ALOAD, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (alh, UINT16_FTYPE_CVPTR, COHERENCY, true, (ALOAD, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (alclrb, UINT8_FTYPE_VPTR, COHERENCY, true, (ALOAD, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (alclrh, UINT16_FTYPE_VPTR, COHERENCY, true, (ALOAD, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aladdb, UINT8_FTYPE_VPTR_UINT8, COHERENCY, true, (ALADD, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aladdh, UINT16_FTYPE_VPTR_UINT16, COHERENCY, true, (ALADD, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (acswapb, UINT8_FTYPE_VPTR_UINT8_UINT8, BOOLCASCO_BOOL, true, (ACSWAP, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (acswaph, UINT16_FTYPE_VPTR_UINT16_UINT16, BOOLCASCO_BOOL, true, (ACSWAP, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asb, VOID_FTYPE_UINT8_VPTR, COHERENCY, true, (ASTORE, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (ash, VOID_FTYPE_UINT16_VPTR, COHERENCY, true, (ASTORE, HImode, HImode)) // Atomic
 LVX_BUILTIN_INDIRECT (alw, UINT32_FTYPE_CVPTR, COHERENCY, true, (ALOAD, SImode, SImode)) // Atomic
 LVX_BUILTIN_INDIRECT (ald, UINT64_FTYPE_CVPTR, COHERENCY, true, (ALOAD, DImode, DImode)) // Atomic
 LVX_BUILTIN_INDIRECT (alclrw, UINT32_FTYPE_VPTR, COHERENCY, true, (ALOAD, SImode, SImode)) // Atomic
@@ -569,6 +583,32 @@ LVX_BUILTIN_INDIRECT (aladdd, UINT64_FTYPE_VPTR_UINT64, COHERENCY, true, (ALADD,
 LVX_BUILTIN_INDIRECT (acswapw, UINT32_FTYPE_VPTR_UINT32_UINT32, BOOLCASCO_BOOL, true, (ACSWAP, SImode, SImode)) // Atomic
 LVX_BUILTIN_INDIRECT (acswapd, UINT64_FTYPE_VPTR_UINT64_UINT64, BOOLCASCO_BOOL, true, (ACSWAP, DImode, DImode)) // Atomic
 LVX_BUILTIN_INDIRECT (acswapq, UINT128_FTYPE_VPTR_UINT128_UINT128, BOOLCASCO_BOOL, true, (ACSWAP, TImode, TImode)) // Atomic
+/* The non-returning read-modify-writes and the swap, 2026-10-15.  as<op> and
+   aswap perform the operation and report nothing, which C has no syntax for:
+   GCC expands every atomic RMW through the fetch optab and lets dead-code
+   elimination drop the result, so atomic_<op><mode> is never selected and
+   these are reachable only as builtins.  Discarding the old value frees the
+   register and the dependency on it.  */
+LVX_BUILTIN_INDIRECT (asaddb, VOID_FTYPE_UINT8_VPTR, COHERENCY, true, (ASTORE, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asaddh, VOID_FTYPE_UINT16_VPTR, COHERENCY, true, (ASTORE, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asaddw, VOID_FTYPE_UINT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asaddd, VOID_FTYPE_UINT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asandb, VOID_FTYPE_UINT8_VPTR, COHERENCY, true, (ASTORE, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asandh, VOID_FTYPE_UINT16_VPTR, COHERENCY, true, (ASTORE, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asandw, VOID_FTYPE_UINT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asandd, VOID_FTYPE_UINT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asiorb, VOID_FTYPE_UINT8_VPTR, COHERENCY, true, (ASTORE, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asiorh, VOID_FTYPE_UINT16_VPTR, COHERENCY, true, (ASTORE, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asiorw, VOID_FTYPE_UINT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asiord, VOID_FTYPE_UINT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aseorb, VOID_FTYPE_UINT8_VPTR, COHERENCY, true, (ASTORE, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aseorh, VOID_FTYPE_UINT16_VPTR, COHERENCY, true, (ASTORE, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aseorw, VOID_FTYPE_UINT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aseord, VOID_FTYPE_UINT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aswapb, VOID_FTYPE_UINT8_VPTR, COHERENCY, true, (ASTORE, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aswaph, VOID_FTYPE_UINT16_VPTR, COHERENCY, true, (ASTORE, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aswapw, VOID_FTYPE_UINT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aswapd, VOID_FTYPE_UINT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
 LVX_BUILTIN_INDIRECT (asw, VOID_FTYPE_UINT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
 LVX_BUILTIN_INDIRECT (asd, VOID_FTYPE_UINT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
 

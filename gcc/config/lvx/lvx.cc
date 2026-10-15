@@ -4041,9 +4041,17 @@ lvx_emit_post_barrier (rtx model)
       // No post barrier is required for RELAXED, and ACQUIRE .
       break;
     case MEMMODEL_ACQ_REL:
-      // Clobber MEM to prevent moving around load and stores.
+      /* FENCE.R, the acquire half.  This used to emit only lvx_mem_clobber --
+	 a compiler-level blockage and no instruction -- so an __ATOMIC_ACQ_REL
+	 read-modify-write came out as `fence.w; aladdw' and carried release
+	 ordering but NOT acquire: nothing stopped a later load from being
+	 observed before the atomic.  The pre-barrier already emits FENCE.W for
+	 this model, and FENCE.R is what the other half needs, exactly as the
+	 plain ACQUIRE case below emits it.  Single-threaded testing cannot see
+	 this, which is presumably how it survived.  */
       {
-	emit_insn (gen_lvx_mem_clobber ());
+	rtx modifier = gen_rtx_CONST_STRING (VOIDmode, ".r");
+	emit_insn (gen_lvx_fence (modifier));
 	break;
       }
     case MEMMODEL_SEQ_CST:
@@ -4148,7 +4156,10 @@ lvx_expand_compare_and_swap (rtx ret_, rtx before_, rtx mem_, rtx expected_,
    value comes back in the value register) over the discarding one (as<op>).
 
    add, and, ior and xor are the four the ISA performs directly -- the same set
-   riscv gets from amoadd/amoand/amoor/amoxor.  A subtract is an add of the
+   riscv gets from amoadd/amoand/amoor/amoxor.  FETCH false returns nothing: GCC
+   always expands through the fetch optab and lets DCE drop an unused result, so
+   atomic_<op><mode> is never chosen and the as<op> forms would be unreachable
+   from here.  They are builtins instead (lvx_as<op><size>).  A subtract is an add of the
    negation, handled by the caller; nand has no instruction and falls through
    to the compare-and-swap loop.  Every one of them exists at QI and HI as well
    as SI and DI, which is why no subword masking path is needed here.  */
@@ -4162,13 +4173,13 @@ lvx_amo_code (enum rtx_code code, machine_mode mode, bool fetch)
       switch (code)							\
 	{								\
 	case PLUS: return fetch ? CODE_FOR_aladd##sfx##_amo		\
-				: CODE_FOR_asadd##sfx##_amo;		\
+				: CODE_FOR_nothing;			\
 	case AND:  return fetch ? CODE_FOR_aland##sfx##_amo		\
-				: CODE_FOR_asand##sfx##_amo;		\
+				: CODE_FOR_nothing;			\
 	case IOR:  return fetch ? CODE_FOR_alior##sfx##_amo		\
-				: CODE_FOR_asior##sfx##_amo;		\
+				: CODE_FOR_nothing;			\
 	case XOR:  return fetch ? CODE_FOR_aleor##sfx##_amo		\
-				: CODE_FOR_aseor##sfx##_amo;		\
+				: CODE_FOR_nothing;			\
 	default:   return CODE_FOR_nothing;				\
 	}
     LVX_AMO_WIDTH (QI, b)
