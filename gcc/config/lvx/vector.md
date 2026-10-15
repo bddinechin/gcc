@@ -475,6 +475,40 @@
    (set_attr "issue" "lite, lite_x")
    (set_attr "length"      "4,       8")])
 
+;; movemask (COMPN_cc (a, b))  ==  COMP_cc (a, b), in one instruction.
+;;
+;; A COMPN* lane is 0 or -1, so gathering its sign bits is the same thing as
+;; the comparison's own bit-per-lane mask -- and that pair is exactly what
+;; SIMDe's `_mm_movemask_epi8 (_mm_cmpeq_epi8 (x, zero))' becomes, which is
+;; Farrar's lazy-F loop-exit test in lvx-ssw and so the hottest line there.
+;; Combine offers the pair once COMPN* feeds a single COMP*, which it does: the
+;; vector is dead at the movemask.
+;;
+;; Two things keep it honest.  The outer test must read the SIGN, not any
+;; condition -- lvx_msb_test_modifier allows only `.lt' and `.ne', since `.eq'
+;; would give the complement and the unsigned forms are constant on a 0/-1
+;; lane.  And the lane shape must MATCH: one iterator spells the inner
+;; comparison and the outer mnemonic, so a byte movemask over a halfword
+;; compare cannot match, which is right -- 8 halfword lanes give 16 byte sign
+;; bits in pairs, not 8 bits, and SIMDe really does write that combination in
+;; the word path.
+(define_insn "*lvx_comp<compx>_of_compn"
+  [(set (match_operand:SI 0 "register_operand" "=r,r")
+	(unspec:SI
+	  [(match_operator:SIMD128I 1 "comparison_operator"
+	     [(match_operand:SIMD128I 2 "register_operand" "r,r")
+	      (match_operand:SIMD128I 3 "reg_or_splat32_operand" "r,SXW")])
+	   (match_operand:SIMD128I 4 "const_zero_operand" "")
+	   (match_operand 5 "lvx_msb_test_modifier" "")]
+	  UNSPEC_LVX_COMP))]
+  "LVX_2"
+  "@
+   comp<compx>.%1 %0 = %2, %3
+   comp<compx>.%1 %0 = %2, %W3"
+  [(set_attr "type" "alu, alu")
+   (set_attr "issue" "lite, lite_x")
+   (set_attr "length"      "4,       8")])
+
 ;; The zeroing twin of BLEND*.  No tied operand: BLENDZ* does not read its
 ;; destination, so the allocator is free to pick any register, where
 ;; lvx_blend<compx> must constrain operand 1 to "0".

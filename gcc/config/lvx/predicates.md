@@ -3,6 +3,17 @@
   (and (match_code "const_int,const_wide_int,const_double,const_vector")
        (match_test "op == CONST0_RTX (mode)")))
 
+;; The COMP* condition modifiers that test a lane's SIGN BIT.  This is what makes
+;; `movemask (COMPN_cc (a, b))' collapse to `COMP_cc (a, b)': a COMPN* lane is 0
+;; or -1, so "< 0" and "!= 0" both say "this lane's comparison was true", which
+;; is exactly the bit COMP* would have packed.  `.eq' against zero would be the
+;; COMPLEMENT, and the unsigned forms are constant on a 0/-1 lane (`.ltu' never,
+;; `.geu' always), so only these two are sound.
+(define_predicate "lvx_msb_test_modifier"
+  (and (match_code "const_string")
+       (ior (match_test "!strcmp (XSTR (op, 0), \".lt\")")
+	    (match_test "!strcmp (XSTR (op, 0), \".ne\")"))))
+
 ;; Constant -1 operand for scalar or vector MODE
 (define_predicate "const_mone_operand"
   (and (match_code "const_int, const_wide_int,const_vector")
