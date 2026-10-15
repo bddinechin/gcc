@@ -253,6 +253,24 @@
 ;; (define_mode_iterator ACSI [QI HI SI DI (TI "1")])
 (define_mode_iterator ACSI [  QI HI SI DI])
 
+;; The modes the atomic read-modify-write instructions cover: a byte, a half
+;; word, a word and a double word.  The ISA has al* and as* at all four, which
+;; is what RISC-V gets only with Zabha -- so no masking loop is ever needed
+;; here, unlike riscv's subword_atomic_fetch_strong_* path.  TI is absent
+;; because only acswap reaches 128 bits (acswapq), not the RMW families.
+(define_mode_iterator AMO [QI HI SI DI])
+
+;; The read-modify-write operations the ISA performs in ONE instruction, and
+;; the mnemonic infix each takes.  `sub' is not here: there is no alsbf, and a
+;; subtract is an add of the negation, which is what riscv does with amoadd.
+;; `nand' is not here either -- no instruction computes it -- so it keeps the
+;; compare-and-swap loop.  min/max/minu/maxu exist in the ISA (almin, almax,
+;; alminu, almaxu) but GCC has no standard optab for an atomic min or max, the
+;; same reason riscv never emits amomin: they are reachable through a builtin
+;; only.
+(define_code_iterator amo_op [plus and ior xor])
+(define_code_attr amo_mnemonic [(plus "add") (and "and") (ior "ior") (xor "eor")])
+
 ;; Iterator for atomic binary operations
 ;; (mult op stands for nand)
 (define_code_iterator atomic_op [plus ior xor minus and mult])

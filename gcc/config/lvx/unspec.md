@@ -20,6 +20,13 @@
         UNSPEC_ASTORE
         UNSPEC_ALCLR
         UNSPEC_ALADD
+        ;; The read-modify-write families, one unspec for the returning form
+        ;; (al*, the old value comes back in the value register) and one for
+        ;; the non-returning form (as*).  They are unspecs rather than plain
+        ;; RTL because the memory access is atomic, which no RTL operator
+        ;; says; the operation itself is ordinary RTL inside.
+        UNSPEC_AMO_FETCH
+        UNSPEC_AMO_NOFETCH
         UNSPEC_ACSWAP
         UNSPEC_D1INVAL
         UNSPEC_I1INVAL

@@ -4318,21 +4318,125 @@ lvx_expand_compare_and_swap (rtx ret_, rtx before_, rtx mem_, rtx expected_,
     emit_move_insn (before_, gen_lowpart (xmode, high));
 }
 
-/* Expand an atomic operation pattern (CODE). Only for SImode and
-   DImode (CAS loop is too difficult to handle for HI, QI, and TI
-   modes). Others modes will be expanded by libatomic if enabled
-   anyway. MEM is the memory location where to perform the atomic
-   operation with value in VAL. If AFTER is true then store the value
-   from MEM into TARGET holds after the operation, if AFTER is false
-   then store the value from MEM into TARGET holds before the
-   operation. If TARGET is NULL_RTX then discard that value, else
-   store the result to TARGET. */
+/* The native read-modify-write instruction for CODE at MODE, or CODE_FOR_nothing
+   when the ISA has none.  FETCH selects the returning form (al<op>, whose old
+   value comes back in the value register) over the discarding one (as<op>).
 
-void
+   add, and, ior and xor are the four the ISA performs directly -- the same set
+   riscv gets from amoadd/amoand/amoor/amoxor.  A subtract is an add of the
+   negation, handled by the caller; nand has no instruction and falls through
+   to the compare-and-swap loop.  Every one of them exists at QI and HI as well
+   as SI and DI, which is why no subword masking path is needed here.  */
+static enum insn_code
+lvx_amo_code (enum rtx_code code, machine_mode mode, bool fetch)
+{
+  switch (mode)
+    {
+#define LVX_AMO_WIDTH(M, sfx)						\
+    case E_##M##mode:							\
+      switch (code)							\
+	{								\
+	case PLUS: return fetch ? CODE_FOR_aladd##sfx##_amo		\
+				: CODE_FOR_asadd##sfx##_amo;		\
+	case AND:  return fetch ? CODE_FOR_aland##sfx##_amo		\
+				: CODE_FOR_asand##sfx##_amo;		\
+	case IOR:  return fetch ? CODE_FOR_alior##sfx##_amo		\
+				: CODE_FOR_asior##sfx##_amo;		\
+	case XOR:  return fetch ? CODE_FOR_aleor##sfx##_amo		\
+				: CODE_FOR_aseor##sfx##_amo;		\
+	default:   return CODE_FOR_nothing;				\
+	}
+    LVX_AMO_WIDTH (QI, b)
+    LVX_AMO_WIDTH (HI, h)
+    LVX_AMO_WIDTH (SI, w)
+    LVX_AMO_WIDTH (DI, d)
+#undef LVX_AMO_WIDTH
+    default:
+      return CODE_FOR_nothing;
+    }
+}
+
+/* Expand an atomic read-modify-write.  Returns false when this port has no way
+   to do it, which the caller turns into FAIL so the middle end emulates: that
+   is nand at a byte or half word, and an exchange at those widths, neither
+   having an instruction and the compare-and-swap loop below working on words
+   and double words only.  Declining is better than widening the loop, because
+   the middle end's emulation is correct and this port's loop would have to
+   grow the mask-and-shift machinery that having native b/h instructions is
+   precisely what spares us.  */
+/* MEM is the memory location to operate on with the value in VAL.  If AFTER is
+   true, TARGET receives the value held after the operation, otherwise the one
+   held before it; a NULL TARGET discards it, which is what selects the
+   non-returning as<op> over al<op>.
+
+   The old comment here said "only for SImode and DImode (CAS loop is too
+   difficult to handle for HI, QI, and TI modes)".  That was the KV3 position
+   and it is no longer true: a byte and a half word have instructions of their
+   own, so they take the one-instruction path above and never reach the loop.  */
+bool
 lvx_expand_atomic_op (enum rtx_code code, rtx target, bool after, rtx mem,
 		      rtx val, rtx model)
 {
   machine_mode mode = GET_MODE (mem);
+
+  /* A subtract is an add of the negation: the ISA has no alsbf, and this is
+     what riscv does with amoadd too.  Fold it before looking for an
+     instruction, so `sub' gets the one-instruction path as well.  */
+  if (code == MINUS && CONST_INT_P (val))
+    {
+      val = gen_int_mode (-UINTVAL (val), mode);
+      code = PLUS;
+    }
+  else if (code == MINUS)
+    {
+      val = expand_simple_unop (mode, NEG, val, NULL_RTX, 1);
+      code = PLUS;
+    }
+
+  /* The one-instruction path.  `after' asks for the value AFTER the operation,
+     which the instruction does not give: al<op> returns the old value, so
+     recompute the new one from it with a single ALU op -- again what riscv
+     does.  */
+  {
+    enum insn_code icode = lvx_amo_code (code, mode, target != NULL_RTX);
+    if (icode != CODE_FOR_nothing)
+      {
+	rtx modifier = gen_rtx_CONST_STRING (VOIDmode, "");
+	lvx_emit_pre_barrier (model);
+	if (target == NULL_RTX)
+	  emit_insn (GEN_FCN (icode) (mem, force_reg (mode, val), modifier,
+				      NULL_RTX));
+	else
+	  {
+	    rtx old = gen_reg_rtx (mode);
+	    emit_move_insn (old, force_reg (mode, val));
+	    emit_insn (GEN_FCN (icode) (old, mem, old, modifier));
+	    if (after)
+	      {
+		/* The instruction returns the value held BEFORE the operation,
+		   so the `_fetch' forms recompute the new one -- one ALU op,
+		   as riscv does after an amo.  OPTAB_WIDEN, not OPTAB_DIRECT:
+		   at QI and HI this port has no arithmetic optab of its own
+		   and expand_simple_binop returns NULL for them, which then
+		   reached emit_move_insn and segfaulted the compiler on
+		   __atomic_add_fetch of a char.  Widening is what the scalar
+		   code does for those modes anyway.  */
+		rtx res = expand_simple_binop (mode, code, old,
+					       force_reg (mode, val),
+					       NULL_RTX, 1, OPTAB_WIDEN);
+		gcc_assert (res != NULL_RTX);
+		emit_move_insn (target, res);
+	      }
+	    else
+	      emit_move_insn (target, old);
+	  }
+	lvx_emit_post_barrier (model);
+	return true;
+      }
+    if (mode != SImode && mode != DImode)
+      return false;
+  }
+
   rtx csloop = gen_label_rtx ();
   rtx tmp = gen_reg_rtx (TImode);
   rtx ret = gen_reg_rtx (mode);
@@ -4344,6 +4448,9 @@ lvx_expand_atomic_op (enum rtx_code code, rtx target, bool after, rtx mem,
   if (target && after)
     op_res_copy = gen_reg_rtx (mode);
 
+  /* Everything that reaches the compare-and-swap loop does so because the ISA
+     has no instruction for it: nand, and any mode the AMO table lacks.  The
+     loop itself works on words and double words only.  */
   gcc_assert ((mode == SImode || mode == DImode));
 
   emit_label (csloop);		/* cas loop entry point */
@@ -4420,6 +4527,7 @@ lvx_expand_atomic_op (enum rtx_code code, rtx target, bool after, rtx mem,
 	       : gen_lowpart (mode, curr_mem_val));
       emit_move_insn (target, ret);
     }
+  return true;
 }
 
 /* Expand the atomic test-and-set on byte atomic operation using the

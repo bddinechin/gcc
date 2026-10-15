@@ -83,13 +83,14 @@
 
 ;; Atomic exchange operation with memory model semantics.
 (define_expand "atomic_exchange<mode>"
-  [(match_operand:SIDI 0 "register_operand" "") ;; val output (memory content)
-   (match_operand:SIDI 1 "mematomic_operand" "");; memory
-   (match_operand:SIDI 2 "register_operand" "") ;; new value
+  [(match_operand:AMO 0 "register_operand" "") ;; val output (memory content)
+   (match_operand:AMO 1 "mematomic_operand" "");; memory
+   (match_operand:AMO 2 "register_operand" "") ;; new value
    (match_operand:SI 3 "const_int_operand" "")] ;; model
   ""
   {
-    lvx_expand_atomic_op (SET, operands[0], false, operands[1], operands[2], operands[3]);
+    if (!lvx_expand_atomic_op (SET, operands[0], false, operands[1], operands[2], operands[3]))
+      FAIL;
     DONE;
   }
 )
@@ -97,13 +98,14 @@
 ;; Atomic operation (add, sub, or, and, xor, nand) on memory with memory
 ;; model semantics.
 (define_expand "atomic_<atomic_optab><mode>"
-  [(match_operand:SIDI 0 "register_operand" "")    ;; op result
-   (atomic_op:SIDI (match_dup 0)
-     (match_operand:SIDI 1 "mematomic_operand" ""));; op1, op2
+  [(match_operand:AMO 0 "register_operand" "")    ;; op result
+   (atomic_op:AMO (match_dup 0)
+     (match_operand:AMO 1 "mematomic_operand" ""));; op1, op2
    (match_operand:SI 2 "const_int_operand" "")]    ;; model
   ""
   {
-    lvx_expand_atomic_op (<CODE>, NULL_RTX, false, operands[0], operands[1], operands[2]);
+    if (!lvx_expand_atomic_op (<CODE>, NULL_RTX, false, operands[0], operands[1], operands[2]))
+      FAIL;
     DONE;
   }
 )
@@ -111,14 +113,15 @@
 ;; Atomic operation (add, sub, or, and, xor, nand) on memory with memory
 ;; model semantics, return the original value.
 (define_expand "atomic_fetch_<atomic_optab><mode>"
- [(match_operand:SIDI 0 "register_operand" "")    ;; output (memory content before op)
-  (atomic_op:SIDI
-    (match_operand:SIDI 1 "mematomic_operand" "") ;; op1, op result
-    (match_operand:SIDI 2 "register_operand" "")) ;; op2
+ [(match_operand:AMO 0 "register_operand" "")    ;; output (memory content before op)
+  (atomic_op:AMO
+    (match_operand:AMO 1 "mematomic_operand" "") ;; op1, op result
+    (match_operand:AMO 2 "register_operand" "")) ;; op2
    (match_operand:SI 3 "const_int_operand")]      ;; model
   ""
   {
-    lvx_expand_atomic_op (<CODE>, operands[0], false, operands[1], operands[2], operands[3]);
+    if (!lvx_expand_atomic_op (<CODE>, operands[0], false, operands[1], operands[2], operands[3]))
+      FAIL;
     DONE;
   }
 )
@@ -126,14 +129,15 @@
 ;; Atomic operation (add, sub, or, and, xor, nand) on memory with memory
 ;; model semantics, perform the operation then return the result.
 (define_expand "atomic_<atomic_optab>_fetch<mode>"
- [(match_operand:SIDI 0 "register_operand" "")    ;; output (op result)
-  (atomic_op:SIDI
-    (match_operand:SIDI 1 "mematomic_operand" "") ;; op1, op result
-    (match_operand:SIDI 2 "register_operand" "")) ;; op2
+ [(match_operand:AMO 0 "register_operand" "")    ;; output (op result)
+  (atomic_op:AMO
+    (match_operand:AMO 1 "mematomic_operand" "") ;; op1, op result
+    (match_operand:AMO 2 "register_operand" "")) ;; op2
   (match_operand:SI 3 "const_int_operand" "")]    ;; model
   ""
   {
-    lvx_expand_atomic_op (<CODE>, operands[0], true, operands[1], operands[2], operands[3]);
+    if (!lvx_expand_atomic_op (<CODE>, operands[0], true, operands[1], operands[2], operands[3]))
+      FAIL;
     DONE;
   }
 )
@@ -237,23 +241,13 @@
   ""
 )
 
-(define_insn "alclr<lsusize>_1"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r,r")
-         (unspec_volatile:SIDI [(match_operand:SIDI 1 "mematomic_operand" "a,b,m")
-                                (match_operand 2 "" "")] UNSPEC_ALCLR))]
-  "HAVE_LVX_ATOMIC_CV1_LIKE_LOAD_CLEAR_<MODE>"
-  "alclr<lsusize>%2%X1 %0 = %1"
-  [(set_attr "type" "aloadc, aloadc, aloadc")
-   (set_attr "issue" "lsu2_memw_auxw, lsu2_memw_auxw_x, lsu2_memw_auxw_x2")
-   (set_attr "length"             "4,                8,               12")
-   (set_attr "predicable" "no")]
-)
+
 
 (define_insn "alclr<lsusize>_2"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r,r")
         (unspec_volatile:SIDI [(match_operand:SIDI 1 "mematomic_operand" "c,d,e")
                                (match_operand 2 "" "")] UNSPEC_ALCLR))]
-  "HAVE_LVX_ATOMIC_CV2_LIKE_LOAD_CLEAR_<MODE>"
+  ""
   "alclr<lsusize>%2%X1 %0 = %O1"
   [(set_attr "type" "aloadc, aloadc, aloadc")
    (set_attr "issue" "lsu2_memw_auxw, lsu2_memw_auxw_x, lsu2_memw_auxw_x2")
@@ -275,15 +269,66 @@
   ""
 )
 
-(define_insn "aladd<lsusize>_1"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r,r")
-        (unspec_volatile:SIDI [(match_operand:SIDI 1 "mematomic_operand" "+a,b,m")
-                               (match_operand 3 "" "")] UNSPEC_ALADD))
+
+
+;; ---------------------------------------------------------------------------
+;; The native read-modify-write instructions.
+;;
+;; al<op> returns the old value and as<op> does not, which is exactly GCC's
+;; distinction between atomic_fetch_<op> and atomic_<op>.  Both exist at b, h,
+;; w and d, so a byte or half-word atomic is one instruction -- where before
+;; this the port had SI/DI only and everything narrower went through the middle
+;; end's mask-shift-and-word-CAS emulation, about 35 instructions for one
+;; __atomic_fetch_add on a char.
+;;
+;; The old value comes back IN THE VALUE REGISTER: the ISA gives these two
+;; register operands, an address and a value, and ALADDW's behaviour writes
+;; `result2', the value operand.  Hence the "0" tie on operand 2.
+;;
+;; The coherency modifier is operand 3, and the standard atomics pass "" --
+;; the Local domain.  Nothing here chooses that; it is what the port has always
+;; passed (lvx_expand_atomic_op), and the place to revisit if C11 atomics must
+;; be coherent beyond the local domain.
+(define_insn "al<amo_mnemonic><lsusize>_amo"
+  [(set (match_operand:AMO 0 "register_operand" "=r,r,r")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d,e")
+                              (match_operand 3 "" "")] UNSPEC_AMO_FETCH))
    (set (match_dup 1)
-        (plus:SIDI (match_dup 1)
-                   (match_operand:SIDI 2 "nonmemory_operand" "0,0,0")))]
-  "HAVE_LVX_ATOMIC_CV1_LIKE_LOAD_PLUS_<MODE>"
-  "aladd<lsusize>%3%X1 %1 = %0"
+        (amo_op:AMO (match_dup 1)
+                    (match_operand:AMO 2 "register_operand" "0,0,0")))]
+  ""
+  "al<amo_mnemonic><lsusize>%3%X1 %O1 = %0"
+  [(set_attr "type" "atomic, atomic, atomic")
+   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
+   (set_attr "length"                  "4,                     8,                    12")
+   (set_attr "predicable" "no")]
+)
+
+;; The same operation with the old value discarded: one as<op>, no result
+;; register, so nothing is tied and the value operand is read-only.
+(define_insn "as<amo_mnemonic><lsusize>_amo"
+  [(set (match_operand:AMO 0 "mematomic_operand" "+c,d,e")
+        (unspec_volatile:AMO [(amo_op:AMO (match_dup 0)
+                                          (match_operand:AMO 1 "register_operand" "r,r,r"))
+                              (match_operand 2 "" "")] UNSPEC_AMO_NOFETCH))]
+  ""
+  "as<amo_mnemonic><lsusize>%2%X0 %O0 = %1"
+  [(set_attr "type" "atomic, atomic, atomic")
+   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
+   (set_attr "length"                  "4,                     8,                    12")
+   (set_attr "predicable" "no")]
+)
+
+;; The atomic swap, store-only: aswap writes memory and returns nothing, so it
+;; serves atomic_exchange only when the result is unused.  A returning
+;; exchange needs the compare-and-swap loop, this being the one place the LVX
+;; atomics are behind RISC-V's amoswap.
+(define_insn "aswap<lsusize>_amo"
+  [(set (match_operand:AMO 0 "mematomic_operand" "+c,d,e")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "register_operand" "r,r,r")
+                              (match_operand 2 "" "")] UNSPEC_AMO_NOFETCH))]
+  ""
+  "aswap<lsusize>%2%X0 %O0 = %1"
   [(set_attr "type" "atomic, atomic, atomic")
    (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
    (set_attr "length"                  "4,                     8,                    12")
@@ -297,7 +342,7 @@
    (set (match_dup 1)
         (plus:SIDI (match_dup 1)
                    (match_operand:SIDI 2 "nonmemory_operand" "0,0,0")))]
-  "HAVE_LVX_ATOMIC_CV2_LIKE_LOAD_PLUS_<MODE>"
+  ""
   "aladd<lsusize>%3%X1 %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
    (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
@@ -307,7 +352,25 @@
 
 ;; Atomic Compare and Swap
 
-(define_mode_iterator ACSWAP_IN [SI DI (TI "HAVE_LVX_ATOMIC_VALUED_CSWAP_TI")])
+;; SI, DI and TI.  acswap exists at b, h, w, d and q, so the 128-bit form is a
+;; real instruction rather than an emulation.  TI used to be gated on
+;; HAVE_LVX_ATOMIC_VALUED_CSWAP_TI, one of three macros recording whether a
+;; width had the VALUED compare-and-swap: on KV3 a CAS in local memory returned
+;; the old value while one in DDR returned only a success flag, so the same
+;; instruction had two shapes depending on where the address pointed.  On LVX
+;; every width has the valued ENCODING -- a result register of its own -- so all
+;; three macros were (1) and the pattern they gated, which had no result
+;; register, was unreachable.
+;;
+;; Encoding and flavour are two different things, and the port currently mixes
+;; them: it uses the valued-encoding pattern but passes `boolcas' = `.', so the
+;; result register receives a success FLAG and not the old value, and
+;; lvx_expand_compare_and_swap reads it as a boolean and loops on failure.
+;; Matching RISC-V, whose CAS yields the old value, means passing `.V' and
+;; deriving success from a comparison -- which also removes the loop, a valued
+;; CAS having no spurious failure.  That is a semantic change to the atomics
+;; and is not done here.
+(define_mode_iterator ACSWAP_IN [SI DI TI])
 (define_mode_attr ACSWAP_EX [(SI "TI") (DI "TI") (TI "OI")])
 (define_mode_attr ACSWAP_RET [(SI "SI") (DI "DI") (TI "TI")])
 (define_mode_attr acswap_reg [(SI "x") (DI "x") (TI "q")])
@@ -325,21 +388,10 @@
   ""
 )
 
-(define_insn "acswap<lsusize>_1"
-  [(set (match_operand:TI 0 "register_operand" "+r,r,r")
-        (unspec_volatile:TI [(match_operand:SIDI 1 "mematomic_operand" "+a,b,m")
-                             (match_operand 2 "" "")] UNSPEC_ACSWAP))
-   (set (match_dup 1)
-        (unspec:SIDI [(match_dup 1) (match_dup 0)] UNSPEC_ACSWAP))
-   (use (match_operand:SI 3 "nonmemory_operand" ""))]
-  "!HAVE_LVX_ATOMIC_VALUED_CSWAP_<MODE>"
-  "acswap<lsusize>%2%X1 %1 = %0"
-  [(set_attr "type" "atomic, atomic, atomic")
-   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
-   (set_attr "length"                  "4,                     8,                    12")
-   (set_attr "predicable" "no")]
-)
-
+;; The boolean-CAS pattern that stood here is gone with the macros that gated
+;; it.  It spelled `acswap %1 = %0' -- memory and a success flag, no old value
+;; -- which is the DDR shape of the KV3 instruction; LVX returns the old value
+;; at every width, so only the valued form below is ever emitted.
 
 (define_insn "acswap<lsusize>_2"
   [(set (match_operand:<ACSWAP_EX> 0 "register_operand" "+r,r,r")
@@ -348,7 +400,7 @@
    (set (match_dup 1)
         (unspec:ACSWAP_IN [(match_dup 1) (match_dup 0)] UNSPEC_ACSWAP))
    (use (match_operand:SI 3 "nonmemory_operand" ""))]
-  "HAVE_LVX_ATOMIC_VALUED_CSWAP_<MODE>"
+  ""
   "acswap<lsusize>%2%X1 %<acswap_reg>0, %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
    (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
