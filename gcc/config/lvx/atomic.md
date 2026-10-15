@@ -339,17 +339,30 @@
    (set_attr "predicable" "no")]
 )
 
-;; The atomic swap, store-only: aswap writes memory and returns nothing, so it
-;; cannot serve atomic_exchange, which must yield the old value -- that keeps
-;; the compare-and-swap loop, the one place these atomics are behind RISC-V's
-;; amoswap.  As a builtin it is exactly the "swap and do not tell me" operation.
+;; The atomic swap.  It RETURNS the old value, unlike the rest of the as*
+;; family: ASWAPW's behaviour is
+;;
+;;     new result2 = _ZX_32 (MEM.atomic_swap (address, 0xF, ..., argument2))
+;;
+;; where ASADDW's is a bare MEM.atomic_add with no result.  The `as' prefix
+;; means "store" for every other operation and not for this one, which is
+;; reasonable -- a swap that discards the old value is just a store -- and is
+;; why an earlier version of this file claimed the ISA had no returning swap
+;; and left atomic_exchange on a compare-and-swap loop.  It does have one:
+;; aswap is RISC-V's amoswap, and there is no ALSWAP missing.
+;;
+;; So the shape is aladd's, not as<op>'s: the old value comes back in the value
+;; register, hence the "0" tie.  Modelling it as write-only would be wrong in a
+;; way that bites -- the instruction clobbers that register, and a pattern
+;; saying otherwise lets the register allocator keep something live in it.
 (define_insn "lvx_aswap<lsusize>"
-  [(set (match_operand:AMO 1 "mematomic_operand" "=c,d,e")
-        (unspec_volatile:AMO [(match_operand:AMO 0 "register_operand" "r,r,r")
-                              (match_operand 2 "" "")] UNSPEC_AMO_NOFETCH))
-   (clobber (match_dup 1))]
+  [(set (match_operand:AMO 0 "register_operand" "=r,r,r")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d,e")
+                              (match_operand 3 "" "")] UNSPEC_AMO_FETCH))
+   (set (match_dup 1)
+        (match_operand:AMO 2 "register_operand" "0,0,0"))]
   ""
-  "aswap<lsusize>%2%X1 %O1 = %0"
+  "aswap<lsusize>%3%X1 %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
    (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
    (set_attr "length"                  "4,                     8,                    12")

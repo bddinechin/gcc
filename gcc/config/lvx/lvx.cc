@@ -4180,6 +4180,10 @@ lvx_amo_code (enum rtx_code code, machine_mode mode, bool fetch)
 				: CODE_FOR_nothing;			\
 	case XOR:  return fetch ? CODE_FOR_aleor##sfx##_amo		\
 				: CODE_FOR_nothing;			\
+	/* SET is atomic_exchange: aswap returns the old value, so it is one	\
+	   instruction and not a compare-and-swap loop.  */			\
+	case SET:  return fetch ? CODE_FOR_lvx_aswap##sfx		\
+				: CODE_FOR_nothing;			\
 	default:   return CODE_FOR_nothing;				\
 	}
     LVX_AMO_WIDTH (QI, b)
@@ -4247,7 +4251,9 @@ lvx_expand_atomic_op (enum rtx_code code, rtx target, bool after, rtx mem,
 	    rtx old = gen_reg_rtx (mode);
 	    emit_move_insn (old, force_reg (mode, val));
 	    emit_insn (GEN_FCN (icode) (old, mem, old, modifier));
-	    if (after)
+	    if (after && code == SET)
+	      gcc_unreachable ();	/* atomic_exchange is always `before'.  */
+	    else if (after)
 	      {
 		/* The instruction returns the value held BEFORE the operation,
 		   so the `_fetch' forms recompute the new one -- one ALU op,
