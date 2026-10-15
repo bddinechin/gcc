@@ -327,39 +327,14 @@
   }
 )
 
-(define_expand "vcond<SIMDALL:mode><SIMDCMP:mode>"
-  [(match_operand:SIMDALL 0 "register_operand")
-   (match_operand:SIMDALL 1 "nonmemory_operand")
-   (match_operand:SIMDALL 2 "nonmemory_operand")
-   (match_operator 3 "comparison_operator"
-    [(match_operand:SIMDCMP 4 "register_operand")
-     (match_operand:SIMDCMP 5 "reg_zero_mone_operand")])]
-  "LVX_2 && ((GET_MODE_NUNITS (<SIMDCMP:MODE>mode) == GET_MODE_NUNITS (<SIMDALL:MODE>mode)))"
-  {
-    rtx target = operands[0];
-    rtx select1 = operands[1];
-    rtx select2 = operands[2];
-    lvx_expand_conditional_move (target, select1, select2, operands[3]);
-    DONE;
-  }
-)
-
-(define_expand "vcondu<SIMDALL:mode><SIMDCMP:mode>"
-  [(match_operand:SIMDALL 0 "register_operand")
-   (match_operand:SIMDALL 1 "nonmemory_operand")
-   (match_operand:SIMDALL 2 "nonmemory_operand")
-   (match_operator 3 "comparison_operator"
-    [(match_operand:SIMDCMP 4 "register_operand")
-     (match_operand:SIMDCMP 5 "reg_zero_mone_operand")])]
-  "LVX_2 && ((GET_MODE_NUNITS (<SIMDCMP:MODE>mode) == GET_MODE_NUNITS (<SIMDALL:MODE>mode)))"
-  {
-    rtx target = operands[0];
-    rtx select1 = operands[1];
-    rtx select2 = operands[2];
-    lvx_expand_conditional_move (target, select1, select2, operands[3]);
-    DONE;
-  }
-)
+;; NOTE: the `vcond' and `vcondu' expanders that used to sit here are gone.
+;; They named optabs GCC no longer has -- vcond_optab and vcondu_optab are
+;; absent from optabs.def and referenced nowhere outside config/, the middle end
+;; having moved every vector select onto vec_cmp + vcond_mask -- so they were
+;; names nothing ever asked for.  What they reached, lvx_expand_conditional_move's
+;; all-zero/all-one block, is covered by lvx_expand_vcond_mask below, and covered
+;; better: `c ? x : 0' is one BLENDZ* there against COMPN* plus an AND here,
+;; because a packed lane mask cannot be ANDed into a vector without widening.
 
 (define_expand "vcond_mask_<mode><mask>"
   [(match_operand:SIMDALL 0 "register_operand")
@@ -387,19 +362,53 @@
 ;; blend siblings cover byte/half/word/double lanes.
 ;; -------------------------------------------------------------------------
 
-(define_insn "vec_cmp<mode><lanemask>"
-  [(set (match_operand:<LANEMASK> 0 "register_operand" "=r")
-        (unspec:<LANEMASK>
-          [(match_operator:<LANEMASK> 1 "comparison_operator"
-            [(match_operand:SIMD128I 2 "register_operand" "r")
-             (match_operand:SIMD128I 3 "register_operand" "r")])]
-          UNSPEC_PACKCMP))]
+;; Expanders rather than the insn itself, for one reason: they RECORD the
+;; comparison against the mask pseudo (lvx_packcmp_map).  COMP* throws the
+;; comparison away -- a bit per lane in a GPR is all that survives -- and
+;; vcond_mask then cannot tell that `mask ? -1 : 0' is the one COMPN* that would
+;; have computed the whole thing.  That select is what C's and OpenCL-C's vector
+;; `a == b' means, so it is every value-producing comparison on this target, and
+;; it was costing COMP* + MAKEDP + BLENDZ* where one instruction does.
+;;
+;; Signed and unsigned share both the recording and the insn: the condition code
+;; carries the signedness (`.lt' against `.ltu') and the mnemonic is the same.
+(define_expand "vec_cmp<mode><lanemask>"
+  [(set (match_operand:<LANEMASK> 0 "register_operand")
+        (match_operator:<LANEMASK> 1 "comparison_operator"
+          [(match_operand:SIMD128I 2 "register_operand")
+           (match_operand:SIMD128I 3 "register_operand")]))]
   "LVX_2"
-  "comp<compx>.%1 %0 = %2, %3"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")])
+  {
+    operands[2] = force_reg (<MODE>mode, operands[2]);
+    operands[3] = force_reg (<MODE>mode, operands[3]);
+    rtx cmp = gen_rtx_fmt_ee (GET_CODE (operands[1]), <LANEMASK>mode,
+			      operands[2], operands[3]);
+    lvx_record_packcmp (operands[0], cmp);
+    emit_insn (gen_rtx_SET (operands[0],
+			    gen_rtx_UNSPEC (<LANEMASK>mode, gen_rtvec (1, cmp),
+					    UNSPEC_PACKCMP)));
+    DONE;
+  })
 
-(define_insn "vec_cmpu<mode><lanemask>"
+(define_expand "vec_cmpu<mode><lanemask>"
+  [(set (match_operand:<LANEMASK> 0 "register_operand")
+        (match_operator:<LANEMASK> 1 "comparison_operator"
+          [(match_operand:SIMD128I 2 "register_operand")
+           (match_operand:SIMD128I 3 "register_operand")]))]
+  "LVX_2"
+  {
+    operands[2] = force_reg (<MODE>mode, operands[2]);
+    operands[3] = force_reg (<MODE>mode, operands[3]);
+    rtx cmp = gen_rtx_fmt_ee (GET_CODE (operands[1]), <LANEMASK>mode,
+			      operands[2], operands[3]);
+    lvx_record_packcmp (operands[0], cmp);
+    emit_insn (gen_rtx_SET (operands[0],
+			    gen_rtx_UNSPEC (<LANEMASK>mode, gen_rtvec (1, cmp),
+					    UNSPEC_PACKCMP)));
+    DONE;
+  })
+
+(define_insn "*lvx_packcmp<mode><lanemask>"
   [(set (match_operand:<LANEMASK> 0 "register_operand" "=r")
         (unspec:<LANEMASK>
           [(match_operator:<LANEMASK> 1 "comparison_operator"
@@ -480,19 +489,21 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite")])
 
+;; The true/false arms take CONSTANTS as well as registers, and that is load
+;; bearing rather than tidiness: the vectorizer's commonest request here is
+;; .VCOND_MASK (mask, {-1...}, {0...}) -- what every C vector comparison used as
+;; a VALUE becomes -- and with `register_operand' arms expand copies those two
+;; constants into registers before this expander can see what they were.  Seeing
+;; them is what lets lvx_expand_vcond_mask pick COMPN* (the whole select in one
+;; instruction) or BLENDZ* (no destination seeding) over BLEND*.
 (define_expand "vcond_mask_<mode><lanemask>"
   [(match_operand:SIMD128I 0 "register_operand")
-   (match_operand:SIMD128I 1 "register_operand")
-   (match_operand:SIMD128I 2 "register_operand")
+   (match_operand:SIMD128I 1 "nonmemory_operand")
+   (match_operand:SIMD128I 2 "nonmemory_operand")
    (match_operand:<LANEMASK> 3 "register_operand")]
   "LVX_2"
   {
-    /* vcond_mask: dst = mask ? op1 : op2.  BLEND* does dst = mask ? src : dst,
-       so seed dst with the false value (op2) then blend in op1 where set.  */
-    rtx dst = operands[0];
-    if (!rtx_equal_p (dst, operands[2]))
-      emit_move_insn (dst, operands[2]);
-    emit_insn (gen_lvx_blend<compx> (dst, dst, operands[1], operands[3]));
+    lvx_expand_vcond_mask (operands[0], operands[1], operands[2], operands[3]);
     DONE;
   })
 
@@ -526,22 +537,12 @@
 
 (define_expand "vcond_mask_<mode><lanemask>"
   [(match_operand:SIMD128F 0 "register_operand")
-   (match_operand:SIMD128F 1 "register_operand")
-   (match_operand:SIMD128F 2 "register_operand")
+   (match_operand:SIMD128F 1 "nonmemory_operand")
+   (match_operand:SIMD128F 2 "nonmemory_operand")
    (match_operand:<LANEMASK> 3 "register_operand")]
   "LVX_2"
   {
-    /* BLEND* is a lane bit-select on the register bits, type-agnostic, so view
-       the float operands as their integer sibling and reuse the integer blend:
-       seed dst with the false value, blend in the true one where the mask set.  */
-    machine_mode im = <vintmode>mode;
-    rtx dst = simplify_gen_subreg (im, operands[0], <MODE>mode, 0);
-    rtx op1 = simplify_gen_subreg (im, operands[1], <MODE>mode, 0);
-    rtx op2 = simplify_gen_subreg (im, operands[2], <MODE>mode, 0);
-    gcc_assert (dst && op1 && op2);
-    if (!rtx_equal_p (dst, op2))
-      emit_move_insn (dst, op2);
-    emit_insn (gen_lvx_blend<compx> (dst, dst, op1, operands[3]));
+    lvx_expand_vcond_mask (operands[0], operands[1], operands[2], operands[3]);
     DONE;
   })
 
@@ -588,30 +589,23 @@
 
 (define_expand "vcond_mask_<mode><lanemask>"
   [(match_operand:SIMD256I 0 "register_operand")
-   (match_operand:SIMD256I 1 "register_operand")
-   (match_operand:SIMD256I 2 "register_operand")
+   (match_operand:SIMD256I 1 "nonmemory_operand")
+   (match_operand:SIMD256I 2 "nonmemory_operand")
    (match_operand:<LANEMASK> 3 "register_operand")]
   "LVX_2"
   {
-    lvx_expand_256_blend (operands[0], operands[1], operands[2], operands[3]);
+    lvx_expand_vcond_mask (operands[0], operands[1], operands[2], operands[3]);
     DONE;
   })
 
 (define_expand "vcond_mask_<mode><lanemask>"
   [(match_operand:SIMD256F 0 "register_operand")
-   (match_operand:SIMD256F 1 "register_operand")
-   (match_operand:SIMD256F 2 "register_operand")
+   (match_operand:SIMD256F 1 "nonmemory_operand")
+   (match_operand:SIMD256F 2 "nonmemory_operand")
    (match_operand:<LANEMASK> 3 "register_operand")]
   "LVX_2"
   {
-    /* BLEND* is a type-agnostic lane bit-select, so view the float halves as
-       their integer sibling and reuse the integer 256-bit blend.  */
-    machine_mode im = <vintmode>mode;
-    rtx d = simplify_gen_subreg (im, operands[0], <MODE>mode, 0);
-    rtx t = simplify_gen_subreg (im, operands[1], <MODE>mode, 0);
-    rtx f = simplify_gen_subreg (im, operands[2], <MODE>mode, 0);
-    gcc_assert (d && t && f);
-    lvx_expand_256_blend (d, t, f, operands[3]);
+    lvx_expand_vcond_mask (operands[0], operands[1], operands[2], operands[3]);
     DONE;
   })
 

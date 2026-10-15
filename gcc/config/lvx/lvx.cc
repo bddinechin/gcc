@@ -513,16 +513,6 @@ lvx_modifier_rounding (rtx x)
   return res ? res : gen_rtx_CONST_STRING (VOIDmode, "");
 }
 
-static machine_mode
-lvx_get_hwide_mode (machine_mode mode)
-{
-  gcc_assert (VECTOR_MODE_P (mode));
-  unsigned nunits = GET_MODE_NUNITS (mode);
-  scalar_mode inner_mode = GET_MODE_INNER (mode);
-  scalar_mode wider_mode = GET_MODE_WIDER_MODE (inner_mode).require ();
-  return mode_for_vector (wider_mode, nunits / 2).require ();
-}
-
 /* Return the mode of a 64-bit chunk from a vector mode, else the mode. */
 static enum machine_mode
 lvx_get_chunk_mode (enum machine_mode mode)
@@ -2203,63 +2193,6 @@ lvx_expand_tablejump (rtx op0, rtx op1)
 }
 
 
-/* Emulate V<n>QI comparisons by expanding them to V<n/2>HI comparisons. */
-static void
-lvx_emulate_vxqi_comparison (rtx pred, rtx comp, machine_mode comp_mode)
-{
-  rtx left = XEXP (comp, 0);
-  rtx right = XEXP (comp, 1);
-  enum rtx_code comp_code = GET_CODE (comp);
-  machine_mode hwide_mode = lvx_get_hwide_mode (comp_mode);
-
-  rtx lefto = gen_reg_rtx (hwide_mode), lefte = gen_reg_rtx (hwide_mode);
-  emit_insn (gen_rtx_SET
-	     (lefto,
-	      gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, left), UNSPEC_QXO)));
-  emit_insn (gen_rtx_SET
-	     (lefte,
-	      gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, left), UNSPEC_QXE)));
-
-  rtx righto = NULL_RTX, righte = NULL_RTX;
-  if (right == CONST0_RTX (comp_mode))
-    righto = CONST0_RTX (hwide_mode), righte = CONST0_RTX (hwide_mode);
-  else if (right == CONSTM1_RTX (comp_mode))
-    righto = CONSTM1_RTX (hwide_mode), righte = CONSTM1_RTX (hwide_mode);
-  else
-    {
-      righto = gen_reg_rtx (hwide_mode), righte = gen_reg_rtx (hwide_mode);
-      emit_insn (gen_rtx_SET
-		 (righto,
-		  gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, right),
-				  UNSPEC_QXO)));
-      emit_insn (gen_rtx_SET
-		 (righte,
-		  gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, right),
-				  UNSPEC_QXE)));
-    }
-
-  rtx predo = gen_reg_rtx (hwide_mode), prede = gen_reg_rtx (hwide_mode);
-  rtx compo = gen_rtx_fmt_ee (comp_code, hwide_mode, lefto, righto);
-  rtx compe = gen_rtx_fmt_ee (comp_code, hwide_mode, lefte, righte);
-  lvx_lower_comparison (predo, compo, hwide_mode);
-  lvx_lower_comparison (prede, compe, hwide_mode);
-
-  rtx tempo = gen_reg_rtx (comp_mode), tempe = gen_reg_rtx (comp_mode);
-  emit_insn (gen_rtx_SET (tempo, gen_rtx_SUBREG (comp_mode, predo, 0)));
-  emit_insn (gen_rtx_SET
-	     (predo,
-	      gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, tempo), UNSPEC_QXO)));
-  emit_insn (gen_rtx_SET (tempe, gen_rtx_SUBREG (comp_mode, prede, 0)));
-  emit_insn (gen_rtx_SET
-	     (prede,
-	      gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, tempe), UNSPEC_ZXO)));
-
-  emit_insn (gen_rtx_SET
-	     (pred,
-	      gen_rtx_UNSPEC (comp_mode, gen_rtvec (2, predo, prede),
-			      UNSPEC_OROE)));
-}
-
 /* Lower a comparison between TI registers into a DI register.  */
 static void
 lvx_lower_timode_comparison (rtx pred, rtx comp, machine_mode comp_mode)
@@ -2410,6 +2343,150 @@ lvx_expand_256_blend (rtx dst, rtx op1, rtx op2, rtx mask)
     }
 }
 
+
+/* The comparison each packed lane mask came from, keyed by the mask pseudo.
+
+   COMP* reduces a vector comparison to one bit per lane in a GPR, and by the
+   time vcond_mask is expanded that GPR is all it is handed -- the comparison
+   itself is gone.  But `mask ? -1 : 0' IS a COMPN*, one instruction, so the
+   comparison is worth keeping: the integer vec_cmp expander records it here and
+   lvx_expand_vcond_mask reads it back.
+
+   Walking the insn chain instead does not work, which is worth recording
+   because it looks like it should: genemit wraps every define_expand body in
+   start_sequence (see gen_vcond_mask_v16qihi in insn-emit), so inside an
+   expander the chain is a fresh empty one and get_last_insn () is NULL.
+
+   Keyed by REGNO and that is safe: expand gives each SSA name its own pseudo
+   and does not recycle pseudos within a function, so a REGNO names one value.
+   lvx_init_expanders empties the map per function in any case, so nothing can
+   leak across one.  The entry is a hint, never an obligation -- a miss just
+   takes the BLENDZ* path.  */
+static hash_map<int_hash<unsigned int, 0, UINT_MAX>, rtx> *lvx_packcmp_map;
+
+void
+lvx_record_packcmp (rtx mask, rtx cmp)
+{
+  if (!REG_P (mask) || cmp == NULL_RTX || !COMPARISON_P (cmp))
+    return;
+  if (!lvx_packcmp_map)
+    lvx_packcmp_map
+      = new hash_map<int_hash<unsigned int, 0, UINT_MAX>, rtx> (16);
+  lvx_packcmp_map->put (REGNO (mask), cmp);
+}
+
+/* The comparison recorded for MASK, or NULL_RTX.  Only returned when it still
+   describes a usable COMPN*: both operands registers of the vector mode asked
+   about, which is what `*compn<suffix>' matches.  */
+static rtx
+lvx_recorded_packcmp (rtx mask, machine_mode mode)
+{
+  if (!REG_P (mask) || !lvx_packcmp_map)
+    return NULL_RTX;
+  rtx *slot = lvx_packcmp_map->get (REGNO (mask));
+  if (!slot)
+    return NULL_RTX;
+  rtx cmp = *slot;
+  if (!COMPARISON_P (cmp)
+      || !REG_P (XEXP (cmp, 0)) || !REG_P (XEXP (cmp, 1))
+      || GET_MODE (XEXP (cmp, 0)) != mode
+      || GET_MODE (XEXP (cmp, 1)) != mode)
+    return NULL_RTX;
+  return cmp;
+}
+
+/* vcond_mask: DST = MASK ? T : F, for the 128- and 256-bit lane shapes.
+
+   Three forms, cheapest first, and the two constant cases are worth special
+   casing because the vectorizer asks for them constantly -- `(vNqi)(a == b)'
+   reaches expand as .VCOND_MASK (mask, {-1...}, {0...}), which is every C
+   vector comparison used as a value.
+
+   F == 0 is BLENDZ*, which does not read its destination.  Through BLEND*
+   it needs the destination seeded with the zero vector first, and that seeding
+   is a real copy in the loop body (two COPYD for a 128-bit value), on top of
+   materialising the zero.
+
+   Otherwise BLEND* over a destination seeded with F, as before.
+
+   F == 0 and T == -1 is one COMPN* on its own -- that instruction writes 0/-1
+   per lane, which is exactly this select -- and this is what OpenCL-C's and C's
+   vector `a == b' means, so it is the shape every value-producing comparison
+   takes.  Reaching it needs the comparison, which lvx_packcmp_map carries over
+   from the vec_cmp expander; see there for why the insn chain cannot be walked
+   instead, and why gimple-isel cannot fold it for us (its `c ? -1 : 0' -> `c'
+   wants the mask's mode to equal the result's, and a packed lane mask is 16 bits
+   against the vector's 128).  */
+void
+lvx_expand_vcond_mask (rtx dst, rtx t, rtx f, rtx mask)
+{
+  machine_mode mode = GET_MODE (dst);
+
+  /* rtx_equal_p, not pointer equality against CONST0_RTX/CONSTM1_RTX: a
+     CONST_VECTOR is not interned the way a CONST_INT is, and
+     const_vector_from_tree returns the canonical rtx for an all-zero vector
+     only -- `if (initializer_zerop (exp)) return CONST0_RTX (mode);'.  An
+     all-ones arm therefore arrives as a fresh CONST_VECTOR and a pointer test
+     silently misses it, which reads as the cheaper path simply not applying.  */
+  bool f_is_zero = rtx_equal_p (f, CONST0_RTX (mode));
+  bool t_is_mone = rtx_equal_p (t, CONSTM1_RTX (mode));
+
+  if (f_is_zero)
+    {
+      if (t_is_mone
+	  && GET_MODE_CLASS (mode) == MODE_VECTOR_INT
+	  && GET_MODE_SIZE (mode) == 16)
+	{
+	  rtx cmp = lvx_recorded_packcmp (mask, mode);
+	  if (cmp != NULL_RTX)
+	    {
+	      /* Emit and verify rather than trust: `*compn<suffix>' covers
+		 V128N under LVX_2, and a condition it cannot spell must become
+		 the BLENDZ* path, not unrecognizable RTL at the end of
+		 expand.  */
+	      rtx_insn *insn
+		= emit_insn (gen_rtx_SET (dst,
+					  gen_rtx_fmt_ee (GET_CODE (cmp), mode,
+							  XEXP (cmp, 0),
+							  XEXP (cmp, 1))));
+	      if (recog_memoized (insn) >= 0)
+		return;
+	      delete_insn (insn);
+	    }
+	}
+      lvx_expand_blendz (dst, t, mask);
+      return;
+    }
+
+  /* BLEND* is a type-agnostic lane bit-select, so a float select is the integer
+     one over the same bits -- view it that way once, here, rather than in each
+     width's arm.  */
+  machine_mode bmode = mode;
+  rtx d = dst, ta = force_reg (mode, t), fa = force_reg (mode, f);
+  if (GET_MODE_CLASS (mode) == MODE_VECTOR_FLOAT)
+    {
+      scalar_int_mode iinner
+	= int_mode_for_size (GET_MODE_UNIT_BITSIZE (mode), 0).require ();
+      bmode = mode_for_vector (iinner, GET_MODE_NUNITS (mode)).require ();
+      d  = simplify_gen_subreg (bmode, dst, mode, 0);
+      ta = simplify_gen_subreg (bmode, ta, mode, 0);
+      fa = simplify_gen_subreg (bmode, fa, mode, 0);
+      gcc_assert (d && ta && fa);
+    }
+
+  if (GET_MODE_SIZE (bmode) == 32)
+    {
+      lvx_expand_256_blend (d, ta, fa, mask);
+      return;
+    }
+
+  if (!rtx_equal_p (d, fa))
+    emit_move_insn (d, fa);
+  emit_insn (gen_rtx_SET (d,
+			  gen_rtx_UNSPEC (bmode, gen_rtvec (3, d, ta, mask),
+					  UNSPEC_LVX_BLEND)));
+}
+
 /* DST = MASK ? SRC : 0, lane-wise, with BLENDZ*.
 
    This is the zeroing select, and the reason it is worth an instruction of its
@@ -2502,13 +2579,6 @@ lvx_lower_comparison (rtx pred, rtx comp, machine_mode comp_mode)
       return;
     }
 
-  if (0 && VECTOR_MODE_P (comp_mode)
-      && GET_MODE_INNER (comp_mode) == QImode)
-    {
-      lvx_emulate_vxqi_comparison (pred, comp, comp_mode);
-      return;
-    }
-
   machine_mode pred_mode = GET_MODE (pred);
   bool pack = SCALAR_INT_MODE_P (pred_mode) && VECTOR_MODE_P (comp_mode);
   rtx cmp =
@@ -2574,40 +2644,6 @@ lvx_lower_comparison (rtx pred, rtx comp, machine_mode comp_mode)
   emit_insn (gen_rtx_SET (pred, lvx_pack_cmp (cmp, pred_mode, pack)));
 }
 
-/* Emulate V<n>QI cond moves by expanding them to V<n/2>HI cond moves. */
-static void
-lvx_emulate_vxqi_simplecond_move (rtx pred, enum rtx_code comp_code, rtx src,
-				  rtx dst)
-{
-  machine_mode move_mode = GET_MODE (dst);
-  machine_mode hwide_mode = lvx_get_hwide_mode (move_mode);
-
-  rtx srco = gen_reg_rtx (hwide_mode), srce = gen_reg_rtx (hwide_mode);
-  emit_insn (gen_rtx_SET (srco, gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, src), UNSPEC_QXO)));
-  emit_insn (gen_rtx_SET (srce, gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, src), UNSPEC_QXE)));
-
-  rtx predo = gen_reg_rtx (hwide_mode), prede = gen_reg_rtx (hwide_mode);
-  emit_insn (gen_rtx_SET (predo, gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, pred), UNSPEC_QXO)));
-  emit_insn (gen_rtx_SET (prede, gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, pred), UNSPEC_QXE)));
-
-  rtx cmpo = gen_rtx_fmt_ee (comp_code, VOIDmode, predo, CONST0_RTX (hwide_mode));
-  rtx cmpe = gen_rtx_fmt_ee (comp_code, VOIDmode, prede, CONST0_RTX (hwide_mode));
-
-  rtx dsto = gen_reg_rtx (hwide_mode), dste = gen_reg_rtx (hwide_mode);
-  emit_insn (gen_rtx_SET (dsto, gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, dst), UNSPEC_QXO)));
-  emit_insn (gen_rtx_SET (dste, gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, dst), UNSPEC_QXE)));
-
-  emit_insn (gen_rtx_SET (dsto, gen_rtx_IF_THEN_ELSE (hwide_mode, cmpo, srco, dsto)));
-  emit_insn (gen_rtx_SET (dste, gen_rtx_IF_THEN_ELSE (hwide_mode, cmpe, srce, dste)));
-
-  rtx tempo = gen_reg_rtx (move_mode), tempe = gen_reg_rtx (move_mode);
-  emit_insn (gen_rtx_SET (tempo, gen_rtx_SUBREG (move_mode, dsto, 0)));
-  emit_insn (gen_rtx_SET (dsto, gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, tempo), UNSPEC_QXO)));
-  emit_insn (gen_rtx_SET (tempe, gen_rtx_SUBREG (move_mode, dste, 0)));
-  emit_insn (gen_rtx_SET (dste, gen_rtx_UNSPEC (hwide_mode, gen_rtvec (1, tempe), UNSPEC_ZXO)));
-
-  emit_insn (gen_rtx_SET (dst, gen_rtx_UNSPEC (move_mode, gen_rtvec (2, dsto, dste), UNSPEC_OROE)));
-}
 
 void
 lvx_expand_conditional_move (rtx target, rtx select1, rtx select2, rtx comp)
@@ -2695,8 +2731,6 @@ lvx_expand_conditional_move (rtx target, rtx select1, rtx select2, rtx comp)
       pred = simplify_gen_subreg (mode, pred, pred_mode, 0);
       emit_insn (gen_rtx_SET (dst, pred));
     }
-  else if (0 && vector_modes_p && GET_MODE_INNER (mode) == QImode)
-    lvx_emulate_vxqi_simplecond_move (pred, NE, src, dst);
   else
     // Special cases above do not apply, conditional move with test `PRED NE CONST0`.
     // The combiner should then fold the comparaison into the conditional move test.
@@ -2783,8 +2817,6 @@ lvx_expand_masked_move (rtx target, rtx select1, rtx select2, rtx pred)
 	  emit_insn (gen_rtx_SET (dst, pred));
 	}
     }
-  else if (0 && vector_modes_p && GET_MODE_INNER (mode) == QImode)
-    lvx_emulate_vxqi_simplecond_move (pred, comp_code, src, dst);
   else
     {
       rtx const0_pred_mode = CONST0_RTX (pred_mode);
@@ -5468,6 +5500,11 @@ lvx_init_expanders (void)
   lvx_builtin_undef_counter = 0;
 
   lvx_ifcvt_ce_level = LVX_IFCVT_;
+
+  /* The recorded vector comparisons name this function's pseudos; see
+     lvx_record_packcmp.  */
+  if (lvx_packcmp_map)
+    lvx_packcmp_map->empty ();
 }
 
 /* 18.4 Defining data structures for per-function information }}}  */
@@ -8580,7 +8617,6 @@ lvx_dependencies_fprint (FILE *file, rtx_insn *insn)
 }
 
 
-
 static void
 lvx_sched_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
 {
@@ -9316,7 +9352,6 @@ lvx_sched_reassociation_width (tree_code opc, enum machine_mode mode)
 #define TARGET_SCHED_REASSOCIATION_WIDTH lvx_sched_reassociation_width
 
 
-
 /* Visit all bundles and force all debug insns after the last insn in
    the bundle. */
 static void
@@ -9702,7 +9737,6 @@ lvx_asm_final_postscan_insn (FILE *file, rtx_insn *insn,
 	    fprintf (file, "\t;;\n");
 	  return;
 	}
-
 
 
       int cycle = lvx_sched2->insn_cycle[uid];
@@ -11805,7 +11839,6 @@ lvx_has_unspec_reference (rtx x)
   return 0;
   //   return for_each_rtx (&x, &lvx_has_unspec_reference_1, NULL);
 }
-
 
 
 /* Return the TLS model to use for ADDR.  */
