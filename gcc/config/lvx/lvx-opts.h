@@ -148,7 +148,6 @@ enum lvx_arch_type
 #define HAVE_LVX_CPLX_MINUS_V4SF (0) // fsbfwcp -- removed from the ISA
 #define HAVE_LVX_CPLX_MULT_V2SF (1)
 #define HAVE_LVX_CPLX_MULT_V4SF (0)
-#define HAVE_LVX_CPLX_PLUS_V2DF (0)
 #define HAVE_LVX_CPLX_PLUS_V4SF (0)
 
 #define HAVE_LVX_DIV_V16QI (1)

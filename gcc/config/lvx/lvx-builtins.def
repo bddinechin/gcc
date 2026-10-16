@@ -426,8 +426,6 @@ LVX_BUILTIN_DIRECT   (ffmadp, V2DF_FTYPE_V2DF_V2DF_V2DF_FLOATINGS,, lvx_2) // Ve
 LVX_BUILTIN_DIRECT   (ffmadq, V4DF_FTYPE_V4DF_V4DF_V4DF_FLOATINGS,, lvx_2) // Vector
 
 LVX_BUILTIN_DIRECT   (ffmadc, V2DF_FTYPE_V2DF_V2DF_V2DF_CONJUGATE,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (ffmadcp, V4DF_FTYPE_V4DF_V4DF_V4DF_CONJUGATE,, lvx_2) // Vector
-LVX_BUILTIN_DIRECT   (ffmadcq, V8DF_FTYPE_V8DF_V8DF_V8DF_CONJUGATE,, lvx_2) // Vector
 
 LVX_BUILTIN_DIRECT   (ffmsh, FLOAT16_FTYPE_FLOAT16_FLOAT16_FLOAT16_FLOATINGS,, true) // Scalar
 LVX_BUILTIN_DIRECT   (ffmsho, V8HF_FTYPE_V8HF_V8HF_V8HF_FLOATINGS,, lvx_2) // Vector
@@ -441,6 +439,20 @@ LVX_BUILTIN_DIRECT   (ffmsdq, V4DF_FTYPE_V4DF_V4DF_V4DF_FLOATINGS,, lvx_2) // Ve
 
 
 LVX_BUILTIN_DIRECT   (ffmsdc, V2DF_FTYPE_V2DF_V2DF_V2DF_CONJUGATE,, lvx_2) // Vector
+/* No ffmadcp/ffmadcq, the complex-double fused multiply-ADD.  They were
+   declared and reachable and returned ZERO: lvx_fadddc{p,q}'s insn condition
+   was HAVE_LVX_CPLX_PLUS_V2DF, which is (0) -- there is no native complex
+   double add -- so the insn never matched, the product the expander had
+   already computed was dropped, and the destination came back uninitialised.
+   `makedp $r0r1 = 0' for a complex FMA, with no diagnostic.
+
+   The multiply-SUBTRACT forms below are fine and stay: lvx_fsbfdc{p,q} are
+   ungated and split onto the lane-wise fsbfdp.  The add could be repaired the
+   same way -- its emulation split onto fadddp exists and HAVE_LVX_PLUS_V2DF is
+   (1) -- but the insn and the split carry OPPOSITE gates at 128 bits and the
+   same false gate at 256, so it needs several coordinated conditions and
+   verification at both widths, not a one-token change.  Withdrawn rather than
+   half-repaired: a compile error beats a silent zero.  */
 LVX_BUILTIN_DIRECT   (ffmsdcp, V4DF_FTYPE_V4DF_V4DF_V4DF_CONJUGATE,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (ffmsdcq, V8DF_FTYPE_V8DF_V8DF_V8DF_CONJUGATE,, lvx_2) // Vector
 
