@@ -618,6 +618,56 @@ LVX_BUILTIN_INDIRECT (aswapb, UINT8_FTYPE_VPTR_UINT8, COHERENCY, true, (ALADD, Q
 LVX_BUILTIN_INDIRECT (aswaph, UINT16_FTYPE_VPTR_UINT16, COHERENCY, true, (ALADD, HImode, HImode)) // Atomic
 LVX_BUILTIN_INDIRECT (aswapw, UINT32_FTYPE_VPTR_UINT32, COHERENCY, true, (ALADD, SImode, SImode)) // Atomic
 LVX_BUILTIN_INDIRECT (aswapd, UINT64_FTYPE_VPTR_UINT64, COHERENCY, true, (ALADD, DImode, DImode)) // Atomic
+/* The atomic minimum, maximum and decrement-unsigned-saturating, 2026-10-16.
+   Builtins only: GCC has no standard optab for an atomic min or max -- which
+   is why riscv never emits amomin/amomax either -- and `dus' has no C
+   analogue.  40 instructions check-opcodes listed as never emitted.
+
+   The signed and unsigned forms are different instructions because the
+   operands are ordered at the ACCESS width (a byte 0xff is -1 to almin, 255 to
+   alminu), so the C types are signed and unsigned to match rather than UINT
+   throughout as the older atomic builtins are.  Getting that wrong is silent:
+   the wrong mnemonic computes a plausible answer on small positive values.  */
+LVX_BUILTIN_INDIRECT (alminb, INT8_FTYPE_VPTR_INT8, COHERENCY, true, (ALADD, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (alminh, INT16_FTYPE_VPTR_INT16, COHERENCY, true, (ALADD, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (alminw, INT32_FTYPE_VPTR_INT32, COHERENCY, true, (ALADD, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (almind, INT64_FTYPE_VPTR_INT64, COHERENCY, true, (ALADD, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asminb, VOID_FTYPE_INT8_VPTR, COHERENCY, true, (ASTORE, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asminh, VOID_FTYPE_INT16_VPTR, COHERENCY, true, (ASTORE, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asminw, VOID_FTYPE_INT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asmind, VOID_FTYPE_INT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (almaxb, INT8_FTYPE_VPTR_INT8, COHERENCY, true, (ALADD, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (almaxh, INT16_FTYPE_VPTR_INT16, COHERENCY, true, (ALADD, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (almaxw, INT32_FTYPE_VPTR_INT32, COHERENCY, true, (ALADD, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (almaxd, INT64_FTYPE_VPTR_INT64, COHERENCY, true, (ALADD, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asmaxb, VOID_FTYPE_INT8_VPTR, COHERENCY, true, (ASTORE, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asmaxh, VOID_FTYPE_INT16_VPTR, COHERENCY, true, (ASTORE, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asmaxw, VOID_FTYPE_INT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asmaxd, VOID_FTYPE_INT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (alminub, UINT8_FTYPE_VPTR_UINT8, COHERENCY, true, (ALADD, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (alminuh, UINT16_FTYPE_VPTR_UINT16, COHERENCY, true, (ALADD, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (alminuw, UINT32_FTYPE_VPTR_UINT32, COHERENCY, true, (ALADD, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (alminud, UINT64_FTYPE_VPTR_UINT64, COHERENCY, true, (ALADD, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asminub, VOID_FTYPE_UINT8_VPTR, COHERENCY, true, (ASTORE, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asminuh, VOID_FTYPE_UINT16_VPTR, COHERENCY, true, (ASTORE, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asminuw, VOID_FTYPE_UINT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asminud, VOID_FTYPE_UINT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (almaxub, UINT8_FTYPE_VPTR_UINT8, COHERENCY, true, (ALADD, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (almaxuh, UINT16_FTYPE_VPTR_UINT16, COHERENCY, true, (ALADD, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (almaxuw, UINT32_FTYPE_VPTR_UINT32, COHERENCY, true, (ALADD, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (almaxud, UINT64_FTYPE_VPTR_UINT64, COHERENCY, true, (ALADD, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asmaxub, VOID_FTYPE_UINT8_VPTR, COHERENCY, true, (ASTORE, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asmaxuh, VOID_FTYPE_UINT16_VPTR, COHERENCY, true, (ASTORE, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asmaxuw, VOID_FTYPE_UINT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asmaxud, VOID_FTYPE_UINT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aldusb, UINT8_FTYPE_VPTR_UINT8, COHERENCY, true, (ALADD, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aldush, UINT16_FTYPE_VPTR_UINT16, COHERENCY, true, (ALADD, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aldusw, UINT32_FTYPE_VPTR_UINT32, COHERENCY, true, (ALADD, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (aldusd, UINT64_FTYPE_VPTR_UINT64, COHERENCY, true, (ALADD, DImode, DImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asdusb, VOID_FTYPE_UINT8_VPTR, COHERENCY, true, (ASTORE, QImode, QImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asdush, VOID_FTYPE_UINT16_VPTR, COHERENCY, true, (ASTORE, HImode, HImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asdusw, VOID_FTYPE_UINT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
+LVX_BUILTIN_INDIRECT (asdusd, VOID_FTYPE_UINT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
 LVX_BUILTIN_INDIRECT (asw, VOID_FTYPE_UINT32_VPTR, COHERENCY, true, (ASTORE, SImode, SImode)) // Atomic
 LVX_BUILTIN_INDIRECT (asd, VOID_FTYPE_UINT64_VPTR, COHERENCY, true, (ASTORE, DImode, DImode)) // Atomic
 

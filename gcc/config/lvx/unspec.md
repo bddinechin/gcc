@@ -27,6 +27,17 @@
         ;; says; the operation itself is ordinary RTL inside.
         UNSPEC_AMO_FETCH
         UNSPEC_AMO_NOFETCH
+        ;; ALDUS/ASDUS, "Decrement Unsigned Saturating": subtract the operand
+        ;; and clamp at zero rather than wrapping.  No RTL operator spells it --
+        ;; us_minus saturates at the mode's width, not at zero against a
+        ;; subtrahend -- so it stays an unspec.
+        ;;
+        ;; The arithmetic is INFERRED, not specified: the ISA description and
+        ;; KVX's helpers both only name the operation, and lvx-gem5's shim says
+        ;; so where it implements `old >= operand ? old - operand : 0'.  That is
+        ;; the reading both names admit, and it is what these builtins expose,
+        ;; so a user depending on the clamp depends on that inference too.
+        UNSPEC_AMO_DUS
         UNSPEC_ACSWAP
         UNSPEC_D1INVAL
         UNSPEC_I1INVAL

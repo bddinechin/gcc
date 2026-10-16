@@ -355,6 +355,75 @@
 ;; register, hence the "0" tie.  Modelling it as write-only would be wrong in a
 ;; way that bites -- the instruction clobbers that register, and a pattern
 ;; saying otherwise lets the register allocator keep something live in it.
+;; The atomic minimum and maximum, and the decrement-unsigned-saturating pair.
+;; Builtins only: GCC has no standard optab for an atomic min or max, which is
+;; also why riscv never emits amomin/amomax, and `dus' has no C analogue at all.
+;; Between them these are 40 of the instructions check-opcodes listed as never
+;; emitted.
+;;
+;; Shapes follow the families they join: the al* form returns the old value in
+;; the value register (hence the "0" tie), the as* form returns nothing and
+;; takes lvx_as<lsusize>'s operand order, because LVX_EXPAND_BUILTIN_ASTORE
+;; calls gen_<name> (value, memory, modifier).
+(define_insn "lvx_al<amo_mm_mnemonic><lsusize>"
+  [(set (match_operand:AMO 0 "register_operand" "=r,r,r")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d,e")
+                              (match_operand 3 "" "")] UNSPEC_AMO_FETCH))
+   (set (match_dup 1)
+        (amo_mm:AMO (match_dup 1)
+                    (match_operand:AMO 2 "register_operand" "0,0,0")))]
+  ""
+  "al<amo_mm_mnemonic><lsusize>%3%X1 %O1 = %0"
+  [(set_attr "type" "atomic, atomic, atomic")
+   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
+   (set_attr "length"                  "4,                     8,                    12")
+   (set_attr "predicable" "no")]
+)
+
+(define_insn "lvx_as<amo_mm_mnemonic><lsusize>"
+  [(set (match_operand:AMO 1 "mematomic_operand" "=c,d,e")
+        (unspec_volatile:AMO [(amo_mm:AMO (match_dup 1)
+                                          (match_operand:AMO 0 "register_operand" "r,r,r"))
+                              (match_operand 2 "" "")] UNSPEC_AMO_NOFETCH))
+   (clobber (match_dup 1))]
+  ""
+  "as<amo_mm_mnemonic><lsusize>%2%X1 %O1 = %0"
+  [(set_attr "type" "atomic, atomic, atomic")
+   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
+   (set_attr "length"                  "4,                     8,                    12")
+   (set_attr "predicable" "no")]
+)
+
+(define_insn "lvx_aldus<lsusize>"
+  [(set (match_operand:AMO 0 "register_operand" "=r,r,r")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d,e")
+                              (match_operand 3 "" "")] UNSPEC_AMO_FETCH))
+   (set (match_dup 1)
+        (unspec:AMO [(match_dup 1)
+                     (match_operand:AMO 2 "register_operand" "0,0,0")] UNSPEC_AMO_DUS))]
+  ""
+  "aldus<lsusize>%3%X1 %O1 = %0"
+  [(set_attr "type" "atomic, atomic, atomic")
+   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
+   (set_attr "length"                  "4,                     8,                    12")
+   (set_attr "predicable" "no")]
+)
+
+(define_insn "lvx_asdus<lsusize>"
+  [(set (match_operand:AMO 1 "mematomic_operand" "=c,d,e")
+        (unspec_volatile:AMO [(unspec:AMO [(match_dup 1)
+                                           (match_operand:AMO 0 "register_operand" "r,r,r")]
+                                          UNSPEC_AMO_DUS)
+                              (match_operand 2 "" "")] UNSPEC_AMO_NOFETCH))
+   (clobber (match_dup 1))]
+  ""
+  "asdus<lsusize>%2%X1 %O1 = %0"
+  [(set_attr "type" "atomic, atomic, atomic")
+   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
+   (set_attr "length"                  "4,                     8,                    12")
+   (set_attr "predicable" "no")]
+)
+
 (define_insn "lvx_aswap<lsusize>"
   [(set (match_operand:AMO 0 "register_operand" "=r,r,r")
         (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d,e")

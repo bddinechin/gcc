@@ -273,6 +273,17 @@
 (define_code_iterator amo_op [plus and ior xor])
 (define_code_attr amo_mnemonic [(plus "add") (and "and") (ior "ior") (xor "eor")])
 
+;; The atomic min and max, signed and unsigned.  Separate from amo_op because
+;; GCC has no standard optab for an atomic minimum -- the same reason riscv
+;; never emits amomin/amomax -- so these are reachable through a builtin only
+;; and need no entry in the lvx_amo_code table.  The operands are ordered at
+;; the ACCESS width, so a byte 0xff is -1 to almin and 255 to alminu, which is
+;; why the signed and unsigned forms are different instructions and the
+;; builtins take correspondingly signed and unsigned C types.
+(define_code_iterator amo_mm [smin smax umin umax])
+(define_code_attr amo_mm_mnemonic
+  [(smin "min") (smax "max") (umin "minu") (umax "maxu")])
+
 ;; Iterator for atomic binary operations
 ;; (mult op stands for nand)
 (define_code_iterator atomic_op [plus ior xor minus and mult])
