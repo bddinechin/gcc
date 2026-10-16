@@ -2376,8 +2376,15 @@ lvx_record_packcmp (rtx mask, rtx cmp)
 }
 
 /* The comparison recorded for MASK, or NULL_RTX.  Only returned when it still
-   describes a usable COMPN*: both operands registers of the vector mode asked
-   about, which is what `*compn<suffix>' matches.  */
+   describes a usable COMPN* (FCOMPN* for floats): both operands registers of a
+   vector with MODE's lane count.
+
+   The operands' mode is NOT required to be MODE, and that is the float case
+   rather than laxity.  A float comparison yields an INTEGER 0/-1 vector -- C's
+   `a < b' on v4sf has type v4si -- so `*fcompn<suffix>' matches
+   (set (reg:V4SI) (lt:V4SI (reg:V4SF) (reg:V4SF))), with the destination and
+   the comparison in the integer sibling and only the operands in float.
+   Requiring operand mode == MODE is what kept FCOMPN* unreachable.  */
 static rtx
 lvx_recorded_packcmp (rtx mask, machine_mode mode)
 {
@@ -2388,9 +2395,13 @@ lvx_recorded_packcmp (rtx mask, machine_mode mode)
     return NULL_RTX;
   rtx cmp = *slot;
   if (!COMPARISON_P (cmp)
-      || !REG_P (XEXP (cmp, 0)) || !REG_P (XEXP (cmp, 1))
-      || GET_MODE (XEXP (cmp, 0)) != mode
-      || GET_MODE (XEXP (cmp, 1)) != mode)
+      || !REG_P (XEXP (cmp, 0)) || !REG_P (XEXP (cmp, 1)))
+    return NULL_RTX;
+  machine_mode om = GET_MODE (XEXP (cmp, 0));
+  if (om != GET_MODE (XEXP (cmp, 1))
+      || !VECTOR_MODE_P (om)
+      || GET_MODE_SIZE (om) != 16
+      || GET_MODE_NUNITS (om) != GET_MODE_NUNITS (mode))
     return NULL_RTX;
   return cmp;
 }

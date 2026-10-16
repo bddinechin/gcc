@@ -470,7 +470,9 @@
 		    (match_operand:SIMD128I 2 "reg_or_splat32_operand" "r,SXW")
 		    (match_operand 3 "" "")] UNSPEC_LVX_COMP))]
   "LVX_2"
-  "comp<compx>%3 %0 = %1, %2"
+  "@
+   comp<compx>%3 %0 = %1, %2
+   comp<compx>%3 %0 = %1, %W2"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "lite, lite_x")
    (set_attr "length"      "4,       8")])
@@ -553,6 +555,18 @@
            (match_operand:SIMD128F 3 "register_operand")]))]
   "LVX_2"
   {
+    /* Record it for vcond_mask, exactly as the integer expanders above do, so
+       that `mask ? -1 : 0' can become one FCOMPN* instead of FCOMP* + MAKEDP +
+       BLENDZ*.  Recording the comparison AS WRITTEN is right only because the
+       codes FCOMP* can spell (float_comparison_operator: ne eq ge lt uneq unge
+       unlt ltgt) are exactly the ones lvx_lower_comparison does NOT rewrite --
+       it swaps the operands or splits UNORDERED/ORDERED into two compares
+       joined by an AND/IOR only for the codes outside that set, and for those
+       the FCOMPN* form fails recog in vcond_mask and the BLENDZ* path is taken.
+       So a rewritten lowering can never be described by a stale record.  */
+    rtx cmp = gen_rtx_fmt_ee (GET_CODE (operands[1]), <LANEMASK>mode,
+			      operands[2], operands[3]);
+    lvx_record_packcmp (operands[0], cmp);
     lvx_lower_comparison (operands[0], operands[1], <MODE>mode);
     DONE;
   })

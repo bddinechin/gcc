@@ -422,13 +422,20 @@
    (set_attr "length"         "8")]
 )
 
+/* Operand 3 takes any splat32, not just 0/-1: COMPN*'s .S twin carries one
+   32-bit word replicated over the operand, so `a < 7' is one instruction where
+   S01 left it a MAKEDP first.  This was dead weight until 2026-10-15, when
+   COMPN* became reachable at all (lvx_expand_vcond_mask); before that no
+   value-producing comparison selected this pattern.  */
 (define_insn "*compn<suffix>"
   [(set (match_operand:<MASK> 0 "register_operand" "=r,r")
         (match_operator:<MASK> 1 "comparison_operator"
          [(match_operand:V128N 2 "register_operand" "r,r")
-          (match_operand:V128N 3 "reg_zero_mone_operand" "r,S01")]))]
+          (match_operand:V128N 3 "reg_or_splat32_operand" "r,SXW")]))]
   "LVX_2"
-  "compn<suffix>.%1 %0 = %2, %3"
+  "@
+   compn<suffix>.%1 %0 = %2, %3
+   compn<suffix>.%1 %0 = %2, %W3"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "lite, lite_x")
    (set_attr "length"      "4,        8")]
