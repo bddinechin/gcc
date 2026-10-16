@@ -2024,61 +2024,13 @@
    (set_attr "length" "4")]
 )
 
-(define_insn "*sbfx2<suffix>"
-  [(set (match_operand:V128K 0 "register_operand" "=r,r")
-        (minus:V128K (match_operand:V128K 1 "reg_or_splat32_operand" "r,SXW")
-                     (ashift:V128K (match_operand:V128K 2 "register_operand" "r,r")
-                                   (const_int 1))))]
-  "LVX_2 && (HAVE_LVX_MUL02_SUB_<MODE>)"
-  "@
-   sbfx2<suffix> %0 = %2, %1
-   sbfx2<suffix> %0 = %2, %W1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite,lite_x")
-   (set_attr "length" "4,8")]
-)
 
-(define_insn "*sbfx4<suffix>"
-  [(set (match_operand:V128K 0 "register_operand" "=r,r")
-        (minus:V128K (match_operand:V128K 1 "reg_or_splat32_operand" "r,SXW")
-                     (ashift:V128K (match_operand:V128K 2 "register_operand" "r,r")
-                                   (const_int 2))))]
-  "LVX_2 && (HAVE_LVX_MUL04_SUB_<MODE>)"
-  "@
-   sbfx4<suffix> %0 = %2, %1
-   sbfx4<suffix> %0 = %2, %W1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite,lite_x")
-   (set_attr "length" "4,8")]
-)
 
-(define_insn "*sbfx8<suffix>"
-  [(set (match_operand:V128K 0 "register_operand" "=r,r")
-        (minus:V128K (match_operand:V128K 1 "reg_or_splat32_operand" "r,SXW")
-                     (ashift:V128K (match_operand:V128K 2 "register_operand" "r,r")
-                                   (const_int 3))))]
-  "LVX_2 && (HAVE_LVX_MUL08_SUB_<MODE>)"
-  "@
-   sbfx8<suffix> %0 = %2, %1
-   sbfx8<suffix> %0 = %2, %W1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite,lite_x")
-   (set_attr "length" "4,8")]
-)
 
-(define_insn "*sbfx16<suffix>"
-  [(set (match_operand:V128K 0 "register_operand" "=r,r")
-        (minus:V128K (match_operand:V128K 1 "reg_or_splat32_operand" "r,SXW")
-                     (ashift:V128K (match_operand:V128K 2 "register_operand" "r,r")
-                                   (const_int 4))))]
-  "LVX_2 && (HAVE_LVX_MUL16_SUB_<MODE>)"
-  "@
-   sbfx16<suffix> %0 = %2, %1
-   sbfx16<suffix> %0 = %2, %W1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite,lite_x")
-   (set_attr "length" "4,8")]
-)
+
+
+
+
 
 (define_expand "div<mode>3"
   [(set (match_operand:V128J 0 "register_operand" "")
@@ -2833,23 +2785,7 @@
   ""
 )
 
-(define_insn_and_split "ashl<mode>3_1"
-  [(set (match_operand:S256I 0 "register_operand" "=&r,r")
-        (ashift:S256I (match_operand:S256I 1 "register_operand" "r,r")
-                      (match_operand:SI 2 "reg_shift_operand" "r,U06")))]
-  "LVX_2 && (!HAVE_LVX_ASHIFT_<MODE> && HAVE_LVX_ASHIFT_<HALF>)"
-  "#"
-  "!HAVE_LVX_ASHIFT_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (ashift:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                       (match_dup 2)))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (ashift:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                       (match_dup 2)))]
-  ""
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "lite2, lite2")]
-)
+
 
 (define_insn "ashl<mode>3_2"
   [(set (match_operand:S256I 0 "register_operand" "=r")
@@ -2920,23 +2856,7 @@
   ""
 )
 
-(define_insn_and_split "ashr<mode>3_1"
-  [(set (match_operand:S256I 0 "register_operand" "=&r,r")
-        (ashiftrt:S256I (match_operand:S256I 1 "register_operand" "r,r")
-                        (match_operand:SI 2 "reg_shift_operand" "r,U06")))]
-  "LVX_2 && (!HAVE_LVX_ASHIFTRT_<MODE> && HAVE_LVX_ASHIFTRT_<HALF>)"
-  "#"
-  "!HAVE_LVX_ASHIFTRT_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (ashiftrt:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                         (match_dup 2)))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (ashiftrt:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                         (match_dup 2)))]
-  ""
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "lite2, lite2")]
-)
+
 
 (define_insn "ashr<mode>3_2"
   [(set (match_operand:S256I 0 "register_operand" "=r")
@@ -2959,23 +2879,7 @@
   ""
 )
 
-(define_insn_and_split "lshr<mode>3_1"
-  [(set (match_operand:S256I 0 "register_operand" "=&r,r")
-        (lshiftrt:S256I (match_operand:S256I 1 "register_operand" "r,r")
-                        (match_operand:SI 2 "reg_shift_operand" "r,U06")))]
-  "LVX_2 && (!HAVE_LVX_LSHIFTRT_<MODE> && HAVE_LVX_LSHIFTRT_<HALF>)"
-  "#"
-  "!HAVE_LVX_LSHIFTRT_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (lshiftrt:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                         (match_dup 2)))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (lshiftrt:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                         (match_dup 2)))]
-  ""
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "lite2, lite2")]
-)
+
 
 (define_insn "lshr<mode>3_2"
   [(set (match_operand:S256I 0 "register_operand" "=r")
@@ -3279,26 +3183,7 @@
    (set_attr "length" "8")]
 )
 
-(define_insn_and_split "*addx2<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
-                                  (const_int 1))
-                    (match_operand:V256K 2 "register_operand" "r")))]
-  "LVX_2 && (!HAVE_LVX_MUL02_ADD_<MODE> && HAVE_LVX_MUL02_ADD_<HALF>)"
-  "#"
-  "!HAVE_LVX_MUL02_ADD_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (plus:<HALF> (ashift:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                    (const_int 1))
-                     (subreg:<HALF> (match_dup 2) 0)))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (plus:<HALF> (ashift:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                                    (const_int 1))
-                     (subreg:<HALF> (match_dup 2) 16)))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
+
 
 (define_insn "*addx2<suffix>"
   [(set (match_operand:V256K 0 "register_operand" "=r,r")
@@ -3316,26 +3201,7 @@
    (set_attr "length" "8,16")]
 )
 
-(define_insn_and_split "*addx4<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
-                                  (const_int 2))
-                    (match_operand:V256K 2 "register_operand" "r")))]
-  "LVX_2 && (!HAVE_LVX_MUL04_ADD_<MODE> && HAVE_LVX_MUL04_ADD_<HALF>)"
-  "#"
-  "!HAVE_LVX_MUL04_ADD_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (plus:<HALF> (ashift:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                    (const_int 2))
-                     (subreg:<HALF> (match_dup 2) 0)))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (plus:<HALF> (ashift:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                                    (const_int 2))
-                     (subreg:<HALF> (match_dup 2) 16)))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
+
 
 (define_insn "*addx4<suffix>"
   [(set (match_operand:V256K 0 "register_operand" "=r,r")
@@ -3353,26 +3219,7 @@
    (set_attr "length" "8,16")]
 )
 
-(define_insn_and_split "*addx8<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
-                                  (const_int 3))
-                    (match_operand:V256K 2 "register_operand" "r")))]
-  "LVX_2 && (!HAVE_LVX_MUL08_ADD_<MODE> && HAVE_LVX_MUL08_ADD_<HALF>)"
-  "#"
-  "!HAVE_LVX_MUL08_ADD_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (plus:<HALF> (ashift:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                    (const_int 3))
-                     (subreg:<HALF> (match_dup 2) 0)))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (plus:<HALF> (ashift:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                                    (const_int 3))
-                     (subreg:<HALF> (match_dup 2) 16)))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
+
 
 (define_insn "*addx8<suffix>"
   [(set (match_operand:V256K 0 "register_operand" "=r,r")
@@ -3390,26 +3237,7 @@
    (set_attr "length" "8,16")]
 )
 
-(define_insn_and_split "*addx16<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (plus:V256K (ashift:V256K (match_operand:V256K 1 "register_operand" "r")
-                                  (const_int 4))
-                    (match_operand:V256K 2 "register_operand" "r")))]
-  "LVX_2 && (!HAVE_LVX_MUL16_ADD_<MODE> && HAVE_LVX_MUL16_ADD_<HALF>)"
-  "#"
-  "!HAVE_LVX_MUL16_ADD_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (plus:<HALF> (ashift:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                    (const_int 4))
-                     (subreg:<HALF> (match_dup 2) 0)))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (plus:<HALF> (ashift:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                                    (const_int 4))
-                     (subreg:<HALF> (match_dup 2) 16)))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
+
 
 (define_insn "*addx16<suffix>"
   [(set (match_operand:V256K 0 "register_operand" "=r,r")
@@ -3598,153 +3426,21 @@
    (set_attr "length" "8")]
 )
 
-(define_insn_and_split "*sbfx2<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (minus:V256K (match_operand:V256K 1 "register_operand" "r")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
-                                   (const_int 1))))]
-  "LVX_2 && (!HAVE_LVX_MUL02_SUB_<MODE> && HAVE_LVX_MUL02_SUB_<HALF>)"
-  "#"
-  "!HAVE_LVX_MUL02_SUB_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (minus:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                      (ashift:<HALF> (subreg:<HALF> (match_dup 2) 0)
-                                     (const_int 1))))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (minus:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                      (ashift:<HALF> (subreg:<HALF> (match_dup 2) 16)
-                                     (const_int 1))))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
 
-(define_insn "*sbfx2<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r,r")
-        (minus:V256K (match_operand:V256K 1 "reg_or_splat32_operand" "r,SXW")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r,r")
-                                   (const_int 1))))]
-  "LVX_2 && (HAVE_LVX_MUL02_SUB_<MODE>)"
-  {
-    if (which_alternative == 1)
-      return "sbfx2<hsuffix> %L0 = %L2, %W1\n\tsbfx2<hsuffix> %M0 = %M2, %W1";
-    return "sbfx2<hsuffix> %L0 = %L2, %L1\n\tsbfx2<hsuffix> %M0 = %M2, %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2,lite2_x2")
-   (set_attr "length" "8,16")]
-)
 
-(define_insn_and_split "*sbfx4<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (minus:V256K (match_operand:V256K 1 "register_operand" "r")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
-                                   (const_int 2))))]
-  "LVX_2 && (!HAVE_LVX_MUL04_SUB_<MODE> && HAVE_LVX_MUL04_SUB_<HALF>)"
-  "#"
-  "!HAVE_LVX_MUL04_SUB_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (minus:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                      (ashift:<HALF> (subreg:<HALF> (match_dup 2) 0)
-                                     (const_int 2))))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (minus:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                      (ashift:<HALF> (subreg:<HALF> (match_dup 2) 16)
-                                     (const_int 2))))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
 
-(define_insn "*sbfx4<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r,r")
-        (minus:V256K (match_operand:V256K 1 "reg_or_splat32_operand" "r,SXW")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r,r")
-                                   (const_int 2))))]
-  "LVX_2 && (HAVE_LVX_MUL04_SUB_<MODE>)"
-  {
-    if (which_alternative == 1)
-      return "sbfx4<hsuffix> %L0 = %L2, %W1\n\tsbfx4<hsuffix> %M0 = %M2, %W1";
-    return "sbfx4<hsuffix> %L0 = %L2, %L1\n\tsbfx4<hsuffix> %M0 = %M2, %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2,lite2_x2")
-   (set_attr "length" "8,16")]
-)
 
-(define_insn_and_split "*sbfx8<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (minus:V256K (match_operand:V256K 1 "register_operand" "r")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
-                                   (const_int 3))))]
-  "LVX_2 && (!HAVE_LVX_MUL08_SUB_<MODE> && HAVE_LVX_MUL08_SUB_<HALF>)"
-  "#"
-  "!HAVE_LVX_MUL08_SUB_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (minus:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                      (ashift:<HALF> (subreg:<HALF> (match_dup 2) 0)
-                                     (const_int 3))))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (minus:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                      (ashift:<HALF> (subreg:<HALF> (match_dup 2) 16)
-                                     (const_int 3))))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
 
-(define_insn "*sbfx8<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r,r")
-        (minus:V256K (match_operand:V256K 1 "reg_or_splat32_operand" "r,SXW")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r,r")
-                                   (const_int 3))))]
-  "LVX_2 && (HAVE_LVX_MUL08_SUB_<MODE>)"
-  {
-    if (which_alternative == 1)
-      return "sbfx8<hsuffix> %L0 = %L2, %W1\n\tsbfx8<hsuffix> %M0 = %M2, %W1";
-    return "sbfx8<hsuffix> %L0 = %L2, %L1\n\tsbfx8<hsuffix> %M0 = %M2, %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2,lite2_x2")
-   (set_attr "length" "8,16")]
-)
 
-(define_insn_and_split "*sbfx16<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r")
-        (minus:V256K (match_operand:V256K 1 "register_operand" "r")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r")
-                                   (const_int 4))))]
-  "LVX_2 && (!HAVE_LVX_MUL16_SUB_<MODE> && HAVE_LVX_MUL16_SUB_<HALF>)"
-  "#"
-  "!HAVE_LVX_MUL16_SUB_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (minus:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                      (ashift:<HALF> (subreg:<HALF> (match_dup 2) 0)
-                                     (const_int 4))))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (minus:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                      (ashift:<HALF> (subreg:<HALF> (match_dup 2) 16)
-                                     (const_int 4))))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
 
-(define_insn "*sbfx16<suffix>"
-  [(set (match_operand:V256K 0 "register_operand" "=r,r")
-        (minus:V256K (match_operand:V256K 1 "reg_or_splat32_operand" "r,SXW")
-                     (ashift:V256K (match_operand:V256K 2 "register_operand" "r,r")
-                                   (const_int 4))))]
-  "LVX_2 && (HAVE_LVX_MUL16_SUB_<MODE>)"
-  {
-    if (which_alternative == 1)
-      return "sbfx16<hsuffix> %L0 = %L2, %W1\n\tsbfx16<hsuffix> %M0 = %M2, %W1";
-    return "sbfx16<hsuffix> %L0 = %L2, %L1\n\tsbfx16<hsuffix> %M0 = %M2, %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2,lite2_x2")
-   (set_attr "length" "8,16")]
-)
+
+
+
+
+
+
+
+
 
 (define_expand "div<mode>3"
   [(set (match_operand:V256J 0 "register_operand" "")
@@ -4190,20 +3886,7 @@
   ""
 )
 
-(define_insn_and_split "abs<mode>2_1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (abs:V256J (match_operand:V256J 1 "register_operand" "r")))]
-  "LVX_2 && (!HAVE_LVX_ABS_<MODE>)"
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (abs:<HALF> (subreg:<HALF> (match_dup 1) 0)))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (abs:<HALF> (subreg:<HALF> (match_dup 1) 16)))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2_x2")]
-)
+
 
 (define_insn "abs<mode>2_2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
@@ -4362,28 +4045,7 @@
    (set_attr "length" "8,16")]
 )
 
-(define_insn_and_split "*abd<mode>_s1"
-  [(set (match_operand:V256L 0 "register_operand" "=&r")
-        (minus:V256L (smax:V256L (vec_duplicate:V256L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                                 (match_operand:V256L 2 "register_operand" "r"))
-                     (smin:V256L (vec_duplicate:V256L (match_dup 1)) (match_dup 2))))]
-  "LVX_2 && (!HAVE_LVX_ABD_<MODE> && HAVE_LVX_ABD_<HALF>)"
-  "#"
-  "!HAVE_LVX_ABD_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (minus:<HALF> (smax:<HALF> (vec_duplicate:<HALF> (match_dup 1))
-                                   (subreg:<HALF> (match_dup 2) 0))
-                      (smin:<HALF> (vec_duplicate:<HALF> (match_dup 1))
-                                   (subreg:<HALF> (match_dup 2) 0))))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (minus:<HALF> (smax:<HALF> (vec_duplicate:<HALF> (match_dup 1))
-                                   (subreg:<HALF> (match_dup 2) 16))
-                      (smin:<HALF> (vec_duplicate:<HALF> (match_dup 1))
-                                   (subreg:<HALF> (match_dup 2) 16))))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
+
 
 (define_insn "*abd<mode>_s1"
   [(set (match_operand:V256L 0 "register_operand" "=r")
@@ -4399,28 +4061,7 @@
    (set_attr "length" "8")]
 )
 
-(define_insn_and_split "*abd<mode>_s2"
-  [(set (match_operand:V256L 0 "register_operand" "=&r")
-        (minus:V256L (smax:V256L (match_operand:V256L 1 "register_operand" "r")
-                                 (vec_duplicate:V256L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
-                     (smin:V256L (match_dup 1) (vec_duplicate:V256L (match_dup 2)))))]
-  "LVX_2 && (!HAVE_LVX_ABD_<MODE> && HAVE_LVX_ABD_<HALF>)"
-  "#"
-  "!HAVE_LVX_ABD_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (minus:<HALF> (smax:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                   (vec_duplicate:<HALF> (match_dup 2)))
-                      (smin:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                   (vec_duplicate:<HALF> (match_dup 2)))))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (minus:<HALF> (smax:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                                   (vec_duplicate:<HALF> (match_dup 2)))
-                      (smin:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                                   (vec_duplicate:<HALF> (match_dup 2)))))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
+
 
 (define_insn "*abd<mode>_s2"
   [(set (match_operand:V256L 0 "register_operand" "=r")
@@ -4953,7 +4594,7 @@
 
 ;; S128F (V8HF V4SF)
 
-(define_insn_and_split "fma<mode>4"
+(define_insn "fma<mode>4"
   [(set (match_operand:S128F 0 "register_operand" "=r,r")
         (fma:S128F (match_operand:S128F 1 "register_operand" "r,r")
                    (match_operand:S128F 2 "reg_or_splat32_operand" "r,SXW")
@@ -4962,23 +4603,13 @@
   "@
    ffma<suffix> %0 = %1, %2
    ffma<suffix> %0 = %1, %W2"
-  "!HAVE_LVX_FMA_<MODE>_<MODE>_<MODE> && reload_completed"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (fma:<CHUNK> (subreg:<CHUNK> (match_dup 1) 0)
-                     (subreg:<CHUNK> (match_dup 2) 0)
-                     (subreg:<CHUNK> (match_dup 3) 0)))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (fma:<CHUNK> (subreg:<CHUNK> (match_dup 1) 8)
-                     (subreg:<CHUNK> (match_dup 2) 8)
-                     (subreg:<CHUNK> (match_dup 3) 8)))]
-  ""
   [(set (attr "type")
      (if_then_else (match_operand 1 "float16_inner_mode") (const_string "fmadds") (const_string "fmaddd")))
    (set_attr "issue" "lite,lite_x")
    (set_attr "length" "4,8")]
 )
 
-(define_insn_and_split "fnma<mode>4"
+(define_insn "fnma<mode>4"
   [(set (match_operand:S128F 0 "register_operand" "=r,r")
         (fma:S128F (neg:S128F (match_operand:S128F 1 "register_operand" "r,r"))
                    (match_operand:S128F 2 "reg_or_splat32_operand" "r,SXW")
@@ -4987,16 +4618,6 @@
   "@
    ffms<suffix> %0 = %1, %2
    ffms<suffix> %0 = %1, %W2"
-  "!HAVE_LVX_FMS_<MODE>_<MODE>_<MODE> && reload_completed"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (fma:<CHUNK> (neg:<CHUNK> (subreg:<CHUNK> (match_dup 1) 0))
-                     (subreg:<CHUNK> (match_dup 2) 0)
-                     (subreg:<CHUNK> (match_dup 3) 0)))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (fma:<CHUNK> (neg:<CHUNK> (subreg:<CHUNK> (match_dup 1) 8))
-                     (subreg:<CHUNK> (match_dup 2) 8)
-                     (subreg:<CHUNK> (match_dup 3) 8)))]
-  ""
   [(set (attr "type")
      (if_then_else (match_operand 1 "float16_inner_mode") (const_string "fmadds") (const_string "fmaddd")))
    (set_attr "issue" "lite,lite_x")
@@ -5713,30 +5334,7 @@
   "#"
 )
 
-(define_split
-  [(set (match_operand:S256F 0 "register_operand" "")
-        (fma:S256F (match_operand:S256F 1 "register_operand" "")
-                   (match_operand:S256F 2 "register_operand" "")
-                   (match_operand:S256F 3 "register_operand" "")))]
-  "LVX_2 && (!HAVE_LVX_FMA_<HALF>_<HALF>_<HALF> && reload_completed)"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (fma:<CHUNK> (subreg:<CHUNK> (match_dup 1) 0)
-                     (subreg:<CHUNK> (match_dup 2) 0)
-                     (subreg:<CHUNK> (match_dup 3) 0)))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (fma:<CHUNK> (subreg:<CHUNK> (match_dup 1) 8)
-                     (subreg:<CHUNK> (match_dup 2) 8)
-                     (subreg:<CHUNK> (match_dup 3) 8)))
-   (set (subreg:<CHUNK> (match_dup 0) 16)
-        (fma:<CHUNK> (subreg:<CHUNK> (match_dup 1) 16)
-                     (subreg:<CHUNK> (match_dup 2) 16)
-                     (subreg:<CHUNK> (match_dup 3) 16)))
-   (set (subreg:<CHUNK> (match_dup 0) 24)
-        (fma:<CHUNK> (subreg:<CHUNK> (match_dup 1) 24)
-                     (subreg:<CHUNK> (match_dup 2) 24)
-                     (subreg:<CHUNK> (match_dup 3) 24)))]
-  ""
-)
+
 
 (define_split
   [(set (match_operand:S256F 0 "register_operand" "")
@@ -5764,30 +5362,7 @@
   "#"
 )
 
-(define_split
-  [(set (match_operand:S256F 0 "register_operand" "")
-        (fma:S256F (neg:S256F (match_operand:S256F 1 "register_operand" ""))
-                   (match_operand:S256F 2 "register_operand" "")
-                   (match_operand:S256F 3 "register_operand" "")))]
-  "LVX_2 && (!HAVE_LVX_FMS_<HALF>_<HALF>_<HALF> && reload_completed)"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (fma:<CHUNK> (neg:<CHUNK> (subreg:<CHUNK> (match_dup 1) 0))
-                     (subreg:<CHUNK> (match_dup 2) 0)
-                     (subreg:<CHUNK> (match_dup 3) 0)))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (fma:<CHUNK> (neg:<CHUNK> (subreg:<CHUNK> (match_dup 1) 8))
-                     (subreg:<CHUNK> (match_dup 2) 8)
-                     (subreg:<CHUNK> (match_dup 3) 8)))
-   (set (subreg:<CHUNK> (match_dup 0) 16)
-        (fma:<CHUNK> (neg:<CHUNK> (subreg:<CHUNK> (match_dup 1) 16))
-                     (subreg:<CHUNK> (match_dup 2) 16)
-                     (subreg:<CHUNK> (match_dup 3) 16)))
-   (set (subreg:<CHUNK> (match_dup 0) 24)
-        (fma:<CHUNK> (neg:<CHUNK> (subreg:<CHUNK> (match_dup 1) 24))
-                     (subreg:<CHUNK> (match_dup 2) 24)
-                     (subreg:<CHUNK> (match_dup 3) 24)))]
-  ""
-)
+
 
 (define_split
   [(set (match_operand:S256F 0 "register_operand" "")

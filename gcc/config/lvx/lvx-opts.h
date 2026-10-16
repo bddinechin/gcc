@@ -156,9 +156,6 @@ enum lvx_arch_type
 #define HAVE_LVX_DIV_V4HI (1)
 #define HAVE_LVX_DIV_V8QI (1)
 
-#define HAVE_LVX_FCDIV_DF (0) // fcdivd -- removed from the ISA
-#define HAVE_LVX_FCDIV_SF (0) // fcdivw -- removed from the ISA
-#define HAVE_LVX_FCDIV_V2SF (1)
 
 #define HAVE_LVX_FDMAS_SF_V2SF_V2SF (1)
 #define HAVE_LVX_FDMAS_V2SF_V4SF_V4SF (1)
@@ -214,9 +211,6 @@ enum lvx_arch_type
 #define HAVE_LVX_FMS_V4SI (1) // msbfwq; unreferenced, the V128M/V256M patterns are ungated
 #define HAVE_LVX_FMS_V8HF_V8HF_V8HF (1) // ffmsho
 
-#define HAVE_LVX_FSDIV_DF (0) // fsdivd -- removed from the ISA
-#define HAVE_LVX_FSDIV_SF (0) // fsdivw -- removed from the ISA
-#define HAVE_LVX_FSDIV_V2SF (1)
 
 #define HAVE_LVX_IOR_DI (1)
 #define HAVE_LVX_IOR_SI (1)

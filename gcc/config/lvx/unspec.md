@@ -162,8 +162,6 @@
         UNSPEC_CMULT
         UNSPEC_CFMA
         UNSPEC_FCONJ
-        UNSPEC_FCDIV
-        UNSPEC_FSDIV
         UNSPEC_FSREC
         UNSPEC_FSRSR
 

@@ -140,63 +140,15 @@
    (set_attr "length"      "4,         8")]
 )
 
-(define_insn "*ext_comp_allw"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
-        (eq:SIDI
-          (and:SI
-            (not:SI (match_operand:SI 1 "register_operand" "r,r"))
-            (match_operand:SI 2 "register_w32_operand" "r,W32"))
-          (const_int 0)))]
-  "HAVE_LVX_COMP_SIDI_ALL_NALL"
-  "compw.all %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length"      "4,         8")]
-)
 
 
-(define_insn "*lvx_comp_alld"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (eq:DI
-          (and:DI
-            (not:DI (match_operand:DI 1 "register_operand" "r,r"))
-            (match_operand:DI 2 "register_s32_operand" "r,I32"))
-          (const_int 0)))]
-  "HAVE_LVX_COMP_SIDI_ALL_NALL && HAVE_LVX_COMPD_MAX_IMMEDIATE_I32"
-  "compd.all %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length"      "4,         8")]
-)
-
-(define_insn "*ext_comp_nallw"
-  [(set (match_operand:SIDI 0 "register_operand" "=r,r")
-        (ne:SIDI
-          (and:SI
-            (not:SI (match_operand:SI 1 "register_operand" "r,r"))
-            (match_operand:SI 2 "register_w32_operand" "r,W32"))
-          (const_int 0)))]
-  "HAVE_LVX_COMP_SIDI_ALL_NALL"
-  "compw.nall %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length"      "4,         8")]
-)
 
 
-(define_insn "*lvx_comp_nalld"
-  [(set (match_operand:DI 0 "register_operand" "=r,r")
-        (ne:DI
-          (and:DI
-            (not:DI (match_operand:DI 1 "register_operand" "r,r"))
-            (match_operand:DI 2 "register_s32_operand" "r,I32"))
-          (const_int 0)))]
-  "HAVE_LVX_COMP_SIDI_ALL_NALL && HAVE_LVX_COMPD_MAX_IMMEDIATE_I32"
-  "compd.nall %0 = %1, %2"
-  [(set_attr "type" "alu, alu")
-   (set_attr "issue" "tiny, tiny_x")
-   (set_attr "length"      "4,         8")]
-)
+
+
+
+
+
 
 
 ;; CBRANCH
@@ -841,50 +793,11 @@
    (set_attr "length"      "4")]
 )
 
-(define_insn "*fcompdq"
-  [(set (match_operand:V4DI 0 "register_operand" "=r")
-        (neg:V4DI (match_operator:V4DI 1 "float_comparison_operator"
-                   [(match_operand:V4DF 2 "register_operand" "r")
-                     (match_operand:V4DF 3 "register_operand" "r")])))]
-  "LVX_2 && (HAVE_LVX_CMP_V4DF)"
-  {
-    return "fcompd.%F1 %x0 = %x2, %x3\n\tfcompd.%F1 %y0 = %y2, %y3\n\t"
-           "fcompd.%F1 %z0 = %z2, %z3\n\tfcompd.%F1 %t0 = %t2, %t3";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length"         "8")]
-)
 
-(define_insn "*fcompdq_s2"
-  [(set (match_operand:V4DI 0 "register_operand" "=r")
-        (neg:V4DI (match_operator:V4DI 1 "float_comparison_operator"
-                   [(vec_duplicate:V4DF (match_operand:DI 2 "nonmemory_operand" "r"))
-                    (match_operand:V4DF 3 "register_operand" "r")])))]
-  "LVX_2 && (HAVE_LVX_CMP_V4DF)"
-  {
-    return "fcompd.%F1 %x0 = %2, %x3\n\tfcompd.%F1 %y0 = %2, %y3\n\t"
-           "fcompd.%F1 %z0 = %2, %z3\n\tfcompd.%F1 %t0 = %2, %t3";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length"         "8")]
-)
 
-(define_insn "*fcompdq_s3"
-  [(set (match_operand:V4DI 0 "register_operand" "=r")
-        (neg:V4DI (match_operator:V4DI 1 "float_comparison_operator"
-                   [(match_operand:V4DF 2 "register_operand" "r")
-                    (vec_duplicate:V4DF (match_operand:DI 3 "nonmemory_operand" "r"))])))]
-  "LVX_2 && (HAVE_LVX_CMP_V4DF)"
-  {
-    return "fcompd.%F1 %x0 = %x2, %3\n\tfcompd.%F1 %y0 = %y2, %3\n\t"
-           "fcompd.%F1 %z0 = %z2, %3\n\tfcompd.%F1 %t0 = %t2, %3";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length"         "8")]
-)
+
+
+
 
 ;; not selectionable
 ;; (define_insn "*fcompn<suffix>_s3"
@@ -1328,21 +1241,7 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn "*cmov<SIDI:mode>.<ALL256:mode>"
-  [(set (match_operand:ALL256 0 "register_operand" "=r")
-        (if_then_else:ALL256 (match_operator 2 "zero_comparison_operator"
-                                                [(match_operand:SIDI 3 "register_operand" "r")
-                                                 (const_int 0)])
-                             (match_operand:ALL256 1 "reg_zero_mone_operand" "r,S01")
-                             (match_operand:ALL256 4 "register_operand" "0")))]
-  "LVX_2 && (HAVE_LVX_COND_MOV_<ALL256:MODE>)"
-  {
-    return "cmoveq.<SIDI:suffix>%2z %3? %L0 = %L1\n\tcmoveq.<SIDI:suffix>%2z %3? %M0 = %M1";
-  }
-  [(set_attr "type" "alu,alu")
-   (set_attr "issue" "lite2,lite2_x2")
-   (set_attr "length"      "8,16")]
-)
+
 
 (define_insn_and_split "*cmov<SIDI:mode>.<ALL256:mode>.<EQNE:evenodd>"
   [(set (match_operand:ALL256 0 "register_operand" "=&r")
@@ -1405,21 +1304,7 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn "*cmov<SIDI:mode>.<ALL256:mode>.<EQNE:evenodd>"
-  [(set (match_operand:ALL256 0 "register_operand" "=r")
-        (if_then_else:ALL256 (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r")
-                                                      (const_int 1) (const_int 0))
-                                   (const_int 0))
-                             (match_operand:ALL256 1 "reg_zero_mone_operand" "r,S01")
-                             (match_operand:ALL256 3 "register_operand" "0")))]
-  "LVX_2 && (HAVE_LVX_COND_MOV_<ALL256:MODE>)"
-  {
-    return "cmoveq.<EQNE:evenodd> %2? %L0 = %L1\n\tcmoveq.<EQNE:evenodd> %2? %M0 = %M1";
-  }
-  [(set_attr "type" "alu,alu")
-   (set_attr "issue" "lite2,lite2_x2")
-   (set_attr "length"      "8,16")]
-)
+
 
 (define_insn_and_split "*cmov<SIDI:mode>.<ALL512:mode>"
   [(set (match_operand:ALL512 0 "register_operand" "=&r")
@@ -1601,22 +1486,7 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn "*select<suffix>_2"
-  [(set (match_operand:V256B 0 "register_operand" "=r")
-        (if_then_else:V256B (match_operator 2 "zero_comparison_operator"
-                                            [(match_operand:<MASK> 3 "register_operand" "r")
-                                             (match_operand:<MASK> 5 "const_zero_operand" "")])
-                            (match_operand:V256B 1 "register_operand" "r")
-                            (match_operand:V256B 4 "register_operand" "0")))]
-  "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>)"
-  {
-    return "lanes<hsuffix>.%2z %L3? %L0 = %L1\n\t"
-           "lanes<hsuffix>.%2z %M3? %M0 = %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length"         "8")]
-)
+
 
 (define_insn_and_split "*select<suffix>_nez_1"
   [(set (match_operand:V256B 0 "register_operand" "=r")
@@ -1646,23 +1516,7 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn "*select<suffix>_nez_2"
-  [(set (match_operand:V256B 0 "register_operand" "=r")
-        (if_then_else:V256B (ne (match_operator:<MASK> 2 "zero_comparison_operator"
-                                                [(match_operand:<MASK> 3 "register_operand" "r")
-                                                 (match_operand:<MASK> 5 "const_zero_operand" "")])
-                                (match_operand:<MASK> 6 "const_zero_operand" ""))
-                            (match_operand:V256B 1 "register_operand" "r")
-                            (match_operand:V256B 4 "register_operand" "0")))]
-  "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>)"
-  {
-    return "lanes<hsuffix>.%2z %L3? %L0 = %L1\n\t"
-           "lanes<hsuffix>.%2z %M3? %M0 = %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length"         "8")]
-)
+
 
 (define_insn_and_split "*select<suffix>_nez_eqz_1"
   [(set (match_operand:V256B 0 "register_operand" "=r")
@@ -1697,24 +1551,7 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn "*select<suffix>_nez_eqz_2"
-  [(set (match_operand:V256B 0 "register_operand" "=r")
-        (if_then_else:V256B (ne (eq:<MASK> (match_operator:<MASK> 2 "zero_comparison_operator"
-                                                           [(match_operand:<MASK> 3 "register_operand" "r")
-                                                            (match_operand:<MASK> 5 "const_zero_operand" "")])
-                                           (match_operand:<MASK> 6 "const_zero_operand" ""))
-                                (match_operand:<MASK> 7 "const_zero_operand" ""))
-                            (match_operand:V256B 1 "register_operand" "r")
-                            (match_operand:V256B 4 "register_operand" "0")))]
-  "LVX_2 && (HAVE_LVX_COND_MOV_<MODE>)"
-  {
-    return "lanes<hsuffix>.%R2z %L3? %L0 = %L1\n\t"
-           "lanes<hsuffix>.%R2z %M3? %M0 = %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length"         "8")]
-)
+
 
 (define_insn_and_split "*select<suffix>"
   [(set (match_operand:V512B 0 "register_operand" "=r")
@@ -1903,39 +1740,9 @@
    (set_attr "predicable" "no")]
 )
 
-(define_insn "*cond_exec_move<ALL256:mode>"
-  [(cond_exec
-     (match_operator 2 "zero_comparison_operator"
-      [(match_operand:SIDI 3 "register_operand" "r")
-       (const_int 0)])
-     (set (match_operand:ALL256 0 "register_operand" "=r")
-          (match_operand:ALL256 1 "reg_zero_mone_operand" "r,S01")))]
-  "LVX_2 && (HAVE_LVX_COND_MOV_<ALL256:MODE>)"
-  {
-    return "cmoveq.<SIDI:suffix>%2z %3? %L0 = %L1\n\tcmoveq.<SIDI:suffix>%2z %3? %M0 = %M1";
-  }
-  [(set_attr "type" "alu,alu")
-   (set_attr "issue" "lite2,lite2_x2")
-   (set_attr "length"      "8,16")
-   (set_attr "predicable" "no")]
-)
 
-(define_insn "*cond_exec_move<ALL256:mode>.<EQNE:evenodd>"
-  [(cond_exec
-     (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r")
-                              (const_int 1) (const_int 0))
-           (const_int 0))
-     (set (match_operand:ALL256 0 "register_operand" "=r")
-          (match_operand:ALL256 1 "reg_zero_mone_operand" "r,S01")))]
-  "LVX_2 && (HAVE_LVX_COND_MOV_<ALL256:MODE>)"
-  {
-    return "cmoveq.<EQNE:evenodd> %2? %L0 = %L1\n\tcmoveq.<EQNE:evenodd> %2? %M0 = %M1";
-  }
-  [(set_attr "type" "alu,alu")
-   (set_attr "issue" "lite2,lite2_x2")
-   (set_attr "length"      "8,16")
-   (set_attr "predicable" "no")]
-)
+
+
 
 
 ;; BCU Predication

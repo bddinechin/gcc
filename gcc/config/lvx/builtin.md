@@ -1397,29 +1397,6 @@
   ""
 )
 
-(define_insn_and_split "lvx_select256s_1"
-  [(set (match_operand:V256 0 "register_operand" "=r")
-        (unspec:V256 [(match_operand:V256 1 "register_operand" "r")
-                      (match_operand:V256 2 "register_operand" "0")
-                      (match_operand:DI 3 "register_operand" "r")
-                      (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "!HAVE_LVX_SELECT_<MODE>"
-  "#"
-  "!HAVE_LVX_SELECT_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (unspec:<HALF> [(subreg:<HALF> (match_dup 1) 0)
-                        (subreg:<HALF> (match_dup 2) 0)
-                        (match_dup 3)
-                        (match_dup 4)] UNSPEC_SELECT))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (unspec:<HALF> [(subreg:<HALF> (match_dup 1) 16)
-                        (subreg:<HALF> (match_dup 2) 16)
-                        (match_dup 3)
-                        (match_dup 4)] UNSPEC_SELECT))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
 
 (define_insn "lvx_select256s_2"
   [(set (match_operand:V256 0 "register_operand" "=r")
@@ -1447,37 +1424,6 @@
   ""
 )
 
-(define_insn_and_split "lvx_select512s_1"
-  [(set (match_operand:V512 0 "register_operand" "=&r")
-        (unspec:V512 [(match_operand:V512 1 "register_operand" "r")
-                      (match_operand:V512 2 "register_operand" "0")
-                      (match_operand:DI 3 "register_operand" "r")
-                      (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "!HAVE_LVX_SELECT_<HALF>"
-  "#"
-  "!HAVE_LVX_SELECT_<HALF> && reload_completed"
-  [(set (subreg:<QUART> (match_dup 0) 0)
-        (unspec:<QUART> [(subreg:<QUART> (match_dup 1) 0)
-                         (subreg:<QUART> (match_dup 2) 0)
-                         (match_dup 3)
-                         (match_dup 4)] UNSPEC_SELECT))
-   (set (subreg:<QUART> (match_dup 0) 16)
-        (unspec:<QUART> [(subreg:<QUART> (match_dup 1) 16)
-                         (subreg:<QUART> (match_dup 2) 16)
-                         (match_dup 3)
-                         (match_dup 4)] UNSPEC_SELECT))
-   (set (subreg:<QUART> (match_dup 0) 32)
-        (unspec:<QUART> [(subreg:<QUART> (match_dup 1) 32)
-                         (subreg:<QUART> (match_dup 2) 32)
-                         (match_dup 3)
-                         (match_dup 4)] UNSPEC_SELECT))
-   (set (subreg:<QUART> (match_dup 0) 48)
-        (unspec:<QUART> [(subreg:<QUART> (match_dup 1) 48)
-                         (subreg:<QUART> (match_dup 2) 48)
-                         (match_dup 3)
-                         (match_dup 4)] UNSPEC_SELECT))]
-  ""
-)
 
 (define_insn_and_split "lvx_select512s_2"
   [(set (match_operand:V512 0 "register_operand" "=&r")
@@ -1597,29 +1543,6 @@
   ""
 )
 
-(define_insn_and_split "lvx_select<suffix>_1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (unspec:V256J [(match_operand:V256J 1 "register_operand" "r")
-                       (match_operand:V256J 2 "register_operand" "0")
-                       (match_operand:V256J 3 "register_operand" "r")
-                       (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "!HAVE_LVX_SELECT_<MODE>"
-  "#"
-  "!HAVE_LVX_SELECT_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (unspec:<HALF> [(subreg:<HALF> (match_dup 1) 0)
-                        (subreg:<HALF> (match_dup 2) 0)
-                        (subreg:<HALF> (match_dup 3) 0)
-                        (match_dup 4)] UNSPEC_SELECT))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (unspec:<HALF> [(subreg:<HALF> (match_dup 1) 16)
-                        (subreg:<HALF> (match_dup 2) 16)
-                        (subreg:<HALF> (match_dup 3) 16)
-                        (match_dup 4)] UNSPEC_SELECT))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
 
 (define_insn "lvx_select<suffix>_2"
   [(set (match_operand:V256J 0 "register_operand" "=r")
@@ -1647,37 +1570,6 @@
   ""
 )
 
-(define_insn_and_split "lvx_select<suffix>_1"
-  [(set (match_operand:V512J 0 "register_operand" "=&r")
-        (unspec:V512J [(match_operand:V512J 1 "register_operand" "r")
-                       (match_operand:V512J 2 "register_operand" "0")
-                       (match_operand:V512J 3 "register_operand" "r")
-                       (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "!HAVE_LVX_SELECT_<HALF>"
-  "#"
-  "!HAVE_LVX_SELECT_<HALF> && reload_completed"
-  [(set (subreg:<QUART> (match_dup 0) 0)
-        (unspec:<QUART> [(subreg:<QUART> (match_dup 1) 0)
-                         (subreg:<QUART> (match_dup 2) 0)
-                         (subreg:<QUART> (match_dup 3) 0)
-                         (match_dup 4)] UNSPEC_SELECT))
-   (set (subreg:<QUART> (match_dup 0) 16)
-        (unspec:<QUART> [(subreg:<QUART> (match_dup 1) 16)
-                         (subreg:<QUART> (match_dup 2) 16)
-                         (subreg:<QUART> (match_dup 3) 16)
-                         (match_dup 4)] UNSPEC_SELECT))
-   (set (subreg:<QUART> (match_dup 0) 32)
-        (unspec:<QUART> [(subreg:<QUART> (match_dup 1) 32)
-                         (subreg:<QUART> (match_dup 2) 32)
-                         (subreg:<QUART> (match_dup 3) 32)
-                         (match_dup 4)] UNSPEC_SELECT))
-   (set (subreg:<QUART> (match_dup 0) 48)
-        (unspec:<QUART> [(subreg:<QUART> (match_dup 1) 48)
-                         (subreg:<QUART> (match_dup 2) 48)
-                         (subreg:<QUART> (match_dup 3) 48)
-                         (match_dup 4)] UNSPEC_SELECT))]
-  ""
-)
 
 (define_insn_and_split "lvx_select<suffix>_2"
   [(set (match_operand:V512J 0 "register_operand" "=&r")
@@ -1753,29 +1645,6 @@
   ""
 )
 
-(define_insn_and_split "lvx_selectf<suffix>_1"
-  [(set (match_operand:V256F 0 "register_operand" "=r")
-        (unspec:V256F [(match_operand:V256F 1 "register_operand" "r")
-                       (match_operand:V256F 2 "register_operand" "0")
-                       (match_operand:<MASK> 3 "register_operand" "r")
-                       (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "!HAVE_LVX_SELECT_<MODE>"
-  "#"
-  "!HAVE_LVX_SELECT_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (unspec:<HALF> [(subreg:<HALF> (match_dup 1) 0)
-                        (subreg:<HALF> (match_dup 2) 0)
-                        (subreg:<HMASK> (match_dup 3) 0)
-                        (match_dup 4)] UNSPEC_SELECT))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (unspec:<HALF> [(subreg:<HALF> (match_dup 1) 16)
-                        (subreg:<HALF> (match_dup 2) 16)
-                        (subreg:<HMASK> (match_dup 3) 16)
-                        (match_dup 4)] UNSPEC_SELECT))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
 
 (define_insn "lvx_selectf<suffix>_2"
   [(set (match_operand:V256F 0 "register_operand" "=r")
@@ -1929,18 +1798,6 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn "lvx_stsudq_2"
-  [(set (match_operand:V4DI 0 "register_operand" "=r")
-        (unspec:V4DI [(match_operand:V4DI 1 "register_operand" "r")
-                      (match_operand:V4DI 2 "register_operand" "r")] UNSPEC_STSU))]
-  "LVX_2 && (HAVE_LVX_STSU_V4DI)"
-  {
-    return "stsudp %L0 = %L1, %L2\n\tstsudp %M0 = %M1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
 
 (define_insn_and_split "lvx_stsudo"
   [(set (match_operand:V8DI 0 "register_operand" "=r")
@@ -2053,39 +1910,6 @@
   ""
 )
 
-
-
-(define_insn_and_split "*sbmm8dq_s1"
-  [(set (match_operand:ALL256 0 "register_operand" "=&r")
-        (unspec:ALL256 [(vec_duplicate:V4DI (match_operand:DI 1 "register_operand" "r"))
-                        (match_operand:SIMD256 2 "register_operand" "r")] UNSPEC_SBMM8D))]
-  "!HAVE_LVX_SBMM8_<ALL256:MODE>"
-  "#"
-  "!HAVE_LVX_SBMM8_<ALL256:MODE> && reload_completed"
-  [(set (subreg:<ALL256:HALF> (match_dup 0) 0)
-        (unspec:<ALL256:HALF> [(vec_duplicate:V2DI (match_dup 1))
-                               (subreg:<SIMD256:HALF> (match_dup 2) 0)] UNSPEC_SBMM8D))
-   (set (subreg:<ALL256:HALF> (match_dup 0) 16)
-        (unspec:<ALL256:HALF> [(vec_duplicate:V2DI (match_dup 1))
-                               (subreg:<SIMD256:HALF> (match_dup 2) 16)] UNSPEC_SBMM8D))]
-  ""
-)
-
-(define_insn_and_split "*sbmm8dq_s2"
-  [(set (match_operand:ALL256 0 "register_operand" "=&r")
-        (unspec:ALL256 [(match_operand:SIMD256 1 "register_operand" "r")
-                        (vec_duplicate:V4DI (match_operand:DI 2 "register_operand" "r"))] UNSPEC_SBMM8D))]
-  "!HAVE_LVX_SBMM8_<ALL256:MODE>"
-  "#"
-  "!HAVE_LVX_SBMM8_<ALL256:MODE> && reload_completed"
-  [(set (subreg:<ALL256:HALF> (match_dup 0) 0)
-        (unspec:<ALL256:HALF> [(subreg:<SIMD256:HALF> (match_dup 1) 0)
-                               (vec_duplicate:V2DI (match_dup 2))] UNSPEC_SBMM8D))
-   (set (subreg:<ALL256:HALF> (match_dup 0) 16)
-        (unspec:<ALL256:HALF> [(subreg:<SIMD256:HALF> (match_dup 1) 16)
-                               (vec_duplicate:V2DI (match_dup 2))] UNSPEC_SBMM8D))]
-  ""
-)
 
 (define_insn "lvx_sbmm8dq_2"
   [(set (match_operand:V4DI 0 "register_operand" "=r")
@@ -2226,11 +2050,6 @@
 )
 
 
-
-
-
-
-
 (define_insn "lvx_sbmmt8dq_2"
   [(set (match_operand:V4DI 0 "register_operand" "=r")
         (unspec:V4DI [(match_operand:V4DI 1 "register_operand" "r")
@@ -2318,27 +2137,6 @@
   ""
 )
 
-(define_insn "lvx_faddwcp"
-  [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")
-                      (match_operand:V4SF 2 "register_operand" "r")
-                      (match_operand 3 "" "")] UNSPEC_FADD))]
-  "HAVE_LVX_CPLX_PLUS_V4SF"
-  "faddwcp%3 %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_fadddc"
-  [(set (match_operand:V2DF 0 "register_operand" "=r")
-        (unspec:V2DF [(match_operand:V2DF 1 "register_operand" "r")
-                      (match_operand:V2DF 2 "register_operand" "r")
-                      (match_operand 3 "" "")] UNSPEC_FADD))]
-  "HAVE_LVX_CPLX_PLUS_V2DF"
-  "fadddc%3 %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
 
 (define_insn "lvx_fadddcp"
   [(set (match_operand:V4DF 0 "register_operand" "=r")
@@ -2351,22 +2149,6 @@
    (set_attr "issue" "lite")]
 )
 
-(define_split
-  [(set (match_operand:V4DF 0 "register_operand" "")
-        (unspec:V4DF [(match_operand:V4DF 1 "register_operand" "")
-                      (match_operand:V4DF 2 "register_operand" "")
-                      (match_operand 3 "" "")] UNSPEC_FADD))]
-  "HAVE_LVX_CPLX_PLUS_V2DF && reload_completed"
-  [(set (subreg:V2DF (match_dup 0) 0)
-        (unspec:V2DF [(subreg:V2DF (match_dup 1) 0)
-                      (subreg:V2DF (match_dup 2) 0)
-                      (match_dup 3)] UNSPEC_FADD))
-   (set (subreg:V2DF (match_dup 0) 16)
-        (unspec:V2DF [(subreg:V2DF (match_dup 1) 16)
-                      (subreg:V2DF (match_dup 2) 16)
-                      (match_dup 3)] UNSPEC_FADD))]
-  ""
-)
 
 (define_split
   [(set (match_operand:V4DF 0 "register_operand" "")
@@ -2422,33 +2204,6 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "lvx_faddwcq"
-  [(set (match_operand:V8SF 0 "register_operand" "=r")
-        (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "r")
-                      (match_operand:V8SF 2 "register_operand" "r")
-                      (match_operand 3 "" "")] UNSPEC_FADD))]
-  "HAVE_LVX_CPLX_PLUS_V4SF"
-  "#"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
-
-(define_split
-  [(set (match_operand:V8SF 0 "register_operand" "")
-        (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "")
-                      (match_operand:V8SF 2 "register_operand" "")
-                      (match_operand 3 "" "")] UNSPEC_FADD))]
-  "HAVE_LVX_CPLX_PLUS_V4SF && reload_completed"
-  [(set (subreg:V4SF (match_dup 0) 0)
-        (unspec:V4SF [(subreg:V4SF (match_dup 1) 0)
-                      (subreg:V4SF (match_dup 2) 0)
-                      (match_dup 3)] UNSPEC_FADD))
-   (set (subreg:V4SF (match_dup 0) 16)
-        (unspec:V4SF [(subreg:V4SF (match_dup 1) 16)
-                      (subreg:V4SF (match_dup 2) 16)
-                      (match_dup 3)] UNSPEC_FADD))]
-  ""
-)
 
 ;; FADD*
 
@@ -2581,29 +2336,6 @@
 )
 
 
-
-(define_insn "lvx_fsbfwcp"
-  [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")
-                      (match_operand:V4SF 2 "register_operand" "r")
-                      (match_operand 3 "" "")] UNSPEC_FSBF))]
-  "HAVE_LVX_CPLX_MINUS_V4SF"
-  "fsbfwcp%3 %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_fsbfdc"
-  [(set (match_operand:V2DF 0 "register_operand" "=r")
-        (unspec:V2DF [(match_operand:V2DF 1 "register_operand" "r")
-                      (match_operand:V2DF 2 "register_operand" "r")
-                      (match_operand 3 "" "")] UNSPEC_FSBF))]
-  "HAVE_LVX_CPLX_MINUS_V2DF"
-  "fsbfdc%3 %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
-
 (define_insn "lvx_fsbfdcp"
   [(set (match_operand:V4DF 0 "register_operand" "=r")
         (unspec:V4DF [(match_operand:V4DF 1 "register_operand" "r")
@@ -2631,7 +2363,6 @@
                       (match_dup 3)] UNSPEC_FSBF))]
   ""
 )
-
 
 
 (define_insn_and_split "lvx_fsbfdcq"
@@ -2820,7 +2551,6 @@
                       (match_dup 3)] UNSPEC_FSBF))]
   ""
 )
-
 
 
 ;; FMUL*
@@ -3075,46 +2805,6 @@
 
 ;; FMULX*
 
-(define_insn "lvx_fmulxhw"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (unspec:SF [(match_operand:HF 1 "register_operand" "r")
-                    (match_operand:HF 2 "register_operand" "r")
-                    (match_operand 3 "" "")] UNSPEC_FMULX))]
-  "HAVE_LVX_MULT_SF_HF_HF"
-  "fmulhw%3 %0 = %1, %2"
-  [(set_attr "type" "fmuls")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_fmulxwd"
-  [(set (match_operand:DF 0 "register_operand" "=r")
-        (unspec:DF [(match_operand:SF 1 "register_operand" "r")
-                    (match_operand:SF 2 "register_operand" "r")
-                    (match_operand 3 "" "")] UNSPEC_FMULX))]
-  "HAVE_LVX_MULT_DF_SF_SF"
-  "fmulwd%3 %0 = %1, %2"
-  [(set_attr "type" "fmuld")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn_and_split "lvx_fmulx<widenx>"
-  [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
-        (unspec:<WIDE> [(match_operand:S128F 1 "register_operand" "r")
-                        (match_operand:S128F 2 "register_operand" "r")
-                        (match_operand 3 "" "")] UNSPEC_FMULX))]
-  "HAVE_LVX_MULT_<HWIDE>_<CHUNK>_<CHUNK>"
-  "#"
-  "reload_completed"
-  [(set (subreg:<HWIDE> (match_dup 0) 0)
-        (unspec:<HWIDE> [(subreg:<CHUNK> (match_dup 1) 0)
-                         (subreg:<CHUNK> (match_dup 2) 0)
-                         (match_dup 3)] UNSPEC_FMULX))
-   (set (subreg:<HWIDE> (match_dup 0) 16)
-        (unspec:<HWIDE> [(subreg:<CHUNK> (match_dup 1) 8)
-                         (subreg:<CHUNK> (match_dup 2) 8)
-                         (match_dup 3)] UNSPEC_FMULX))]
-  ""
-)
 
 (define_expand "lvx_fdivdc"
   [(match_operand:V2DF 0 "register_operand")
@@ -3243,27 +2933,6 @@
   ""
 )
 
-(define_insn_and_split "lvx_ffma<suffix>_1"
-  [(set (match_operand:S128F 0 "register_operand" "=r")
-        (unspec:S128F [(match_operand:S128F 1 "register_operand" "r")
-                       (match_operand:S128F 2 "register_operand" "r")
-                       (match_operand:S128F 3 "register_operand" "0")
-                       (match_operand 4 "" "")] UNSPEC_FFMA))]
-  "!HAVE_LVX_FMA_<MODE>_<MODE>_<MODE>"
-  "#"
-  "&& reload_completed"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 0)
-                         (subreg:<CHUNK> (match_dup 2) 0)
-                         (subreg:<CHUNK> (match_dup 3) 0)
-                         (match_dup 4)] UNSPEC_FFMA))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 8)
-                         (subreg:<CHUNK> (match_dup 2) 8)
-                         (subreg:<CHUNK> (match_dup 3) 8)
-                         (match_dup 4)] UNSPEC_FFMA))]
-  ""
-)
 
 (define_insn "lvx_ffma<suffix>_2"
   [(set (match_operand:S128F 0 "register_operand" "=r")
@@ -3312,35 +2981,6 @@
   "#"
 )
 
-(define_split
-  [(set (match_operand:S256F 0 "register_operand" "")
-        (unspec:S256F [(match_operand:S256F 1 "register_operand" "")
-                       (match_operand:S256F 2 "register_operand" "")
-                       (match_operand:S256F 3 "register_operand" "")
-                       (match_operand 4 "" "")] UNSPEC_FFMA))]
-  "!HAVE_LVX_FMA_<HALF>_<HALF>_<HALF> && reload_completed"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 0)
-                         (subreg:<CHUNK> (match_dup 2) 0)
-                         (subreg:<CHUNK> (match_dup 3) 0)
-                         (match_dup 4)] UNSPEC_FFMA))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 8)
-                         (subreg:<CHUNK> (match_dup 2) 8)
-                         (subreg:<CHUNK> (match_dup 3) 8)
-                         (match_dup 4)] UNSPEC_FFMA))
-   (set (subreg:<CHUNK> (match_dup 0) 16)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 16)
-                         (subreg:<CHUNK> (match_dup 2) 16)
-                         (subreg:<CHUNK> (match_dup 3) 16)
-                         (match_dup 4)] UNSPEC_FFMA))
-   (set (subreg:<CHUNK> (match_dup 0) 24)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 24)
-                         (subreg:<CHUNK> (match_dup 2) 24)
-                         (subreg:<CHUNK> (match_dup 3) 24)
-                         (match_dup 4)] UNSPEC_FFMA))]
-  ""
-)
 
 (define_split
   [(set (match_operand:S256F 0 "register_operand" "")
@@ -3396,17 +3036,6 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "lvx_ffmawcp_2"
-  [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")
-                      (match_operand:V4SF 2 "register_operand" "r")
-                      (match_operand:V4SF 3 "register_operand" "0")
-                      (match_operand 4 "" "")] UNSPEC_FFMAC))]
-  "HAVE_LVX_CPLX_FMA_V4SF_V4SF_V4SF"
-  "ffmawcp%4 %0 = %1, %2"
-  [(set_attr "type" "fdmda")
-   (set_attr "issue" "full")]
-)
 
 (define_expand "lvx_ffmadc"
   [(set (match_operand:V2DF 0 "register_operand")
@@ -3423,29 +3052,6 @@
   }
 )
 
-(define_insn_and_split "lvx_ffmawcq_2"
-  [(set (match_operand:V8SF 0 "register_operand" "=r")
-        (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "r")
-                      (match_operand:V8SF 2 "register_operand" "r")
-                      (match_operand:V8SF 3 "register_operand" "0")
-                      (match_operand 4 "" "")] UNSPEC_FFMAC))]
-  "HAVE_LVX_CPLX_FMA_V4SF_V4SF_V4SF"
-  "#"
-  "&& reload_completed"
-  [(set (subreg:V4SF (match_dup 0) 0)
-        (unspec:V4SF [(subreg:V4SF (match_dup 1) 0)
-                      (subreg:V4SF (match_dup 2) 0)
-                      (subreg:V4SF (match_dup 3) 0)
-                      (match_dup 4)] UNSPEC_FFMAC))
-   (set (subreg:V4SF (match_dup 0) 16)
-        (unspec:V4SF [(subreg:V4SF (match_dup 1) 16)
-                      (subreg:V4SF (match_dup 2) 16)
-                      (subreg:V4SF (match_dup 3) 16)
-                      (match_dup 4)] UNSPEC_FFMAC))]
-  ""
-  [(set_attr "type" "fdmda")
-   (set_attr "issue" "full")]
-)
 
 (define_expand "lvx_ffmadcp"
   [(set (match_operand:V4DF 0 "register_operand")
@@ -3480,29 +3086,6 @@
 
 ;; FFMAX*
 
-(define_insn "lvx_ffmaxhw"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (unspec:SF [(match_operand:HF 1 "register_operand" "r")
-                    (match_operand:HF 2 "register_operand" "r")
-                    (match_operand:SF 3 "register_operand" "0")
-                    (match_operand 4 "" "")] UNSPEC_FFMAX))]
-  "HAVE_LVX_FMA_SF_HF_HF"
-  "ffmahw%4 %0 = %1, %2"
-  [(set_attr "type" "fmadds")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_ffmaxwd"
-  [(set (match_operand:DF 0 "register_operand" "=r")
-        (unspec:DF [(match_operand:SF 1 "register_operand" "r")
-                    (match_operand:SF 2 "register_operand" "r")
-                    (match_operand:DF 3 "register_operand" "0")
-                    (match_operand 4 "" "")] UNSPEC_FFMAX))]
-  "HAVE_LVX_FMA_DF_SF_SF"
-  "ffmawd%4 %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
 
 (define_insn_and_split "lvx_ffmax<widenx>"
   [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
@@ -3575,27 +3158,6 @@
   ""
 )
 
-(define_insn_and_split "lvx_ffms<suffix>_1"
-  [(set (match_operand:S128F 0 "register_operand" "=r")
-        (unspec:S128F [(match_operand:S128F 1 "register_operand" "r")
-                       (match_operand:S128F 2 "register_operand" "r")
-                       (match_operand:S128F 3 "register_operand" "0")
-                       (match_operand 4 "" "")] UNSPEC_FFMS))]
-  "!HAVE_LVX_FMS_<MODE>_<MODE>_<MODE>"
-  "#"
-  "!HAVE_LVX_FMS_<MODE>_<MODE>_<MODE> && reload_completed"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 0)
-                         (subreg:<CHUNK> (match_dup 2) 0)
-                         (subreg:<CHUNK> (match_dup 3) 0)
-                         (match_dup 4)] UNSPEC_FFMS))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 8)
-                         (subreg:<CHUNK> (match_dup 2) 8)
-                         (subreg:<CHUNK> (match_dup 3) 8)
-                         (match_dup 4)] UNSPEC_FFMS))]
-  ""
-)
 
 (define_insn "lvx_ffms<suffix>_2"
   [(set (match_operand:S128F 0 "register_operand" "=r")
@@ -3644,35 +3206,6 @@
   "#"
 )
 
-(define_split
-  [(set (match_operand:S256F 0 "register_operand" "")
-        (unspec:S256F [(match_operand:S256F 1 "register_operand" "")
-                       (match_operand:S256F 2 "register_operand" "")
-                       (match_operand:S256F 3 "register_operand" "")
-                       (match_operand 4 "" "")] UNSPEC_FFMS))]
-  "!HAVE_LVX_FMS_<HALF>_<HALF>_<HALF> && reload_completed"
-  [(set (subreg:<CHUNK> (match_dup 0) 0)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 0)
-                         (subreg:<CHUNK> (match_dup 2) 0)
-                         (subreg:<CHUNK> (match_dup 3) 0)
-                         (match_dup 4)] UNSPEC_FFMS))
-   (set (subreg:<CHUNK> (match_dup 0) 8)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 8)
-                         (subreg:<CHUNK> (match_dup 2) 8)
-                         (subreg:<CHUNK> (match_dup 3) 8)
-                         (match_dup 4)] UNSPEC_FFMS))
-   (set (subreg:<CHUNK> (match_dup 0) 16)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 16)
-                         (subreg:<CHUNK> (match_dup 2) 16)
-                         (subreg:<CHUNK> (match_dup 3) 16)
-                         (match_dup 4)] UNSPEC_FFMS))
-   (set (subreg:<CHUNK> (match_dup 0) 24)
-        (unspec:<CHUNK> [(subreg:<CHUNK> (match_dup 1) 24)
-                         (subreg:<CHUNK> (match_dup 2) 24)
-                         (subreg:<CHUNK> (match_dup 3) 24)
-                         (match_dup 4)] UNSPEC_FFMS))]
-  ""
-)
 
 (define_split
   [(set (match_operand:S256F 0 "register_operand" "")
@@ -3728,17 +3261,6 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "lvx_ffmswcp_2"
-  [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V4SF 1 "register_operand" "r")
-                      (match_operand:V4SF 2 "register_operand" "r")
-                      (match_operand:V4SF 3 "register_operand" "0")
-                      (match_operand 4 "" "")] UNSPEC_FFMSC))]
-  "HAVE_LVX_CPLX_FMS_V4SF_V4SF_V4SF"
-  "ffmswcp%4 %0 = %1, %2"
-  [(set_attr "type" "fdmda")
-   (set_attr "issue" "full")]
-)
 
 (define_expand "lvx_ffmsdc"
   [(set (match_operand:V2DF 0 "register_operand")
@@ -3755,29 +3277,6 @@
   }
 )
 
-(define_insn_and_split "lvx_ffmswcq_2"
-  [(set (match_operand:V8SF 0 "register_operand" "=r")
-        (unspec:V8SF [(match_operand:V8SF 1 "register_operand" "r")
-                      (match_operand:V8SF 2 "register_operand" "r")
-                      (match_operand:V8SF 3 "register_operand" "0")
-                      (match_operand 4 "" "")] UNSPEC_FFMSC))]
-  "HAVE_LVX_CPLX_FMS_V4SF_V4SF_V4SF"
-  "#"
-  "HAVE_LVX_CPLX_FMS_V4SF_V4SF_V4SF && reload_completed"
-  [(set (subreg:V4SF (match_dup 0) 0)
-        (unspec:V4SF [(subreg:V4SF (match_dup 1) 0)
-                      (subreg:V4SF (match_dup 2) 0)
-                      (subreg:V4SF (match_dup 3) 0)
-                      (match_dup 4)] UNSPEC_FFMSC))
-   (set (subreg:V4SF (match_dup 0) 16)
-        (unspec:V4SF [(subreg:V4SF (match_dup 1) 16)
-                      (subreg:V4SF (match_dup 2) 16)
-                      (subreg:V4SF (match_dup 3) 16)
-                      (match_dup 4)] UNSPEC_FFMSC))]
-  ""
-  [(set_attr "type" "fdmda")
-   (set_attr "issue" "full")]
-)
 
 (define_expand "lvx_ffmsdcp"
   [(set (match_operand:V4DF 0 "register_operand")
@@ -3812,29 +3311,6 @@
 
 ;; FFMSX*
 
-(define_insn "lvx_ffmsxhw"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (unspec:SF [(match_operand:HF 1 "register_operand" "r")
-                    (match_operand:HF 2 "register_operand" "r")
-                    (match_operand:SF 3 "register_operand" "0")
-                    (match_operand 4 "" "")] UNSPEC_FFMSX))]
-  "HAVE_LVX_FMS_SF_HF_HF"
-  "ffmshw%4 %0 = %1, %2"
-  [(set_attr "type" "fmadds")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_ffmsxwd"
-  [(set (match_operand:DF 0 "register_operand" "=r")
-        (unspec:DF [(match_operand:SF 1 "register_operand" "r")
-                    (match_operand:SF 2 "register_operand" "r")
-                    (match_operand:DF 3 "register_operand" "0")
-                    (match_operand 4 "" "")] UNSPEC_FFMSX))]
-  "HAVE_LVX_FMS_DF_SF_SF"
-  "ffmswd%4 %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
 
 (define_insn_and_split "lvx_ffmsx<widenx>"
   [(set (match_operand:<WIDE> 0 "register_operand" "=&r")
@@ -3889,76 +3365,6 @@
                       (match_operand 4 "" "")] UNSPEC_FMMS))]
   "HAVE_LVX_MS_M2x2_SF_M2x2_SF_M2x2_SF"
   "fmms222w%4 %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_ffdmawq_2"
-  [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V8SF 1 "register_operand" "r")
-                      (match_operand:V8SF 2 "register_operand" "r")
-                      (match_operand 3 "" "")] UNSPEC_FFDMA))]
-  "HAVE_LVX_FDMA_V4SF_V8SF_V8SF"
-  "ffdmawq%3 %0 = %1, %2"
-  [(set_attr "type" "fmuld")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_ffdmswq_2"
-  [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V8SF 1 "register_operand" "r")
-                      (match_operand:V8SF 2 "register_operand" "r")
-                      (match_operand 3 "" "")] UNSPEC_FFDMS))]
-  "HAVE_LVX_FDMS_V4SF_V8SF_V8SF"
-  "ffdmswq%3 %0 = %1, %2"
-  [(set_attr "type" "fmuld")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_ffdmdawq_2"
-  [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V8SF 1 "register_operand" "r")
-                      (match_operand:V8SF 2 "register_operand" "r")
-                      (match_operand:V4SF 3 "register_operand" "0")
-                      (match_operand 4 "" "")] UNSPEC_FFDMDA))]
-  "HAVE_LVX_FDMDA_V4SF_V8SF_V8SF"
-  "ffdmdawq%4 %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_ffdmsawq_2"
-  [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V8SF 1 "register_operand" "r")
-                      (match_operand:V8SF 2 "register_operand" "r")
-                      (match_operand:V4SF 3 "register_operand" "0")
-                      (match_operand 4 "" "")] UNSPEC_FFDMSA))]
-  "HAVE_LVX_FDMSA_V4SF_V8SF_V8SF"
-  "ffdmsawq%4 %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_ffdmdswq_2"
-  [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V8SF 1 "register_operand" "r")
-                      (match_operand:V8SF 2 "register_operand" "r")
-                      (match_operand:V4SF 3 "register_operand" "0")
-                      (match_operand 4 "" "")] UNSPEC_FFDMDS))]
-  "HAVE_LVX_FDMDS_V4SF_V8SF_V8SF"
-  "ffdmdswq%4 %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
-
-(define_insn "lvx_ffdmaswq_2"
-  [(set (match_operand:V4SF 0 "register_operand" "=r")
-        (unspec:V4SF [(match_operand:V8SF 1 "register_operand" "r")
-                      (match_operand:V8SF 2 "register_operand" "r")
-                      (match_operand:V4SF 3 "register_operand" "0")
-                      (match_operand 4 "" "")] UNSPEC_FFDMAS))]
-  "HAVE_LVX_FDMAS_V4SF_V8SF_V8SF"
-  "ffdmaswq%4 %0 = %1, %2"
   [(set_attr "type" "fmaddd")
    (set_attr "issue" "lite")]
 )
@@ -4488,180 +3894,12 @@
 )
 
 
-;; FCDIV*
-
-(define_expand "lvx_fcdivw"
-  [(match_operand:SF 0 "register_operand" "")
-   (match_operand:SF 1 "register_operand" "")
-   (match_operand:SF 2 "register_operand" "")
-   (match_operand 3 "" "")]
- "HAVE_LVX_FCDIV_SF"
- {
-    rtx regpair = gen_reg_rtx (V4SFmode);
-    emit_insn (gen_rtx_SET (gen_rtx_SUBREG (SFmode, regpair, 0), operands[1]));
-    emit_insn (gen_rtx_SET (gen_rtx_SUBREG (SFmode, regpair, 8), operands[2]));
-    emit_insn (gen_lvx_fcdivw_1 (operands[0], regpair, operands[3]));
-    DONE;
- }
-)
-
-(define_insn "lvx_fcdivw_1"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (unspec:SF [(match_operand:V4SF 1 "register_operand" "r")
-                    (match_operand 2 "" "")] UNSPEC_FCDIV))]
-  "HAVE_LVX_FCDIV_SF"
-  "fcdivw%2 %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
-)
-
-(define_expand "lvx_fcdivd"
-  [(match_operand:DF 0 "register_operand" "")
-   (match_operand:DF 1 "register_operand" "")
-   (match_operand:DF 2 "register_operand" "")
-   (match_operand 3 "" "")]
- "HAVE_LVX_FCDIV_DF"
- {
-    rtx regpair = gen_reg_rtx (V2DFmode);
-    emit_insn (gen_lvx_catfdp (regpair, operands[1], operands[2]));
-    emit_insn (gen_lvx_fcdivd_1 (operands[0], regpair, operands[3]));
-    DONE;
- }
-)
-
-(define_insn "lvx_fcdivd_1"
-  [(set (match_operand:DF 0 "register_operand" "=r")
-        (unspec:DF [(match_operand:V2DF 1 "register_operand" "r")
-                    (match_operand 2 "" "")] UNSPEC_FCDIV))]
-  "HAVE_LVX_FCDIV_DF"
-  "fcdivd%2 %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-])
-
-
-;; FSDIV*
-
-(define_expand "lvx_fsdivw"
-  [(match_operand:SF 0 "register_operand" "")
-   (match_operand:SF 1 "register_operand" "")
-   (match_operand:SF 2 "register_operand" "")
-   (match_operand 3 "" "")]
- "HAVE_LVX_FSDIV_SF"
- {
-    rtx regpair = gen_reg_rtx (V4SFmode);
-    emit_insn (gen_rtx_SET (gen_rtx_SUBREG (SFmode, regpair, 0), operands[1]));
-    emit_insn (gen_rtx_SET (gen_rtx_SUBREG (SFmode, regpair, 8), operands[2]));
-    emit_insn (gen_lvx_fsdivw_1 (operands[0], regpair, operands[3]));
-    DONE;
- }
-)
-
-(define_insn "lvx_fsdivw_1"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (unspec:SF [(match_operand:V4SF 1 "register_operand" "r")
-                    (match_operand 2 "" "")] UNSPEC_FSDIV))]
-  "HAVE_LVX_FSDIV_SF"
-  "fsdivw%2 %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
-)
-
-(define_expand "lvx_fsdivd"
-  [(match_operand:DF 0 "register_operand" "")
-   (match_operand:DF 1 "register_operand" "")
-   (match_operand:DF 2 "register_operand" "")
-   (match_operand 3 "" "")]
- "HAVE_LVX_FSDIV_DF"
- {
-    rtx regpair = gen_reg_rtx (V2DFmode);
-    emit_insn (gen_lvx_catfdp (regpair, operands[1], operands[2]));
-    emit_insn (gen_lvx_fsdivd_1 (operands[0], regpair, operands[3]));
-    DONE;
- }
-)
-
-(define_insn "lvx_fsdivd_1"
-  [(set (match_operand:DF 0 "register_operand" "=r")
-        (unspec:DF [(match_operand:V2DF 1 "register_operand" "r")
-                    (match_operand 2 "" "")] UNSPEC_FSDIV))]
-  "HAVE_LVX_FSDIV_DF"
-  "fsdivd%2 %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")]
-)
-
-(define_expand "lvx_fsdivdp"
-  [(match_operand:V2DF 0 "register_operand" "")
-   (match_operand:V2DF 1 "register_operand" "")
-   (match_operand:V2DF 2 "register_operand" "")
-   (match_operand 3 "" "")]
-  "HAVE_LVX_FSDIV_DF"
-  {
-    for (int i = 0; i < 2; i++)
-      {
-        rtx opnd0 = gen_rtx_SUBREG (DFmode, operands[0], i*8);
-        rtx opnd1 = gen_rtx_SUBREG (DFmode, operands[1], i*8);
-        rtx opnd2 = gen_rtx_SUBREG (DFmode, operands[2], i*8);
-        emit_insn (gen_lvx_fsdivd (opnd0, opnd1, opnd2, operands[3]));
-      }
-    DONE;
-  }
-)
-
-(define_expand "lvx_fsdivdq"
-  [(match_operand:V4DF 0 "register_operand" "")
-   (match_operand:V4DF 1 "register_operand" "")
-   (match_operand:V4DF 2 "register_operand" "")
-   (match_operand 3 "" "")]
-  "HAVE_LVX_FSDIV_DF"
-  {
-    for (int i = 0; i < 4; i++)
-      {
-        rtx opnd0 = gen_rtx_SUBREG (DFmode, operands[0], i*8);
-        rtx opnd1 = gen_rtx_SUBREG (DFmode, operands[1], i*8);
-        rtx opnd2 = gen_rtx_SUBREG (DFmode, operands[2], i*8);
-        emit_insn (gen_lvx_fsdivd (opnd0, opnd1, opnd2, operands[3]));
-      }
-    DONE;
-  }
-)
-
-(define_expand "lvx_fcdivdp"
-  [(match_operand:V2DF 0 "register_operand" "")
-   (match_operand:V2DF 1 "register_operand" "")
-   (match_operand:V2DF 2 "register_operand" "")
-   (match_operand 3 "" "")]
-  "HAVE_LVX_FCDIV_DF"
-  {
-    for (int i = 0; i < 2; i++)
-      {
-        rtx opnd0 = simplify_gen_subreg (DFmode, operands[0], V2DFmode, i*8);
-        rtx opnd1 = simplify_gen_subreg (DFmode, operands[1], V2DFmode, i*8);
-        rtx opnd2 = simplify_gen_subreg (DFmode, operands[2], V2DFmode, i*8);
-        emit_insn (gen_lvx_fcdivd (opnd0, opnd1, opnd2, operands[3]));
-      }
-    DONE;
-  }
-)
-
-(define_expand "lvx_fcdivdq"
-  [(match_operand:V4DF 0 "register_operand" "")
-   (match_operand:V4DF 1 "register_operand" "")
-   (match_operand:V4DF 2 "register_operand" "")
-   (match_operand 3 "" "")]
-  "HAVE_LVX_FCDIV_DF"
-  {
-    for (int i = 0; i < 4; i++)
-      {
-        rtx opnd0 = simplify_gen_subreg (DFmode, operands[0], V4DFmode, i*8);
-        rtx opnd1 = simplify_gen_subreg (DFmode, operands[1], V4DFmode, i*8);
-        rtx opnd2 = simplify_gen_subreg (DFmode, operands[2], V4DFmode, i*8);
-        emit_insn (gen_lvx_fcdivd (opnd0, opnd1, opnd2, operands[3]));
-      }
-    DONE;
-  }
-)
+;; FCDIV* and FSDIV*, the correctly-rounded and fast float divides, were
+;; removed from the ISA: HAVE_LVX_F{C,S}DIV_{SF,DF} were all (0) and said so in
+;; a comment, so the six patterns behind them -- two expanders and four insns --
+;; could never be recognised, and no builtin declared them, so no caller could
+;; reach them either.  Gone with their two unspecs and six macros.  The v2sf
+;; macros were (1) but referenced nothing at all.
 
 
 ;; FROUND*/FSQRT* at 256 bits.  The ISA stops at the 128-bit lane shapes, so

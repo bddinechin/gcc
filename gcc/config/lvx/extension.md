@@ -892,102 +892,22 @@
 
 ;; XANDO, XNANDO, XANDNO, XIORO, XNIORO, XIORNO, XEORO, XNEORO, XSBMM8DQ, XSBMMT8DQ
 
-(define_insn "lvx_xando"
-  [(set (match_operand:X256 0 "register_operand" "=x")
-        (and:X256 (match_operand:X256 1 "register_operand" "x")
-                  (match_operand:X256 2 "register_operand" "x")))]
-  "LVX_2 && (HAVE_LVX_EXT_AND_<MODE>)"
-  "xando %0 = %1, %2"
-  [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")]
-)
 
-(define_insn "lvx_xnando"
-  [(set (match_operand:X256 0 "register_operand" "=x")
-        (ior:X256 (not:X256 (match_operand:X256 1 "register_operand" "x"))
-                  (not:X256 (match_operand:X256 2 "register_operand" "x"))))]
-  "LVX_2 && (HAVE_LVX_EXT_NAND_<MODE>)"
-  "xnando %0 = %1, %2"
-  [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")]
-)
 
-(define_insn "lvx_xandno"
-  [(set (match_operand:X256 0 "register_operand" "=x")
-        (and:X256 (not:X256 (match_operand:X256 1 "register_operand" "x"))
-                  (match_operand:X256 2 "register_operand" "x")))]
-  "LVX_2 && (HAVE_LVX_EXT_ANDN_<MODE>)"
-  "xandno %0 = %1, %2"
-  [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")]
-)
 
-(define_insn "lvx_xioro"
-  [(set (match_operand:X256 0 "register_operand" "=x")
-        (ior:X256 (match_operand:X256 1 "register_operand" "x")
-                  (match_operand:X256 2 "register_operand" "x")))]
-  "LVX_2 && (HAVE_LVX_EXT_IOR_<MODE>)"
-  "xioro %0 = %1, %2"
-  [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")]
-)
 
-(define_insn "lvx_xnioro"
-  [(set (match_operand:X256 0 "register_operand" "=x")
-        (and:X256 (not:X256 (match_operand:X256 1 "register_operand" "x"))
-                  (not:X256 (match_operand:X256 2 "register_operand" "x"))))]
-  "LVX_2 && (HAVE_LVX_EXT_NIOR_<MODE>)"
-  "xnioro %0 = %1, %2"
-  [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")]
-)
 
-(define_insn "lvx_xiorno"
-  [(set (match_operand:X256 0 "register_operand" "=x")
-        (ior:X256 (not:X256 (match_operand:X256 1 "register_operand" "x"))
-                  (match_operand:X256 2 "register_operand" "x")))]
-  "LVX_2 && (HAVE_LVX_EXT_IORN_<MODE>)"
-  "xiorno %0 = %1, %2"
-  [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")]
-)
 
-(define_insn "lvx_xeoro"
-  [(set (match_operand:X256 0 "register_operand" "=x")
-        (xor:X256 (match_operand:X256 1 "register_operand" "x")
-                  (match_operand:X256 2 "register_operand" "x")))]
-  "LVX_2 && (HAVE_LVX_EXT_EOR_<MODE>)"
-  "xeoro %0 = %1, %2"
-  [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")]
-)
 
-(define_insn "lvx_xneoro"
-  [(set (match_operand:X256 0 "register_operand" "=x")
-        (not:X256 (xor:X256 (match_operand:X256 1 "register_operand" "x")
-                            (match_operand:X256 2 "register_operand" "x"))))]
-  "LVX_2 && (HAVE_LVX_EXT_NEOR_<MODE>)"
-  "xneoro %0 = %1, %2"
-  [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")]
-)
 
-(define_insn "lvx_xsbmm8dq"
-  [(set (match_operand:X256 0 "register_operand" "=x")
-        (unspec:X256 [(match_operand:X256 1 "register_operand" "x")
-                      (match_operand:X256 2 "register_operand" "x")] UNSPEC_SBMM8D))]
-  "LVX_2 && (HAVE_LVX_EXT_SBMM8_V1OI)"
-  "xsbmm8dq %0 = %1, %2"
-  [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")]
-)
 
-(define_insn "lvx_xsbmmt8dq"
-  [(set (match_operand:X256 0 "register_operand" "=x")
-        (unspec:X256 [(match_operand:X256 1 "register_operand" "x")
-                      (match_operand:X256 2 "register_operand" "x")] UNSPEC_SBMMT8D))]
-  "LVX_2 && (HAVE_LVX_EXT_SBMMT8_V1OI)"
-  "xsbmmt8dq %0 = %1, %2"
-  [(set_attr "type" "ext_int")
-   (set_attr "issue" "ext")]
-)
+
+
+
+
+
+
+
+
+
+

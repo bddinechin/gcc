@@ -371,17 +371,7 @@
    (set_attr "length" "     4,         8")]
 )
 ;; multiplicative version of addx32<suffix>
-(define_insn_and_split "*addx32<suffix>_m"
-  [(set (match_operand:SIDI 0 "register_operand" "=&r,&r")
-        (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
-                              (const_int 32))
-                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
-  "!HAVE_LVX_MUL32_ADD_<MODE>"
-  "#"
-  "!HAVE_LVX_MUL32_ADD_<MODE>"
-  [(set (match_dup 0) (ashift:SIDI (match_dup 1) (const_int 5)))
-   (set (match_dup 0) (plus:SIDI (match_dup 0) (match_dup 2)))]
-)
+
 (define_insn "*addx32<suffix>_m<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
@@ -405,17 +395,7 @@
    (set_attr "length" "     4,         8")]
 )
 ;; multiplicative version of addx64<suffix>
-(define_insn_and_split "*addx64<suffix>_m"
-  [(set (match_operand:SIDI 0 "register_operand" "=&r,&r")
-        (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
-                              (const_int 64))
-                   (match_operand:SIDI 2 "<imm32pred>" "r,<imm32cons>")))]
-  "!HAVE_LVX_MUL64_ADD_<MODE>"
-  "#"
-  "!HAVE_LVX_MUL64_ADD_<MODE>"
-  [(set (match_dup 0) (ashift:SIDI (match_dup 1) (const_int 6)))
-   (set (match_dup 0) (plus:SIDI (match_dup 0) (match_dup 2)))]
-)
+
 (define_insn "*addx64<suffix>_m<arith_zx><arith_sx>"
   [(set (match_operand:SIDI 0 "register_operand" "=r,r")
         (plus:SIDI (mult:SIDI (match_operand:SIDI 1 "register_operand" "r,r")
@@ -2633,15 +2613,7 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "*fmulhw"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (mult:SF (float_extend:SF (match_operand:HF 1 "register_operand" "r"))
-                 (float_extend:SF (match_operand:HF 2 "register_operand" "r"))))]
-  "HAVE_LVX_MULT_SF_HF_HF"
-  "fmulhw %0 = %1, %2"
-  [(set_attr "type" "fmuls")
-   (set_attr "issue" "lite")]
-)
+
 
 (define_expand "divhf3"
   [(set (match_operand:HF 0 "register_operand" "")
@@ -2672,16 +2644,7 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "*ffmahw"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (fma:SF  (float_extend:SF (match_operand:HF 1 "register_operand" "r"))
-                 (float_extend:SF (match_operand:HF 2 "register_operand" "r"))
-                 (match_operand:SF 3 "register_operand" "0")))]
-  "HAVE_LVX_FMA_SF_HF_HF"
-  "ffmahw %0 = %1, %2"
-  [(set_attr "type" "fmadds")
-   (set_attr "issue" "lite")]
-)
+
 
 (define_insn "fnmahf4"
   [(set (match_operand:HF 0 "register_operand" "=r")
@@ -2694,27 +2657,9 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "*ffmshw"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (fma:SF (float_extend:SF (neg:HF (match_operand:HF 1 "register_operand" "r")))
-                (float_extend:SF (match_operand:HF 2 "register_operand" "r"))
-                (match_operand:SF 3 "register_operand" "0")))]
-  "HAVE_LVX_FMS_SF_HF_HF"
-  "ffmshw %0 = %1, %2"
-  [(set_attr "type" "fmadds")
-   (set_attr "issue" "lite")]
-)
 
-(define_insn "*ffmshw2"
-  [(set (match_operand:SF 0 "register_operand" "=r")
-        (fma:SF (float_extend:SF (match_operand:HF 1 "register_operand" "r"))
-                (float_extend:SF (neg:HF (match_operand:HF 2 "register_operand" "r")))
-                (match_operand:SF 3 "register_operand" "0")))]
-  "HAVE_LVX_FMS_SF_HF_HF"
-  "ffmshw %0 = %1, %2"
-  [(set_attr "type" "fmadds")
-   (set_attr "issue" "lite")]
-)
+
+
 
 ; NOTE: `fmin<mode>3`/`fmax<mode>3` are GCC's standard names for C's
 ; fmin/fmax, which are IEEE 754-2008 minNum/maxNum: they return the
@@ -2872,15 +2817,7 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "*fmulwd"
-  [(set (match_operand:DF 0 "register_operand" "=r")
-        (mult:DF (float_extend:DF (match_operand:SF 1 "register_operand" "r"))
-                 (float_extend:DF (match_operand:SF 2 "register_operand" "r"))))]
-  "HAVE_LVX_MULT_DF_SF_SF"
-  "fmulwd %0 = %1, %2"
-  [(set_attr "type" "fmuld")
-   (set_attr "issue" "lite")]
-)
+
 
 (define_expand "divsf3"
   [(set (match_operand:SF 0 "register_operand" "")
@@ -2905,16 +2842,7 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "*ffmawd"
-  [(set (match_operand:DF 0 "register_operand" "=r")
-        (fma:DF  (float_extend:DF (match_operand:SF 1 "register_operand" "r"))
-                 (float_extend:DF (match_operand:SF 2 "register_operand" "r"))
-                 (match_operand:DF 3 "register_operand" "0")))]
-  "HAVE_LVX_FMA_DF_SF_SF"
-  "ffmawd %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
+
 
 (define_insn "fnmasf4"
   [(set (match_operand:SF 0 "register_operand" "=r")
@@ -2927,27 +2855,9 @@
    (set_attr "issue" "lite")]
 )
 
-(define_insn "*ffmswd"
-  [(set (match_operand:DF 0 "register_operand" "=r")
-        (fma:DF (float_extend:DF (neg:SF (match_operand:SF 1 "register_operand" "r")))
-                (float_extend:DF (match_operand:SF 2 "register_operand" "r"))
-                (match_operand:DF 3 "register_operand" "0")))]
-  "HAVE_LVX_FMS_DF_SF_SF"
-  "ffmswd %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
 
-(define_insn "*ffmswd2"
-  [(set (match_operand:DF 0 "register_operand" "=r")
-        (fma:DF (float_extend:DF (match_operand:SF 1 "register_operand" "r"))
-                (float_extend:DF (neg:SF (match_operand:SF 2 "register_operand" "r")))
-                (match_operand:DF 3 "register_operand" "0")))]
-  "HAVE_LVX_FMS_DF_SF_SF"
-  "ffmswd %0 = %1, %2"
-  [(set_attr "type" "fmaddd")
-   (set_attr "issue" "lite")]
-)
+
+
 
 (define_insn "sminsf3"
   [(set (match_operand:SF 0 "register_operand" "=r")
