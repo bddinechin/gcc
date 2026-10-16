@@ -203,27 +203,27 @@ LVX_BUILTIN_DIRECT   (fractdwq, V4SI_FTYPE_V4DI,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (taild, UINT64_FTYPE_UINT64_UINT64_LANECOUNT,, true) // Scalar
 
 
+/* SHIFT* stops at 256 bits, the widest register the ISA has.  The expander it
+   reaches, lvx_shift<lsvs>, iterates SIMDALL and so still has 512-bit
+   instances, and a 512-bit vector type still works in C -- GCC lowers it to
+   four 128-bit operations.  What is gone is the 512-bit BUILTINS (shiftbt,
+   shifthv, shiftwx, shiftdo and the three float forms): a builtin named after
+   a width implies the hardware has it, and none of the seven was used by
+   lvx-mlir, lvx-simde, lvx-sleef, newlib or validation.  Removed 2026-10-16.  */
 LVX_BUILTIN_INDIRECT (shiftbx, V16QI_FTYPE_V16QI_INT32_INT8,, lvx_2, (SHIFT, E_V16QImode, E_QImode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftbv, V32QI_FTYPE_V32QI_INT32_INT8,, lvx_2, (SHIFT, E_V32QImode, E_QImode)) // Vector
-LVX_BUILTIN_INDIRECT (shiftbt, V64QI_FTYPE_V64QI_INT32_INT8,, lvx_2, (SHIFT, E_V64QImode, E_QImode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftho, V8HI_FTYPE_V8HI_INT32_INT16,, lvx_2, (SHIFT, E_V8HImode, E_HImode)) // Vector
 LVX_BUILTIN_INDIRECT (shifthx, V16HI_FTYPE_V16HI_INT32_INT16,, lvx_2, (SHIFT, E_V16HImode, E_HImode)) // Vector
-LVX_BUILTIN_INDIRECT (shifthv, V32HI_FTYPE_V32HI_INT32_INT16,, lvx_2, (SHIFT, E_V32HImode, E_HImode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftwq, V4SI_FTYPE_V4SI_INT32_INT32,, lvx_2, (SHIFT, E_V4SImode, E_SImode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftwo, V8SI_FTYPE_V8SI_INT32_INT32,, lvx_2, (SHIFT, E_V8SImode, E_SImode)) // Vector
-LVX_BUILTIN_INDIRECT (shiftwx, V16SI_FTYPE_V16SI_INT32_INT32,, lvx_2, (SHIFT, E_V16SImode, E_SImode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftdp, V2DI_FTYPE_V2DI_INT32_INT64,, lvx_2, (SHIFT, E_V2DImode, E_DImode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftdq, V4DI_FTYPE_V4DI_INT32_INT64,, lvx_2, (SHIFT, E_V4DImode, E_DImode)) // Vector
-LVX_BUILTIN_INDIRECT (shiftdo, V8DI_FTYPE_V8DI_INT32_INT64,, lvx_2, (SHIFT, E_V8DImode, E_DImode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftfho, V8HF_FTYPE_V8HF_INT32_FLOAT16,, lvx_2, (SHIFT, E_V8HFmode, E_HFmode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftfhx, V16HF_FTYPE_V16HF_INT32_FLOAT16,, lvx_2, (SHIFT, E_V16HFmode, E_HFmode)) // Vector
-LVX_BUILTIN_INDIRECT (shiftfhv, V32HF_FTYPE_V32HF_INT32_FLOAT16,, lvx_2, (SHIFT, E_V32HFmode, E_HFmode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftfwq, V4SF_FTYPE_V4SF_INT32_FLOAT32,, lvx_2, (SHIFT, E_V4SFmode, E_SFmode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftfwo, V8SF_FTYPE_V8SF_INT32_FLOAT32,, lvx_2, (SHIFT, E_V8SFmode, E_SFmode)) // Vector
-LVX_BUILTIN_INDIRECT (shiftfwx, V16SF_FTYPE_V16SF_INT32_FLOAT32,, lvx_2, (SHIFT, E_V16SFmode, E_SFmode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftfdp, V2DF_FTYPE_V2DF_INT32_FLOAT64,, lvx_2, (SHIFT, E_V2DFmode, E_DFmode)) // Vector
 LVX_BUILTIN_INDIRECT (shiftfdq, V4DF_FTYPE_V4DF_INT32_FLOAT64,, lvx_2, (SHIFT, E_V4DFmode, E_DFmode)) // Vector
-LVX_BUILTIN_INDIRECT (shiftfdo, V8DF_FTYPE_V8DF_INT32_FLOAT64,, lvx_2, (SHIFT, E_V8DFmode, E_DFmode)) // Vector
 
 LVX_BUILTIN_DIRECT   (cat256, V256_FTYPE_V128_V128,, lvx_2) // Vector
 LVX_BUILTIN_DIRECT   (cat512, V512_FTYPE_V256_V256,, lvx_2) // Vector
