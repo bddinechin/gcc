@@ -74,18 +74,30 @@
 ;; The same loads again, uncached.  LD.U is the same LD with the "variant"
 ;; modifier set, so it keeps the "type" and the "issue" of its cached self and
 ;; differs only here, in what it costs.
-(define_insn_reservation "lvx_load_uncached_lsu_auxw" 24 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_auxw_r")
-(define_insn_reservation "lvx_load_uncached_lsu_auxw_x" 24 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw_x") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_auxw_x_r")
-(define_insn_reservation "lvx_load_uncached_lsu_auxw_x2" 24 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw_x2") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_auxw_x2_r")
-(define_insn_reservation "lvx_load_uncached_lsu_auxw_nd" 24 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_auxw_r + lvx_lsu_x2_u")
-(define_insn_reservation "lvx_load_uncached_lsu_auxw_x_nd" 24 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw_x") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_auxw_x_r + lvx_lsu_x2_u")
-(define_insn_reservation "lvx_load_uncached_lsu_auxw_y_nd" 24 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw_x2") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_auxw_x2_r + lvx_lsu_x2_u")
-(define_insn_reservation "lvx_xload_uncached_lsu" 24 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_r")
-(define_insn_reservation "lvx_xload_uncached_lsu_x" 24 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu_x") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_x_r")
-(define_insn_reservation "lvx_xload_uncached_lsu_x2" 24 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu_x2") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_x2_r")
-(define_insn_reservation "lvx_xload_uncached_lsu_nd" 24 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_r + lvx_lsu_x2_u")
-(define_insn_reservation "lvx_xload_uncached_lsu_x_nd" 24 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu_x") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_x_r + lvx_lsu_x2_u")
-(define_insn_reservation "lvx_xload_uncached_lsu_y_nd" 24 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu_x2") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_x2_r + lvx_lsu_x2_u")
+;;
+;; 15, because an uncached load commits at SR -- "stream return", the last
+;; stage in Processor.yml's pipeline, at cycle 16 -- and a latency is
+;; (write stage - RR), so 16 - 1.  The same arithmetic gives FDIV* its 13 from
+;; FD=14 and divmod* its 11 from SF=12, both of which this file already has
+;; right.  It said 24 until 2026-10-16, which is nobody's stage: over-modelling,
+;; so never a wrong answer, but nine cycles of imaginary latency on the one
+;; instruction a software pipeliner exists to cover.  MDS does not yet declare
+;; it per variant -- Opcode@timing comes from the Behavior's `stage` annotations
+;; and a `.U` load shares its Opcode record with the cached form -- which is why
+;; check-scheduling.py did not catch this: it compares against the cached
+;; figure and only flags latencies that are too *low*.
+(define_insn_reservation "lvx_load_uncached_lsu_auxw" 15 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_auxw_r")
+(define_insn_reservation "lvx_load_uncached_lsu_auxw_x" 15 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw_x") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_auxw_x_r")
+(define_insn_reservation "lvx_load_uncached_lsu_auxw_x2" 15 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw_x2") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_auxw_x2_r")
+(define_insn_reservation "lvx_load_uncached_lsu_auxw_nd" 15 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_auxw_r + lvx_lsu_x2_u")
+(define_insn_reservation "lvx_load_uncached_lsu_auxw_x_nd" 15 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw_x") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_auxw_x_r + lvx_lsu_x2_u")
+(define_insn_reservation "lvx_load_uncached_lsu_auxw_y_nd" 15 (and (eq_attr "type" "load") (eq_attr "issue" "lsu_auxw_x2") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_auxw_x2_r + lvx_lsu_x2_u")
+(define_insn_reservation "lvx_xload_uncached_lsu" 15 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_r")
+(define_insn_reservation "lvx_xload_uncached_lsu_x" 15 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu_x") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_x_r")
+(define_insn_reservation "lvx_xload_uncached_lsu_x2" 15 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu_x2") (eq_attr "variant" "uncached,preload") (match_test "TARGET_DUAL_LSU")) "lvx_lsu_x2_r")
+(define_insn_reservation "lvx_xload_uncached_lsu_nd" 15 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_r + lvx_lsu_x2_u")
+(define_insn_reservation "lvx_xload_uncached_lsu_x_nd" 15 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu_x") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_x_r + lvx_lsu_x2_u")
+(define_insn_reservation "lvx_xload_uncached_lsu_y_nd" 15 (and (eq_attr "type" "xload") (eq_attr "issue" "lsu_x2") (eq_attr "variant" "uncached,preload") (match_test "!TARGET_DUAL_LSU")) "lvx_lsu_x2_r + lvx_lsu_x2_u")
 (define_insn_reservation "lvx_store_lsu_memw_auxr" 1 (and (eq_attr "type" "store") (eq_attr "issue" "lsu_memw_auxr")) "lvx_lsu_memw_auxr_r")
 (define_insn_reservation "lvx_store_lsu_memw_auxr_x" 1 (and (eq_attr "type" "store") (eq_attr "issue" "lsu_memw_auxr_x")) "lvx_lsu_memw_auxr_x_r")
 (define_insn_reservation "lvx_store_lsu_memw_auxr_x2" 1 (and (eq_attr "type" "store") (eq_attr "issue" "lsu_memw_auxr_x2")) "lvx_lsu_memw_auxr_x2_r")
