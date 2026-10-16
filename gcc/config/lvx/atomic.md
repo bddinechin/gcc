@@ -334,7 +334,13 @@
   ""
   "as<amo_mnemonic><lsusize>%2%X1 %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
-   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
+   ;; LSU2_MEMW_AUXR, not ..._AUXW: as<op> writes no register, and MDS gives
+   ;; ASADDW that class.  Reserving AUXW as well was over-reserving, which
+   ;; check-scheduling reports as lost bundle density.  The issue value has to
+   ;; be spelled here before it exists: md-scheduling.pl reads these .md files
+   ;; for the issue values the description asks for and emits reservations only
+   ;; for those, genautomata rejecting one that nothing uses.
+   (set_attr "issue" "lsu2_memw_auxr, lsu2_memw_auxr_x, lsu2_memw_auxr_x2")
    (set_attr "length"                  "4,                     8,                    12")
    (set_attr "predicable" "no")]
 )
@@ -389,7 +395,7 @@
   ""
   "as<amo_mm_mnemonic><lsusize>%2%X1 %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
-   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
+   (set_attr "issue" "lsu2_memw_auxr, lsu2_memw_auxr_x, lsu2_memw_auxr_x2")
    (set_attr "length"                  "4,                     8,                    12")
    (set_attr "predicable" "no")]
 )
@@ -419,7 +425,7 @@
   ""
   "asdus<lsusize>%2%X1 %O1 = %0"
   [(set_attr "type" "atomic, atomic, atomic")
-   (set_attr "issue" "lsu2_memw_auxr_auxw, lsu2_memw_auxr_auxw_x, lsu2_memw_auxr_auxw_x2")
+   (set_attr "issue" "lsu2_memw_auxr, lsu2_memw_auxr_x, lsu2_memw_auxr_x2")
    (set_attr "length"                  "4,                     8,                    12")
    (set_attr "predicable" "no")]
 )

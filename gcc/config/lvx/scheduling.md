@@ -110,6 +110,16 @@
 (define_insn_reservation "lvx_aloadc_lsu2_memw_auxw" 24 (and (eq_attr "type" "aloadc") (eq_attr "issue" "lsu2_memw_auxw")) "lvx_lsu2_memw_auxw_r")
 (define_insn_reservation "lvx_aloadc_lsu2_memw_auxw_x" 24 (and (eq_attr "type" "aloadc") (eq_attr "issue" "lsu2_memw_auxw_x")) "lvx_lsu2_memw_auxw_x_r")
 (define_insn_reservation "lvx_aloadc_lsu2_memw_auxw_x2" 24 (and (eq_attr "type" "aloadc") (eq_attr "issue" "lsu2_memw_auxw_x2")) "lvx_lsu2_memw_auxw_x2_r")
+;; The non-returning atomics: as<op> and the min/max/dus store forms write no
+;; register, so MDS gives them LSU2_MEMW_AUXR with no AUXW.  Reserving AUXW as
+;; well -- which they did when they first reused the al<op> issue value -- is
+;; over-reserving, and check-scheduling reports it as lost bundle density.
+;; These three must be written by hand: md-scheduling.pl generates the
+;; automaton units and the issue attribute, never which `type' an issue class
+;; pairs with.
+(define_insn_reservation "lvx_atomic_lsu2_memw_auxr" 24 (and (eq_attr "type" "atomic") (eq_attr "issue" "lsu2_memw_auxr")) "lvx_lsu2_memw_auxr_r")
+(define_insn_reservation "lvx_atomic_lsu2_memw_auxr_x" 24 (and (eq_attr "type" "atomic") (eq_attr "issue" "lsu2_memw_auxr_x")) "lvx_lsu2_memw_auxr_x_r")
+(define_insn_reservation "lvx_atomic_lsu2_memw_auxr_x2" 24 (and (eq_attr "type" "atomic") (eq_attr "issue" "lsu2_memw_auxr_x2")) "lvx_lsu2_memw_auxr_x2_r")
 (define_insn_reservation "lvx_atomic_lsu2_memw_auxr_auxw" 24 (and (eq_attr "type" "atomic") (eq_attr "issue" "lsu2_memw_auxr_auxw")) "lvx_lsu2_memw_auxr_auxw_r")
 (define_insn_reservation "lvx_atomic_lsu2_memw_auxr_auxw_x" 24 (and (eq_attr "type" "atomic") (eq_attr "issue" "lsu2_memw_auxr_auxw_x")) "lvx_lsu2_memw_auxr_auxw_x_r")
 (define_insn_reservation "lvx_atomic_lsu2_memw_auxr_auxw_x2" 24 (and (eq_attr "type" "atomic") (eq_attr "issue" "lsu2_memw_auxr_auxw_x2")) "lvx_lsu2_memw_auxr_auxw_x2_r")
