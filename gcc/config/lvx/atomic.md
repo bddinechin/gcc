@@ -296,9 +296,17 @@
 ;; `result2', the value operand.  Hence the "0" tie on operand 2.
 ;;
 ;; The coherency modifier is operand 3, and the standard atomics pass "" --
-;; the Local domain.  Nothing here chooses that; it is what the port has always
-;; passed (lvx_expand_atomic_op), and the place to revisit if C11 atomics must
-;; be coherent beyond the local domain.
+;; the Local domain.  That is a decision, not an inheritance: C11 atomicity is
+;; defined over the threads of one program, which on this architecture share a
+;; local coherency domain, so the Local form is both sufficient for the memory
+;; model and the cheapest of the three.  The wider domains describe hardware
+;; outside what the language can see -- ".g" for memory coherent with other
+;; agents, ".s" for the system domain -- and a program that needs one is making
+;; a statement about its platform that `_Atomic' cannot carry.  It spells it
+;; with the builtins, which take the modifier as an argument
+;; (__builtin_lvx_aladdw (p, v, ".g"); see lvx_mod_coherency in
+;; lvx-builtins.cc).  So the two routes are deliberate and they do not
+;; overlap: `_Atomic' is Local, and the explicit domains are explicit.
 (define_insn "al<amo_mnemonic><lsusize>_amo"
   [(set (match_operand:AMO 0 "register_operand" "=r,r,r")
         (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d,e")

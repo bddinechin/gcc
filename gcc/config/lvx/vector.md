@@ -2505,26 +2505,9 @@
    (match_operand:V128L 2 "register_operand" "")]
   "LVX_2"
   {
-    if (!HAVE_LVX_ABD_<MODE>)
-      emit_insn (gen_abd<mode>3_1 (operands[0], operands[1], operands[2]));
-    else
       emit_insn (gen_abd<mode>3_2 (operands[0], operands[1], operands[2]));
     DONE;
   }
-)
-
-(define_insn "abd<mode>3_1"
-  [(set (match_operand:V128J 0 "register_operand" "=r,r")
-        (minus:V128J (smax:V128J (match_operand:V128J 1 "register_operand" "r,r")
-                                 (match_operand:V128J 2 "reg_or_splat32_operand" "r,SXW"))
-                     (smin:V128J (match_dup 1) (match_dup 2))))]
-  "LVX_2"
-  "@
-   abd<suffix> %0 = %1, %2
-   abd<suffix> %0 = %1, %W2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite,lite_x")
-   (set_attr "length" "4,8")]
 )
 
 (define_insn "abd<mode>3_2"
@@ -2621,35 +2604,8 @@
    (match_operand:V128L 2 "register_operand" "")]
   "LVX_2"
   {
-    if (!HAVE_LVX_UABD_<MODE>)
-      emit_insn (gen_abdu<mode>3_1 (operands[0], operands[1], operands[2]));
-    else
       emit_insn (gen_abdu<mode>3_2 (operands[0], operands[1], operands[2]));
     DONE;
-  }
-)
-
-(define_insn_and_split "abdu<mode>3_1"
-  [(set (match_operand:V128J 0 "register_operand" "=r")
-        (minus:V128J (umax:V128J (match_operand:V128J 1 "register_operand" "r")
-                                 (match_operand:V128J 2 "register_operand" "r"))
-                     (umin:V128J (match_dup 1) (match_dup 2))))
-   (clobber (match_scratch:V128J 3 "=&r"))
-   (clobber (match_scratch:V128J 4 "=&r"))]
-  "LVX_2 && (!HAVE_LVX_UABD_<MODE>)"
-  "#"
-  "!HAVE_LVX_UABD_<MODE>"
-  [(set (match_dup 3)
-        (umax:V128J (match_dup 1) (match_dup 2)))
-   (set (match_dup 4)
-        (umin:V128J (match_dup 1) (match_dup 2)))
-   (set (match_dup 0)
-        (minus:V128J (match_dup 3) (match_dup 4)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (<MODE>mode);
-    if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (<MODE>mode);
   }
 )
 
@@ -3998,35 +3954,9 @@
    (match_operand:V256L 2 "register_operand" "")]
   "LVX_2"
   {
-    if (!HAVE_LVX_ABD_<MODE>)
-      emit_insn (gen_abd<mode>3_1 (operands[0], operands[1], operands[2]));
-    else
       emit_insn (gen_abd<mode>3_2 (operands[0], operands[1], operands[2]));
     DONE;
   }
-)
-
-(define_insn_and_split "abd<mode>3_1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (minus:V256J (smax:V256J (match_operand:V256J 1 "register_operand" "r")
-                                 (match_operand:V256J 2 "register_operand" "r"))
-                     (smin:V256J (match_dup 1) (match_dup 2))))]
-  "LVX_2 && (!HAVE_LVX_ABD_<MODE> && HAVE_LVX_ABD_<HALF>)"
-  "#"
-  "!HAVE_LVX_ABD_<MODE> && reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (minus:<HALF> (smax:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                   (subreg:<HALF> (match_dup 2) 0))
-                      (smin:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                                   (subreg:<HALF> (match_dup 2) 0))))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (minus:<HALF> (smax:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                                   (subreg:<HALF> (match_dup 2) 16))
-                      (smin:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                                   (subreg:<HALF> (match_dup 2) 16))))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
 )
 
 (define_insn "abd<mode>3_2"

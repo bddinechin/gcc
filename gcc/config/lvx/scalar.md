@@ -202,35 +202,8 @@
    (match_operand:SIDI 2 "<imm32pred>" "")]
   ""
   {
-    if (!HAVE_LVX_UABD_<MODE>)
-      emit_insn (gen_abdu<mode>3_1 (operands[0], operands[1], operands[2]));
-    else
       emit_insn (gen_abdu<mode>3_2 (operands[0], operands[1], operands[2]));
     DONE;
-  }
-)
-
-(define_insn_and_split "abdu<mode>3_1"
-  [(set (match_operand:SIDI 0 "register_operand" "=r")
-        (minus:SIDI (umax:SIDI (match_operand:SIDI 1 "register_operand" "r")
-                               (match_operand:SIDI 2 "register_operand" "r"))
-                    (umin:SIDI (match_dup 1) (match_dup 2))))
-   (clobber (match_scratch:SIDI 3 "=&r"))
-   (clobber (match_scratch:SIDI 4 "=&r"))]
-  "!HAVE_LVX_UABD_<MODE>"
-  "#"
-  "!HAVE_LVX_UABD_<MODE>"
-  [(set (match_dup 3)
-        (umax:SIDI (match_dup 1) (match_dup 2)))
-   (set (match_dup 4)
-        (umin:SIDI (match_dup 1) (match_dup 2)))
-   (set (match_dup 0)
-        (minus:SIDI (match_dup 3) (match_dup 4)))]
-  {
-    if (GET_CODE (operands[3]) == SCRATCH)
-      operands[3] = gen_reg_rtx (<MODE>mode);
-    if (GET_CODE (operands[4]) == SCRATCH)
-      operands[4] = gen_reg_rtx (<MODE>mode);
   }
 )
 
