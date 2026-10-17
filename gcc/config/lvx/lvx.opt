@@ -106,3 +106,7 @@ Target RejectNegative Joined UInteger Var(lvx_unfold_max_insns) Init(64) Optimiz
 mregrename-inner-loops
 Target Var(lvx_regrename_inner_loops_p) Init(0) Optimization
 Rename registers through inner superblock loops before EBB scheduling, so successive definitions use different registers.
+
+munfold-min-gain=
+Target RejectNegative Joined UInteger Var(lvx_unfold_min_gain) Init(10) Optimization
+-munfold-min-gain=N	Do not unfold an inner loop unless the predicted saving is at least N percent.

@@ -76,6 +76,7 @@
 #include "selftest.h"
 #include "function-abi.h"
 #include "regrename.h"
+#include "config/lvx/lvx-plc.h"
 #include "reload.h"
 #include "rtl-iter.h"
 #include "sched-int.h"
@@ -11443,6 +11444,209 @@ lvx_loop_has_doloop_p (class loop *loop)
   return found;
 }
 
+/* Whether INSN has an operand tied to another by a matching constraint, in
+   which case renaming cannot separate its read from its write and the
+   anti-dependence between them is real.  */
+
+static bool
+lvx_insn_has_tied_operand_p (rtx_insn *insn)
+{
+  if (recog_memoized (insn) < 0)
+    return false;
+  extract_insn (insn);
+  preprocess_constraints (insn);
+  if (which_alternative < 0)
+    return false;
+
+  const operand_alternative *alt
+    = &recog_op_alt[which_alternative * recog_data.n_operands];
+  for (int i = 0; i < recog_data.n_operands; i++)
+    if (alt[i].matches >= 0 || alt[i].matched >= 0)
+      return true;
+  return false;
+}
+
+/* Decide whether unfolding LOOP can pay, by comparing what one iteration
+   costs today against what two scheduled together could cost.
+
+   With H the dependence height of the body -- its longest latency path over
+   the intra-iteration arcs -- R the resource bound and K the recurrence
+   bound, one iteration costs about max (H, R) today.  After the body is
+   doubled the second copy cannot start before K, so the pair costs at least
+   max (2R, K + H) and each iteration about half of that.  Requiring the
+   second to be smaller reduces, in both the resource-bound and the
+   dependence-bound case, to
+
+       max (K, R) < H
+
+   which is exactly what the parametric solver returns when seeded with R.
+   The margin then asks that the saving be worth the doubled code.
+
+   The dependence graph is built with the anti- and output dependences that
+   register allocation introduced left out, since the renaming that
+   -munfold-inner-loops implies removes them -- except where it cannot: a
+   tied operand keeps its anti-dependence, and a guarded write or a partial
+   write into a register tuple keeps its output dependence.
+
+   The body is taken in CHAIN order -- from the header along each block's
+   single in-loop successor, which the eligibility gate has established is
+   well defined -- so a multi-block superblock body linearises and the
+   iteration distance of an arc is simply whether it runs forward in that
+   order.  Judging multi-block bodies is the whole point: those are the loops
+   the superblock work exists for.
+
+   One limit, deliberate: only register dependences are seen, so a loop bound
+   by a memory recurrence has its K underestimated and may be unfolded when
+   it should not.  Memory arcs want the scheduler's dependence machinery,
+   which is not set up at this point in reorg.  */
+
+static bool
+lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
+				 unsigned insns)
+{
+  auto_vec<rtx_insn *> seq;
+  auto_bitmap inloop;
+  rtx_insn *insn;
+
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    bitmap_set_bit (inloop, body[i]->index);
+
+  /* The body in chain order from the header.  */
+  basic_block walk = loop->header;
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    {
+      edge e;
+      edge_iterator ei;
+      basic_block nxt = NULL;
+
+      FOR_BB_INSNS (walk, insn)
+	if (NONDEBUG_INSN_P (insn)
+	    && GET_CODE (PATTERN (insn)) != USE
+	    && GET_CODE (PATTERN (insn)) != CLOBBER
+	    && recog_memoized (insn) >= 0)
+	  seq.safe_push (insn);
+
+      FOR_EACH_EDGE (e, ei, walk->succs)
+	if (bitmap_bit_p (inloop, e->dest->index))
+	  nxt = e->dest;
+      if (nxt == NULL)
+	break;
+      walk = nxt;
+    }
+
+  unsigned n = seq.length ();
+  if (n == 0)
+    return false;
+
+  /* Node 0 is the solver's root; node i + 1 is SEQ[i].  */
+  lvx_plc plc;
+  for (unsigned i = 0; i <= n; i++)
+    plc.add_node ();
+  for (unsigned i = 0; i < n; i++)
+    plc.add_arc (0, i + 1, 0, 0);
+
+  /* The intra-iteration arcs, kept to compute the dependence height.  */
+  auto_vec<int> height;
+  height.safe_grow_cleared (n);
+
+  for (unsigned p = 0; p < n; p++)
+    {
+      rtx_insn *def_insn = seq[p];
+      int latency = insn_default_latency (def_insn);
+      bool tied = lvx_insn_has_tied_operand_p (def_insn);
+      bool guarded = get_attr_guarded (def_insn) == GUARDED_YES;
+      df_ref def;
+
+      FOR_EACH_INSN_DEF (def, def_insn)
+	{
+	  unsigned regno = DF_REF_REGNO (def);
+	  bool partial = (DF_REF_FLAGS (def) & DF_REF_PARTIAL) != 0;
+
+	  for (unsigned q = 0; q < n; q++)
+	    {
+	      rtx_insn *other = seq[q];
+	      HOST_WIDE_INT omega = (q > p) ? 0 : 1;
+	      df_ref ref;
+
+	      /* RAW: always kept, and the only one carrying a latency.  */
+	      FOR_EACH_INSN_USE (ref, other)
+		if (DF_REF_REGNO (ref) == regno)
+		  {
+		    HOST_WIDE_INT w = omega;
+		    if (q == p)
+		      w = 1;	/* read and written by one insn */
+		    plc.add_arc (p + 1, q + 1, latency, w);
+		    if (w == 0 && height[q] < height[p] + latency)
+		      height[q] = height[p] + latency;
+		    break;
+		  }
+
+	      if (q == p)
+		continue;
+
+	      /* WAR, only where renaming cannot remove it.  */
+	      if (tied || lvx_insn_has_tied_operand_p (other))
+		FOR_EACH_INSN_USE (ref, other)
+		  if (DF_REF_REGNO (ref) == regno)
+		    {
+		      plc.add_arc (q + 1, p + 1, 0, (p > q) ? 0 : 1);
+		      break;
+		    }
+
+	      /* WAW, only where renaming cannot remove it.  */
+	      if (partial || guarded
+		  || get_attr_guarded (other) == GUARDED_YES)
+		FOR_EACH_INSN_DEF (ref, other)
+		  if (DF_REF_REGNO (ref) == regno)
+		    {
+		      plc.add_arc (p + 1, q + 1, 0, omega);
+		      break;
+		    }
+	    }
+	}
+    }
+
+  /* H, the span of one iteration with no overlap.  */
+  int h = 1;
+  for (unsigned i = 0; i < n; i++)
+    h = MAX (h, height[i] + 1);
+
+  /* R, from the machine description, and K, the recurrence bound.  */
+  struct lvx_sched_resources resources;
+  memset (&resources, 0, sizeof (resources));
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    FOR_BB_INSNS (body[i], insn)
+      lvx_sched_resources_add (&resources, insn);
+  int r = (int) lvx_sched_resources_full_bundles (&resources);
+  r = r ? r : 1;
+
+  if (plc.solve (1) != LVX_PLC_SOLVED)
+    {
+      if (dump_file)
+	fprintf (dump_file, ";; lvx unfold: loop %d declined, the recurrence"
+		 " bound did not solve\n", loop->num);
+      return false;
+    }
+  int k = (int) plc.period ();
+
+  int lambda_star = MAX (k, r);
+
+  /* S1 is what an iteration costs now, S2 what it would cost unfolded.
+     Doubled to keep the halving exact.  */
+  int s1 = 2 * MAX (h, r);
+  int s2 = MAX (2 * r, k + h);
+  int gain = s1 - s2;
+
+  bool ok = lambda_star < h && gain * 100 >= s1 * lvx_unfold_min_gain;
+
+  if (dump_file)
+    fprintf (dump_file, ";; lvx unfold: loop %d %s -- H=%d ResMII=%d"
+	     " RecMII=%d max=%d, %d insns, gain %d/%d = %d%%\n",
+	     loop->num, ok ? "profitable" : "declined", h, r, k, lambda_star,
+	     insns, gain, s1, s1 ? gain * 100 / s1 : 0);
+  return ok;
+}
+
 /* Unfold innermost LOOP once, so its body appears twice and the extended
    basic block the post-pass scheduler forms over it is twice as long.
 
@@ -11471,9 +11675,18 @@ lvx_unfold_inner_loop (class loop *loop)
 	if (NONDEBUG_INSN_P (insn))
 	  insns++;
     }
-  free (body);
   if (insns > lvx_unfold_max_insns)
-    return false;
+    {
+      free (body);
+      return false;
+    }
+
+  if (!lvx_loop_profitable_to_unfold_p (loop, body, insns))
+    {
+      free (body);
+      return false;
+    }
+  free (body);
 
   /* Every copy keeps its exits, which is what makes the trip count
      irrelevant.  */
