@@ -11444,6 +11444,152 @@ lvx_loop_has_doloop_p (class loop *loop)
   return found;
 }
 
+/* Whether an insn reads or writes memory, and whether two may alias.  These
+   mirror the static helpers of ddg.cc, which is also where the memory
+   dependence shape below comes from.  */
+
+static bool lvx_mem_ref_seen;
+
+static void
+lvx_mark_mem_use (rtx *x, void *)
+{
+  subrtx_iterator::array_type array;
+  FOR_EACH_SUBRTX (iter, array, *x, NONCONST)
+    if (MEM_P (*iter))
+      {
+	lvx_mem_ref_seen = true;
+	break;
+      }
+}
+
+static void
+lvx_mark_mem_store (rtx loc, const_rtx, void *)
+{
+  if (MEM_P (loc))
+    lvx_mem_ref_seen = true;
+}
+
+static bool
+lvx_mem_read_insn_p (rtx_insn *insn)
+{
+  lvx_mem_ref_seen = false;
+  note_uses (&PATTERN (insn), lvx_mark_mem_use, NULL);
+  return lvx_mem_ref_seen;
+}
+
+static bool
+lvx_mem_write_insn_p (rtx_insn *insn)
+{
+  lvx_mem_ref_seen = false;
+  note_stores (insn, lvx_mark_mem_store, NULL);
+  return lvx_mem_ref_seen;
+}
+
+static bool
+lvx_insns_may_alias_p (rtx_insn *insn1, rtx_insn *insn2)
+{
+  subrtx_iterator::array_type array1;
+  subrtx_iterator::array_type array2;
+
+  FOR_EACH_SUBRTX (iter1, array1, PATTERN (insn1), NONCONST)
+    {
+      const_rtx x1 = *iter1;
+      if (MEM_P (x1))
+	FOR_EACH_SUBRTX (iter2, array2, PATTERN (insn2), NONCONST)
+	  {
+	    const_rtx x2 = *iter2;
+	    if (MEM_P (x2) && may_alias_p (x2, x1))
+	      return true;
+	  }
+    }
+  return false;
+}
+
+/* Decompose MEM's address into a base register and a constant byte offset.
+   False when it is not of that shape.  */
+
+static bool
+lvx_mem_base_offset (const_rtx mem, rtx *base, HOST_WIDE_INT *off)
+{
+  rtx addr = XEXP (mem, 0);
+
+  *off = 0;
+  if (GET_CODE (addr) == PLUS && CONST_INT_P (XEXP (addr, 1)))
+    {
+      *off = INTVAL (XEXP (addr, 1));
+      addr = XEXP (addr, 0);
+    }
+  if (!REG_P (addr))
+    return false;
+  *base = addr;
+  return true;
+}
+
+/* True when every memory reference of SEQ[P] is provably disjoint from every
+   one of SEQ[Q], by base register and access width.  may_alias_p is
+   conservative; this is where a pair that shares a base register and whose
+   byte ranges do not overlap is separated, which is the common shape in an
+   unrolled or strided body.
+
+   Only sound within one iteration: the base is an induction variable, so
+   across the back edge its value differs by the step and the offsets are not
+   comparable.  The caller uses it for distance-zero arcs only.  A base
+   redefined anywhere between the two references, or by either of them,
+   breaks the comparison too, so that is rejected.  */
+
+static bool
+lvx_mems_disjoint_p (const vec<rtx_insn *> &seq, unsigned p, unsigned q)
+{
+  subrtx_iterator::array_type a1, a2;
+  rtx_insn *insn1 = seq[p], *insn2 = seq[q];
+  bool any = false;
+
+  FOR_EACH_SUBRTX (i1, a1, PATTERN (insn1), NONCONST)
+    {
+      const_rtx m1 = *i1;
+      rtx b1;
+      HOST_WIDE_INT o1;
+
+      if (!MEM_P (m1))
+	continue;
+      if (!lvx_mem_base_offset (m1, &b1, &o1))
+	return false;
+
+      FOR_EACH_SUBRTX (i2, a2, PATTERN (insn2), NONCONST)
+	{
+	  const_rtx m2 = *i2;
+	  rtx b2;
+	  HOST_WIDE_INT o2;
+	  poly_int64 s1, s2;
+
+	  if (!MEM_P (m2))
+	    continue;
+	  if (!lvx_mem_base_offset (m2, &b2, &o2)
+	      || REGNO (b1) != REGNO (b2))
+	    return false;
+
+	  s1 = GET_MODE_SIZE (GET_MODE (m1));
+	  s2 = GET_MODE_SIZE (GET_MODE (m2));
+	  if (!s1.is_constant () || !s2.is_constant ())
+	    return false;
+	  /* Overlapping byte ranges: nothing proved.  */
+	  if (o1 < o2 + s2.to_constant () && o2 < o1 + s1.to_constant ())
+	    return false;
+
+	  /* The base must hold the same value at both references.  */
+	  for (unsigned k = MIN (p, q); k <= MAX (p, q); k++)
+	    {
+	      df_ref def;
+	      FOR_EACH_INSN_DEF (def, seq[k])
+		if (DF_REF_REGNO (def) == REGNO (b1))
+		  return false;
+	    }
+	  any = true;
+	}
+    }
+  return any;
+}
+
 /* Whether INSN has an operand tied to another by a matching constraint, in
    which case renaming cannot separate its read from its write and the
    anti-dependence between them is real.  */
@@ -11603,6 +11749,101 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		      break;
 		    }
 	    }
+	}
+    }
+
+  /* Memory arcs, shaped as ddg.cc's add_intra_loop_mem_dep and
+     add_inter_loop_mem_dep.  The vocabulary here is the memory one -- flow,
+     anti, output, input -- not the register one, and the distinction matters:
+     dropping a register anti- or output dependence is sound because the
+     renaming that -munfold-inner-loops implies removes it, whereas nothing
+     renames memory, so flow, anti and output are all kept.  Input
+     dependences, read after read, constrain nothing and are not built.
+
+     A memory recurrence is usually the cycle that binds the period, so
+     leaving these out made RecMII too small -- the direction that unfolds a
+     loop it should refuse.  */
+  for (unsigned p = 0; p < n; p++)
+    {
+      rtx_insn *a = seq[p];
+      bool a_w = lvx_mem_write_insn_p (a);
+      bool a_r = lvx_mem_read_insn_p (a);
+
+      if (!a_w && !a_r)
+	continue;
+
+      int a_lat = insn_default_latency (a);
+      for (unsigned q = 0; q < n; q++)
+	{
+	  rtx_insn *b = seq[q];
+	  bool b_w = lvx_mem_write_insn_p (b);
+	  bool b_r = lvx_mem_read_insn_p (b);
+
+	  if ((!b_w && !b_r) || !lvx_insns_may_alias_p (a, b))
+	    continue;
+
+	  /* Within one iteration, only forward along the chain, and only when
+	     the two references cannot be told apart by their addresses.  */
+	  if (q > p && !lvx_mems_disjoint_p (seq, p, q))
+	    {
+	      int lat = 0;
+	      bool have = false;
+	      if (a_w && b_r)
+		lat = a_lat, have = true;
+	      else if (a_w || b_w)
+		have = true;
+	      if (have)
+		{
+		  plc.add_arc (p + 1, q + 1, lat, 0);
+		  if (height[q] < height[p] + lat)
+		    height[q] = height[p] + lat;
+		}
+	    }
+
+	  /* Across the back edge, unless the loop says there is no dependence
+	     between consecutive iterations.  loop->safelen is how many may run
+	     concurrently, so a distance of one is covered by any value above
+	     one -- what #pragma ivdep and #pragma omp simd leave behind.  The
+	     generic ddg does not read it; this does.  */
+	  if (loop->safelen > 1)
+	    continue;
+
+	  if (a_w && b_r)
+	    plc.add_arc (p + 1, q + 1, a_lat, 1);
+	  else if (a_w && b_w && p != q)
+	    plc.add_arc (p + 1, q + 1, 0, 1);
+	  else if (a_r && b_w && p != q)
+	    {
+	      plc.add_arc (p + 1, q + 1, 0, 1);
+	      plc.add_arc (q + 1, p + 1, insn_default_latency (b), 1);
+	    }
+	}
+    }
+
+  /* Control arcs.  A superblock body ends every block in an exit branch, and
+     an instruction with a side effect below one of them is guarded by it: it
+     must not issue before the branch resolves, because on the exit path it
+     must not have happened at all.  A load may cross -- that is what the
+     dismissible variant is for -- but a store or a volatile reference may
+     not, and these are often what binds a loop that has no data recurrence.
+
+     The latency is zero: the constraint is an ordering, `not before', rather
+     than a delay.  If the branch's resolution stage is ever wanted here, it
+     is what belongs in place of that zero.  */
+  for (unsigned p = 0; p < n; p++)
+    {
+      if (!JUMP_P (seq[p]))
+	continue;
+
+      for (unsigned q = 0; q < n; q++)
+	{
+	  if (q == p)
+	    continue;
+	  if (!lvx_mem_write_insn_p (seq[q])
+	      && !volatile_insn_p (PATTERN (seq[q])))
+	    continue;
+
+	  plc.add_arc (p + 1, q + 1, 0, (q > p) ? 0 : 1);
 	}
     }
 
