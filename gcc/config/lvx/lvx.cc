@@ -73,6 +73,8 @@
 #include "profile.h"
 #include "recog.h"
 #include "regs.h"
+#include "function-abi.h"
+#include "regrename.h"
 #include "reload.h"
 #include "rtl-iter.h"
 #include "sched-int.h"
@@ -11544,6 +11546,355 @@ lvx_superblock_inner_loops (void)
 
 /* Superblock formation for inner loops }}} */
 
+/* True if innermost LOOP has the superblock shape the renaming below assumes:
+   one entry, one back edge, every body block ending in a two-way branch with
+   exactly one successor inside the loop, no call, no volatile reference, no
+   asm, and within the size limits.  This is kvx-unfold.cc's unfold_inner_find
+   reduced to its structural checks, and it is not optional: on KVX the
+   renaming only ever runs on loops that passed that gate, and it is what makes
+   the renaming code's assumptions true.  MAX_BLOCKS and MAX_INSNS are passed
+   in because an unfolded body is twice the size of the one the unfold phase
+   accepted.  */
+static bool
+lvx_inner_superblock_loop_p (class loop *loop, unsigned max_blocks,
+			     unsigned max_insns)
+{
+  basic_block *body;
+  basic_block header = loop->header;
+  unsigned nentry = 0, insns = 0, back_edges = 0;
+  bool ok = true;
+  edge e;
+  edge_iterator ei;
+  auto_bitmap inloop;
+
+  if (loop->latch == NULL || loop->num_nodes > max_blocks)
+    return false;
+
+  FOR_EACH_EDGE (e, ei, header->preds)
+    if (!flow_bb_inside_loop_p (loop, e->src))
+      nentry++;
+  if (nentry != 1)
+    return false;
+
+  body = get_loop_body (loop);
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    bitmap_set_bit (inloop, body[i]->index);
+
+  for (unsigned i = 0; i < loop->num_nodes && ok; i++)
+    {
+      basic_block bb = body[i];
+      rtx_insn *end, *insn;
+      edge e0, e1;
+
+      if (EDGE_COUNT (bb->succs) != 2
+	  || (bb->flags & BB_DISABLE_SCHEDULE) != 0
+	  || computed_jump_p (BB_END (bb)))
+	{
+	  ok = false;
+	  break;
+	}
+
+      e0 = EDGE_SUCC (bb, 0);
+      e1 = EDGE_SUCC (bb, 1);
+      if ((e0->flags & EDGE_COMPLEX) || (e1->flags & EDGE_COMPLEX))
+	{
+	  ok = false;
+	  break;
+	}
+      if (e0->dest == header)
+	back_edges++;
+      if (e1->dest == header)
+	back_edges++;
+      /* Exactly one successor inside the loop: the body is a chain.  */
+      if (bitmap_bit_p (inloop, e0->dest->index)
+	  == bitmap_bit_p (inloop, e1->dest->index))
+	{
+	  ok = false;
+	  break;
+	}
+
+      end = BB_END (bb);
+      if (JUMP_P (end) && extract_asm_operands (PATTERN (end)) != NULL)
+	{
+	  ok = false;
+	  break;
+	}
+
+      for (insn = BB_HEAD (bb); insn != NEXT_INSN (end);
+	   insn = NEXT_INSN (insn))
+	if (NONDEBUG_INSN_P (insn))
+	  {
+	    if (++insns > max_insns
+		|| CALL_P (insn)
+		|| volatile_refs_p (PATTERN (insn))
+		|| asm_noperands (PATTERN (insn)) >= 0)
+	      {
+		ok = false;
+		break;
+	      }
+	  }
+    }
+
+  free (body);
+  return ok && back_edges == 1;
+}
+
+/* The blocks regrename must see for LOOP: its body, what its blocks leave to,
+   and its entry block when everything that block reaches is already in the
+   set.  Shaped after unfold_inner_fill_rename_blocks -- the surroundings have
+   to be there so a renamed value's liveness past the loop is accounted for.  */
+static void
+lvx_regrename_fill_blocks (class loop *loop, bitmap blocks)
+{
+  basic_block *body = get_loop_body (loop);
+  basic_block pre = NULL;
+  unsigned nentry = 0;
+  edge e;
+  edge_iterator ei;
+
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    {
+      bitmap_set_bit (blocks, body[i]->index);
+      FOR_EACH_EDGE (e, ei, body[i]->succs)
+	if (e->dest != EXIT_BLOCK_PTR_FOR_FN (cfun))
+	  bitmap_set_bit (blocks, e->dest->index);
+    }
+
+  FOR_EACH_EDGE (e, ei, loop->header->preds)
+    if (!flow_bb_inside_loop_p (loop, e->src))
+      {
+	pre = e->src;
+	nentry++;
+      }
+
+  if (nentry == 1 && pre != ENTRY_BLOCK_PTR_FOR_FN (cfun)
+      && single_pred_p (pre))
+    {
+      unsigned inside = 0;
+      FOR_EACH_EDGE (e, ei, pre->succs)
+	if (bitmap_bit_p (blocks, e->dest->index))
+	  inside++;
+      if (inside == EDGE_COUNT (pre->succs))
+	bitmap_set_bit (blocks, pre->index);
+    }
+
+  free (body);
+}
+
+/* Rename hard registers through one innermost LOOP so that successive
+   definitions land on different registers, removing the anti- and output
+   dependences that otherwise serialise an unfolded body's two copies against
+   each other.
+
+   The policy is the KVX reference's: take the LEAST RECENTLY DEFINED available
+   register, so the distance back to the previous definition of the one chosen
+   is as long as the set allows.  find_rename_reg is told not to apply its own
+   preference, because its tick array is static to regrename.cc and cannot be
+   seeded from outside -- which is also why rename_chains cannot be reused, it
+   being static as well.  Left unseeded, that array is all zeroes for an
+   external caller and the choice degrades to the lowest-numbered free
+   register, which would recreate the very dependences this removes.
+
+   Two deliberate divergences from the reference, both in the safe direction.
+   The chain walk is over the loop body only.  And the reference's
+   `unavail_regs &= ~live_in_regs' line, which MAKES the preheader's live-in
+   registers available, is not ported: its own comment says those should be
+   excluded, so the polarity is at best unclear, and omitting it leaves
+   availability narrower and relies on regrename's own liveness analysis
+   exactly as the generic rename_chains does.  */
+static void
+lvx_regrename_one_loop (class loop *loop, HARD_REG_SET fixed_unavail,
+			int *ticks, int *tick)
+{
+  auto_bitmap blocks;
+  basic_block *body = get_loop_body (loop);
+  basic_block *chain = XNEWVEC (basic_block, loop->num_nodes);
+  basic_block walk = loop->header;
+  auto_bitmap inloop;
+  unsigned n = 0;
+
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    bitmap_set_bit (inloop, body[i]->index);
+
+  /* The body in chain order from the header.  The gate has established that
+     each block has exactly one in-loop successor, so this covers it.  */
+  for (n = 0; n < loop->num_nodes; n++)
+    {
+      edge e;
+      edge_iterator ei;
+      basic_block nxt = NULL;
+
+      chain[n] = walk;
+      FOR_EACH_EDGE (e, ei, walk->succs)
+	if (bitmap_bit_p (inloop, e->dest->index))
+	  nxt = e->dest;
+      if (nxt == NULL)
+	break;
+      walk = nxt;
+    }
+
+  lvx_regrename_fill_blocks (loop, blocks);
+  regrename_init (true);
+  regrename_analyze (blocks);
+
+  for (unsigned b = 0; b < n; b++)
+    {
+      rtx_insn *insn;
+
+      FOR_BB_INSNS (chain[b], insn)
+	{
+	  operand_rr_info *op_info;
+	  int latency;
+
+	  if (!NONDEBUG_INSN_P (insn)
+	      || GET_CODE (PATTERN (insn)) == USE
+	      || GET_CODE (PATTERN (insn)) == CLOBBER
+	      || volatile_insn_p (PATTERN (insn))
+	      || (unsigned) INSN_UID (insn) >= insn_rr.length ())
+	    continue;
+
+	  op_info = insn_rr[INSN_UID (insn)].op_info;
+	  if (op_info == NULL || op_info->failed)
+	    continue;
+
+	  latency = insn_default_latency (insn);
+	  if (latency < 0)
+	    latency = 0;
+	  (*tick)++;
+
+	  for (int i = 0; i < op_info->n_chains; i++)
+	    {
+	      du_head_p head = op_info->heads[i];
+	      unsigned regno, chain_regno;
+	      machine_mode mode;
+	      HARD_REG_SET unavail, avail;
+	      hard_reg_set_iterator hrsi;
+	      reg_class super_class;
+	      int n_uses = 0, min_tick, new_regno;
+
+	      if (head == NULL)
+		continue;
+	      if (head->first == NULL)
+		head = regrename_chain_from_id (head->id);
+	      if (head == NULL || head->first == NULL
+		  || head->first->loc == NULL || *head->first->loc == NULL_RTX)
+		continue;
+
+	      chain_regno = head->regno;
+	      if (chain_regno >= FIRST_PSEUDO_REGISTER
+		  || head->nregs <= 0
+		  || chain_regno + head->nregs > FIRST_PSEUDO_REGISTER)
+		continue;
+
+	      mode = GET_MODE (*head->first->loc);
+
+	      if (head->cannot_rename || head->renamed
+		  || fixed_regs[chain_regno] || global_regs[chain_regno])
+		{
+		  for (int j = 0; j < head->nregs; j++)
+		    ticks[chain_regno + j] = *tick + latency;
+		  continue;
+		}
+
+	      unavail = fixed_unavail;
+	      super_class = regrename_find_superclass (head, &n_uses, &unavail);
+	      if (n_uses < 2)
+		{
+		  for (int j = 0; j < head->nregs; j++)
+		    ticks[chain_regno + j] = *tick + latency;
+		  continue;
+		}
+
+	      min_tick = ticks[chain_regno];
+	      avail = ~unavail;
+	      EXECUTE_IF_SET_IN_HARD_REG_SET (avail, 0, regno, hrsi)
+		if (regno < FIRST_PSEUDO_REGISTER
+		    && targetm.hard_regno_mode_ok (regno, mode)
+		    && min_tick > ticks[regno])
+		  min_tick = ticks[regno];
+
+	      new_regno = chain_regno;
+	      for (int step = 0; min_tick < ticks[chain_regno];
+		   min_tick += step)
+		{
+		  HARD_REG_SET try_unavail = ~avail;
+
+		  EXECUTE_IF_SET_IN_HARD_REG_SET (avail, 0, regno, hrsi)
+		    if (regno < FIRST_PSEUDO_REGISTER
+			&& ticks[regno] > min_tick
+			&& targetm.hard_regno_mode_ok (regno, mode)
+			&& end_hard_regno (mode, regno) <= FIRST_PSEUDO_REGISTER)
+		      add_to_hard_reg_set (&try_unavail, mode, regno);
+
+		  new_regno = find_rename_reg (head, super_class, &try_unavail,
+					       chain_regno, false);
+		  if (new_regno != (int) chain_regno)
+		    break;
+
+		  step = (ticks[chain_regno] - min_tick + 7) / 8;
+		  if (step <= 0)
+		    break;
+		}
+
+	      if (new_regno != (int) chain_regno
+		  && new_regno >= 0
+		  && new_regno + head->nregs <= FIRST_PSEUDO_REGISTER
+		  && regrename_do_replace (head, new_regno))
+		{
+		  if (dump_file)
+		    fprintf (dump_file, ";; lvx regrename: loop %d, %s -> %s"
+			     " (insn %d, %d uses)\n", loop->num,
+			     reg_names[chain_regno], reg_names[new_regno],
+			     INSN_UID (insn), n_uses);
+		  chain_regno = new_regno;
+		}
+
+	      for (int j = 0; j < head->nregs
+			      && chain_regno + j < FIRST_PSEUDO_REGISTER; j++)
+		ticks[chain_regno + j] = *tick + latency;
+	    }
+	}
+    }
+
+  regrename_finish ();
+  free (chain);
+  free (body);
+}
+
+/* Drive the renaming over the innermost loops, one loop at a time as the KVX
+   reference does -- a single analysis over the union of several loops would
+   let regrename_analyze merge chains across unrelated regions.  */
+static void
+lvx_regrename_inner_loops (void)
+{
+  static int ticks[FIRST_PSEUDO_REGISTER];
+  HARD_REG_SET fixed_unavail;
+  int tick = 0;
+
+  /* The reference's set, which is stricter than rename_chains': the frame
+     pointer unconditionally, and every fixed or global register.  */
+  CLEAR_HARD_REG_SET (fixed_unavail);
+  add_to_hard_reg_set (&fixed_unavail, Pmode, FRAME_POINTER_REGNUM);
+  if (!HARD_FRAME_POINTER_IS_FRAME_POINTER)
+    add_to_hard_reg_set (&fixed_unavail, Pmode, HARD_FRAME_POINTER_REGNUM);
+  for (unsigned regno = 0; regno < FIRST_PSEUDO_REGISTER; regno++)
+    if (fixed_regs[regno] || global_regs[regno])
+      SET_HARD_REG_BIT (fixed_unavail, regno);
+
+  memset (ticks, 0, sizeof (ticks));
+
+  loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
+
+  /* Twice the unfold phase's limits: an unfolded body is twice the size of
+     the one that phase accepted.  */
+  for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
+    if (lvx_inner_superblock_loop_p (loop, 2 * lvx_unfold_max_blocks,
+				     2 * lvx_unfold_max_insns))
+      lvx_regrename_one_loop (loop, fixed_unavail, ticks, &tick);
+
+  loop_optimizer_finalize ();
+}
+
 /* Implements TARGET_MACHINE_DEPENDENT_REORG.  */
 static void
 lvx_machine_dependent_reorg (void)
@@ -11563,6 +11914,16 @@ lvx_machine_dependent_reorg (void)
   lvx_fix_pcreljump_ranges ();
 
   df_analyze ();
+
+  /* Renaming through the inner loops, immediately before the regions are
+     formed: it changes no layout, so unlike the superblock pass it belongs
+     here, where the schedule it frees up is about to be built.  */
+  if (optimize && lvx_regrename_inner_loops_p
+      && optimize_function_for_speed_p (cfun))
+    {
+      lvx_regrename_inner_loops ();
+      df_analyze ();
+    }
 
   bool selective_scheduling2 = false;
   if (optimize && flag_schedule_insns_after_reload)

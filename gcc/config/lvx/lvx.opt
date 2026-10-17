@@ -102,3 +102,7 @@ Target RejectNegative Joined UInteger Var(lvx_unfold_max_blocks) Init(8) Optimiz
 munfold-max-insns=
 Target RejectNegative Joined UInteger Var(lvx_unfold_max_insns) Init(64) Optimization
 -munfold-max-insns=N	Do not unfold an inner loop whose body has more than N instructions.
+
+mregrename-inner-loops
+Target Var(lvx_regrename_inner_loops_p) Init(0) Optimization
+Rename registers through inner superblock loops before EBB scheduling, so successive definitions use different registers.
