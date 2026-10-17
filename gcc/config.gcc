@@ -617,7 +617,7 @@ lvx-*-*)
 	cpu_type=lvx
 	need_64bit_hwint=yes
 	extra_headers="lvx_builtins.h"
-	extra_objs="lvx-builtins.o"
+	extra_objs="lvx-builtins.o lvx-plc.o"
 	case ${target} in
 		lvx-*-cos*)
 			extra_objs="${extra_objs} lvx-prologue-stack-limit.o"

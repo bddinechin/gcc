@@ -31,3 +31,9 @@ mkoffload$(exeext): mkoffload.o collect-utils.o libcommon-target.a \
 		      $(LIBIBERTY) $(LIBDEPS)
 	+$(LINKER) $(ALL_LINKERFLAGS) $(LDFLAGS) -o $@ \
 	  mkoffload.o collect-utils.o libcommon-target.a $(LIBIBERTY) $(LIBS)
+
+lvx-plc.o: $(srcdir)/config/lvx/lvx-plc.cc \
+  $(srcdir)/config/lvx/lvx-plc.h $(CONFIG_H) $(SYSTEM_H) coretypes.h \
+  $(BACKEND_H) selftest.h
+	$(COMPILE) $<
+	$(POSTCOMPILE)

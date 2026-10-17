@@ -73,6 +73,7 @@
 #include "profile.h"
 #include "recog.h"
 #include "regs.h"
+#include "selftest.h"
 #include "function-abi.h"
 #include "regrename.h"
 #include "reload.h"
@@ -11894,6 +11895,24 @@ lvx_regrename_inner_loops (void)
 
   loop_optimizer_finalize ();
 }
+
+#if CHECKING_P
+namespace selftest {
+extern void lvx_plc_cc_tests (void);
+
+/* Implements TARGET_RUN_TARGET_SELFTESTS.  */
+
+static void
+lvx_run_selftests (void)
+{
+  lvx_plc_cc_tests ();
+}
+
+} /* namespace selftest */
+
+#undef TARGET_RUN_TARGET_SELFTESTS
+#define TARGET_RUN_TARGET_SELFTESTS selftest::lvx_run_selftests
+#endif /* CHECKING_P */
 
 /* Implements TARGET_MACHINE_DEPENDENT_REORG.  */
 static void
