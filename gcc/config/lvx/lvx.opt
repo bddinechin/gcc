@@ -90,3 +90,15 @@ Perform SMS based modulo scheduling with bundling of instructions.
 msuperblock-loops
 Target Var(lvx_superblock_loops) Init(1) Optimization
 Lay inner loop bodies out as one superblock run before EBB scheduling.
+
+munfold-inner-loops
+Target Var(lvx_unfold_inner_loops) Init(0) Optimization
+Duplicate the body of an inner loop that is not a hardware loop, so the extended basic block is twice as long.
+
+munfold-max-blocks=
+Target RejectNegative Joined UInteger Var(lvx_unfold_max_blocks) Init(8) Optimization
+-munfold-max-blocks=N	Do not unfold an inner loop whose body has more than N blocks.
+
+munfold-max-insns=
+Target RejectNegative Joined UInteger Var(lvx_unfold_max_insns) Init(64) Optimization
+-munfold-max-insns=N	Do not unfold an inner loop whose body has more than N instructions.

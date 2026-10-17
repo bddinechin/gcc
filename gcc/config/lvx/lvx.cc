@@ -11254,26 +11254,66 @@ lvx_superblock_layout_loop (class loop *loop)
       hi = MAX (hi, index[body[i]->index]);
     }
 
-  /* The body in layout order, rotated so the header leads.  */
+  /* The order to lay the body out in.  Prefer the loop's own chain -- walk
+     from the header along the single in-loop successor of each block -- which
+     is what EBB formation and the pipeliner both want, and which is the only
+     order that makes sense for a body the unfold phase has just duplicated,
+     since the copy's blocks sit wherever the duplicator left them.  Fall back
+     to the layout order rotated so the header leads, for a body that is not a
+     single cycle; that fallback is the one the corpus measurement validated,
+     and a greedy re-order measures worse than either.  */
   ord = XNEWVEC (basic_block, nblk);
-  for (i = 0; i < nblk; i++)
-    ord[i] = body[i];
-  for (i = 0; i < nblk; i++)
-    for (j = i + 1; j < nblk; j++)
-      if (index[ord[j]->index] < index[ord[i]->index])
-	std::swap (ord[i], ord[j]);
-  for (i = 0; i < nblk; i++)
-    if (ord[i] == header)
-      hpos = i;
-  if (hpos != 0)
-    {
-      basic_block *tmp = XNEWVEC (basic_block, nblk);
-      for (i = 0; i < nblk; i++)
-	tmp[i] = ord[(hpos + i) % nblk];
-      for (i = 0; i < nblk; i++)
-	ord[i] = tmp[i];
-      free (tmp);
-    }
+  {
+    basic_block walk = header;
+    bool chain_ok = true;
+    auto_bitmap seen;
+
+    for (i = 0; i < nblk && chain_ok; i++)
+      {
+	basic_block nxt = NULL;
+	edge se;
+	edge_iterator sei;
+
+	ord[i] = walk;
+	bitmap_set_bit (seen, walk->index);
+	FOR_EACH_EDGE (se, sei, walk->succs)
+	  if (bitmap_bit_p (inloop, se->dest->index))
+	    {
+	      if (nxt != NULL)
+		chain_ok = false;	/* two in-loop successors */
+	      nxt = se->dest;
+	    }
+	if (nxt == NULL)
+	  chain_ok = false;
+	else if (i + 1 < nblk && bitmap_bit_p (seen, nxt->index))
+	  chain_ok = false;		/* closed early */
+	else if (i + 1 == nblk && nxt != header)
+	  chain_ok = false;		/* did not close on the header */
+	walk = nxt;
+      }
+
+    if (!chain_ok)
+      {
+	for (i = 0; i < nblk; i++)
+	  ord[i] = body[i];
+	for (i = 0; i < nblk; i++)
+	  for (j = i + 1; j < nblk; j++)
+	    if (index[ord[j]->index] < index[ord[i]->index])
+	      std::swap (ord[i], ord[j]);
+	for (i = 0; i < nblk; i++)
+	  if (ord[i] == header)
+	    hpos = i;
+	if (hpos != 0)
+	  {
+	    basic_block *tmp = XNEWVEC (basic_block, nblk);
+	    for (i = 0; i < nblk; i++)
+	      tmp[i] = ord[(hpos + i) % nblk];
+	    for (i = 0; i < nblk; i++)
+	      ord[i] = tmp[i];
+	    free (tmp);
+	  }
+      }
+  }
 
   /* Blocks sitting inside the body's layout span without being in the loop.
      The gather displaces them, and they go straight after the run.  */
@@ -11362,6 +11402,79 @@ lvx_superblock_layout_loop (class loop *loop)
   return changed;
 }
 
+/* True if LOOP is already a hardware loop, which reorg_loops will put a
+   LOOPDO on.  Unfolding one of those would mean halving the trip count and
+   peeling the odd iteration; a loop without one needs neither, because the
+   exit tests a superblock body already carries in every block serve both
+   copies unchanged.  */
+static bool
+lvx_loop_has_doloop_p (class loop *loop)
+{
+  basic_block *body;
+  bool found = false;
+
+  if (loop->latch == NULL)
+    return false;
+
+  body = get_loop_body (loop);
+  for (unsigned i = 0; i < loop->num_nodes && !found; i++)
+    {
+      rtx_insn *end = BB_END (body[i]);
+      if (JUMP_P (end)
+	  && condjump_in_parallel_p (end)
+	  && doloop_condition_get (end) != NULL_RTX)
+	found = true;
+    }
+  free (body);
+  return found;
+}
+
+/* Unfold innermost LOOP once, so its body appears twice and the extended
+   basic block the post-pass scheduler forms over it is twice as long.
+
+   This is `unroll_loop_stupid' applied late and deliberately: the duplicate
+   keeps every exit test, so no trip count, prolog or zero-trip guard is
+   needed, and consecutive iterations become schedulable against each other.
+   Returns true if LOOP was unfolded.  */
+static bool
+lvx_unfold_inner_loop (class loop *loop)
+{
+  basic_block *body;
+  unsigned insns = 0;
+  bool ok;
+
+  if (loop->latch == NULL
+      || loop->num_nodes > lvx_unfold_max_blocks
+      || lvx_loop_has_doloop_p (loop)
+      || !can_duplicate_loop_p (loop))
+    return false;
+
+  body = get_loop_body (loop);
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    {
+      rtx_insn *insn;
+      FOR_BB_INSNS (body[i], insn)
+	if (NONDEBUG_INSN_P (insn))
+	  insns++;
+    }
+  free (body);
+  if (insns > lvx_unfold_max_insns)
+    return false;
+
+  /* Every copy keeps its exits, which is what makes the trip count
+     irrelevant.  */
+  auto_sbitmap wont_exit (2);
+  bitmap_clear (wont_exit);
+
+  ok = duplicate_loop_body_to_header_edge (loop, loop_latch_edge (loop), 1,
+					   wont_exit, NULL, NULL,
+					   DLTHE_FLAG_UPDATE_FREQ);
+  if (ok && dump_file)
+    fprintf (dump_file, ";; lvx unfold: loop %d doubled, now %u blocks,"
+	     " %u insns before\n", loop->num, loop->num_nodes, insns);
+  return ok;
+}
+
 /* Give every innermost loop a single-entry preheader and lay its body out as
    one run, so that EBB formation sees the body whole and the software
    pipeliner's loop selection accepts it.
@@ -11395,7 +11508,21 @@ lvx_superblock_inner_loops (void)
 	&& create_preheader (loop, CP_SIMPLE_PREHEADERS) != NULL)
       changed = true;
 
-  /* Phase B: the layout.  */
+  /* Phase B: unfold, so the body the layout then gathers is twice as long.
+     duplicate_loop_body_to_header_edge reads the dominator tree through
+     get_loop_body_in_dom_order, and at this point in the pipeline that tree
+     can be marked available while being stale -- which makes
+     calculate_dominance_info a no-op and the read a segfault.  Force it.  */
+  if (lvx_unfold_inner_loops)
+    {
+      free_dominance_info (CDI_DOMINATORS);
+      calculate_dominance_info (CDI_DOMINATORS);
+      for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
+	if (lvx_unfold_inner_loop (loop))
+	  changed = true;
+    }
+
+  /* Phase C: the layout.  */
   for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
     if (lvx_superblock_layout_loop (loop))
       changed = true;
