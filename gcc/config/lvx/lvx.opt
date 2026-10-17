@@ -93,7 +93,7 @@ Lay inner loop bodies out as one superblock run before EBB scheduling.
 
 munfold-inner-loops
 Target Var(lvx_unfold_inner_loops) Init(0) Optimization
-Duplicate the body of an inner loop that is not a hardware loop, so the extended basic block is twice as long.
+Duplicate the body of an inner loop that is not a hardware loop, so the extended basic block is twice as long.  Implies -mregrename-inner-loops.
 
 munfold-max-blocks=
 Target RejectNegative Joined UInteger Var(lvx_unfold_max_blocks) Init(8) Optimization

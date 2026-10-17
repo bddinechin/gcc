@@ -10424,6 +10424,17 @@ lvx_option_override (void)
 	}
     }
 
+  /* Unfolding an inner loop implies renaming through it.  The dependence
+     model the unfold is justified by drops the anti- and output dependences
+     register allocation introduced, which is sound only because a renaming
+     step follows and removes them; without it the two copies reuse the same
+     registers and serialise against each other, which measures as pure cost.
+     SET_OPTION_IF_UNSET, so an explicit -mno-regrename-inner-loops still
+     wins -- the implication is the default, not a constraint.  */
+  if (lvx_unfold_inner_loops)
+    SET_OPTION_IF_UNSET (&global_options, &global_options_set,
+			 lvx_regrename_inner_loops_p, 1);
+
 #if 0 // If 1 then gcc/gcc/testsuite/gcc.dg/ipa/iinline-attr.c fails.
   SET_OPTION_IF_UNSET (&global_options, &global_options_set,
 		       param_simultaneous_prefetches, 8);
