@@ -47,6 +47,7 @@
 #include "cfghooks.h"
 #include "cfgloop.h"
 #include "cfgrtl.h"
+#include "cfgloopmanip.h"
 #include "cgraph.h"
 #include "ddg.h"
 #include "df.h"
@@ -68,6 +69,7 @@
 #include "optabs.h"
 #include "opts.h"
 #include "output.h"
+#include "predict.h"
 #include "profile.h"
 #include "recog.h"
 #include "regs.h"
@@ -11138,11 +11140,294 @@ lvx_ifcvt_machdep_init (struct ce_if_block *ce_info, bool after_combine)
     }
 }
 
+/* Superblock formation for inner loops {{{ */
+
+/* Move BB so that it immediately follows AFTER in the block layout.
+
+   Only valid in cfglayout mode, where the layout *is* the next_bb chain and
+   fixup_reorder_chain re-emits the jumps and barriers to match.  This is the
+   same splice reorder_loops (hw-doloop.cc) performs, and for the same reason:
+   rtl_move_block_after is a stub returning false in both RTL hook tables, so
+   move_block_after cannot do it.  */
+static void
+lvx_layout_move_after (basic_block bb, basic_block after)
+{
+  gcc_assert (bb != after
+	      && bb != ENTRY_BLOCK_PTR_FOR_FN (cfun)
+	      && bb != EXIT_BLOCK_PTR_FOR_FN (cfun)
+	      && after != EXIT_BLOCK_PTR_FOR_FN (cfun));
+
+  if (bb->prev_bb == after)
+    return;
+
+  bb->prev_bb->next_bb = bb->next_bb;
+  bb->next_bb->prev_bb = bb->prev_bb;
+
+  bb->prev_bb = after;
+  bb->next_bb = after->next_bb;
+  after->next_bb->prev_bb = bb;
+  after->next_bb = bb;
+}
+
+/* True if the layout can make the edge FROM->TO the fallthru without a block
+   being inserted: it already is, or TO is FROM's only successor, or FROM ends
+   in a conditional jump whose condition reverses -- which is the test
+   fixup_reorder_chain itself applies, through invert_jump.  Rotating a loop
+   whose header fails this does not shorten anything: fixup_reorder_chain
+   inserts a forwarder between the two blocks, which costs a jump and splits
+   the body again.  */
+static bool
+lvx_can_fallthru_p (basic_block from, basic_block to)
+{
+  edge e = find_edge (from, to);
+  rtx_insn *end;
+  rtx set;
+
+  if (e == NULL || (e->flags & (EDGE_COMPLEX | EDGE_ABNORMAL)) != 0)
+    return false;
+  if (e->flags & EDGE_FALLTHRU)
+    return true;
+  if (single_succ_p (from))
+    return true;
+
+  end = BB_END (from);
+  if (!JUMP_P (end)
+      || !any_condjump_p (end)
+      || extract_asm_operands (PATTERN (end)) != NULL)
+    return false;
+  set = pc_set (end);
+  if (set == NULL_RTX)
+    return false;
+  return reversed_comparison_code (XEXP (SET_SRC (set), 0), end) != UNKNOWN;
+}
+
+/* Lay the body of innermost LOOP out as one run, the header first and
+   immediately after the loop's single entry block, with the run's last
+   block's out-of-loop successor straight after it when that is a local move.
+   Returns true if the layout changed.
+
+   The body keeps the interior order bb-reorder gave it and is merely rotated
+   so the header leads: that changes exactly one adjacency, and it is what
+   measures as a gain.  A greedy re-order of the same blocks measures as a
+   loss -- see docs/ebb-selection.md.  */
+static bool
+lvx_superblock_layout_loop (class loop *loop)
+{
+  unsigned nblk = loop->num_nodes;
+  basic_block header = loop->header;
+  basic_block *body, *ord, *extra, pre = NULL, succ = NULL, prev, bb;
+  unsigned nentry = 0, nextra = 0, hpos = 0, i, j;
+  int lo = INT_MAX, hi = -1, n = 0;
+  bool changed = false;
+  edge e;
+  edge_iterator ei;
+  int *index = XCNEWVEC (int, last_basic_block_for_fn (cfun));
+  auto_bitmap inloop;
+  auto_bitmap placed;
+
+  FOR_EACH_BB_FN (bb, cfun)
+    index[bb->index] = n++;
+
+  FOR_EACH_EDGE (e, ei, header->preds)
+    if (!flow_bb_inside_loop_p (loop, e->src))
+      {
+	pre = e->src;
+	nentry++;
+      }
+
+  /* One entry block, able to fall through to the header.  Phase A has made
+     that so wherever it could; where it could not, leave the loop alone.  */
+  if (nentry != 1
+      || pre == ENTRY_BLOCK_PTR_FOR_FN (cfun)
+      || !single_succ_p (pre)
+      || (single_succ_edge (pre)->flags & EDGE_COMPLEX) != 0)
+    {
+      free (index);
+      return false;
+    }
+
+  body = get_loop_body (loop);
+  for (i = 0; i < nblk; i++)
+    {
+      bitmap_set_bit (inloop, body[i]->index);
+      lo = MIN (lo, index[body[i]->index]);
+      hi = MAX (hi, index[body[i]->index]);
+    }
+
+  /* The body in layout order, rotated so the header leads.  */
+  ord = XNEWVEC (basic_block, nblk);
+  for (i = 0; i < nblk; i++)
+    ord[i] = body[i];
+  for (i = 0; i < nblk; i++)
+    for (j = i + 1; j < nblk; j++)
+      if (index[ord[j]->index] < index[ord[i]->index])
+	std::swap (ord[i], ord[j]);
+  for (i = 0; i < nblk; i++)
+    if (ord[i] == header)
+      hpos = i;
+  if (hpos != 0)
+    {
+      basic_block *tmp = XNEWVEC (basic_block, nblk);
+      for (i = 0; i < nblk; i++)
+	tmp[i] = ord[(hpos + i) % nblk];
+      for (i = 0; i < nblk; i++)
+	ord[i] = tmp[i];
+      free (tmp);
+    }
+
+  /* Blocks sitting inside the body's layout span without being in the loop.
+     The gather displaces them, and they go straight after the run.  */
+  extra = XNEWVEC (basic_block, MAX (hi - lo + 1, 1));
+  FOR_EACH_BB_FN (bb, cfun)
+    if (index[bb->index] > lo && index[bb->index] < hi
+	&& !bitmap_bit_p (inloop, bb->index))
+      extra[nextra++] = bb;
+
+  /* Refuse the whole loop unless every adjacency the new order asks for can
+     actually be a fallthru.  Otherwise fixup_reorder_chain inserts a
+     forwarder, which costs a jump and leaves the body split anyway.  */
+  prev = pre;
+  for (i = 0; i < nblk; i++)
+    {
+      if (ord[i]->prev_bb != prev && !lvx_can_fallthru_p (prev, ord[i]))
+	{
+	  if (dump_file)
+	    fprintf (dump_file, ";; lvx superblock: loop %d declined, bb %d"
+		     " cannot fall through to bb %d\n",
+		     loop->num, prev->index, ord[i]->index);
+	  free (extra);
+	  free (ord);
+	  free (body);
+	  free (index);
+	  return false;
+	}
+      prev = ord[i];
+    }
+
+  /* Install the run behind the entry block.  */
+  prev = pre;
+  for (i = 0; i < nblk; i++)
+    {
+      if (ord[i]->prev_bb != prev)
+	{
+	  lvx_layout_move_after (ord[i], prev);
+	  changed = true;
+	}
+      bitmap_set_bit (placed, ord[i]->index);
+      prev = ord[i];
+    }
+
+  /* The pipeliner's loop selection requires the block after the run to be a
+     successor of the run's last block, and that block's other successor is
+     now the back edge, so it has to be the out-of-loop one.  Move it only
+     when it has no other predecessor, so that nothing else loses a fallthru
+     and no jump is added anywhere.  */
+  FOR_EACH_EDGE (e, ei, prev->succs)
+    if (!bitmap_bit_p (inloop, e->dest->index))
+      succ = e->dest;
+
+  if (succ != NULL
+      && succ != EXIT_BLOCK_PTR_FOR_FN (cfun)
+      && single_pred_p (succ)
+      && succ->prev_bb != prev)
+    {
+      lvx_layout_move_after (succ, prev);
+      bitmap_set_bit (placed, succ->index);
+      changed = true;
+      prev = succ;
+    }
+
+  for (j = 0; j < nextra; j++)
+    {
+      if (bitmap_bit_p (placed, extra[j]->index))
+	continue;
+      if (extra[j]->prev_bb != prev)
+	{
+	  lvx_layout_move_after (extra[j], prev);
+	  changed = true;
+	}
+      bitmap_set_bit (placed, extra[j]->index);
+      prev = extra[j];
+    }
+
+  if (changed && dump_file)
+    fprintf (dump_file, ";; lvx superblock: loop %d, %u blocks, header %d"
+	     " after entry %d%s\n", loop->num, nblk, header->index,
+	     pre->index, nextra ? ", span had foreign blocks" : "");
+
+  free (extra);
+  free (ord);
+  free (body);
+  free (index);
+  return changed;
+}
+
+/* Give every innermost loop a single-entry preheader and lay its body out as
+   one run, so that EBB formation sees the body whole and the software
+   pipeliner's loop selection accepts it.
+
+   This runs before reorg_loops rather than next to schedule_ebbs: a layout
+   change after reorg_loops would invalidate LOOPDO, whose end address is a
+   17-bit PC-relative immediate over a contiguous body, and after
+   lvx_fix_pcreljump_ranges would invalidate branch widths already chosen by
+   distance.  A contiguous body is what LOOPDO wants, so the two agree.  */
+static void
+lvx_superblock_inner_loops (void)
+{
+  basic_block bb;
+  bool changed = false;
+
+  /* cfg_layout_initialize asserts on this combination, as reorder_loops
+     (hw-doloop.cc) documents for the same splice.  */
+  if (crtl->has_bb_partition)
+    return;
+
+  cfg_layout_initialize (0);
+  loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
+
+  /* Phase A: a single-entry preheader able to fall through to the header.
+     7.3% of innermost loops have a header with two or more out-of-loop
+     predecessors and are refused outright by the pipeliner for it.
+     create_preheader needs loop->latch, which a loop with several latches
+     has not got -- and such a loop is refused anyway, for the back edges.  */
+  for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
+    if (loop->latch != NULL
+	&& create_preheader (loop, CP_SIMPLE_PREHEADERS) != NULL)
+      changed = true;
+
+  /* Phase B: the layout.  */
+  for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
+    if (lvx_superblock_layout_loop (loop))
+      changed = true;
+
+  loop_optimizer_finalize ();
+
+  FOR_EACH_BB_FN (bb, cfun)
+    bb->aux = (bb->next_bb != EXIT_BLOCK_PTR_FOR_FN (cfun)
+	       ? bb->next_bb : NULL);
+  cfg_layout_finalize ();
+  clear_aux_for_blocks ();
+
+  if (changed)
+    {
+      compute_bb_for_insn ();
+      df_analyze ();
+    }
+}
+
+/* Superblock formation for inner loops }}} */
+
 /* Implements TARGET_MACHINE_DEPENDENT_REORG.  */
 static void
 lvx_machine_dependent_reorg (void)
 {
   compute_bb_for_insn ();
+
+  /* Superblock formation for inner loops.  Speed only: it trades layout and
+     a forwarder block or two for scheduling freedom, which is not what -Os
+     is asking for.  */
+  if (optimize && lvx_superblock_loops && optimize_function_for_speed_p (cfun))
+    lvx_superblock_inner_loops ();
 
   /* Doloop optimization. */
   if (optimize)

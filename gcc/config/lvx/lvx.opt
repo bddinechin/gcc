@@ -84,3 +84,9 @@ Enum(lvx_abi) String(lp64) Value(LVX_ABI_LP64)
 fmodulo-sched-bundle
 Target Var(flag_modulo_sched_bundle) Optimization
 Perform SMS based modulo scheduling with bundling of instructions.
+
+; Only lvx.cc reads this, so it lives here.  Optimization makes it per
+; function, and lvx_machine_dependent_reorg gates it on speed as well.
+msuperblock-loops
+Target Var(lvx_superblock_loops) Init(1) Optimization
+Lay inner loop bodies out as one superblock run before EBB scheduling.
