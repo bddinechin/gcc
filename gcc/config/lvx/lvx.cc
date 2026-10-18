@@ -11541,14 +11541,15 @@ lvx_arc_latency (rtx_insn *prod, rtx_insn *cons, enum reg_note dep_type)
       if (cost <= 0)
 	cost = 1;
     }
-  /* No bypass query here.  bypass_p and insn_latency are DFA functions:
-     they go through dfa_insn_code, whose dfa_insn_codes array is allocated by
-     dfa_start and freed by dfa_finish, which only the scheduler calls.
-     Calling them with no DFA started corrupts the heap -- it aborted compiling
-     newlib's __call_atexit.c inside xrealloc.  insn_default_latency is safe by
-     contrast: it is a plain switch on recog_memoized in insn-latencytab.cc.
-     The cost is that a bypass shortening a particular producer/consumer pair
-     is not seen, which makes a latency too long rather than too short.  */
+  /* bypass_p and insn_latency go through dfa_insn_code, whose dfa_insn_codes
+     array is allocated by dfa_start and freed by dfa_finish.  The caller
+     brackets the analysis with those, so the queries are legal here; without
+     the bracket they corrupt the heap, which is how newlib's
+     __call_atexit.c once aborted inside xrealloc.  They are worth the
+     bracket: dropping them weakened the latencies enough to turn
+     dijkstra_small's loops from declined back to accepted.  */
+  else if (bypass_p (prod))
+    cost = insn_latency (prod, cons);
 
   if (targetm.sched.adjust_cost)
     cost = targetm.sched.adjust_cost (cons, (int) dep_type, prod, cost, 0);
@@ -12096,6 +12097,83 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
   return ok;
 }
 
+/* True if innermost LOOP can be unfolded and measured.  This is deliberately
+   NOT lvx_inner_superblock_loop_p: that one reproduces unfold_inner_find's
+   shape, which demands every body block end in a conditional branch, because
+   the software pipeliner's code generation needs an exit in every block.  An
+   acyclic unfold needs no such thing -- a block with a single unconditional
+   successor is perfectly good -- and importing the stricter rule refused
+   loops that measured as gains, qsort_small's two among them.
+
+   What is genuinely required: a single latch, so the duplication has one
+   edge to work from; exactly one in-loop successor per block, so the chain
+   walk covers the body and an arc's iteration distance is just whether it
+   runs forward; no call, volatile reference or asm, none of which the cost
+   model prices; no computed jump or complex edge, which duplication cannot
+   handle; and the size bounds.  */
+
+static bool
+lvx_unfoldable_loop_p (class loop *loop, basic_block *body, unsigned insns,
+		       unsigned max_blocks, unsigned max_insns, const char **why)
+{
+  auto_bitmap inloop;
+
+  *why = "multiple latches";
+  if (loop->latch == NULL)
+    return false;
+  *why = "too many blocks";
+  if (loop->num_nodes > max_blocks)
+    return false;
+  *why = "too many insns";
+  if (insns > max_insns)
+    return false;
+
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    bitmap_set_bit (inloop, body[i]->index);
+
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    {
+      basic_block bb = body[i];
+      rtx_insn *insn, *end = BB_END (bb);
+      unsigned inside = 0;
+      edge e;
+      edge_iterator ei;
+
+      *why = "block not schedulable";
+      if ((bb->flags & BB_DISABLE_SCHEDULE) != 0 || computed_jump_p (end))
+	return false;
+
+      FOR_EACH_EDGE (e, ei, bb->succs)
+	{
+	  *why = "complex edge";
+	  if (e->flags & EDGE_COMPLEX)
+	    return false;
+	  if (bitmap_bit_p (inloop, e->dest->index))
+	    inside++;
+	}
+      *why = inside ? "body is not a chain" : "block exits the loop entirely";
+      if (inside != 1)
+	return false;
+
+      for (insn = BB_HEAD (bb); insn != NEXT_INSN (end);
+	   insn = NEXT_INSN (insn))
+	if (NONDEBUG_INSN_P (insn))
+	  {
+	    *why = "holds a call";
+	    if (CALL_P (insn))
+	      return false;
+	    *why = "holds a volatile reference";
+	    if (volatile_refs_p (PATTERN (insn)))
+	      return false;
+	    *why = "holds an asm";
+	    if (asm_noperands (PATTERN (insn)) >= 0)
+	      return false;
+	  }
+    }
+  *why = NULL;
+  return true;
+}
+
 /* Unfold innermost LOOP once, so its body appears twice and the extended
    basic block the post-pass scheduler forms over it is twice as long.
 
@@ -12108,6 +12186,7 @@ lvx_unfold_inner_loop (class loop *loop)
 {
   basic_block *body;
   unsigned insns = 0;
+  const char *why = "";
   bool ok;
 
   if (loop->latch == NULL
@@ -12130,16 +12209,16 @@ lvx_unfold_inner_loop (class loop *loop)
       return false;
     }
 
-  /* The same structural gate the renaming uses.  Without it a loop holding a
-     call, a volatile reference or asm is unfolded, and -- worse -- a body
-     that is not a chain reaches the profitability test, whose walk stops at
-     the first block with no in-loop successor and so measures a prefix.  */
-  if (!lvx_inner_superblock_loop_p (loop, lvx_unfold_max_blocks,
-				    lvx_unfold_max_insns))
+  /* Without a gate a loop holding a call, a volatile reference or asm is
+     unfolded, and -- worse -- a body that is not a chain reaches the
+     profitability test, whose walk stops at the first block with no in-loop
+     successor and so measures a prefix.  */
+  if (!lvx_unfoldable_loop_p (loop, body, insns, lvx_unfold_max_blocks,
+			      lvx_unfold_max_insns, &why))
     {
       if (dump_file)
-	fprintf (dump_file, ";; lvx unfold: loop %d declined, not a"
-		 " superblock the analysis can measure\n", loop->num);
+	fprintf (dump_file, ";; lvx unfold: loop %d declined, %s\n",
+		 loop->num, why);
       free (body);
       return false;
     }
@@ -12211,9 +12290,13 @@ lvx_superblock_inner_loops (void)
 	 implicitly uses on its exit edge, so the liveness problem has to be
 	 solved before it, not only after the layout.  */
       df_analyze ();
+      /* And it asks the DFA for bypassed latencies, which needs the insn-code
+	 cache the scheduler would otherwise own.  */
+      dfa_start ();
       for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
 	if (lvx_unfold_inner_loop (loop))
 	  changed = true;
+      dfa_finish ();
     }
 
   /* Phase C: the layout.  */
