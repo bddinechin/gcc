@@ -12080,20 +12080,39 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
     }
   int k = (int) plc.period ();
 
-  int lambda_star = MAX (k, r);
+  /* The steady-state floor, per iteration.  This is the baseline, and it used
+     to be MAX (h, r) -- the height of ONE iteration scheduled in isolation,
+     which is what SCHED2 reports because an EBB is acyclic.  The machine does
+     not stop at the latch: it is a scoreboarded in-order pipeline with no
+     barrier there, so successive iterations overlap and what a loop actually
+     settles at is bounded below by its recurrence, not by its height.
 
-  /* S1 is what an iteration costs now, S2 what it would cost unfolded.
-     Doubled to keep the halving exact.  */
-  int s1 = 2 * MAX (h, r);
-  int s2 = MAX (2 * r, k + h);
+     Comparing against H credited the unfold with closing a gap that was never
+     open.  Measured on the two loops the old criterion accepted: dijkstra's
+     `enqueue' pointer chase (H=4 R=1 K=3) was predicted to gain 12%, and
+     SCHED2 then produced a schedule with the same 2 bundles and the same 4
+     modelled cycles per iteration -- bit-identical dynamic bundle counts, a
+     no-op, measured +5.045%.  bitcnts' `bit_shifter' (H=3 R=2 K=1) was
+     predicted 33%, did shorten its bundle schedule 3 -> 2.5 per iteration as
+     the model said, and measured +7.274% anyway.  */
+  int floor_ii = MAX (k, r);
+
+  /* S1 is what two iterations cost now, S2 what they would cost unfolded.
+     Doubled to keep the halving exact.
+
+     S2 carries 2*k and 2*r as well as k + h: two iterations of the unfolded
+     body must still respect the recurrence twice and the resources twice, and
+     the old form omitted both, which is how k + h came out below the floor.  */
+  int s1 = 2 * floor_ii;
+  int s2 = MAX (MAX (2 * r, 2 * k), k + h);
   int gain = s1 - s2;
 
-  bool ok = lambda_star < h && gain * 100 >= s1 * lvx_unfold_min_gain;
+  bool ok = gain * 100 >= s1 * lvx_unfold_min_gain;
 
   if (dump_file)
     fprintf (dump_file, ";; lvx unfold: loop %d %s -- H=%d ResMII=%d"
-	     " RecMII=%d max=%d, %d insns, gain %d/%d = %d%%\n",
-	     loop->num, ok ? "profitable" : "declined", h, r, k, lambda_star,
+	     " RecMII=%d floor=%d, %d insns, gain %d/%d = %d%%\n",
+	     loop->num, ok ? "profitable" : "declined", h, r, k, floor_ii,
 	     insns, gain, s1, s1 ? gain * 100 / s1 : 0);
   return ok;
 }
