@@ -11505,6 +11505,51 @@ lvx_insns_may_alias_p (rtx_insn *insn1, rtx_insn *insn2)
   return false;
 }
 
+/* The latency GCC would charge a dependence of DEP_TYPE from PROD to CONS,
+   composed as haifa-sched.cc's dep_cost_1 does, and in particular passed
+   through TARGET_SCHED_ADJUST_COST.  That hook is not a refinement here: it
+   zeroes the cost of an arc into a branch that does not test the produced
+   value, and a superblock body ends every one of its blocks in a branch, so
+   taking insn_default_latency alone -- as a first version of this did --
+   charges full producer latency on a great many arcs that cost nothing, and
+   inflates both the height and the recurrence bound.
+
+   The base is taken directly rather than from insn_sched_cost, which caches
+   into the haifa insn data and so may only be called inside the scheduler.
+   For the same reason note that lvx_sched_adjust_cost's REG_DEP_ANTI branch
+   walks SD_LIST_BACK when the producer is a CLOBBER: unreachable from here
+   only because CLOBBERs are filtered out of the instruction sequence, and a
+   trap if that filter is ever relaxed.  */
+
+static int
+lvx_arc_latency (rtx_insn *prod, rtx_insn *cons, enum reg_note dep_type)
+{
+  int cost;
+
+  if (recog_memoized (prod) < 0 || recog_memoized (cons) < 0)
+    return 0;
+
+  cost = insn_default_latency (prod);
+  if (cost < 0)
+    cost = 0;
+
+  if (dep_type == REG_DEP_ANTI)
+    cost = 0;
+  else if (dep_type == REG_DEP_OUTPUT)
+    {
+      cost = insn_default_latency (prod) - insn_default_latency (cons);
+      if (cost <= 0)
+	cost = 1;
+    }
+  else if (bypass_p (prod))
+    cost = insn_latency (prod, cons);
+
+  if (targetm.sched.adjust_cost)
+    cost = targetm.sched.adjust_cost (cons, (int) dep_type, prod, cost, 0);
+
+  return cost < 0 ? 0 : cost;
+}
+
 /* Decompose MEM's address into a base register and a constant byte offset.
    False when it is not of that shape.  */
 
@@ -11698,7 +11743,6 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
   for (unsigned p = 0; p < n; p++)
     {
       rtx_insn *def_insn = seq[p];
-      int latency = insn_default_latency (def_insn);
       bool tied = lvx_insn_has_tied_operand_p (def_insn);
       bool guarded = get_attr_guarded (def_insn) == GUARDED_YES;
       df_ref def;
@@ -11719,11 +11763,12 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		if (DF_REF_REGNO (ref) == regno)
 		  {
 		    HOST_WIDE_INT w = omega;
+		    int lat = lvx_arc_latency (def_insn, other, REG_DEP_TRUE);
 		    if (q == p)
 		      w = 1;	/* read and written by one insn */
-		    plc.add_arc (p + 1, q + 1, latency, w);
-		    if (w == 0 && height[q] < height[p] + latency)
-		      height[q] = height[p] + latency;
+		    plc.add_arc (p + 1, q + 1, lat, w);
+		    if (w == 0 && height[q] < height[p] + lat)
+		      height[q] = height[p] + lat;
 		    break;
 		  }
 
@@ -11735,7 +11780,10 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		FOR_EACH_INSN_USE (ref, other)
 		  if (DF_REF_REGNO (ref) == regno)
 		    {
-		      plc.add_arc (q + 1, p + 1, 0, (p > q) ? 0 : 1);
+		      plc.add_arc (q + 1, p + 1,
+				   lvx_arc_latency (other, def_insn,
+						    REG_DEP_ANTI),
+				   (p > q) ? 0 : 1);
 		      break;
 		    }
 
@@ -11745,7 +11793,10 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		FOR_EACH_INSN_DEF (ref, other)
 		  if (DF_REF_REGNO (ref) == regno)
 		    {
-		      plc.add_arc (p + 1, q + 1, 0, omega);
+		      plc.add_arc (p + 1, q + 1,
+				   lvx_arc_latency (def_insn, other,
+						    REG_DEP_OUTPUT),
+				   omega);
 		      break;
 		    }
 	    }
@@ -11772,7 +11823,6 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
       if (!a_w && !a_r)
 	continue;
 
-      int a_lat = insn_default_latency (a);
       for (unsigned q = 0; q < n; q++)
 	{
 	  rtx_insn *b = seq[q];
@@ -11789,9 +11839,11 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	      int lat = 0;
 	      bool have = false;
 	      if (a_w && b_r)
-		lat = a_lat, have = true;
-	      else if (a_w || b_w)
-		have = true;
+		lat = lvx_arc_latency (a, b, REG_DEP_TRUE), have = true;
+	      else if (a_w && b_w)
+		lat = lvx_arc_latency (a, b, REG_DEP_OUTPUT), have = true;
+	      else if (b_w)
+		lat = lvx_arc_latency (a, b, REG_DEP_ANTI), have = true;
 	      if (have)
 		{
 		  plc.add_arc (p + 1, q + 1, lat, 0);
@@ -11809,13 +11861,16 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	    continue;
 
 	  if (a_w && b_r)
-	    plc.add_arc (p + 1, q + 1, a_lat, 1);
+	    plc.add_arc (p + 1, q + 1, lvx_arc_latency (a, b, REG_DEP_TRUE), 1);
 	  else if (a_w && b_w && p != q)
-	    plc.add_arc (p + 1, q + 1, 0, 1);
+	    plc.add_arc (p + 1, q + 1,
+			 lvx_arc_latency (a, b, REG_DEP_OUTPUT), 1);
 	  else if (a_r && b_w && p != q)
 	    {
-	      plc.add_arc (p + 1, q + 1, 0, 1);
-	      plc.add_arc (q + 1, p + 1, insn_default_latency (b), 1);
+	      plc.add_arc (p + 1, q + 1,
+			   lvx_arc_latency (a, b, REG_DEP_ANTI), 1);
+	      plc.add_arc (q + 1, p + 1,
+			   lvx_arc_latency (b, a, REG_DEP_TRUE), 1);
 	    }
 	}
     }
