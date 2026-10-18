@@ -11541,13 +11541,112 @@ lvx_arc_latency (rtx_insn *prod, rtx_insn *cons, enum reg_note dep_type)
       if (cost <= 0)
 	cost = 1;
     }
-  else if (bypass_p (prod))
-    cost = insn_latency (prod, cons);
+  /* No bypass query here.  bypass_p and insn_latency are DFA functions:
+     they go through dfa_insn_code, whose dfa_insn_codes array is allocated by
+     dfa_start and freed by dfa_finish, which only the scheduler calls.
+     Calling them with no DFA started corrupts the heap -- it aborted compiling
+     newlib's __call_atexit.c inside xrealloc.  insn_default_latency is safe by
+     contrast: it is a plain switch on recog_memoized in insn-latencytab.cc.
+     The cost is that a bypass shortening a particular producer/consumer pair
+     is not seen, which makes a latency too long rather than too short.  */
 
   if (targetm.sched.adjust_cost)
     cost = targetm.sched.adjust_cost (cons, (int) dep_type, prod, cost, 0);
 
   return cost < 0 ? 0 : cost;
+}
+
+/* True if innermost LOOP has the superblock shape the renaming below assumes:
+   one entry, one back edge, every body block ending in a two-way branch with
+   exactly one successor inside the loop, no call, no volatile reference, no
+   asm, and within the size limits.  This is kvx-unfold.cc's unfold_inner_find
+   reduced to its structural checks, and it is not optional: on KVX the
+   renaming only ever runs on loops that passed that gate, and it is what makes
+   the renaming code's assumptions true.  MAX_BLOCKS and MAX_INSNS are passed
+   in because an unfolded body is twice the size of the one the unfold phase
+   accepted.  */
+static bool
+lvx_inner_superblock_loop_p (class loop *loop, unsigned max_blocks,
+			     unsigned max_insns)
+{
+  basic_block *body;
+  basic_block header = loop->header;
+  unsigned nentry = 0, insns = 0, back_edges = 0;
+  bool ok = true;
+  edge e;
+  edge_iterator ei;
+  auto_bitmap inloop;
+
+  if (loop->latch == NULL || loop->num_nodes > max_blocks)
+    return false;
+
+  FOR_EACH_EDGE (e, ei, header->preds)
+    if (!flow_bb_inside_loop_p (loop, e->src))
+      nentry++;
+  if (nentry != 1)
+    return false;
+
+  body = get_loop_body (loop);
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    bitmap_set_bit (inloop, body[i]->index);
+
+  for (unsigned i = 0; i < loop->num_nodes && ok; i++)
+    {
+      basic_block bb = body[i];
+      rtx_insn *end, *insn;
+      edge e0, e1;
+
+      if (EDGE_COUNT (bb->succs) != 2
+	  || (bb->flags & BB_DISABLE_SCHEDULE) != 0
+	  || computed_jump_p (BB_END (bb)))
+	{
+	  ok = false;
+	  break;
+	}
+
+      e0 = EDGE_SUCC (bb, 0);
+      e1 = EDGE_SUCC (bb, 1);
+      if ((e0->flags & EDGE_COMPLEX) || (e1->flags & EDGE_COMPLEX))
+	{
+	  ok = false;
+	  break;
+	}
+      if (e0->dest == header)
+	back_edges++;
+      if (e1->dest == header)
+	back_edges++;
+      /* Exactly one successor inside the loop: the body is a chain.  */
+      if (bitmap_bit_p (inloop, e0->dest->index)
+	  == bitmap_bit_p (inloop, e1->dest->index))
+	{
+	  ok = false;
+	  break;
+	}
+
+      end = BB_END (bb);
+      if (JUMP_P (end) && extract_asm_operands (PATTERN (end)) != NULL)
+	{
+	  ok = false;
+	  break;
+	}
+
+      for (insn = BB_HEAD (bb); insn != NEXT_INSN (end);
+	   insn = NEXT_INSN (insn))
+	if (NONDEBUG_INSN_P (insn))
+	  {
+	    if (++insns > max_insns
+		|| CALL_P (insn)
+		|| volatile_refs_p (PATTERN (insn))
+		|| asm_noperands (PATTERN (insn)) >= 0)
+	      {
+		ok = false;
+		break;
+	      }
+	  }
+    }
+
+  free (body);
+  return ok && back_edges == 1;
 }
 
 /* Decompose MEM's address into a base register and a constant byte offset.
@@ -11721,7 +11820,14 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	if (bitmap_bit_p (inloop, e->dest->index))
 	  nxt = e->dest;
       if (nxt == NULL)
-	break;
+	{
+	  /* Not a chain: measuring a prefix would be worse than refusing.
+	     The gate above should have caught this already.  */
+	  if (dump_file)
+	    fprintf (dump_file, ";; lvx unfold: loop %d declined, body is not"
+		     " a chain\n", loop->num);
+	  return false;
+	}
       walk = nxt;
     }
 
@@ -11977,6 +12083,20 @@ lvx_unfold_inner_loop (class loop *loop)
       return false;
     }
 
+  /* The same structural gate the renaming uses.  Without it a loop holding a
+     call, a volatile reference or asm is unfolded, and -- worse -- a body
+     that is not a chain reaches the profitability test, whose walk stops at
+     the first block with no in-loop successor and so measures a prefix.  */
+  if (!lvx_inner_superblock_loop_p (loop, lvx_unfold_max_blocks,
+				    lvx_unfold_max_insns))
+    {
+      if (dump_file)
+	fprintf (dump_file, ";; lvx unfold: loop %d declined, not a"
+		 " superblock the analysis can measure\n", loop->num);
+      free (body);
+      return false;
+    }
+
   if (!lvx_loop_profitable_to_unfold_p (loop, body, insns))
     {
       free (body);
@@ -12066,99 +12186,6 @@ lvx_superblock_inner_loops (void)
 }
 
 /* Superblock formation for inner loops }}} */
-
-/* True if innermost LOOP has the superblock shape the renaming below assumes:
-   one entry, one back edge, every body block ending in a two-way branch with
-   exactly one successor inside the loop, no call, no volatile reference, no
-   asm, and within the size limits.  This is kvx-unfold.cc's unfold_inner_find
-   reduced to its structural checks, and it is not optional: on KVX the
-   renaming only ever runs on loops that passed that gate, and it is what makes
-   the renaming code's assumptions true.  MAX_BLOCKS and MAX_INSNS are passed
-   in because an unfolded body is twice the size of the one the unfold phase
-   accepted.  */
-static bool
-lvx_inner_superblock_loop_p (class loop *loop, unsigned max_blocks,
-			     unsigned max_insns)
-{
-  basic_block *body;
-  basic_block header = loop->header;
-  unsigned nentry = 0, insns = 0, back_edges = 0;
-  bool ok = true;
-  edge e;
-  edge_iterator ei;
-  auto_bitmap inloop;
-
-  if (loop->latch == NULL || loop->num_nodes > max_blocks)
-    return false;
-
-  FOR_EACH_EDGE (e, ei, header->preds)
-    if (!flow_bb_inside_loop_p (loop, e->src))
-      nentry++;
-  if (nentry != 1)
-    return false;
-
-  body = get_loop_body (loop);
-  for (unsigned i = 0; i < loop->num_nodes; i++)
-    bitmap_set_bit (inloop, body[i]->index);
-
-  for (unsigned i = 0; i < loop->num_nodes && ok; i++)
-    {
-      basic_block bb = body[i];
-      rtx_insn *end, *insn;
-      edge e0, e1;
-
-      if (EDGE_COUNT (bb->succs) != 2
-	  || (bb->flags & BB_DISABLE_SCHEDULE) != 0
-	  || computed_jump_p (BB_END (bb)))
-	{
-	  ok = false;
-	  break;
-	}
-
-      e0 = EDGE_SUCC (bb, 0);
-      e1 = EDGE_SUCC (bb, 1);
-      if ((e0->flags & EDGE_COMPLEX) || (e1->flags & EDGE_COMPLEX))
-	{
-	  ok = false;
-	  break;
-	}
-      if (e0->dest == header)
-	back_edges++;
-      if (e1->dest == header)
-	back_edges++;
-      /* Exactly one successor inside the loop: the body is a chain.  */
-      if (bitmap_bit_p (inloop, e0->dest->index)
-	  == bitmap_bit_p (inloop, e1->dest->index))
-	{
-	  ok = false;
-	  break;
-	}
-
-      end = BB_END (bb);
-      if (JUMP_P (end) && extract_asm_operands (PATTERN (end)) != NULL)
-	{
-	  ok = false;
-	  break;
-	}
-
-      for (insn = BB_HEAD (bb); insn != NEXT_INSN (end);
-	   insn = NEXT_INSN (insn))
-	if (NONDEBUG_INSN_P (insn))
-	  {
-	    if (++insns > max_insns
-		|| CALL_P (insn)
-		|| volatile_refs_p (PATTERN (insn))
-		|| asm_noperands (PATTERN (insn)) >= 0)
-	      {
-		ok = false;
-		break;
-	      }
-	  }
-    }
-
-  free (body);
-  return ok && back_edges == 1;
-}
 
 /* The blocks regrename must see for LOOP: its body, what its blocks leave to,
    and its entry block when everything that block reaches is already in the
