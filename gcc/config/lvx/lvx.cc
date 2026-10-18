@@ -211,15 +211,18 @@ static struct lvx_sched2
 struct lvx_sched_resources
 {
   const char *message;
+  /* Instructions, counted two ways.  INSN_COUNT is rtl insns, which is what a
+     loop-size cutoff means; NINSNS_COUNT is the instructions they issue, which
+     is larger wherever a composite issue class covers several and is what the
+     issue rate bounds.  */
   unsigned insn_count;
-  unsigned tiny_count;
-  unsigned lite_count;
-  unsigned full_count;
-  unsigned auxr_count;
-  unsigned xfer_count;
-  unsigned lsu_count;
-  unsigned bcu_count;
-  unsigned ext_count;
+  unsigned ninsns_count;
+  /* One accumulated demand per resource column of lvx_issue_table, named after
+     the column.  The columns, their availabilities and this list all come from
+     Resource.yml through MDS/BE/GCC, so there is no list to maintain here.  */
+#define LVX_SCHED_RESOURCE_FIELD(R) unsigned R##_count;
+  LVX_ISSUE_RESOURCES (LVX_SCHED_RESOURCE_FIELD)
+#undef LVX_SCHED_RESOURCE_FIELD
 };
 static tree lvx_handle_fndecl_attribute (tree *node, tree name,
 					 tree args ATTRIBUTE_UNUSED,
@@ -8646,58 +8649,56 @@ lvx_sched_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
   if (type == TYPE_NOP)
     /* A nop is a placeholder the bundler fills, not a demand on the bundle.  */
     return;
-  if (type == TYPE_ALL)
-    /* Alone in its bundle: claim one of everything so nothing joins it.  */
-    {
-      resources->tiny_count++, resources->lite_count++;
-      resources->full_count++, resources->lsu_count++;
-      resources->bcu_count++, resources->ext_count++;
-      return;
-    }
 
-  /* Otherwise the machine description already says what this occupies, and
-     says it once: the same vector the automaton reserves.  This used to be a
-     ladder of range tests over the type enum, under a comment asking the
-     reader to keep them in step with the ORDER of types.md.  */
+  /* The machine description already says what this occupies, and says it once:
+     the same vector the automaton reserves.  This used to be a ladder of range
+     tests over the type enum, under a comment asking the reader to keep them in
+     step with the ORDER of types.md.
+
+     TYPE_ALL needs no case of its own.  It used to claim one of each unit by
+     hand, so that nothing could join it; that was the generated `all' row
+     written out a second time.  Every type-ALL alternative pairs with issue
+     `all', whose vector takes every function unit, so it saturates to one
+     bundle per instruction exactly as the hand-claim did -- and it is what the
+     automaton reserves, which the hand-claim was free to contradict.  */
   const struct lvx_issue_resources *r
     = &lvx_issue_table[(int) get_attr_issue (insn)];
-  resources->tiny_count += r->tiny;
-  resources->lite_count += r->lite;
-  resources->full_count += r->full;
-  resources->lsu_count += r->lsu;
-  resources->bcu_count += r->bcu;
-  resources->ext_count += r->ext;
-  resources->auxr_count += r->auxr;
-  resources->xfer_count += r->xfer;
+  resources->ninsns_count += r->ninsns;
+#define LVX_SCHED_RESOURCE_ADD(R) resources->R##_count += r->R;
+  LVX_ISSUE_RESOURCES (LVX_SCHED_RESOURCE_ADD)
+#undef LVX_SCHED_RESOURCE_ADD
 }
 
+/* The least number of bundles the region accumulated in RESOURCES can occupy:
+   for every resource, ceil(demand / availability), and the largest of those.
+
+   Each vector names every enclosing counter -- a FULL instruction spends a
+   LITE and a TINY too, TINY's four being ALU0 ALU1 LSU0 LSU1 -- so this
+   independent maximum per counter is already the subset bound, and a
+   C6x-style merge_unit_reqs fold over the counters must not be added on top
+   of it: the same demand would be counted twice and the bound would come out
+   too large.  */
 static int lvx_sched_issue_rate (void);
 static unsigned
 lvx_sched_resources_full_bundles (struct lvx_sched_resources *resources)
 {
-  unsigned bcu_issues = 2;
-  unsigned lsu_issues = 2;
-  unsigned lite_issues = 2;
-  unsigned tiny_issues = 4;
-
   unsigned issue_rate = lvx_sched_issue_rate ();
-  unsigned result = (resources->insn_count + issue_rate - 1) / issue_rate;
-  if (result < (resources->tiny_count + tiny_issues - 1) / tiny_issues)
-    result = (resources->tiny_count + tiny_issues - 1) / tiny_issues;
-  if (result < (resources->lite_count + lite_issues - 1) / lite_issues)
-    result = (resources->lite_count + lite_issues - 1) / lite_issues;
-  if (result < resources->full_count)
-    result = resources->full_count;
-  if (result < resources->xfer_count)
-    result = resources->xfer_count;
-  if (result < resources->auxr_count)
-    result = resources->auxr_count;
-  if (result < (resources->lsu_count + lsu_issues - 1) / lsu_issues)
-    result = (resources->lsu_count + lsu_issues - 1) / lsu_issues;
-  if (result < (resources->bcu_count + bcu_issues - 1) / bcu_issues)
-    result = (resources->bcu_count + bcu_issues - 1) / bcu_issues;
-  if (result < resources->ext_count)
-    result = resources->ext_count;
+  unsigned result = (resources->ninsns_count + issue_rate - 1) / issue_rate;
+
+  /* The availabilities come from Resource.yml, generated beside the vectors.
+     They were four literals here, and had drifted: EXT read as 1 of 4 and AUXR
+     as 1 of 2, while AUXW and MEMW were accumulated into nothing and bounded
+     nothing -- an under-estimate, which for a ResMII and for the unroll factor
+     that divides by it is the dangerous direction.  */
+#define LVX_SCHED_RESOURCE_BOUND(R)					\
+  {									\
+    unsigned avail = lvx_issue_availability.R;				\
+    unsigned need = (resources->R##_count + avail - 1) / avail;		\
+    if (result < need)							\
+      result = need;							\
+  }
+  LVX_ISSUE_RESOURCES (LVX_SCHED_RESOURCE_BOUND)
+#undef LVX_SCHED_RESOURCE_BOUND
 
   return result;
 }
