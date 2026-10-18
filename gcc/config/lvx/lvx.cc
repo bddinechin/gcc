@@ -12095,7 +12095,33 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
      no-op, measured +5.045%.  bitcnts' `bit_shifter' (H=3 R=2 K=1) was
      predicted 33%, did shorten its bundle schedule 3 -> 2.5 per iteration as
      the model said, and measured +7.274% anyway.  */
-  int floor_ii = MAX (k, r);
+  int floor_ii = MAX (MAX (k, r), h);
+
+  /* What a taken branch costs beyond its own bundle before the target's first
+     bundle issues -- Processor@minTaken, 2 on LVX.  A `cb' decides in RR
+     rather than ID and so costs one more, which this does not yet distinguish.
+
+     FIXME: this belongs in a generated header.  BE/MLIR already receives it as
+     kMinTakenLatency, with a per-mnemonic takenBranchLatencyOf() beside it;
+     BE/GCC receives neither, so the value is written out here.  Same shape as
+     the resource availabilities before they were emitted -- see
+     docs/handoff-mds-resource-availabilities.md.  */
+#define LVX_MIN_TAKEN 2
+
+  /* The part of the taken-branch cost the loop does not already absorb.
+     Unfolding halves how often the back edge is taken -- the duplicated body
+     branches back once per two iterations and the other exit falls through --
+     so this is the one term that genuinely favours the unfold, and the
+     criterion omitted it.
+
+     It is a release cycle rather than an addend: it combines with the
+     scoreboard as a max, so it costs nothing whenever the loop already waits
+     longer than the penalty.  Measured both ways on bit_shifter and on
+     dijkstra's enqueue: LVX_TAKEN_BUBBLE=0 changes neither loop's cycle count
+     from the default 2, and raising it to 3 costs the plain loop +1.788 cycles
+     per iteration against the unfolded +0.845 -- the 1-vs-0.5 taken-branch
+     ratio exactly.  Hence MAX (0, ...): only the excess over the floor.  */
+  int b = MAX (0, LVX_MIN_TAKEN - floor_ii);
 
   /* S1 is what two iterations cost now, S2 what they would cost unfolded.
      Doubled to keep the halving exact.
@@ -12103,16 +12129,16 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
      S2 carries 2*k and 2*r as well as k + h: two iterations of the unfolded
      body must still respect the recurrence twice and the resources twice, and
      the old form omitted both, which is how k + h came out below the floor.  */
-  int s1 = 2 * floor_ii;
-  int s2 = MAX (MAX (2 * r, 2 * k), k + h);
+  int s1 = 2 * (floor_ii + b);
+  int s2 = MAX (MAX (2 * r, 2 * k), k + h) + b;
   int gain = s1 - s2;
 
   bool ok = gain * 100 >= s1 * lvx_unfold_min_gain;
 
   if (dump_file)
     fprintf (dump_file, ";; lvx unfold: loop %d %s -- H=%d ResMII=%d"
-	     " RecMII=%d floor=%d, %d insns, gain %d/%d = %d%%\n",
-	     loop->num, ok ? "profitable" : "declined", h, r, k, floor_ii,
+	     " RecMII=%d floor=%d taken=%d, %d insns, gain %d/%d = %d%%\n",
+	     loop->num, ok ? "profitable" : "declined", h, r, k, floor_ii, b,
 	     insns, gain, s1, s1 ? gain * 100 / s1 : 0);
   return ok;
 }
