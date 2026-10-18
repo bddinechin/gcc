@@ -11758,6 +11758,56 @@ lvx_insn_has_tied_operand_p (rtx_insn *insn)
   return false;
 }
 
+/* True if INSN may be hoisted above a conditional branch -- control
+   speculation.  Read off the LVX description rather than guessed:
+
+   - Integer arithmetic, logical, shift, compare, move and conditional move are
+     unconditionally safe, and so are the dividers: divmod* returns zero on a
+     zero divisor rather than trapping, which is why -mdivmod0-trap exists as a
+     separate check.  Of 1741 lvx_v2 opcodes only 273 carry a THROW in their
+     Behavior and 210 of those are the atomics.
+   - A load only in its dismissible variant, `.s' or `.us' -- Modifier.yml
+     marks both Dismissible.  THROW is NOT the test here: a plain load carries
+     none and can still fault on an unmapped page, which is what the
+     dismissible variants exist for.  `.u' is uncached but not dismissible.
+   - A store never: the write is the side effect.
+   - Floating point only when nothing observes the exception flags it writes
+     into $cs, so only under !flag_trapping_math.
+   - An atomic, a CSR or TLB access, a call, an asm or anything volatile
+     never.  */
+
+static bool
+lvx_fp_insn_p (rtx_insn *insn)
+{
+  subrtx_iterator::array_type array;
+  rtx pat = PATTERN (insn);
+  FOR_EACH_SUBRTX (iter, array, pat, NONCONST)
+    if (FLOAT_MODE_P (GET_MODE (*iter)))
+      return true;
+  return false;
+}
+
+static bool
+lvx_speculatable_p (rtx_insn *insn)
+{
+  if (!NONDEBUG_INSN_P (insn) || CALL_P (insn) || JUMP_P (insn))
+    return false;
+  if (volatile_insn_p (PATTERN (insn))
+      || asm_noperands (PATTERN (insn)) >= 0)
+    return false;
+  if (lvx_mem_write_insn_p (insn))
+    return false;
+  if (lvx_mem_read_insn_p (insn))
+    {
+      enum lvx_variant v = lvx_insn_variant (insn);
+      if (v != LVX_VARIANT_SPECULATE && v != LVX_VARIANT_PRELOAD)
+	return false;
+    }
+  if (flag_trapping_math && lvx_fp_insn_p (insn))
+    return false;
+  return true;
+}
+
 /* Decide whether unfolding LOOP can pay, by comparing what one iteration
    costs today against what two scheduled together could cost.
 
@@ -12097,16 +12147,45 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
      the model said, and measured +7.274% anyway.  */
   int floor_ii = MAX (MAX (k, r), h);
 
+  /* How far copy 2 can be hoisted, which bounds the overlap the unfold can
+     actually buy.  The duplicated body puts copy 2 below copy 1's exit
+     branch, so only a speculatable instruction may move above it; one that may
+     not must issue strictly after the branch.  An instruction of copy 2 at
+     depth d sits at OFFSET + d, so a non-speculatable one requires
+     OFFSET + d > hb, hb being the depth of the deepest branch in the body.
+
+     With everything speculatable this reduces to OFFSET = K, the recurrence,
+     which is what the formula used to assume unconditionally.  The pointer
+     chase is the case that assumption got wrong: dijkstra's `enqueue' carries
+     its recurrence in a plain `ld', so copy 2's load cannot precede copy 1's
+     branch and the two copies cannot overlap at all -- the measured schedule
+     puts that load one cycle after the branch, and the dynamic bundle count
+     came out bit-identical to the un-unfolded loop.  Branches are left out of
+     the scan because their ordering is already an arc of its own.  */
+  int hb = -1;
+  for (unsigned i = 0; i < n; i++)
+    if (JUMP_P (seq[i]) && height[i] > hb)
+      hb = height[i];
+
+  int offset = k;
+  if (hb >= 0)
+    for (unsigned i = 0; i < n; i++)
+      if (!JUMP_P (seq[i]) && !lvx_speculatable_p (seq[i]))
+	offset = MAX (offset, hb + 1 - height[i]);
+
   /* What a taken branch costs beyond its own bundle before the target's first
-     bundle issues -- Processor@minTaken, 2 on LVX.  A `cb' decides in RR
-     rather than ID and so costs one more, which this does not yet distinguish.
+     bundle issues.  Processor@minTaken is 2, for a branch that settles the
+     next PC in ID; a `cb'/`ccb' waits for its comparison and settles it in RR,
+     so it costs one more.  A loop's back edge is always one of those, hence 3
+     rather than 2 -- which is what the ISS charges since lvx-gem5 288d83dba3,
+     where it had been charging 2 for both.
 
      FIXME: this belongs in a generated header.  BE/MLIR already receives it as
      kMinTakenLatency, with a per-mnemonic takenBranchLatencyOf() beside it;
      BE/GCC receives neither, so the value is written out here.  Same shape as
      the resource availabilities before they were emitted -- see
      docs/handoff-mds-resource-availabilities.md.  */
-#define LVX_MIN_TAKEN 2
+#define LVX_MIN_TAKEN 3
 
   /* The part of the taken-branch cost the loop does not already absorb.
      Unfolding halves how often the back edge is taken -- the duplicated body
@@ -12130,15 +12209,15 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
      body must still respect the recurrence twice and the resources twice, and
      the old form omitted both, which is how k + h came out below the floor.  */
   int s1 = 2 * (floor_ii + b);
-  int s2 = MAX (MAX (2 * r, 2 * k), k + h) + b;
+  int s2 = MAX (MAX (2 * r, 2 * k), offset + h) + b;
   int gain = s1 - s2;
 
   bool ok = gain * 100 >= s1 * lvx_unfold_min_gain;
 
   if (dump_file)
     fprintf (dump_file, ";; lvx unfold: loop %d %s -- H=%d ResMII=%d"
-	     " RecMII=%d floor=%d taken=%d, %d insns, gain %d/%d = %d%%\n",
-	     loop->num, ok ? "profitable" : "declined", h, r, k, floor_ii, b,
+	     " RecMII=%d floor=%d offset=%d taken=%d, %d insns, gain %d/%d = %d%%\n",
+	     loop->num, ok ? "profitable" : "declined", h, r, k, floor_ii, offset, b,
 	     insns, gain, s1, s1 ? gain * 100 / s1 : 0);
   return ok;
 }
