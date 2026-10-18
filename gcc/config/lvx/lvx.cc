@@ -12187,20 +12187,38 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
      docs/handoff-mds-resource-availabilities.md.  */
 #define LVX_MIN_TAKEN 3
 
-  /* The part of the taken-branch cost the loop does not already absorb.
+  /* The part of the taken-branch cost a loop does not already absorb.
      Unfolding halves how often the back edge is taken -- the duplicated body
-     branches back once per two iterations and the other exit falls through --
-     so this is the one term that genuinely favours the unfold, and the
-     criterion omitted it.
+     branches back once per two iterations, the other exit falling through --
+     so this is the one term that favours the unfold, and the criterion used to
+     omit it entirely.
 
-     It is a release cycle rather than an addend: it combines with the
-     scoreboard as a max, so it costs nothing whenever the loop already waits
-     longer than the penalty.  Measured both ways on bit_shifter and on
-     dijkstra's enqueue: LVX_TAKEN_BUBBLE=0 changes neither loop's cycle count
-     from the default 2, and raising it to 3 costs the plain loop +1.788 cycles
-     per iteration against the unfolded +0.845 -- the 1-vs-0.5 taken-branch
-     ratio exactly.  Hence MAX (0, ...): only the excess over the floor.  */
-  int b = MAX (0, LVX_MIN_TAKEN - floor_ii);
+     It is neither purely additive nor purely max-combined, and getting that
+     wrong is easy.  The ISS computes a release cycle
+     `branch_issue + 1 + penalty' and refuses to issue the successor before it,
+     so the successor issues at MAX (release, its own constraints).  The
+     penalty is therefore ADDITIVE to everything up to and including the
+     branch's own issue -- the body's issue length, which precedes it -- and
+     MAX-combined against whatever constrains the successor, the loop-carried
+     recurrence reaching forward past the branch.  Measured (lvx-csw-82's sweep,
+     cycles per trip against LVX_TAKEN_BUBBLE):
+
+       10 bundles, no stalls            10.18 12.18 13.17 14.17 15.17  additive
+       4 bundles, 15-cycle recurrence   17.20 17.20 17.20 17.20 17.20  saturated
+       4 bundles, 3-cycle recurrence     5.21  5.21  6.20  7.20  8.20  partial
+
+     So what hides the bubble is the floor MINUS the issue length, not the whole
+     floor: the loop waits `floor', but `issue' of that is spent issuing bundles
+     before the branch ever executes.  An earlier form of this used the whole
+     floor and so zeroed the term almost everywhere -- over 400 newlib units it
+     fired on 9 of 155 loops, every one with floor 1, which is exactly backwards
+     from what the sweep shows.
+
+     ResMII is the issue length in bundles, which is what the slack wants.  Note
+     the unfolded body has its own, over two iterations: twice the resources and
+     one taken branch rather than two.  */
+  int slack = MAX (0, floor_ii - r);
+  int b = MAX (0, LVX_MIN_TAKEN - slack);
 
   /* S1 is what two iterations cost now, S2 what they would cost unfolded.
      Doubled to keep the halving exact.
@@ -12209,15 +12227,19 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
      body must still respect the recurrence twice and the resources twice, and
      the old form omitted both, which is how k + h came out below the floor.  */
   int s1 = 2 * (floor_ii + b);
-  int s2 = MAX (MAX (2 * r, 2 * k), offset + h) + b;
+
+  int f2 = MAX (MAX (2 * r, 2 * k), offset + h);
+  int slack2 = MAX (0, f2 - 2 * r);
+  int b2 = MAX (0, LVX_MIN_TAKEN - slack2);
+  int s2 = f2 + b2;
   int gain = s1 - s2;
 
   bool ok = gain * 100 >= s1 * lvx_unfold_min_gain;
 
   if (dump_file)
     fprintf (dump_file, ";; lvx unfold: loop %d %s -- H=%d ResMII=%d"
-	     " RecMII=%d floor=%d offset=%d taken=%d, %d insns, gain %d/%d = %d%%\n",
-	     loop->num, ok ? "profitable" : "declined", h, r, k, floor_ii, offset, b,
+	     " RecMII=%d floor=%d offset=%d taken=%d/%d, %d insns, gain %d/%d = %d%%\n",
+	     loop->num, ok ? "profitable" : "declined", h, r, k, floor_ii, offset, b, b2,
 	     insns, gain, s1, s1 ? gain * 100 / s1 : 0);
   return ok;
 }
