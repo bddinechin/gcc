@@ -11981,32 +11981,79 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	}
     }
 
-  /* Control arcs.  A superblock body ends every block in an exit branch, and
-     an instruction with a side effect below one of them is guarded by it: it
-     must not issue before the branch resolves, because on the exit path it
-     must not have happened at all.  A load may cross -- that is what the
-     dismissible variant is for -- but a store or a volatile reference may
-     not, and these are often what binds a loop that has no data recurrence.
+  /* What a conditional branch constrains.  Three things, all at zero latency
+     because each is an ordering rather than a delay.
 
-     The latency is zero: the constraint is an ordering, `not before', rather
-     than a delay.  If the branch's resolution stage is ever wanted here, it
-     is what belongs in place of that zero.  */
+     (1) It guards every instruction below it that cannot be speculated --
+     a store or a volatile reference; a load may cross, which is what the
+     dismissible variant is for.  For the loop-closing branch, "below it"
+     means the next iteration, which is what the distance of one expresses.
+
+     (2) It implicitly USES every register live on the edge by which it
+     leaves the EBB, so a write to one of those must not be hoisted above it:
+     on the exit path the live-out value would already be clobbered.  This
+     one has to be carried here rather than left to the renaming, because
+     renaming will not preserve it -- which is the difference from software
+     pipelining, where modulo expansion renames and the constraint dissolves.
+
+     (3) Branches keep their relative order, which is the one rule a
+     multiple-exit software pipeline construction needs of a local schedule.
+
+     The distance is one for anything that is not forward in the chain, since
+     the instance it constrains is then the next iteration's.  */
+  int first_branch = -1, prev_branch = -1;
   for (unsigned p = 0; p < n; p++)
     {
+      basic_block bb, exitbb = NULL;
+      edge e;
+      edge_iterator ei;
+
       if (!JUMP_P (seq[p]))
 	continue;
 
+      /* (3) */
+      if (prev_branch >= 0)
+	plc.add_arc (prev_branch + 1, p + 1, 0, 0);
+      else
+	first_branch = (int) p;
+      prev_branch = (int) p;
+
+      bb = BLOCK_FOR_INSN (seq[p]);
+      if (bb != NULL)
+	FOR_EACH_EDGE (e, ei, bb->succs)
+	  if (!bitmap_bit_p (inloop, e->dest->index)
+	      && e->dest != EXIT_BLOCK_PTR_FOR_FN (cfun))
+	    exitbb = e->dest;
+
       for (unsigned q = 0; q < n; q++)
 	{
+	  HOST_WIDE_INT w = (q > p) ? 0 : 1;
+	  df_ref def;
+
 	  if (q == p)
 	    continue;
-	  if (!lvx_mem_write_insn_p (seq[q])
-	      && !volatile_insn_p (PATTERN (seq[q])))
-	    continue;
 
-	  plc.add_arc (p + 1, q + 1, 0, (q > p) ? 0 : 1);
+	  /* (1) */
+	  if (lvx_mem_write_insn_p (seq[q])
+	      || volatile_insn_p (PATTERN (seq[q])))
+	    plc.add_arc (p + 1, q + 1, 0, w);
+
+	  /* (2) */
+	  if (exitbb == NULL)
+	    continue;
+	  FOR_EACH_INSN_DEF (def, seq[q])
+	    if (DF_REF_REGNO (def) < FIRST_PSEUDO_REGISTER
+		&& bitmap_bit_p (df_get_live_in (exitbb), DF_REF_REGNO (def)))
+	      {
+		plc.add_arc (p + 1, q + 1, 0, w);
+		break;
+	      }
 	}
     }
+
+  /* (3) across the back edge: the last branch still precedes the first.  */
+  if (first_branch >= 0 && prev_branch > first_branch)
+    plc.add_arc (prev_branch + 1, first_branch + 1, 0, 1);
 
   /* H, the span of one iteration with no overlap.  */
   int h = 1;
@@ -12160,6 +12207,10 @@ lvx_superblock_inner_loops (void)
     {
       free_dominance_info (CDI_DOMINATORS);
       calculate_dominance_info (CDI_DOMINATORS);
+      /* The profitability test reads df_get_live_in to find what a branch
+	 implicitly uses on its exit edge, so the liveness problem has to be
+	 solved before it, not only after the layout.  */
+      df_analyze ();
       for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
 	if (lvx_unfold_inner_loop (loop))
 	  changed = true;
