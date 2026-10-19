@@ -3264,10 +3264,23 @@ lvx_expand_vector_shift (rtx target, rtx source, rtx chunk,
 	  rtx count = GEN_INT (bits);
 	  if (bits >= 64)
 	    count = force_reg (SImode, count);
+	  /* simplify_gen_subreg of a MEM gives back a MEM -- a subreg of memory
+	     simplifies to memory at an adjusted address -- and gen_* does not
+	     check its predicates, so a memory SOURCE here reaches recog as
+	     unmatched RTL.  It is not caught where it is built either: nothing
+	     validates until instantiate_virtual_regs, so the ICE names `vregs'
+	     and points at this insn with no hint of who made it.  */
+	  if (!register_operand (ti_source, TImode))
+	    ti_source = force_reg (TImode, ti_source);
+	  rtx ti_dst = ti_target;
+	  if (!register_operand (ti_dst, TImode))
+	    ti_dst = gen_reg_rtx (TImode);
 	  if (left)
-	    emit_insn (gen_ashlti3 (ti_target, ti_source, count));
+	    emit_insn (gen_ashlti3 (ti_dst, ti_source, count));
 	  else
-	    emit_insn (gen_lshrti3 (ti_target, ti_source, count));
+	    emit_insn (gen_lshrti3 (ti_dst, ti_source, count));
+	  if (ti_dst != ti_target)
+	    emit_move_insn (ti_target, ti_dst);
 	  return;
 	}
     }
@@ -7390,9 +7403,21 @@ lvx_expand_vec_perm_const (rtx target, rtx source1, rtx source2, rtx selector)
 	      rtx cr = srl_bits < 64 ? GEN_INT (srl_bits)
 				     : force_reg (SImode, GEN_INT (srl_bits));
 	      rtx a = gen_reg_rtx (TImode), b = gen_reg_rtx (TImode);
+	      /* Same as in lvx_expand_vector_shift: these three come from
+		 simplify_gen_subreg, which hands back a MEM for a MEM, and
+		 gen_* checks no predicate.  */
+	      if (!register_operand (tsll, TImode))
+		tsll = force_reg (TImode, tsll);
+	      if (!register_operand (tsrl, TImode))
+		tsrl = force_reg (TImode, tsrl);
+	      rtx d = tdst;
+	      if (!register_operand (d, TImode))
+		d = gen_reg_rtx (TImode);
 	      emit_insn (gen_ashlti3 (a, tsll, cl));
 	      emit_insn (gen_lshrti3 (b, tsrl, cr));
-	      emit_insn (gen_iorti3 (tdst, a, b));
+	      emit_insn (gen_iorti3 (d, a, b));
+	      if (d != tdst)
+		emit_move_insn (tdst, d);
 	      return true;
 	    }
 	}
