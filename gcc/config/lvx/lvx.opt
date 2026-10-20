@@ -110,3 +110,7 @@ Rename registers through inner superblock loops before EBB scheduling, so succes
 munfold-min-gain=
 Target RejectNegative Joined UInteger Var(lvx_unfold_min_gain) Init(10) Optimization
 -munfold-min-gain=N	Do not unfold an inner loop unless the predicted saving is at least N percent.
+
+mcms-probe
+Target Var(lvx_cms_probe) Init(0) Optimization
+Dump the convergent-modulo-scheduling probe for each measured inner loop.

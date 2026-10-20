@@ -11862,6 +11862,249 @@ lvx_cms_push_arc (auto_vec<lvx_cms_arc> &arcs, unsigned src, unsigned dst,
   arcs.safe_push (a);
 }
 
+/* Delta: the largest iteration distance any arc spans.  This is what replaces
+   kvx-unfold.cc's `max_distance = 1; // FIXME' -- that literal was the two-copy
+   structure asserting nothing spans more than one instance, which is an
+   artefact of having two physical copies rather than anything CMS requires.
+   LVX's graph carries omega explicitly, so Delta is simply measured.  */
+
+static int
+lvx_cms_delta (const auto_vec<lvx_cms_arc> &arcs)
+{
+  int delta = 1;
+  for (unsigned i = 0; i < arcs.length (); i++)
+    {
+      HOST_WIDE_INT w = arcs[i].omega < 0 ? -arcs[i].omega : arcs[i].omega;
+      if (delta < (int) w)
+	delta = (int) w;
+    }
+  return delta;
+}
+
+/* True if INSN can join the bundle already accumulated in SLOT.  Checked
+   against the counted resource model -- the availabilities Resource.yml emits
+   as lvx_issue_availability -- rather than against the scheduling automaton,
+   so this needs no dfa_start ().  That is the whole advantage recorded in
+   docs/cms-foundations.md §7.5: the DFA fit kvx-unfold.cc uses is portable to a
+   target with no counted resources, but where the counters exist they give the
+   exact subset bound instead of an order-dependent greedy fit.  */
+
+static bool
+lvx_cms_slot_fits_p (const struct lvx_sched_resources *slot, rtx_insn *insn)
+{
+  struct lvx_sched_resources trial = *slot;
+  lvx_sched_resources_add (&trial, insn);
+
+  if (trial.ninsns_count > (unsigned) lvx_sched_issue_rate ())
+    return false;
+#define LVX_CMS_FITS(R)							  if (trial.R##_count > (unsigned) lvx_issue_availability.R)		    return false;
+  LVX_ISSUE_RESOURCES (LVX_CMS_FITS)
+#undef LVX_CMS_FITS
+  return true;
+}
+
+/* Convergent modulo scheduling of the body SEQ at initiation interval II.
+
+   One task per instruction and per-copy arrays indexed by the copy number,
+   which is the single-copy form of docs/cms-foundations.md §7sexies.  Copy C of
+   node I is that instruction's instance in iteration C; an arc
+   (SRC, DST, THETA, OMEGA) constrains copy C of DST against copy C - OMEGA of
+   SRC, so the graph needs no second physical copy to express a cross-iteration
+   dependence and an OMEGA above one is an ordinary arc rather than something
+   the construction has to be able to see.
+
+   The copies are scheduled FREELY in absolute cycles, and convergence is the
+   discovery that copy C repeats copy C - 1 exactly II cycles later: at that
+   point SIGMA (I) = date (I, C) - C * II is a modulo schedule.  What forces the
+   period to II is the one place the two-copy form needed an arc for -- its `M'
+   arc from base to twin at latency +II.  With a single task per instruction
+   that constraint relates a node to ITSELF at the next copy, so it is a rule in
+   the scheduler rather than an edge in the graph.
+
+   Returns true and fills SIGMA on convergence.  */
+
+static bool
+lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
+		  const auto_vec<lvx_cms_arc> &arcs,
+		  const auto_vec<int> &prio,
+		  int ii, int delta, auto_vec<int> &sigma)
+{
+  unsigned n = seq.length ();
+  if (n == 0 || ii <= 0)
+    return false;
+
+  /* Enough copies to see a repeat beyond the furthest-reaching arc.  */
+  int ncopy = delta + 4;
+  unsigned cells = n * (unsigned) ncopy;
+
+  auto_vec<int> date, pred;
+  date.safe_grow_cleared (cells);
+  pred.safe_grow_cleared (cells);
+  for (unsigned k = 0; k < cells; k++)
+    date[k] = -1;
+
+  /* Entering-arc counts per copy.  A source copy below zero is a prologue
+     instance, already issued before the kernel, so the arc is satisfied; the
+     self modulo constraint accounts for the extra predecessor of every copy
+     after the first.  */
+  for (unsigned a = 0; a < arcs.length (); a++)
+    for (int c = 0; c < ncopy; c++)
+      {
+	int sc = c - (int) arcs[a].omega;
+	if (sc >= 0 && sc < ncopy)
+	  pred[(unsigned) c * n + arcs[a].dst]++;
+      }
+  for (int c = 1; c < ncopy; c++)
+    for (unsigned i = 0; i < n; i++)
+      pred[(unsigned) c * n + i]++;
+
+  auto_vec<struct lvx_sched_resources> cyc;
+
+  int placed = 0;
+  while (placed < (int) cells)
+    {
+      /* Pick a ready cell: lowest copy first, then the longest remaining
+	 dependence path, then program order.  */
+      int best = -1;
+      for (int c = 0; c < ncopy; c++)
+	{
+	  for (unsigned i = 0; i < n; i++)
+	    {
+	      unsigned k = (unsigned) c * n + i;
+	      if (date[k] >= 0 || pred[k] > 0)
+		continue;
+	      if (best < 0
+		  || prio[i] < prio[(unsigned) best % n]
+		  || (prio[i] == prio[(unsigned) best % n]
+		      && i < (unsigned) best % n))
+		best = (int) k;
+	    }
+	  if (best >= 0)
+	    break;
+	}
+      if (best < 0)
+	/* Nothing ready and cells remain: the enforced subgraph has a circuit
+	   the chosen II cannot break.  */
+	return false;
+
+      unsigned bi = (unsigned) best % n;
+      int bc = best / (int) n;
+
+      /* Earliest dependence-feasible date.  */
+      int earliest = 0;
+      if (bc > 0)
+	earliest = date[(unsigned) (bc - 1) * n + bi] + ii;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].dst == bi)
+	  {
+	    int sc = bc - (int) arcs[a].omega;
+	    if (sc < 0 || sc >= ncopy)
+	      continue;
+	    int d = date[(unsigned) sc * n + arcs[a].src];
+	    if (d < 0)
+	      return false;
+	    if (earliest < d + (int) arcs[a].theta)
+	      earliest = d + (int) arcs[a].theta;
+	  }
+      if (earliest < 0)
+	earliest = 0;
+
+      /* First resource-feasible date at or after it.  */
+      int when = earliest;
+      while (true)
+	{
+	  while ((int) cyc.length () <= when)
+	    {
+	      struct lvx_sched_resources empty;
+	      memset (&empty, 0, sizeof (empty));
+	      cyc.safe_push (empty);
+	    }
+	  if (lvx_cms_slot_fits_p (&cyc[when], seq[bi]))
+	    break;
+	  when++;
+	}
+      lvx_sched_resources_add (&cyc[when], seq[bi]);
+      date[(unsigned) best] = when;
+      placed++;
+
+      /* Release the successors of this cell.  */
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].src == bi)
+	  {
+	    int dc = bc + (int) arcs[a].omega;
+	    if (dc >= 0 && dc < ncopy)
+	      pred[(unsigned) dc * n + arcs[a].dst]--;
+	  }
+      if (bc + 1 < ncopy)
+	pred[(unsigned) (bc + 1) * n + bi]--;
+
+      /* Stationarity: a copy that repeats its predecessor exactly II cycles
+	 later IS the kernel.  */
+      if (bc > 0 && (unsigned) placed % n == 0)
+	{
+	  bool settled = true;
+	  for (unsigned i = 0; i < n && settled; i++)
+	    {
+	      int cur = date[(unsigned) bc * n + i];
+	      int prev = date[(unsigned) (bc - 1) * n + i];
+	      if (cur < 0 || prev < 0 || cur - prev != ii)
+		settled = false;
+	    }
+	  if (settled)
+	    {
+	      sigma.truncate (0);
+	      for (unsigned i = 0; i < n; i++)
+		sigma.safe_push (date[(unsigned) bc * n + i] - bc * ii);
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/* Verify SIGMA is a legal modulo schedule at II.  Returns null, or the first
+   violation found.  Two things must hold, and they are the definition:
+
+     every arc:   sigma (dst) - sigma (src)  >=  theta - omega * II
+     resources:   the nodes sharing a slot (sigma mod II) fit one bundle
+
+   The second is why a modulo reservation table is the right structure even
+   though the scheduler itself works in absolute cycles -- in steady state every
+   II cycles the same slot comes round.  */
+
+static const char *
+lvx_cms_verify (const auto_vec<rtx_insn *> &seq,
+		const auto_vec<lvx_cms_arc> &arcs,
+		int ii, const auto_vec<int> &sigma)
+{
+  if (ii <= 0 || sigma.length () != seq.length ())
+    return "malformed schedule";
+
+  for (unsigned a = 0; a < arcs.length (); a++)
+    {
+      HOST_WIDE_INT need = arcs[a].theta - arcs[a].omega * (HOST_WIDE_INT) ii;
+      if ((HOST_WIDE_INT) (sigma[arcs[a].dst] - sigma[arcs[a].src]) < need)
+	return "dependence arc violated";
+    }
+
+  auto_vec<struct lvx_sched_resources> slot;
+  for (int i = 0; i < ii; i++)
+    {
+      struct lvx_sched_resources empty;
+      memset (&empty, 0, sizeof (empty));
+      slot.safe_push (empty);
+    }
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      int at = ((sigma[i] % ii) + ii) % ii;
+      if (!lvx_cms_slot_fits_p (&slot[at], seq[i]))
+	return "modulo reservation overflows";
+      lvx_sched_resources_add (&slot[at], seq[i]);
+    }
+  return NULL;
+}
+
 
 /* Decide whether unfolding LOOP can pay, by comparing what one iteration
    costs today against what two scheduled together could cost.
@@ -12209,6 +12452,63 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
      no-op, measured +5.045%.  bitcnts' `bit_shifter' (H=3 R=2 K=1) was
      predicted 33%, did shorten its bundle schedule 3 -> 2.5 per iteration as
      the model said, and measured +7.274% anyway.  */
+  /* CMS probe, dump only.  Try initiation intervals from the lower bound
+     upward and report the first that converges, verifying the schedule it
+     returns.  This is the measurement docs/cms-foundations.md §7bis.6 asks for
+     -- lowest converging II against the true lower bound -- and it needs no
+     cycle counts and no ISS, being a property of the scheduler alone.  */
+  if (dump_file && lvx_cms_probe)
+    {
+      /* The recorded arcs are numbered for the solver, where node 0 is its
+	 root and node I + 1 is SEQ[I].  The scheduler wants a 0-based graph
+	 over SEQ and has no use for the root arcs, which exist only to make
+	 every node reachable for the parametric solve.  */
+      auto_vec<lvx_cms_arc> sarcs;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].src != 0 && arcs[a].dst != 0)
+	  lvx_cms_push_arc (sarcs, arcs[a].src - 1, arcs[a].dst - 1,
+			    arcs[a].theta, arcs[a].omega);
+
+      int delta = lvx_cms_delta (sarcs);
+      int lower = MAX (k, r);
+      auto_vec<int> sigma;
+      int found = 0;
+      const char *last_bad = NULL;
+
+      /* Convergence is NECESSARY BUT NOT SUFFICIENT, so verification is part
+	 of acceptance.  The scheduler works in absolute cycles while the
+	 product is a modulo schedule, and those agree only in steady state:
+	 two nodes can each fit their own absolute cycle and still collide in
+	 slot (date mod II) once the kernel repeats.  Rather than constrain the
+	 search to reserve a modulo table from the start -- which would make it
+	 iterative modulo scheduling and forfeit the convergent character --
+	 a converged schedule that does not verify simply fails that II.  The
+	 reference does the same shape of thing in its checkpoint, which can
+	 reject a converged interval because register allocation failed.  */
+      for (int try_ii = lower; try_ii <= lower + 8 && !found; try_ii++)
+	if (lvx_cms_converge (seq, sarcs, height, try_ii, delta, sigma))
+	  {
+	    const char *bad = lvx_cms_verify (seq, sarcs, try_ii, sigma);
+	    if (!bad)
+	      found = try_ii;
+	    else
+	      last_bad = bad;
+	  }
+
+      if (!found)
+	fprintf (dump_file, ";; lvx cms: loop %d NO schedule through II=%d"
+		 " (lower=%d delta=%d, %u nodes %u arcs)%s%s\n",
+		 loop->num, lower + 8, lower, delta,
+		 seq.length (), sarcs.length (),
+		 last_bad ? " -- converged but unverified: " : "",
+		 last_bad ? last_bad : "");
+      else
+	fprintf (dump_file, ";; lvx cms: loop %d converged II=%d lower=%d"
+		 " excess=%d delta=%d, %u nodes %u arcs -- VERIFIED\n",
+		 loop->num, found, lower, found - lower, delta,
+		 seq.length (), sarcs.length ());
+    }
+
   int floor_ii = MAX (MAX (k, r), h);
 
   /* How far copy 2 can be hoisted, which bounds the overlap the unfold can
