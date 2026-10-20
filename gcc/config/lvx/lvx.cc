@@ -11833,6 +11833,36 @@ lvx_speculatable_p (rtx_insn *insn)
   return true;
 }
 
+/* One arc of the CMS dependence graph: a dependence from SRC to DST with
+   latency THETA and iteration distance OMEGA, so the constraint it imposes on a
+   modulo schedule at initiation interval II is
+
+     date (DST) - date (SRC)  >=  THETA - OMEGA * II
+
+   The graph is over the loop body ONCE -- one node per instruction -- with the
+   distance carried explicitly here.  That is deliberately not the two-copy form
+   of kvx-unfold.cc: a graph over a straightened pair of copies can represent
+   neither a circuit (so its RecMII has to be recovered by tracing a spanning
+   tree) nor a distance above one (so those dependences vanish rather than being
+   approximated).  See docs/cms-foundations.md §7.7b and §7sexies.  */
+
+struct lvx_cms_arc
+{
+  unsigned src;
+  unsigned dst;
+  HOST_WIDE_INT theta;
+  HOST_WIDE_INT omega;
+};
+
+static inline void
+lvx_cms_push_arc (auto_vec<lvx_cms_arc> &arcs, unsigned src, unsigned dst,
+		  HOST_WIDE_INT theta, HOST_WIDE_INT omega)
+{
+  lvx_cms_arc a = { src, dst, theta, omega };
+  arcs.safe_push (a);
+}
+
+
 /* Decide whether unfolding LOOP can pay, by comparing what one iteration
    costs today against what two scheduled together could cost.
 
@@ -11916,8 +11946,14 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
   lvx_plc plc;
   for (unsigned i = 0; i <= n; i++)
     plc.add_node ();
+
+  /* Arcs are recorded as data rather than pushed straight into the solver: the
+     scheduler of step 4 has to walk them, and the solver only stores them.  The
+     order is the construction order, and the solver is fed from this list
+     below, so what it sees is unchanged.  */
+  auto_vec<lvx_cms_arc> arcs;
   for (unsigned i = 0; i < n; i++)
-    plc.add_arc (0, i + 1, 0, 0);
+    lvx_cms_push_arc (arcs, 0, i + 1, 0, 0);
 
   /* The intra-iteration arcs, kept to compute the dependence height.  */
   auto_vec<int> height;
@@ -11949,7 +11985,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		    int lat = lvx_arc_latency (def_insn, other, REG_DEP_TRUE);
 		    if (q == p)
 		      w = 1;	/* read and written by one insn */
-		    plc.add_arc (p + 1, q + 1, lat, w);
+		    lvx_cms_push_arc (arcs, p + 1, q + 1, lat, w);
 		    if (w == 0 && height[q] < height[p] + lat)
 		      height[q] = height[p] + lat;
 		    break;
@@ -11963,7 +11999,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		FOR_EACH_INSN_USE (ref, other)
 		  if (DF_REF_REGNO (ref) == regno)
 		    {
-		      plc.add_arc (q + 1, p + 1,
+		      lvx_cms_push_arc (arcs, q + 1, p + 1,
 				   lvx_arc_latency (other, def_insn,
 						    REG_DEP_ANTI),
 				   (p > q) ? 0 : 1);
@@ -11976,7 +12012,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		FOR_EACH_INSN_DEF (ref, other)
 		  if (DF_REF_REGNO (ref) == regno)
 		    {
-		      plc.add_arc (p + 1, q + 1,
+		      lvx_cms_push_arc (arcs, p + 1, q + 1,
 				   lvx_arc_latency (def_insn, other,
 						    REG_DEP_OUTPUT),
 				   omega);
@@ -12029,7 +12065,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		lat = lvx_arc_latency (a, b, REG_DEP_ANTI), have = true;
 	      if (have)
 		{
-		  plc.add_arc (p + 1, q + 1, lat, 0);
+		  lvx_cms_push_arc (arcs, p + 1, q + 1, lat, 0);
 		  if (height[q] < height[p] + lat)
 		    height[q] = height[p] + lat;
 		}
@@ -12044,15 +12080,15 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	    continue;
 
 	  if (a_w && b_r)
-	    plc.add_arc (p + 1, q + 1, lvx_arc_latency (a, b, REG_DEP_TRUE), 1);
+	    lvx_cms_push_arc (arcs, p + 1, q + 1, lvx_arc_latency (a, b, REG_DEP_TRUE), 1);
 	  else if (a_w && b_w && p != q)
-	    plc.add_arc (p + 1, q + 1,
+	    lvx_cms_push_arc (arcs, p + 1, q + 1,
 			 lvx_arc_latency (a, b, REG_DEP_OUTPUT), 1);
 	  else if (a_r && b_w && p != q)
 	    {
-	      plc.add_arc (p + 1, q + 1,
+	      lvx_cms_push_arc (arcs, p + 1, q + 1,
 			   lvx_arc_latency (a, b, REG_DEP_ANTI), 1);
-	      plc.add_arc (q + 1, p + 1,
+	      lvx_cms_push_arc (arcs, q + 1, p + 1,
 			   lvx_arc_latency (b, a, REG_DEP_TRUE), 1);
 	    }
 	}
@@ -12090,7 +12126,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 
       /* (3) */
       if (prev_branch >= 0)
-	plc.add_arc (prev_branch + 1, p + 1, 0, 0);
+	lvx_cms_push_arc (arcs, prev_branch + 1, p + 1, 0, 0);
       else
 	first_branch = (int) p;
       prev_branch = (int) p;
@@ -12113,7 +12149,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	  /* (1) */
 	  if (lvx_mem_write_insn_p (seq[q])
 	      || volatile_insn_p (PATTERN (seq[q])))
-	    plc.add_arc (p + 1, q + 1, 0, w);
+	    lvx_cms_push_arc (arcs, p + 1, q + 1, 0, w);
 
 	  /* (2) */
 	  if (exitbb == NULL)
@@ -12122,7 +12158,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	    if (DF_REF_REGNO (def) < FIRST_PSEUDO_REGISTER
 		&& bitmap_bit_p (df_get_live_in (exitbb), DF_REF_REGNO (def)))
 	      {
-		plc.add_arc (p + 1, q + 1, 0, w);
+		lvx_cms_push_arc (arcs, p + 1, q + 1, 0, w);
 		break;
 	      }
 	}
@@ -12130,7 +12166,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 
   /* (3) across the back edge: the last branch still precedes the first.  */
   if (first_branch >= 0 && prev_branch > first_branch)
-    plc.add_arc (prev_branch + 1, first_branch + 1, 0, 1);
+    lvx_cms_push_arc (arcs, prev_branch + 1, first_branch + 1, 0, 1);
 
   /* H, the span of one iteration with no overlap.  */
   int h = 1;
@@ -12145,6 +12181,9 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
       lvx_sched_resources_add (&resources, insn);
   int r = (int) lvx_sched_resources_full_bundles (&resources);
   r = r ? r : 1;
+
+  for (unsigned i = 0; i < arcs.length (); i++)
+    plc.add_arc (arcs[i].src, arcs[i].dst, arcs[i].theta, arcs[i].omega);
 
   if (plc.solve (1) != LVX_PLC_SOLVED)
     {
