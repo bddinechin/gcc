@@ -115,6 +115,10 @@ mcms-probe
 Target Var(lvx_cms_probe) Init(0) Optimization
 Dump the convergent-modulo-scheduling probe for each measured inner loop.
 
+mcms-stride-test
+Target Var(lvx_cms_stride_test) Init(1) Optimization
+Disprove cross-iteration memory dependences whose addresses are affine in the iteration number with a common stride.
+
 mcms-max-insns=
 Target RejectNegative Joined UInteger Var(lvx_cms_max_insns) Init(256) Optimization
 -mcms-max-insns=N	Do not consider an inner loop with more than N instructions for modulo scheduling.

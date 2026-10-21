@@ -11885,6 +11885,222 @@ struct lvx_cms_arc
   enum lvx_cms_arc_kind kind;
 };
 
+/* A memory reference's address as an affine function of the iteration number:
+
+       address (k) = SYM + OFF + STEP * k
+
+   over SIZE bytes.  SYM is the symbolic part, compared between two references
+   by rtx_equal_p; OFF folds the MEM's own displacement together with any
+   constant the recognition folds in from the increments preceding it, so that
+   two references off one induction variable differ by a known number of
+   bytes.  */
+
+struct lvx_mem_iv
+{
+  rtx sym;
+  HOST_WIDE_INT off;
+  HOST_WIDE_INT step;
+  HOST_WIDE_INT size;
+  bool valid;
+};
+
+/* True if INSN has a definition of REGNO.  */
+
+static bool
+lvx_insn_defs_regno_p (rtx_insn *insn, unsigned regno)
+{
+  df_ref def;
+
+  FOR_EACH_INSN_DEF (def, insn)
+    if (DF_REF_REGNO (def) == regno)
+      return true;
+  return false;
+}
+
+/* Peel a trailing constant off X.  */
+
+static rtx
+lvx_split_plus_const (rtx x, HOST_WIDE_INT *c)
+{
+  *c = 0;
+  while (GET_CODE (x) == PLUS && CONST_INT_P (XEXP (x, 1)))
+    {
+      *c += INTVAL (XEXP (x, 1));
+      x = XEXP (x, 0);
+    }
+  return x;
+}
+
+/* Collect a description of every memory reference in SEQ, LOOP's body in chain
+   order, as an affine function of the iteration number.
+
+   NOT via iv_analyze, which cannot serve here: loop-iv.cc's simple_reg_p
+   refuses hard registers outright --
+
+       r = REGNO (reg);
+       if (HARD_REGISTER_NUM_P (r))
+         return false;
+
+   -- and machine_reorg runs after reload, where every register is hard.  So
+   every reference came back unanalysed, systematically, for a reason no amount
+   of plumbing fixes.  It also wanted LOOPS_HAVE_PREHEADERS, because it goes
+   through df_analyze_loop; doing the recognition here needs no preheader, no
+   DF rebuild and no df_analyze per loop, so the probe stays read-only.
+
+   What is recognised is the one form that matters post-reload: an address
+   register whose every definition in the body is `R = R + constant'.  The step
+   is then the total of those constants, and a reference's own offset is its MEM
+   displacement plus the increments that PRECEDE it in chain order -- which is
+   what makes a load before the pointer bump and a store after it come out at
+   the same address, as they must for `C[i][j] *= beta'.
+
+   Anything else -- a register written by something other than such an
+   increment, a reference whose address is not a register plus a constant, an
+   unknown access size, an instruction holding two references -- leaves the
+   description invalid, and an invalid description never disproves a
+   dependence.  */
+
+static void
+lvx_cms_collect_mem_ivs (class loop *, const auto_vec<rtx_insn *> &seq,
+			 auto_vec<lvx_mem_iv> &ivs)
+{
+  unsigned n = seq.length ();
+
+  ivs.safe_grow_cleared (n);
+  if (!lvx_cms_stride_test)
+    return;
+
+  /* Pass 1: each reference's MEM, its displacement off a base register, and
+     its size.  SYM holds the base register for now; STEP is filled in below.  */
+  auto_vec<int> base;
+  base.safe_grow_cleared (n);
+  for (unsigned i = 0; i < n; i++)
+    {
+      subrtx_iterator::array_type array;
+      rtx mem = NULL_RTX;
+      bool twice = false;
+
+      base[i] = -1;
+      if (!NONDEBUG_INSN_P (seq[i]))
+	continue;
+
+      FOR_EACH_SUBRTX (iter, array, PATTERN (seq[i]), NONCONST)
+	if (MEM_P (*iter))
+	  {
+	    if (mem != NULL_RTX)
+	      twice = true;
+	    mem = const_cast<rtx> (*iter);
+	  }
+      if (mem == NULL_RTX || twice || !MEM_SIZE_KNOWN_P (mem))
+	continue;
+
+      HOST_WIDE_INT size;
+      if (!MEM_SIZE (mem).is_constant (&size) || size <= 0)
+	continue;
+
+      HOST_WIDE_INT off;
+      rtx addr = lvx_split_plus_const (XEXP (mem, 0), &off);
+      if (!REG_P (addr))
+	continue;
+
+      base[i] = (int) REGNO (addr);
+      ivs[i].off = off;
+      ivs[i].size = size;
+    }
+
+  /* Pass 2: for every base register used, check that its definitions in the
+     body are all constant increments, and total them.  */
+  for (unsigned i = 0; i < n; i++)
+    {
+      if (base[i] < 0)
+	continue;
+
+      unsigned regno = (unsigned) base[i];
+      HOST_WIDE_INT step = 0;
+      HOST_WIDE_INT before = 0;
+      bool ok = true;
+
+      for (unsigned j = 0; j < n && ok; j++)
+	{
+	  if (!NONDEBUG_INSN_P (seq[j]) || !lvx_insn_defs_regno_p (seq[j], regno))
+	    continue;
+
+	  rtx pat = PATTERN (seq[j]);
+	  HOST_WIDE_INT c;
+
+	  if (GET_CODE (pat) != SET
+	      || !REG_P (SET_DEST (pat))
+	      || REGNO (SET_DEST (pat)) != regno
+	      || GET_CODE (SET_SRC (pat)) != PLUS
+	      || !REG_P (XEXP (SET_SRC (pat), 0))
+	      || REGNO (XEXP (SET_SRC (pat), 0)) != regno
+	      || !CONST_INT_P (XEXP (SET_SRC (pat), 1)))
+	    {
+	      ok = false;
+	      break;
+	    }
+	  c = INTVAL (XEXP (SET_SRC (pat), 1));
+	  step += c;
+	  if (j < i)
+	    before += c;
+	}
+
+      if (!ok)
+	continue;
+
+      ivs[i].sym = regno_reg_rtx[regno];
+      ivs[i].off += before;
+      ivs[i].step = step;
+      ivs[i].valid = true;
+    }
+}
+
+/* True if reference A in some iteration and reference B in the iteration D
+   later provably do not overlap.
+
+   With both addresses affine in the iteration number and sharing a symbolic
+   base, their separation is a constant:
+
+       b (k + d) - a (k)  =  (off_b - off_a) + step * d
+
+   and two byte ranges overlap exactly when that separation lies strictly
+   between -size_b and +size_a.  Outside it, there is no dependence at distance
+   D however the two instructions are ordered.
+
+   This is what disproves the arcs a type-based alias oracle cannot: for
+   `C[i][j] *= beta' the load and the store touch one address per iteration and
+   advance by eight bytes, so the store of iteration k and the load of
+   iteration k + 1 are eight bytes apart and cannot conflict, while the pair
+   within one iteration is zero apart and does.  may_alias_p sees only that
+   both references are to C and says yes to both.
+
+   Requiring the SAME step is what keeps this honest: two references advancing
+   at different rates meet periodically, and deciding when needs a diophantine
+   argument this does not make.  */
+
+static bool
+lvx_cms_mem_independent_p (const struct lvx_mem_iv &a,
+			   const struct lvx_mem_iv &b, HOST_WIDE_INT d)
+{
+  if (!a.valid || !b.valid)
+    return false;
+  if (a.step != b.step)
+    return false;
+  if (a.sym == NULL_RTX || b.sym == NULL_RTX
+      || !rtx_equal_p (a.sym, b.sym))
+    return false;
+
+  /* Guard the multiply: a distance times a stride can overflow for an absurd
+     stride, and a wrong answer here is a miscompile rather than a lost
+     optimisation.  */
+  if (d != 0 && a.step != 0
+      && (d > HOST_WIDE_INT_MAX / (a.step > 0 ? a.step : -a.step)))
+    return false;
+
+  HOST_WIDE_INT delta = (b.off - a.off) + a.step * d;
+  return !(delta > -b.size && delta < a.size);
+}
+
 /* True if INSN's writes read their own destination, so that an output or anti
    dependence on it is real and register renaming cannot remove it.
 
@@ -11903,19 +12119,6 @@ lvx_insn_def_reads_dest_p (rtx_insn *insn)
 {
   return (GET_CODE (PATTERN (insn)) == COND_EXEC
 	  || lvx_insn_has_tied_operand_p (insn));
-}
-
-/* True if INSN has a definition of REGNO.  */
-
-static bool
-lvx_insn_defs_regno_p (rtx_insn *insn, unsigned regno)
-{
-  df_ref def;
-
-  FOR_EACH_INSN_DEF (def, insn)
-    if (DF_REF_REGNO (def) == regno)
-      return true;
-  return false;
 }
 
 static inline void
@@ -12387,6 +12590,11 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
   if (n == 0)
     return false;
 
+  /* Addresses as affine functions of the iteration, for the stride test that
+     the memory arcs below use to disprove what the alias oracle cannot.  */
+  auto_vec<lvx_mem_iv> mivs;
+  lvx_cms_collect_mem_ivs (loop, seq, mivs);
+
   /* The intra-iteration arcs, kept to compute the dependence height.  */
   height.safe_grow_cleared (n);
 
@@ -12581,6 +12789,9 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  if (q > p && !lvx_mems_disjoint_p (seq, p, q))
 	    {
 	      int lat = 0;
+	      if (lvx_cms_mem_independent_p (mivs[p], mivs[q], 0))
+		continue;
+
 	      bool have = false;
 	      if (a_w && b_r)
 		lat = lvx_arc_latency (a, b, REG_DEP_TRUE), have = true;
@@ -12631,6 +12842,11 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    }
 
 	  HOST_WIDE_INT mw = sl;
+
+	  /* The stride test, which is what makes a self-dependence of one array
+	     through a unit-stride pointer go away without a pragma.  */
+	  if (lvx_cms_mem_independent_p (mivs[p], mivs[q], mw))
+	    continue;
 
 	  if (a_w && b_r)
 	    lvx_cms_push_arc (arcs, p, q,
@@ -13090,7 +13306,9 @@ lvx_cms_probe_loops (void)
     return;
 
   /* Self-contained, so the probe does not depend on -msuperblock-loops having
-     run and set up loops for its own phases.  It modifies nothing.  */
+     run and set up loops for its own phases.  It modifies nothing: the stride
+     test does its own address recognition rather than calling iv_analyze, which
+     would have wanted preheaders and a DF rebuild per loop.  */
   calculate_dominance_info (CDI_DOMINATORS);
   loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
   /* lvx_cms_build_graph reads df_get_live_in to find what a branch implicitly
