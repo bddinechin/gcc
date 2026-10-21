@@ -115,6 +115,10 @@ mcms-probe
 Target Var(lvx_cms_probe) Init(0) Optimization
 Dump the convergent-modulo-scheduling probe for each measured inner loop.
 
+mcms-max-insns=
+Target RejectNegative Joined UInteger Var(lvx_cms_max_insns) Init(256) Optimization
+-mcms-max-insns=N	Do not consider an inner loop with more than N instructions for modulo scheduling.
+
 mcms-force-speculative-loads
 Target Var(lvx_cms_force_spec_loads) Init(0) Optimization
 Emit loop-variant-address loads in pipelined inner loops as their dismissible variant.

@@ -12504,6 +12504,357 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
   return true;
 }
 
+/* M, R and K for a built graph: the makespan of one iteration, the resource
+   bound and the recurrence bound.
+
+   R and K bound the RATE -- both are lower bounds on II, and max (K, R) is
+   the lower bound CMS searches upward from.  M is a LENGTH, the span of one
+   iteration scheduled alone, and is not a bound on II at all: it is the
+   numerator of nstages = ceil (span / II), which is why K >= M is the test
+   that says pipelining can buy nothing.  The unfold compares all three.
+
+   Returns false if the parametric solve did not converge, which leaves the
+   recurrence bound unknown and so the lower bound unknown.  */
+
+static bool
+lvx_cms_bounds (class loop *loop, basic_block *body,
+		const auto_vec<rtx_insn *> &seq,
+		const auto_vec<lvx_cms_arc> &arcs,
+		const auto_vec<int> &height, int *pm, int *pr, int *pk)
+{
+  unsigned n = seq.length ();
+  rtx_insn *insn;
+
+  /* M, the MAKESPAN of one iteration with no overlap: the last instruction's
+     start date plus its own processing time, not plus one.  HEIGHT[i] is a
+     start date, so a schedule is finished when every instruction has had its
+     latency, and insn_default_latency is what that latency is -- an issue slot
+     is what an instruction takes, but a multi-cycle result is not ready when
+     the slot closes.  Taking + 1 instead measured the span as if every
+     instruction retired in the cycle it issued, which understates any body
+     ending in a load or a multiply.  Floored at one cycle because an
+     instruction occupies its issue cycle whatever the DFA says its latency
+     is, and some are zero.  */
+  int m = 1;
+  for (unsigned i = 0; i < n; i++)
+    m = MAX (m, height[i] + MAX (1, insn_default_latency (seq[i])));
+
+  /* R, from the machine description.  */
+  struct lvx_sched_resources resources;
+  memset (&resources, 0, sizeof (resources));
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    FOR_BB_INSNS (body[i], insn)
+      lvx_sched_resources_add (&resources, insn);
+  int r = (int) lvx_sched_resources_full_bundles (&resources);
+  r = r ? r : 1;
+
+  /* K, the recurrence bound.  The solver wants node 0 as its root and node
+     i + 1 as SEQ[i], with a root arc to every node so each is reachable.  */
+  lvx_plc plc;
+  for (unsigned i = 0; i <= n; i++)
+    plc.add_node ();
+  for (unsigned i = 0; i < n; i++)
+    plc.add_arc (0, i + 1, 0, 0);
+  for (unsigned i = 0; i < arcs.length (); i++)
+    plc.add_arc (arcs[i].src + 1, arcs[i].dst + 1, arcs[i].theta,
+		 arcs[i].omega);
+  if (plc.solve (1) != LVX_PLC_SOLVED)
+    return false;
+
+  *pm = m;
+  *pr = r;
+  *pk = (int) plc.period ();
+  return true;
+}
+
+/* Schedule LOOP's body as a modulo schedule and report what it took.  Tries
+   initiation intervals from the lower bound upward and reports the first that
+   converges AND verifies.
+
+   Convergence is NECESSARY BUT NOT SUFFICIENT, so verification is part of
+   acceptance.  The scheduler works in absolute cycles while the product is a
+   modulo schedule, and those agree only in steady state: two nodes can each
+   fit their own absolute cycle and still collide in slot (date mod II) once
+   the kernel repeats.  Rather than constrain the search to reserve a modulo
+   table from the start -- which would make it iterative modulo scheduling and
+   forfeit the convergent character -- a converged schedule that does not
+   verify simply fails that II.  The reference does the same shape of thing in
+   its checkpoint, which can reject a converged interval because register
+   allocation failed.
+
+   Dump only, for now: this is the measurement docs/cms-foundations.md §7bis.6
+   asks for -- lowest converging II against the true lower bound -- and it
+   needs no cycle counts and no ISS, being a property of the scheduler.  */
+
+static void
+lvx_cms_probe_loop (class loop *loop, basic_block *body)
+{
+  auto_vec<rtx_insn *> seq;
+  auto_vec<lvx_cms_arc> arcs;
+  auto_vec<int> height;
+  int dropped_safelen = 0;
+
+  if (!lvx_cms_build_graph (loop, body, seq, arcs, height, &dropped_safelen))
+    {
+      fprintf (dump_file, ";; lvx cms: loop %d declined, body is not a chain"
+	       " the analysis can walk\n", loop->num);
+      return;
+    }
+
+  int m, r, k;
+  if (!lvx_cms_bounds (loop, body, seq, arcs, height, &m, &r, &k))
+    {
+      fprintf (dump_file, ";; lvx cms: loop %d declined, the recurrence bound"
+	       " did not solve\n", loop->num);
+      return;
+    }
+
+  int delta = lvx_cms_delta (arcs);
+  int lower = MAX (k, r);
+  auto_vec<int> sigma;
+  int found = 0;
+  const char *last_bad = NULL;
+
+  for (int try_ii = lower; try_ii <= lower + 8 && !found; try_ii++)
+    if (lvx_cms_converge (seq, arcs, height, try_ii, delta, sigma))
+      {
+	const char *bad = lvx_cms_verify (seq, arcs, try_ii, sigma);
+	if (!bad)
+	  found = try_ii;
+	else
+	  last_bad = bad;
+      }
+
+  /* Whether reorg_loops will put a LOOPDO on this loop.  Reported rather than
+     refused: a hardware loop is a HELP to a pipeliner, not an obstacle --
+     the loopback branch is implicit, so control speculation past it needs no
+     justification and the exit test costs no issue slot.  What it does cost is
+     codegen, which has to adjust the trip count for the stages in flight.  */
+  bool hw = lvx_loop_has_doloop_p (loop);
+
+  if (!found)
+    {
+      fprintf (dump_file, ";; lvx cms: loop %d NO schedule through II=%d"
+	       " (lower=%d delta=%d M=%d, %u nodes %u arcs)%s%s%s\n",
+	       loop->num, lower + 8, lower, delta, m,
+	       seq.length (), arcs.length (), hw ? " hwloop" : "",
+	       last_bad ? " -- converged but unverified: " : "",
+	       last_bad ? last_bad : "");
+      return;
+    }
+
+  /* The telling figure is not II against its lower bound but II against ONE
+     ITERATION'S span: nstages = ceil (span / II) is how many iterations are
+     in flight, and nstages <= 1 means pipelining buys nothing however tight
+     the II.  */
+  /* SPAN is the ACHIEVED schedule's extent, which can exceed M when resources
+     forced stretching; M is its dependence-only lower bound.  nstages counts
+     iterations in flight, so it is the achieved one that decides.
+
+     SIGMA holds START dates, so the extent runs to the last instruction's
+     COMPLETION -- the same correction M needs, and for the same reason.  Taking
+     hi - lo + 1 understated it by the final instruction's latency less one,
+     which is zero for single-cycle code and three for a body whose critical
+     path ends in an FP add.  It reported a reduction at II=4 with a 7-cycle
+     iteration as span=4, hence nstages=1 and `no gain', when two iterations
+     are in fact in flight.  */
+  int lo = sigma[0], hi = sigma[0] + MAX (1, insn_default_latency (seq[0]));
+  for (unsigned i = 1; i < sigma.length (); i++)
+    {
+      int done = sigma[i] + MAX (1, insn_default_latency (seq[i]));
+      if (lo > sigma[i])
+	lo = sigma[i];
+      if (hi < done)
+	hi = done;
+    }
+  int span = hi - lo;
+  int nstages = (span + found - 1) / found;
+
+  /* The drop rule, checked rather than assumed: a memory dependence dropped
+     at distance SAFELEN is only absent from the schedule if iterations k and
+     k + safelen never overlap, which needs safelen >= nstages.  */
+  bool drop_ok = (dropped_safelen == 0 || dropped_safelen >= nstages);
+
+  /* Loads the schedule relies on being promoted to .s/.us.  */
+  auto_bitmap bodydef;
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      df_ref def;
+      FOR_EACH_INSN_DEF (def, seq[i])
+	bitmap_set_bit (bodydef, DF_REF_REGNO (def));
+    }
+  int spec = 0;
+  for (unsigned i = 0; i < seq.length (); i++)
+    if (lvx_cms_speculated_load_p (seq[i], bodydef))
+      spec++;
+
+  if (lvx_cms_force_spec_loads && spec)
+    spec = -lvx_cms_force_speculative_loads (seq, bodydef);
+
+  fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
+	   " ResMII=%d RecMII=%d span=%d nstages=%d delta=%d safelen=%d,"
+	   " %u nodes %u arcs, %d loads %s .s%s -- %s\n",
+	   loop->num, found, lower, found - lower, m, r, k, span, nstages,
+	   delta, (int) loop->safelen, seq.length (), arcs.length (),
+	   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
+	   hw ? " hwloop" : "",
+	   !drop_ok ? "UNSOUND: dropped safelen below nstages"
+	   : nstages > 1 ? "PIPELINES" : "no gain");
+}
+
+/* Whether CMS may consider LOOP at all.  This is NOT lvx_unfoldable_loop_p:
+   that gate is sized for code duplication and asks for things a modulo
+   schedule does not need, while missing nothing CMS does need.  The
+   differences, each deliberate:
+
+   - No `can_duplicate_loop_p'.  The unfold duplicates the body through the
+     CFG; CMS replicates the KERNEL by its stage count during modulo
+     expansion, which is a different operation on a different object.
+
+   - No block-count bound.  The unfold's is there because duplication doubles
+     the blocks; CMS linearises the chain and schedules instructions, so what
+     bounds it is instruction count, not block count.
+
+   - Its own instruction bound, -mcms-max-insns, because the cost of a CMS
+     attempt is the convergence loop over DELTA + 4 copies of the body, not a
+     doubling of code size.
+
+   - Hardware loops are ALLOWED.  The unfold refuses them because halving a
+     trip count means peeling; a pipeliner has to adjust the trip count
+     anyway, and an implicit loopback branch is a help.  lvx_cms_probe_loop
+     reports which loops have one so the measurement can separate them.
+
+   What CMS genuinely requires, and this gate establishes: a single latch, so
+   the chain walk has one back edge to measure distance against; no call,
+   volatile reference or asm, none of which can be moved across an iteration
+   boundary or priced; and no computed jump or complex edge, which the chain
+   walk cannot follow.  The chain property itself is left to
+   lvx_cms_build_graph, which is the code that needs it and so is the code that
+   should report it.
+
+   Note the ORDER against the unfold's gate: the call scan comes before the
+   edge counting, so a loop that is both multi-block and call-holding is named
+   for the call.  The unfold's gate tests per block and reports whichever test
+   that block fails first, which is why PolyBench's print_array loops come out
+   as "not a chain" when they also hold an fprintf.  A diagnostic should name
+   the disqualifier a reader can act on.  */
+
+static bool
+lvx_cms_eligible_loop_p (class loop *loop, basic_block *body, unsigned insns,
+			 const char **why)
+{
+  *why = "multiple latches";
+  if (loop->latch == NULL)
+    return false;
+  *why = "too many insns";
+  if (insns > (unsigned) lvx_cms_max_insns)
+    return false;
+
+  /* The contents of every block before the shape of any, so the reason
+     reported is the one a reader can act on.  Interleaving the two -- testing
+     each block's shape and then its contents, as the unfold's gate does --
+     makes the answer depend on which block happens to come first in the body
+     array, and a loop that holds a call is then liable to be reported for its
+     control flow.  */
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    {
+      rtx_insn *insn, *end = BB_END (body[i]);
+
+      for (insn = BB_HEAD (body[i]); insn != NEXT_INSN (end);
+	   insn = NEXT_INSN (insn))
+	if (NONDEBUG_INSN_P (insn))
+	  {
+	    *why = "holds a call";
+	    if (CALL_P (insn))
+	      return false;
+	    *why = "holds a volatile reference";
+	    if (volatile_refs_p (PATTERN (insn)))
+	      return false;
+	    *why = "holds an asm";
+	    if (asm_noperands (PATTERN (insn)) >= 0)
+	      return false;
+	  }
+    }
+
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    {
+      basic_block bb = body[i];
+      edge e;
+      edge_iterator ei;
+
+      *why = "block not schedulable";
+      if ((bb->flags & BB_DISABLE_SCHEDULE) != 0
+	  || computed_jump_p (BB_END (bb)))
+	return false;
+
+      FOR_EACH_EDGE (e, ei, bb->succs)
+	{
+	  *why = "complex edge";
+	  if (e->flags & EDGE_COMPLEX)
+	    return false;
+	}
+    }
+  *why = NULL;
+  return true;
+}
+
+/* CMS's own walk over the innermost loops, independent of the unfold.
+
+   It used to ride lvx_loop_profitable_to_unfold_p, which meant the probe only
+   saw loops that had already passed the unfold's candidacy -- so it needed
+   -munfold-inner-loops to fire at all, and silently inherited
+   can_duplicate_loop_p, the hardware-loop exclusion and size limits sized for
+   doubling code.  Measuring one transformation through another's eligibility
+   is how the PolyBench run first came back with 10 loops instead of 380.  */
+
+static void
+lvx_cms_probe_loops (void)
+{
+  if (!dump_file)
+    return;
+
+  /* Self-contained, so the probe does not depend on -msuperblock-loops having
+     run and set up loops for its own phases.  It modifies nothing.  */
+  calculate_dominance_info (CDI_DOMINATORS);
+  loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
+  /* lvx_cms_build_graph reads df_get_live_in to find what a branch implicitly
+     uses on its exit edge, so the liveness problem has to be solved first.  */
+  df_analyze ();
+  /* The arc latencies come from the DFA, which needs the insn-code cache the
+     scheduler would otherwise own.  */
+  dfa_start ();
+
+  for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
+    {
+      basic_block *body;
+      unsigned insns = 0;
+      const char *why = "";
+
+      if (loop->latch == NULL)
+	continue;
+
+      body = get_loop_body (loop);
+      for (unsigned i = 0; i < loop->num_nodes; i++)
+	{
+	  rtx_insn *insn;
+	  FOR_BB_INSNS (body[i], insn)
+	    if (NONDEBUG_INSN_P (insn))
+	      insns++;
+	}
+
+      if (!lvx_cms_eligible_loop_p (loop, body, insns, &why))
+	fprintf (dump_file, ";; lvx cms: loop %d declined, %s\n",
+		 loop->num, why);
+      else
+	lvx_cms_probe_loop (loop, body);
+
+      free (body);
+    }
+
+  dfa_finish ();
+  loop_optimizer_finalize ();
+}
+
 /* Decide whether unfolding LOOP can pay, by comparing what one iteration
    costs today against what two scheduled together could cost.
 
@@ -12545,7 +12896,6 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
   auto_vec<rtx_insn *> seq;
   auto_vec<lvx_cms_arc> arcs;
   auto_vec<int> height;
-  rtx_insn *insn;
 
   int dropped_safelen = 0;
   if (!lvx_cms_build_graph (loop, body, seq, arcs, height, &dropped_safelen))
@@ -12557,152 +12907,35 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
     }
   unsigned n = seq.length ();
 
-  /* The solver wants node 0 as its root and node i + 1 as SEQ[i], with a root
-     arc to every node so each is reachable.  */
-  lvx_plc plc;
-  for (unsigned i = 0; i <= n; i++)
-    plc.add_node ();
-  for (unsigned i = 0; i < n; i++)
-    plc.add_arc (0, i + 1, 0, 0);
-
-  /* H, the span of one iteration with no overlap.  */
-  int h = 1;
-  for (unsigned i = 0; i < n; i++)
-    h = MAX (h, height[i] + 1);
-
-  /* R, from the machine description, and K, the recurrence bound.  */
-  struct lvx_sched_resources resources;
-  memset (&resources, 0, sizeof (resources));
-  for (unsigned i = 0; i < loop->num_nodes; i++)
-    FOR_BB_INSNS (body[i], insn)
-      lvx_sched_resources_add (&resources, insn);
-  int r = (int) lvx_sched_resources_full_bundles (&resources);
-  r = r ? r : 1;
-
-  for (unsigned i = 0; i < arcs.length (); i++)
-    plc.add_arc (arcs[i].src + 1, arcs[i].dst + 1, arcs[i].theta,
-		 arcs[i].omega);
-
-  if (plc.solve (1) != LVX_PLC_SOLVED)
+  /* M, R and K, shared with the CMS walk rather than recomputed: the three
+     bounds are properties of the graph, not of what the caller means to do
+     with it.  */
+  int m, r, k;
+  if (!lvx_cms_bounds (loop, body, seq, arcs, height, &m, &r, &k))
     {
       if (dump_file)
 	fprintf (dump_file, ";; lvx unfold: loop %d declined, the recurrence"
 		 " bound did not solve\n", loop->num);
       return false;
     }
-  int k = (int) plc.period ();
 
   /* The steady-state floor, per iteration.  This is the baseline, and it used
-     to be MAX (h, r) -- the height of ONE iteration scheduled in isolation,
+     to be MAX (m, r) -- the makespan of ONE iteration scheduled in isolation,
      which is what SCHED2 reports because an EBB is acyclic.  The machine does
      not stop at the latch: it is a scoreboarded in-order pipeline with no
      barrier there, so successive iterations overlap and what a loop actually
      settles at is bounded below by its recurrence, not by its height.
 
-     Comparing against H credited the unfold with closing a gap that was never
+     Comparing against M credited the unfold with closing a gap that was never
      open.  Measured on the two loops the old criterion accepted: dijkstra's
-     `enqueue' pointer chase (H=4 R=1 K=3) was predicted to gain 12%, and
+     `enqueue' pointer chase (M=4 R=1 K=3) was predicted to gain 12%, and
      SCHED2 then produced a schedule with the same 2 bundles and the same 4
      modelled cycles per iteration -- bit-identical dynamic bundle counts, a
-     no-op, measured +5.045%.  bitcnts' `bit_shifter' (H=3 R=2 K=1) was
+     no-op, measured +5.045%.  bitcnts' `bit_shifter' (M=3 R=2 K=1) was
      predicted 33%, did shorten its bundle schedule 3 -> 2.5 per iteration as
      the model said, and measured +7.274% anyway.  */
-  /* CMS probe, dump only.  Try initiation intervals from the lower bound
-     upward and report the first that converges, verifying the schedule it
-     returns.  This is the measurement docs/cms-foundations.md §7bis.6 asks for
-     -- lowest converging II against the true lower bound -- and it needs no
-     cycle counts and no ISS, being a property of the scheduler alone.  */
-  if (dump_file && lvx_cms_probe)
-    {
-      /* The recorded arcs are numbered for the solver, where node 0 is its
-	 root and node I + 1 is SEQ[I].  The scheduler wants a 0-based graph
-	 over SEQ and has no use for the root arcs, which exist only to make
-	 every node reachable for the parametric solve.  */
-      const auto_vec<lvx_cms_arc> &sarcs = arcs;
-      int delta = lvx_cms_delta (sarcs);
-      int lower = MAX (k, r);
-      auto_vec<int> sigma;
-      int found = 0;
-      const char *last_bad = NULL;
 
-      /* Convergence is NECESSARY BUT NOT SUFFICIENT, so verification is part
-	 of acceptance.  The scheduler works in absolute cycles while the
-	 product is a modulo schedule, and those agree only in steady state:
-	 two nodes can each fit their own absolute cycle and still collide in
-	 slot (date mod II) once the kernel repeats.  Rather than constrain the
-	 search to reserve a modulo table from the start -- which would make it
-	 iterative modulo scheduling and forfeit the convergent character --
-	 a converged schedule that does not verify simply fails that II.  The
-	 reference does the same shape of thing in its checkpoint, which can
-	 reject a converged interval because register allocation failed.  */
-      for (int try_ii = lower; try_ii <= lower + 8 && !found; try_ii++)
-	if (lvx_cms_converge (seq, sarcs, height, try_ii, delta, sigma))
-	  {
-	    const char *bad = lvx_cms_verify (seq, sarcs, try_ii, sigma);
-	    if (!bad)
-	      found = try_ii;
-	    else
-	      last_bad = bad;
-	  }
-
-      if (!found)
-	fprintf (dump_file, ";; lvx cms: loop %d NO schedule through II=%d"
-		 " (lower=%d delta=%d, %u nodes %u arcs)%s%s\n",
-		 loop->num, lower + 8, lower, delta,
-		 seq.length (), sarcs.length (),
-		 last_bad ? " -- converged but unverified: " : "",
-		 last_bad ? last_bad : "");
-      else
-	{
-	  /* The telling figure is not II against its lower bound but II
-	     against ONE ITERATION'S makespan: nstages = ceil (makespan / II)
-	     is how many iterations are in flight, and nstages <= 1 means
-	     pipelining buys nothing however tight the II.  */
-	  int lo = sigma[0], hi = sigma[0];
-	  for (unsigned i = 1; i < sigma.length (); i++)
-	    {
-	      if (lo > sigma[i])
-		lo = sigma[i];
-	      if (hi < sigma[i])
-		hi = sigma[i];
-	    }
-	  int makespan = hi - lo + 1;
-	  int nstages = (makespan + found - 1) / found;
-
-	  /* The drop rule, checked rather than assumed: a memory dependence
-	     dropped at distance SAFELEN is only absent from the schedule if
-	     iterations k and k + safelen never overlap, which needs
-	     safelen >= nstages.  */
-	  bool drop_ok = (dropped_safelen == 0 || dropped_safelen >= nstages);
-
-	  /* Loads the schedule relies on being promoted to .s/.us.  */
-	  auto_bitmap bodydef;
-	  for (unsigned i = 0; i < seq.length (); i++)
-	    {
-	      df_ref def;
-	      FOR_EACH_INSN_DEF (def, seq[i])
-		bitmap_set_bit (bodydef, DF_REF_REGNO (def));
-	    }
-	  int spec = 0;
-	  for (unsigned i = 0; i < seq.length (); i++)
-	    if (lvx_cms_speculated_load_p (seq[i], bodydef))
-	      spec++;
-
-	  if (lvx_cms_force_spec_loads && spec)
-	    spec = -lvx_cms_force_speculative_loads (seq, bodydef);
-
-	  fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d"
-		   " makespan=%d nstages=%d delta=%d safelen=%d, %u nodes %u arcs,"
-		   " %d loads %s .s -- %s\n",
-		   loop->num, found, lower, found - lower, makespan, nstages,
-		   delta, (int) loop->safelen, seq.length (), sarcs.length (),
-		   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
-		   !drop_ok ? "UNSOUND: dropped safelen below nstages"
-		   : nstages > 1 ? "PIPELINES" : "no gain");
-	}
-    }
-
-  int floor_ii = MAX (MAX (k, r), h);
+  int floor_ii = MAX (MAX (k, r), m);
 
   /* How far copy 2 can be hoisted, which bounds the overlap the unfold can
      actually buy.  The duplicated body puts copy 2 below copy 1's exit
@@ -12780,12 +13013,12 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
   /* S1 is what two iterations cost now, S2 what they would cost unfolded.
      Doubled to keep the halving exact.
 
-     S2 carries 2*k and 2*r as well as k + h: two iterations of the unfolded
+     S2 carries 2*k and 2*r as well as k + m: two iterations of the unfolded
      body must still respect the recurrence twice and the resources twice, and
-     the old form omitted both, which is how k + h came out below the floor.  */
+     the old form omitted both, which is how k + m came out below the floor.  */
   int s1 = 2 * (floor_ii + b);
 
-  int f2 = MAX (MAX (2 * r, 2 * k), offset + h);
+  int f2 = MAX (MAX (2 * r, 2 * k), offset + m);
   int slack2 = MAX (0, f2 - 2 * r);
   int b2 = MAX (0, LVX_MIN_TAKEN - slack2);
   int s2 = f2 + b2;
@@ -12794,9 +13027,9 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
   bool ok = gain * 100 >= s1 * lvx_unfold_min_gain;
 
   if (dump_file)
-    fprintf (dump_file, ";; lvx unfold: loop %d %s -- H=%d ResMII=%d"
+    fprintf (dump_file, ";; lvx unfold: loop %d %s -- M=%d ResMII=%d"
 	     " RecMII=%d floor=%d offset=%d taken=%d/%d, %d insns, gain %d/%d = %d%%\n",
-	     loop->num, ok ? "profitable" : "declined", h, r, k, floor_ii, offset, b, b2,
+	     loop->num, ok ? "profitable" : "declined", m, r, k, floor_ii, offset, b, b2,
 	     insns, gain, s1, s1 ? gain * 100 / s1 : 0);
   return ok;
 }
@@ -13310,6 +13543,13 @@ lvx_machine_dependent_reorg (void)
      is asking for.  */
   if (optimize && lvx_superblock_loops && optimize_function_for_speed_p (cfun))
     lvx_superblock_inner_loops ();
+
+  /* The CMS measurement, on its own walk.  Before reorg_loops, because
+     lvx_loop_has_doloop_p recognises the doloop_end pattern that LOOPDO
+     generation then consumes -- after it, a hardware loop is indistinguishable
+     from any other.  */
+  if (optimize && lvx_cms_probe && optimize_function_for_speed_p (cfun))
+    lvx_cms_probe_loops ();
 
   /* Doloop optimization. */
   if (optimize)
