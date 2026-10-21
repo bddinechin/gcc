@@ -11931,6 +11931,159 @@ lvx_split_plus_const (rtx x, HOST_WIDE_INT *c)
   return x;
 }
 
+/* The upper bound on software-pipeline overlap that inductive relaxation is
+   allowed to assume, the paper's `o'.  It bounds how far a displacement may be
+   adjusted, so it must not exceed what codegen can actually produce.  */
+#define LVX_CMS_MAX_OVERLAP 8
+
+/* Signed 10 bits: the displacement an LVX base+displacement operand holds
+   without an IMMX extension syllable (format signed10, widened to signed37 by
+   .X and to signed64 by .Y -- see lvx_r_s10_s37_s64_operand).  Relaxation must
+   not push a displacement out of the field it already occupies, or it changes
+   the instruction's encoding and its cost.  */
+
+static inline bool
+lvx_cms_disp_fits_p (HOST_WIDE_INT d)
+{
+  return d >= -512 && d < 512;
+}
+
+/* A SIMPLE INDUCTION, after Dupont de Dinechin, "A Unified Software Pipeline
+   Construction Scheme for Modulo Scheduled Loops", PaCT 1997, section 4: a
+   register updated with only ONE addition or subtraction in the loop body,
+   whose step fits in an immediate constant.
+
+   Why they are worth recovering as a kind of their own.  A use of a simple
+   induction as the BASE of a base+displacement operand does not need that
+   iteration's value: successive values differ by a multiple of the step, so the
+   displacement can absorb the difference and the operand can read whichever
+   instance was most recently computed.  Every arc from the induction's
+   definition to such a use may therefore be dropped from the scheduling graph.
+   That is INDUCTIVE RELAXATION, and it is what replaces modulo expansion for
+   the induction register itself -- the register pressure win being the reason
+   the technique exists.
+
+   The paper's own caution is worth carrying, because it predicts the result of
+   measuring this: against generalized modulo expansion, removing the arcs made
+   no significant difference to schedule quality, "although generalized modulo
+   expansion keeps flow dependences in the scheduling problem, these cannot
+   close a recurrence cycle in the case of a simple induction".  So the expected
+   effect is a smaller and less constrained graph, NOT a lower RecMII.  An
+   induction's own self-recurrence contributes a circuit of theta = the add's
+   latency over omega = 1, which is 1, and its def-to-use arcs run forward
+   within the iteration, so neither can bind.
+
+   Fills DELTA[r] with the step of each simple induction and sets its bit in
+   INDUCTIONS.  A zero step is not an induction.  */
+
+static void
+lvx_cms_find_simple_inductions (const auto_vec<rtx_insn *> &seq,
+				auto_vec<HOST_WIDE_INT> &delta,
+				bitmap inductions)
+{
+  unsigned n = seq.length ();
+
+  delta.safe_grow_cleared (FIRST_PSEUDO_REGISTER);
+
+  /* Count the definitions of every register in the body, and remember the one
+     insn that defines each.  More than one disqualifies it outright: the paper
+     asks for ONE addition or subtraction, and two updates make the step depend
+     on where in the body a use sits.  */
+  auto_vec<int> ndefs, where;
+  ndefs.safe_grow_cleared (FIRST_PSEUDO_REGISTER);
+  where.safe_grow_cleared (FIRST_PSEUDO_REGISTER);
+  for (unsigned i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    where[i] = -1;
+
+  for (unsigned i = 0; i < n; i++)
+    {
+      df_ref def;
+
+      if (!NONDEBUG_INSN_P (seq[i]))
+	continue;
+      FOR_EACH_INSN_DEF (def, seq[i])
+	{
+	  unsigned r = DF_REF_REGNO (def);
+	  if (r >= FIRST_PSEUDO_REGISTER)
+	    continue;
+	  ndefs[r]++;
+	  where[r] = (int) i;
+	}
+    }
+
+  for (unsigned r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    {
+      if (ndefs[r] != 1 || where[r] < 0)
+	continue;
+
+      rtx pat = PATTERN (seq[where[r]]);
+      if (GET_CODE (pat) != SET
+	  || !REG_P (SET_DEST (pat))
+	  || REGNO (SET_DEST (pat)) != r
+	  || GET_CODE (SET_SRC (pat)) != PLUS
+	  || !REG_P (XEXP (SET_SRC (pat), 0))
+	  || REGNO (XEXP (SET_SRC (pat), 0)) != r
+	  || !CONST_INT_P (XEXP (SET_SRC (pat), 1)))
+	continue;
+
+      /* A subtraction reaches here as an addition of a negative constant,
+	 which is how the RTL spells it.  */
+      HOST_WIDE_INT d = INTVAL (XEXP (SET_SRC (pat), 1));
+      if (d == 0 || !lvx_cms_disp_fits_p (d))
+	continue;
+
+      delta[r] = d;
+      bitmap_set_bit (inductions, r);
+    }
+}
+
+/* True if INSN uses REGNO as the base of a base+displacement memory operand
+   whose displacement can still absorb an adjustment of up to
+   LVX_CMS_MAX_OVERLAP steps of DELTA -- the paper's `displacement +- o.delta
+   still fits in the operand'.  Such a use is RELAXED: it may read any instance
+   of the induction, so it needs no dependence on the one definition.  */
+
+static bool
+lvx_cms_relaxed_base_use_p (rtx_insn *insn, unsigned regno,
+			    HOST_WIDE_INT delta)
+{
+  subrtx_iterator::array_type array;
+  rtx mem = NULL_RTX;
+
+  if (!NONDEBUG_INSN_P (insn))
+    return false;
+
+  FOR_EACH_SUBRTX (iter, array, PATTERN (insn), NONCONST)
+    if (MEM_P (*iter))
+      {
+	if (mem != NULL_RTX)
+	  return false;
+	mem = const_cast<rtx> (*iter);
+      }
+  if (mem == NULL_RTX)
+    return false;
+
+  HOST_WIDE_INT disp;
+  rtx base = lvx_split_plus_const (XEXP (mem, 0), &disp);
+  if (!REG_P (base) || REGNO (base) != regno)
+    return false;
+
+  /* The register must be used ONLY as that base.  A second use of it in the
+     same instruction -- as the stored value, say -- needs the real value and
+     cannot be relaxed.  */
+  df_ref use;
+  int uses = 0;
+  FOR_EACH_INSN_USE (use, insn)
+    if (DF_REF_REGNO (use) == regno)
+      uses++;
+  if (uses != 1)
+    return false;
+
+  HOST_WIDE_INT reach = LVX_CMS_MAX_OVERLAP * (delta > 0 ? delta : -delta);
+  return (lvx_cms_disp_fits_p (disp + reach)
+	  && lvx_cms_disp_fits_p (disp - reach));
+}
+
 /* Collect a description of every memory reference in SEQ, LOOP's body in chain
    order, as an affine function of the iteration number.
 
@@ -12595,6 +12748,11 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
   auto_vec<lvx_mem_iv> mivs;
   lvx_cms_collect_mem_ivs (loop, seq, mivs);
 
+  /* Simple inductions, for inductive relaxation below.  */
+  auto_vec<HOST_WIDE_INT> ivdelta;
+  auto_bitmap inductions;
+  lvx_cms_find_simple_inductions (seq, ivdelta, inductions);
+
   /* The intra-iteration arcs, kept to compute the dependence height.  */
   height.safe_grow_cleared (n);
 
@@ -12627,6 +12785,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
      carries its own arcs, and the anti-dependences that would otherwise
      protect the old value are the ones renaming removes, which is the
      assumption this graph already makes below.  */
+  unsigned nrelaxed = 0;
   for (unsigned q = 0; q < n; q++)
     {
       df_ref use;
@@ -12656,12 +12815,32 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  if (p < 0)
 	    continue;
 
+	  /* INDUCTIVE RELAXATION.  A base+displacement operand based on a
+	     simple induction may read any instance of it, the displacement
+	     absorbing the difference, so it needs no dependence on the one
+	     definition.  Dropping the arc is only sound if codegen then adjusts
+	     that displacement -- the paper's fixRelaxed step -- which is why
+	     this is behind a flag and not yet on by default.  */
+	  if (lvx_cms_inductive_relaxation
+	      && regno < FIRST_PSEUDO_REGISTER
+	      && bitmap_bit_p (inductions, regno)
+	      && lvx_cms_relaxed_base_use_p (seq[q], regno, ivdelta[regno]))
+	    {
+	      nrelaxed++;
+	      continue;
+	    }
+
 	  int lat = lvx_arc_latency (seq[p], seq[q], REG_DEP_TRUE);
 	  lvx_cms_push_arc (arcs, (unsigned) p, q, lat, w, LVX_ARC_REG_RAW);
 	  if (w == 0 && height[q] < height[p] + lat)
 	    height[q] = height[p] + lat;
 	}
     }
+
+  if (dump_file && lvx_cms_probe)
+    fprintf (dump_file, ";; lvx cms: loop %d, %u simple inductions,"
+	     " %u relaxed arcs dropped\n", loop->num,
+	     bitmap_count_bits (inductions), nrelaxed);
 
   /* WAR, to the KILLING definition only -- the same correction RAW needs, and
      for the same reason.  A use is anti-dependent on the definition that

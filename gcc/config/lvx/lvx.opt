@@ -115,6 +115,10 @@ mcms-probe
 Target Var(lvx_cms_probe) Init(0) Optimization
 Dump the convergent-modulo-scheduling probe for each measured inner loop.
 
+mcms-inductive-relaxation
+Target Var(lvx_cms_inductive_relaxation) Init(0) Optimization
+Drop scheduling arcs from a simple induction's definition to its uses as a base+displacement base, assuming codegen adjusts the displacements.
+
 mcms-stride-test
 Target Var(lvx_cms_stride_test) Init(1) Optimization
 Disprove cross-iteration memory dependences whose addresses are affine in the iteration number with a common stride.
