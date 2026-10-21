@@ -11851,19 +11851,79 @@ lvx_speculatable_p (rtx_insn *insn)
    tree) nor a distance above one (so those dependences vanish rather than being
    approximated).  See docs/cms-foundations.md §7.7b and §7sexies.  */
 
+/* Where an arc came from.  Carried so that the circuit which sets RecMII can
+   be named rather than merely measured: a recurrence through a register RAW
+   chain is the program's own arithmetic and nothing but algebra will shorten
+   it, whereas one through a memory arc or a control arc may be an artefact of
+   what the compiler could not prove, and is then worth attacking.  The order
+   is the order the builder creates them in.  */
+
+enum lvx_cms_arc_kind
+{
+  LVX_ARC_REG_RAW,	/* register true dependence; the only latency-bearing kind */
+  LVX_ARC_REG_WAR,	/* register anti, kept only where renaming cannot remove it */
+  LVX_ARC_REG_WAW,	/* register output, same  */
+  LVX_ARC_MEM_INTRA,	/* memory dependence inside one iteration */
+  LVX_ARC_MEM_CROSS,	/* memory dependence across the back edge, omega = safelen */
+  LVX_ARC_CTRL_ORDER,	/* one branch precedes the next in the iteration */
+  LVX_ARC_CTRL_STORE,	/* a branch precedes a store or volatile reference */
+  LVX_ARC_CTRL_LIVEOUT,	/* a branch precedes a def live out on its exit edge */
+  LVX_ARC_CTRL_BACKEDGE	/* the last branch precedes the first, omega = 1 */
+};
+
+static const char *const lvx_cms_arc_kind_name[] = {
+  "reg-raw", "reg-war", "reg-waw", "mem-intra", "mem-cross",
+  "ctrl-order", "ctrl-store", "ctrl-liveout", "ctrl-backedge"
+};
+
 struct lvx_cms_arc
 {
   unsigned src;
   unsigned dst;
   HOST_WIDE_INT theta;
   HOST_WIDE_INT omega;
+  enum lvx_cms_arc_kind kind;
 };
+
+/* True if INSN's writes read their own destination, so that an output or anti
+   dependence on it is real and register renaming cannot remove it.
+
+   Two cases, and the attribute is not one of them.  A COND_EXEC write may not
+   happen, so the destination's previous value survives it: the write is a
+   read-modify-write, and these are what if-conversion produces, which is most
+   of them.  A tied input-output names the destination as a source outright.
+
+   `get_attr_guarded' does NOT answer this.  It defaults to `no' and is set on
+   exactly two hand-written patterns in control.md, so testing it kept output
+   dependences for those two and dropped them for every COND_EXEC CE3 made --
+   precisely backwards.  */
+
+static bool
+lvx_insn_def_reads_dest_p (rtx_insn *insn)
+{
+  return (GET_CODE (PATTERN (insn)) == COND_EXEC
+	  || lvx_insn_has_tied_operand_p (insn));
+}
+
+/* True if INSN has a definition of REGNO.  */
+
+static bool
+lvx_insn_defs_regno_p (rtx_insn *insn, unsigned regno)
+{
+  df_ref def;
+
+  FOR_EACH_INSN_DEF (def, insn)
+    if (DF_REF_REGNO (def) == regno)
+      return true;
+  return false;
+}
 
 static inline void
 lvx_cms_push_arc (auto_vec<lvx_cms_arc> &arcs, unsigned src, unsigned dst,
-		  HOST_WIDE_INT theta, HOST_WIDE_INT omega)
+		  HOST_WIDE_INT theta, HOST_WIDE_INT omega,
+		  enum lvx_cms_arc_kind kind)
 {
-  lvx_cms_arc a = { src, dst, theta, omega };
+  lvx_cms_arc a = { src, dst, theta, omega, kind };
   arcs.safe_push (a);
 }
 
@@ -12330,66 +12390,160 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
   /* The intra-iteration arcs, kept to compute the dependence height.  */
   height.safe_grow_cleared (n);
 
+  /* RAW, from the REACHING definition only.
+
+     This used to run an arc from every def of a register to every use of it,
+     which for pseudo-registers would merely be redundant but post-RA is wrong.
+     A hard register is reused as scratch many times over in one body, and
+     "every def to every use" then MANUFACTURES loop-carried dependences that
+     do not exist: in gemm's init_array the chain
+
+         39  r0 = zxn(r2)*zxn(r7)      41  r0 = zxt(r0,...)   ...
+         56  r0 = r0*r6                57  [r1-0x8] = r0
+
+     got an arc 56 -> 41 at distance 1, as if insn 41 read the r0 that 56 wrote
+     last iteration.  It does not: insn 39 defines r0 first and kills that
+     value.  The phantom circuit set RecMII to 12 where the real recurrence is
+     the induction variable's own increment, and so pinned II at 12 against a
+     ResMII of 3.
+
+     The chain order makes the reaching definition exact rather than
+     approximate: the body is a chain, each block having one in-loop successor,
+     so control flow through it is linear and the def that reaches a use is
+     simply the LAST one before it.  If none precedes the use in this iteration
+     the value comes from the previous one, from the last def in the body --
+     which may be the using instruction itself, the read-modify-write case that
+     is a genuine self-loop at distance 1.
+
+     Dropping the non-reaching pairs loses no ordering: the killing definition
+     carries its own arcs, and the anti-dependences that would otherwise
+     protect the old value are the ones renaming removes, which is the
+     assumption this graph already makes below.  */
+  for (unsigned q = 0; q < n; q++)
+    {
+      df_ref use;
+
+      FOR_EACH_INSN_USE (use, seq[q])
+	{
+	  unsigned regno = DF_REF_REGNO (use);
+	  int p = -1;
+	  HOST_WIDE_INT w = 0;
+
+	  /* The last definition strictly before Q.  */
+	  for (int i = (int) q - 1; i >= 0 && p < 0; i--)
+	    if (lvx_insn_defs_regno_p (seq[i], regno))
+	      p = i;
+
+	  /* None: the value is the previous iteration's, from the last
+	     definition anywhere in the body.  */
+	  if (p < 0)
+	    {
+	      for (int i = (int) n - 1; i >= 0 && p < 0; i--)
+		if (lvx_insn_defs_regno_p (seq[i], regno))
+		  p = i;
+	      w = 1;
+	    }
+
+	  /* Live in and never redefined here: no arc.  */
+	  if (p < 0)
+	    continue;
+
+	  int lat = lvx_arc_latency (seq[p], seq[q], REG_DEP_TRUE);
+	  lvx_cms_push_arc (arcs, (unsigned) p, q, lat, w, LVX_ARC_REG_RAW);
+	  if (w == 0 && height[q] < height[p] + lat)
+	    height[q] = height[p] + lat;
+	}
+    }
+
+  /* WAR, to the KILLING definition only -- the same correction RAW needs, and
+     for the same reason.  A use is anti-dependent on the definition that
+     destroys the value it read, which is the FIRST one after it, not on every
+     later definition of that register.  With r0 reused six times over in one
+     body, all-pairs produced backward arcs like `use at 56 -> def at 41' at
+     distance 1, which close phantom circuits exactly as the RAW ones did.
+
+     A use in an instruction that also defines the register needs no arc at
+     all: its own definition kills the value, so it is ordered before every
+     later one by the output dependences below.  */
+  for (unsigned q = 0; q < n; q++)
+    {
+      df_ref use;
+
+      FOR_EACH_INSN_USE (use, seq[q])
+	{
+	  unsigned regno = DF_REF_REGNO (use);
+	  int p = -1;
+	  HOST_WIDE_INT w = 0;
+
+	  if (lvx_insn_defs_regno_p (seq[q], regno))
+	    continue;
+
+	  for (unsigned i = q + 1; i < n && p < 0; i++)
+	    if (lvx_insn_defs_regno_p (seq[i], regno))
+	      p = (int) i;
+	  if (p < 0)
+	    {
+	      for (unsigned i = 0; i < n && p < 0; i++)
+		if (lvx_insn_defs_regno_p (seq[i], regno))
+		  p = (int) i;
+	      w = 1;
+	    }
+	  if (p < 0)
+	    continue;
+
+	  /* Only where renaming cannot remove it: the killing definition has
+	     to be one that names its own destination as a source.  */
+	  if (!lvx_insn_def_reads_dest_p (seq[p]))
+	    continue;
+
+	  lvx_cms_push_arc (arcs, q, (unsigned) p,
+			    lvx_arc_latency (seq[q], seq[p], REG_DEP_ANTI),
+			    w, LVX_ARC_REG_WAR);
+	}
+    }
+
+  /* WAW, to the NEXT definition only.  Chaining consecutive definitions orders
+     all of them transitively, which is all an output dependence needs; running
+     one from every definition to every other adds the same phantom backward
+     arcs.  */
   for (unsigned p = 0; p < n; p++)
     {
-      rtx_insn *def_insn = seq[p];
-      bool tied = lvx_insn_has_tied_operand_p (def_insn);
-      bool guarded = get_attr_guarded (def_insn) == GUARDED_YES;
       df_ref def;
 
-      FOR_EACH_INSN_DEF (def, def_insn)
+      FOR_EACH_INSN_DEF (def, seq[p])
 	{
 	  unsigned regno = DF_REF_REGNO (def);
+	  /* A partial write into a register tuple leaves the untouched part in
+	     place, which is that same destination-as-source.  */
 	  bool partial = (DF_REF_FLAGS (def) & DF_REF_PARTIAL) != 0;
+	  int q = -1;
+	  HOST_WIDE_INT w = 0;
 
-	  for (unsigned q = 0; q < n; q++)
+	  for (unsigned i = p + 1; i < n && q < 0; i++)
+	    if (lvx_insn_defs_regno_p (seq[i], regno))
+	      q = (int) i;
+	  if (q < 0)
 	    {
-	      rtx_insn *other = seq[q];
-	      HOST_WIDE_INT omega = (q > p) ? 0 : 1;
-	      df_ref ref;
-
-	      /* RAW: always kept, and the only one carrying a latency.  */
-	      FOR_EACH_INSN_USE (ref, other)
-		if (DF_REF_REGNO (ref) == regno)
-		  {
-		    HOST_WIDE_INT w = omega;
-		    int lat = lvx_arc_latency (def_insn, other, REG_DEP_TRUE);
-		    if (q == p)
-		      w = 1;	/* read and written by one insn */
-		    lvx_cms_push_arc (arcs, p, q, lat, w);
-		    if (w == 0 && height[q] < height[p] + lat)
-		      height[q] = height[p] + lat;
-		    break;
-		  }
-
-	      if (q == p)
-		continue;
-
-	      /* WAR, only where renaming cannot remove it.  */
-	      if (tied || lvx_insn_has_tied_operand_p (other))
-		FOR_EACH_INSN_USE (ref, other)
-		  if (DF_REF_REGNO (ref) == regno)
-		    {
-		      lvx_cms_push_arc (arcs, q, p,
-				   lvx_arc_latency (other, def_insn,
-						    REG_DEP_ANTI),
-				   (p > q) ? 0 : 1);
-		      break;
-		    }
-
-	      /* WAW, only where renaming cannot remove it.  */
-	      if (partial || guarded
-		  || get_attr_guarded (other) == GUARDED_YES)
-		FOR_EACH_INSN_DEF (ref, other)
-		  if (DF_REF_REGNO (ref) == regno)
-		    {
-		      lvx_cms_push_arc (arcs, p, q,
-				   lvx_arc_latency (def_insn, other,
-						    REG_DEP_OUTPUT),
-				   omega);
-		      break;
-		    }
+	      for (unsigned i = 0; i < n && q < 0; i++)
+		if (lvx_insn_defs_regno_p (seq[i], regno))
+		  q = (int) i;
+	      w = 1;
 	    }
+	  if (q < 0 || (unsigned) q == p)
+	    continue;
+
+	  /* Only where renaming cannot remove it.  Two full, unconditional
+	     writes to one register with no read between them are independent
+	     once each has its own register; it is only when a write reads its
+	     own destination that the later result depends on the earlier.  */
+	  if (!partial
+	      && !lvx_insn_def_reads_dest_p (seq[p])
+	      && !lvx_insn_def_reads_dest_p (seq[(unsigned) q]))
+	    continue;
+
+	  lvx_cms_push_arc (arcs, p, (unsigned) q,
+			    lvx_arc_latency (seq[p], seq[q], REG_DEP_OUTPUT),
+			    w, LVX_ARC_REG_WAW);
 	}
     }
 
@@ -12436,7 +12590,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		lat = lvx_arc_latency (a, b, REG_DEP_ANTI), have = true;
 	      if (have)
 		{
-		  lvx_cms_push_arc (arcs, p, q, lat, 0);
+		  lvx_cms_push_arc (arcs, p, q, lat, 0, LVX_ARC_MEM_INTRA);
 		  if (height[q] < height[p] + lat)
 		    height[q] = height[p] + lat;
 		}
@@ -12480,16 +12634,20 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 
 	  if (a_w && b_r)
 	    lvx_cms_push_arc (arcs, p, q,
-			 lvx_arc_latency (a, b, REG_DEP_TRUE), mw);
+			 lvx_arc_latency (a, b, REG_DEP_TRUE), mw,
+			 LVX_ARC_MEM_CROSS);
 	  else if (a_w && b_w && p != q)
 	    lvx_cms_push_arc (arcs, p, q,
-			 lvx_arc_latency (a, b, REG_DEP_OUTPUT), mw);
+			 lvx_arc_latency (a, b, REG_DEP_OUTPUT), mw,
+			 LVX_ARC_MEM_CROSS);
 	  else if (a_r && b_w && p != q)
 	    {
 	      lvx_cms_push_arc (arcs, p, q,
-			   lvx_arc_latency (a, b, REG_DEP_ANTI), mw);
+			   lvx_arc_latency (a, b, REG_DEP_ANTI), mw,
+			   LVX_ARC_MEM_CROSS);
 	      lvx_cms_push_arc (arcs, q, p,
-			   lvx_arc_latency (b, a, REG_DEP_TRUE), mw);
+			   lvx_arc_latency (b, a, REG_DEP_TRUE), mw,
+			   LVX_ARC_MEM_CROSS);
 	    }
 	}
     }
@@ -12526,7 +12684,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 
       /* (3) */
       if (prev_branch >= 0)
-	lvx_cms_push_arc (arcs, prev_branch, p, 0, 0);
+	lvx_cms_push_arc (arcs, prev_branch, p, 0, 0, LVX_ARC_CTRL_ORDER);
       else
 	first_branch = (int) p;
       prev_branch = (int) p;
@@ -12549,7 +12707,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  /* (1) */
 	  if (lvx_mem_write_insn_p (seq[q])
 	      || volatile_insn_p (PATTERN (seq[q])))
-	    lvx_cms_push_arc (arcs, p, q, 0, w);
+	    lvx_cms_push_arc (arcs, p, q, 0, w, LVX_ARC_CTRL_STORE);
 
 	  /* (2) */
 	  if (exitbb == NULL)
@@ -12558,7 +12716,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    if (DF_REF_REGNO (def) < FIRST_PSEUDO_REGISTER
 		&& bitmap_bit_p (df_get_live_in (exitbb), DF_REF_REGNO (def)))
 	      {
-		lvx_cms_push_arc (arcs, p, q, 0, w);
+		lvx_cms_push_arc (arcs, p, q, 0, w, LVX_ARC_CTRL_LIVEOUT);
 		break;
 	      }
 	}
@@ -12566,7 +12724,8 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 
   /* (3) across the back edge: the last branch still precedes the first.  */
   if (first_branch >= 0 && prev_branch > first_branch)
-    lvx_cms_push_arc (arcs, prev_branch, first_branch, 0, 1);
+    lvx_cms_push_arc (arcs, prev_branch, first_branch, 0, 1,
+		      LVX_ARC_CTRL_BACKEDGE);
 
   return true;
 }
@@ -12587,7 +12746,8 @@ static bool
 lvx_cms_bounds (class loop *loop, basic_block *body,
 		const auto_vec<rtx_insn *> &seq,
 		const auto_vec<lvx_cms_arc> &arcs,
-		const auto_vec<int> &height, int *pm, int *pr, int *pk)
+		const auto_vec<int> &height, int *pm, int *pr, int *pk,
+		auto_vec<int> *crit = NULL)
 {
   unsigned n = seq.length ();
   rtx_insn *insn;
@@ -12625,6 +12785,17 @@ lvx_cms_bounds (class loop *loop, basic_block *body,
 		 arcs[i].omega);
   if (plc.solve (1) != LVX_PLC_SOLVED)
     return false;
+
+  /* The circuit that last forced the period up is the one that sets K.  Map
+     its PLC arc indices back onto ARCS: the first N arcs added were the root's
+     one-per-node, so PLC arc N + J is ARCS[J], and a root arc -- which cannot
+     be part of a circuit -- maps to -1.  */
+  if (crit != NULL)
+    {
+      const vec<unsigned> &circ = plc.critical_circuit ();
+      for (unsigned i = 0; i < circ.length (); i++)
+	crit->safe_push (circ[i] >= n ? (int) (circ[i] - n) : -1);
+    }
 
   *pm = m;
   *pr = r;
@@ -12667,7 +12838,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     }
 
   int m, r, k;
-  if (!lvx_cms_bounds (loop, body, seq, arcs, height, &m, &r, &k))
+  auto_vec<int> crit;
+  if (!lvx_cms_bounds (loop, body, seq, arcs, height, &m, &r, &k, &crit))
     {
       fprintf (dump_file, ";; lvx cms: loop %d declined, the recurrence bound"
 	       " did not solve\n", loop->num);
@@ -12765,6 +12937,45 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   hw ? " hwloop" : "",
 	   !drop_ok ? "UNSOUND: dropped safelen below nstages"
 	   : nstages > 1 ? "PIPELINES" : "no gain");
+
+  /* Name the circuit that set K.  Measuring RecMII says how deep the pipeline
+     can be; naming its circuit says what to do about it.  A recurrence through
+     a chain of reg-raw arcs is the program's own arithmetic, and only algebra
+     -- reassociation, or more accumulators -- will shorten it.  One that runs
+     through mem-cross is a dependence the compiler could not disprove, and
+     restrict or ivdep may remove it outright.  One through ctrl-* is the exit
+     structure rather than the computation, and is what control speculation and
+     the loopback's own treatment address.
+
+     Printed with the sum of theta and of omega along the circuit, because K is
+     their ratio and the ratio is what says whether the circuit is long or
+     merely near.  */
+  if (!crit.is_empty ())
+    {
+      HOST_WIDE_INT st = 0, sw = 0;
+      unsigned nreal = 0;
+      for (unsigned i = 0; i < crit.length (); i++)
+	if (crit[i] >= 0)
+	  {
+	    st += arcs[crit[i]].theta;
+	    sw += arcs[crit[i]].omega;
+	    nreal++;
+	  }
+      fprintf (dump_file, ";; lvx cms: loop %d RecMII circuit, %u arcs,"
+	       " sum theta=" HOST_WIDE_INT_PRINT_DEC
+	       " sum omega=" HOST_WIDE_INT_PRINT_DEC ":", loop->num, nreal,
+	       st, sw);
+      for (unsigned i = 0; i < crit.length (); i++)
+	if (crit[i] >= 0)
+	  {
+	    const lvx_cms_arc &a = arcs[crit[i]];
+	    fprintf (dump_file, " %s(%d->%d,%d,%d)",
+		     lvx_cms_arc_kind_name[(int) a.kind],
+		     INSN_UID (seq[a.src]), INSN_UID (seq[a.dst]),
+		     (int) a.theta, (int) a.omega);
+	  }
+      fprintf (dump_file, "\n");
+    }
 }
 
 /* Whether CMS may consider LOOP at all.  This is NOT lvx_unfoldable_loop_p:
