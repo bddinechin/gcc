@@ -11862,6 +11862,86 @@ lvx_cms_push_arc (auto_vec<lvx_cms_arc> &arcs, unsigned src, unsigned dst,
   arcs.safe_push (a);
 }
 
+/* True if INSN loads through an address that varies across iterations, i.e. one
+   whose base is written somewhere in BODYDEF.  Such a load is the one a modulo
+   schedule actually speculates: it gets hoisted into an earlier stage, above
+   the exit test of the iteration it belongs to.  A loop-INVARIANT load would
+   have been hoisted out of the loop entirely instead.
+
+   This matters because the dependence graph's branch constraint (1) already
+   lets a load cross a conditional branch -- "a load may cross, which is what
+   the dismissible variant is for".  That is not an optimisation the codegen may
+   decline: a plain `ld' can fault, so the schedule is only legal if every such
+   load is emitted as `.s' or `.us'.  Counting them is how a measurement stays
+   honest about what it is assuming.  */
+
+static bool
+lvx_cms_speculated_load_p (rtx_insn *insn, bitmap bodydef)
+{
+  subrtx_iterator::array_type array;
+  rtx pat = PATTERN (insn);
+
+  if (!lvx_mem_read_insn_p (insn) || lvx_mem_write_insn_p (insn))
+    return false;
+
+  enum lvx_variant v = lvx_insn_variant (insn);
+  if (v == LVX_VARIANT_SPECULATE || v == LVX_VARIANT_PRELOAD)
+    /* Already dismissible, so nothing to promote.  */
+    return false;
+
+  FOR_EACH_SUBRTX (iter, array, pat, NONCONST)
+    {
+      const_rtx x = *iter;
+      if (!MEM_P (x))
+	continue;
+      subrtx_iterator::array_type inner;
+      rtx addr = XEXP (x, 0);
+      FOR_EACH_SUBRTX (ait, inner, addr, NONCONST)
+	if (REG_P (*ait) && bitmap_bit_p (bodydef, REGNO (*ait)))
+	  return true;
+    }
+  return false;
+}
+
+/* Promote the loop-variant-address loads of SEQ to their dismissible variant.
+
+   This is not an optimisation: the dependence graph's branch constraint (1)
+   already lets a load cross a conditional branch, so a schedule built on that
+   graph is legal ONLY if every such load cannot fault.  `.s' keeps the cached
+   latency -- it is Dismissible, not uncached -- so promoting changes the
+   emitted mnemonic and nothing the scheduler reasoned about.  Returns the
+   count.  */
+
+static int
+lvx_cms_force_speculative_loads (const auto_vec<rtx_insn *> &seq,
+				 bitmap bodydef)
+{
+  int promoted = 0;
+
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      if (!lvx_cms_speculated_load_p (seq[i], bodydef))
+	continue;
+
+      subrtx_ptr_iterator::array_type array;
+      rtx pat = PATTERN (seq[i]);
+      bool changed = false;
+      FOR_EACH_SUBRTX_PTR (iter, array, &pat, NONCONST)
+	if (MEM_P (**iter)
+	    && MEM_ADDR_SPACE (**iter) == ADDR_SPACE_GENERIC)
+	  {
+	    set_mem_addr_space (**iter, LVX_ADDR_SPACE_SPECULATE);
+	    changed = true;
+	  }
+      if (changed)
+	{
+	  df_insn_rescan (seq[i]);
+	  promoted++;
+	}
+    }
+  return promoted;
+}
+
 /* Delta: the largest iteration distance any arc spans.  This is what replaces
    kvx-unfold.cc's `max_distance = 1; // FIXME' -- that literal was the two-copy
    structure asserting nothing spans more than one instance, which is an
@@ -12106,45 +12186,22 @@ lvx_cms_verify (const auto_vec<rtx_insn *> &seq,
 }
 
 
-/* Decide whether unfolding LOOP can pay, by comparing what one iteration
-   costs today against what two scheduled together could cost.
+/* Build the CMS dependence graph of innermost LOOP over BODY: the body's
+   instructions in chain order into SEQ, the (theta, omega) arcs over them into
+   ARCS -- numbered 0-based over SEQ -- and the intra-iteration dependence depth
+   of each into HEIGHT.  False if the body is not a chain the walk can cover.
 
-   With H the dependence height of the body -- its longest latency path over
-   the intra-iteration arcs -- R the resource bound and K the recurrence
-   bound, one iteration costs about max (H, R) today.  After the body is
-   doubled the second copy cannot start before K, so the pair costs at least
-   max (2R, K + H) and each iteration about half of that.  Requiring the
-   second to be smaller reduces, in both the resource-bound and the
-   dependence-bound case, to
-
-       max (K, R) < H
-
-   which is exactly what the parametric solver returns when seeded with R.
-   The margin then asks that the saving be worth the doubled code.
-
-   The dependence graph is built with the anti- and output dependences that
-   register allocation introduced left out, since the renaming that
-   -munfold-inner-loops implies removes them -- except where it cannot: a
-   tied operand keeps its anti-dependence, and a guarded write or a partial
-   write into a register tuple keeps its output dependence.
-
-   The body is taken in CHAIN order -- from the header along each block's
-   single in-loop successor, which the eligibility gate has established is
-   well defined -- so a multi-block superblock body linearises and the
-   iteration distance of an arc is simply whether it runs forward in that
-   order.  Judging multi-block bodies is the whole point: those are the loops
-   the superblock work exists for.
-
-   One limit, deliberate: only register dependences are seen, so a loop bound
-   by a memory recurrence has its K underestimated and may be unfolded when
-   it should not.  Memory arcs want the scheduler's dependence machinery,
-   which is not set up at this point in reorg.  */
+   Extracted from the unfold's profitability test so CMS can build the graph
+   itself: the two have DIFFERENT candidate sets.  The unfold declines a
+   hardware loop and sends it here, so every doloop -- which is most of what
+   PolyBench is -- reaches CMS and never reached the unfold's probe.  */
 
 static bool
-lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
-				 unsigned insns)
+lvx_cms_build_graph (class loop *loop, basic_block *body,
+		     auto_vec<rtx_insn *> &seq,
+		     auto_vec<lvx_cms_arc> &arcs,
+		     auto_vec<int> &height)
 {
-  auto_vec<rtx_insn *> seq;
   auto_bitmap inloop;
   rtx_insn *insn;
 
@@ -12185,21 +12242,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
   if (n == 0)
     return false;
 
-  /* Node 0 is the solver's root; node i + 1 is SEQ[i].  */
-  lvx_plc plc;
-  for (unsigned i = 0; i <= n; i++)
-    plc.add_node ();
-
-  /* Arcs are recorded as data rather than pushed straight into the solver: the
-     scheduler of step 4 has to walk them, and the solver only stores them.  The
-     order is the construction order, and the solver is fed from this list
-     below, so what it sees is unchanged.  */
-  auto_vec<lvx_cms_arc> arcs;
-  for (unsigned i = 0; i < n; i++)
-    lvx_cms_push_arc (arcs, 0, i + 1, 0, 0);
-
   /* The intra-iteration arcs, kept to compute the dependence height.  */
-  auto_vec<int> height;
   height.safe_grow_cleared (n);
 
   for (unsigned p = 0; p < n; p++)
@@ -12228,7 +12271,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		    int lat = lvx_arc_latency (def_insn, other, REG_DEP_TRUE);
 		    if (q == p)
 		      w = 1;	/* read and written by one insn */
-		    lvx_cms_push_arc (arcs, p + 1, q + 1, lat, w);
+		    lvx_cms_push_arc (arcs, p, q, lat, w);
 		    if (w == 0 && height[q] < height[p] + lat)
 		      height[q] = height[p] + lat;
 		    break;
@@ -12242,7 +12285,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		FOR_EACH_INSN_USE (ref, other)
 		  if (DF_REF_REGNO (ref) == regno)
 		    {
-		      lvx_cms_push_arc (arcs, q + 1, p + 1,
+		      lvx_cms_push_arc (arcs, q, p,
 				   lvx_arc_latency (other, def_insn,
 						    REG_DEP_ANTI),
 				   (p > q) ? 0 : 1);
@@ -12255,7 +12298,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		FOR_EACH_INSN_DEF (ref, other)
 		  if (DF_REF_REGNO (ref) == regno)
 		    {
-		      lvx_cms_push_arc (arcs, p + 1, q + 1,
+		      lvx_cms_push_arc (arcs, p, q,
 				   lvx_arc_latency (def_insn, other,
 						    REG_DEP_OUTPUT),
 				   omega);
@@ -12308,7 +12351,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		lat = lvx_arc_latency (a, b, REG_DEP_ANTI), have = true;
 	      if (have)
 		{
-		  lvx_cms_push_arc (arcs, p + 1, q + 1, lat, 0);
+		  lvx_cms_push_arc (arcs, p, q, lat, 0);
 		  if (height[q] < height[p] + lat)
 		    height[q] = height[p] + lat;
 		}
@@ -12319,19 +12362,19 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	     concurrently, so a distance of one is covered by any value above
 	     one -- what #pragma ivdep and #pragma omp simd leave behind.  The
 	     generic ddg does not read it; this does.  */
-	  if (loop->safelen > 1)
+	  if (loop->safelen > 1 || lvx_cms_assume_ivdep)
 	    continue;
 
 	  if (a_w && b_r)
-	    lvx_cms_push_arc (arcs, p + 1, q + 1, lvx_arc_latency (a, b, REG_DEP_TRUE), 1);
+	    lvx_cms_push_arc (arcs, p, q, lvx_arc_latency (a, b, REG_DEP_TRUE), 1);
 	  else if (a_w && b_w && p != q)
-	    lvx_cms_push_arc (arcs, p + 1, q + 1,
+	    lvx_cms_push_arc (arcs, p, q,
 			 lvx_arc_latency (a, b, REG_DEP_OUTPUT), 1);
 	  else if (a_r && b_w && p != q)
 	    {
-	      lvx_cms_push_arc (arcs, p + 1, q + 1,
+	      lvx_cms_push_arc (arcs, p, q,
 			   lvx_arc_latency (a, b, REG_DEP_ANTI), 1);
-	      lvx_cms_push_arc (arcs, q + 1, p + 1,
+	      lvx_cms_push_arc (arcs, q, p,
 			   lvx_arc_latency (b, a, REG_DEP_TRUE), 1);
 	    }
 	}
@@ -12369,7 +12412,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 
       /* (3) */
       if (prev_branch >= 0)
-	lvx_cms_push_arc (arcs, prev_branch + 1, p + 1, 0, 0);
+	lvx_cms_push_arc (arcs, prev_branch, p, 0, 0);
       else
 	first_branch = (int) p;
       prev_branch = (int) p;
@@ -12392,7 +12435,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	  /* (1) */
 	  if (lvx_mem_write_insn_p (seq[q])
 	      || volatile_insn_p (PATTERN (seq[q])))
-	    lvx_cms_push_arc (arcs, p + 1, q + 1, 0, w);
+	    lvx_cms_push_arc (arcs, p, q, 0, w);
 
 	  /* (2) */
 	  if (exitbb == NULL)
@@ -12401,7 +12444,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	    if (DF_REF_REGNO (def) < FIRST_PSEUDO_REGISTER
 		&& bitmap_bit_p (df_get_live_in (exitbb), DF_REF_REGNO (def)))
 	      {
-		lvx_cms_push_arc (arcs, p + 1, q + 1, 0, w);
+		lvx_cms_push_arc (arcs, p, q, 0, w);
 		break;
 	      }
 	}
@@ -12409,7 +12452,70 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 
   /* (3) across the back edge: the last branch still precedes the first.  */
   if (first_branch >= 0 && prev_branch > first_branch)
-    lvx_cms_push_arc (arcs, prev_branch + 1, first_branch + 1, 0, 1);
+    lvx_cms_push_arc (arcs, prev_branch, first_branch, 0, 1);
+
+  return true;
+}
+
+/* Decide whether unfolding LOOP can pay, by comparing what one iteration
+   costs today against what two scheduled together could cost.
+
+   With H the dependence height of the body -- its longest latency path over
+   the intra-iteration arcs -- R the resource bound and K the recurrence
+   bound, one iteration costs about max (H, R) today.  After the body is
+   doubled the second copy cannot start before K, so the pair costs at least
+   max (2R, K + H) and each iteration about half of that.  Requiring the
+   second to be smaller reduces, in both the resource-bound and the
+   dependence-bound case, to
+
+       max (K, R) < H
+
+   which is exactly what the parametric solver returns when seeded with R.
+   The margin then asks that the saving be worth the doubled code.
+
+   The dependence graph is built with the anti- and output dependences that
+   register allocation introduced left out, since the renaming that
+   -munfold-inner-loops implies removes them -- except where it cannot: a
+   tied operand keeps its anti-dependence, and a guarded write or a partial
+   write into a register tuple keeps its output dependence.
+
+   The body is taken in CHAIN order -- from the header along each block's
+   single in-loop successor, which the eligibility gate has established is
+   well defined -- so a multi-block superblock body linearises and the
+   iteration distance of an arc is simply whether it runs forward in that
+   order.  Judging multi-block bodies is the whole point: those are the loops
+   the superblock work exists for.
+
+   One limit, deliberate: only register dependences are seen, so a loop bound
+   by a memory recurrence has its K underestimated and may be unfolded when
+   it should not.  Memory arcs want the scheduler's dependence machinery,
+   which is not set up at this point in reorg.  */
+
+static bool
+lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
+				 unsigned insns)
+{
+  auto_vec<rtx_insn *> seq;
+  auto_vec<lvx_cms_arc> arcs;
+  auto_vec<int> height;
+  rtx_insn *insn;
+
+  if (!lvx_cms_build_graph (loop, body, seq, arcs, height))
+    {
+      if (dump_file)
+	fprintf (dump_file, ";; lvx unfold: loop %d declined, body is not"
+		 " a chain the analysis can walk\n", loop->num);
+      return false;
+    }
+  unsigned n = seq.length ();
+
+  /* The solver wants node 0 as its root and node i + 1 as SEQ[i], with a root
+     arc to every node so each is reachable.  */
+  lvx_plc plc;
+  for (unsigned i = 0; i <= n; i++)
+    plc.add_node ();
+  for (unsigned i = 0; i < n; i++)
+    plc.add_arc (0, i + 1, 0, 0);
 
   /* H, the span of one iteration with no overlap.  */
   int h = 1;
@@ -12426,7 +12532,8 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
   r = r ? r : 1;
 
   for (unsigned i = 0; i < arcs.length (); i++)
-    plc.add_arc (arcs[i].src, arcs[i].dst, arcs[i].theta, arcs[i].omega);
+    plc.add_arc (arcs[i].src + 1, arcs[i].dst + 1, arcs[i].theta,
+		 arcs[i].omega);
 
   if (plc.solve (1) != LVX_PLC_SOLVED)
     {
@@ -12463,12 +12570,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	 root and node I + 1 is SEQ[I].  The scheduler wants a 0-based graph
 	 over SEQ and has no use for the root arcs, which exist only to make
 	 every node reachable for the parametric solve.  */
-      auto_vec<lvx_cms_arc> sarcs;
-      for (unsigned a = 0; a < arcs.length (); a++)
-	if (arcs[a].src != 0 && arcs[a].dst != 0)
-	  lvx_cms_push_arc (sarcs, arcs[a].src - 1, arcs[a].dst - 1,
-			    arcs[a].theta, arcs[a].omega);
-
+      const auto_vec<lvx_cms_arc> &sarcs = arcs;
       int delta = lvx_cms_delta (sarcs);
       int lower = MAX (k, r);
       auto_vec<int> sigma;
@@ -12503,10 +12605,46 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 		 last_bad ? " -- converged but unverified: " : "",
 		 last_bad ? last_bad : "");
       else
-	fprintf (dump_file, ";; lvx cms: loop %d converged II=%d lower=%d"
-		 " excess=%d delta=%d, %u nodes %u arcs -- VERIFIED\n",
-		 loop->num, found, lower, found - lower, delta,
-		 seq.length (), sarcs.length ());
+	{
+	  /* The telling figure is not II against its lower bound but II
+	     against ONE ITERATION'S makespan: nstages = ceil (makespan / II)
+	     is how many iterations are in flight, and nstages <= 1 means
+	     pipelining buys nothing however tight the II.  */
+	  int lo = sigma[0], hi = sigma[0];
+	  for (unsigned i = 1; i < sigma.length (); i++)
+	    {
+	      if (lo > sigma[i])
+		lo = sigma[i];
+	      if (hi < sigma[i])
+		hi = sigma[i];
+	    }
+	  int makespan = hi - lo + 1;
+	  int nstages = (makespan + found - 1) / found;
+
+	  /* Loads the schedule relies on being promoted to .s/.us.  */
+	  auto_bitmap bodydef;
+	  for (unsigned i = 0; i < seq.length (); i++)
+	    {
+	      df_ref def;
+	      FOR_EACH_INSN_DEF (def, seq[i])
+		bitmap_set_bit (bodydef, DF_REF_REGNO (def));
+	    }
+	  int spec = 0;
+	  for (unsigned i = 0; i < seq.length (); i++)
+	    if (lvx_cms_speculated_load_p (seq[i], bodydef))
+	      spec++;
+
+	  if (lvx_cms_force_spec_loads && spec)
+	    spec = -lvx_cms_force_speculative_loads (seq, bodydef);
+
+	  fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d"
+		   " makespan=%d nstages=%d delta=%d, %u nodes %u arcs,"
+		   " %d loads %s .s -- %s\n",
+		   loop->num, found, lower, found - lower, makespan, nstages,
+		   delta, seq.length (), sarcs.length (),
+		   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
+		   nstages > 1 ? "PIPELINES" : "no gain");
+	}
     }
 
   int floor_ii = MAX (MAX (k, r), h);

@@ -114,3 +114,11 @@ Target RejectNegative Joined UInteger Var(lvx_unfold_min_gain) Init(10) Optimiza
 mcms-probe
 Target Var(lvx_cms_probe) Init(0) Optimization
 Dump the convergent-modulo-scheduling probe for each measured inner loop.
+
+mcms-force-speculative-loads
+Target Var(lvx_cms_force_spec_loads) Init(0) Optimization
+Emit loop-variant-address loads in pipelined inner loops as their dismissible variant.
+
+mcms-assume-ivdep
+Target Var(lvx_cms_assume_ivdep) Init(0) Optimization
+Assume every inner loop carries #pragma GCC ivdep; for measurement only, not a legal transformation.
