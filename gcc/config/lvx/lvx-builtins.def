@@ -534,7 +534,7 @@ LVX_BUILTIN_DIRECT   (waitit, UINT64_FTYPE_UINT64,, true) // Control
    -- there is no 512-bit stsuhv/stsuwx/stsudo, and the patterns builtin.md
    still carries for those have nothing that reaches them.  STSUD and STSUDP
    were restored to the ISA on 2026-10-09; stsud is on both cores, like stsuw,
-   since STSUD is not under _LVX_V2_.  */
+   since STSUD is not under _LVX_2_.  */
 LVX_BUILTIN_DIRECT   (stsuho, V8HI_FTYPE_V8HI_V8HI,, lvx_2) // Vector lvx-1
 LVX_BUILTIN_DIRECT   (stsuhx, V16HI_FTYPE_V16HI_V16HI,, lvx_2) // Vector lvx-1
 LVX_BUILTIN_DIRECT   (stsuw, UINT32_FTYPE_UINT32_UINT32,, true) // Scalar

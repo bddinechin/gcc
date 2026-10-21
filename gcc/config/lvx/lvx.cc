@@ -6064,7 +6064,7 @@ lvx_vector_mode_supported_p (enum machine_mode mode)
     return true;
 
   /* SIMD is lvx-2 only: every packed arithmetic instruction -- addho, addwq,
-     adddp, compdp and the rest -- is tagged Opcode-lvx_v2 in the ISA, and the
+     adddp, compdp and the rest -- is tagged Opcode-lvx_2 in the ISA, and the
      patterns that emit them are gated on LVX_2.  Claiming the modes anyway
      would let the middle end form vector values there is no pattern to
      operate on, so an explicit vector_size type ICEs with "unrecognizable
@@ -11789,7 +11789,7 @@ lvx_insn_has_tied_operand_p (rtx_insn *insn)
    - Integer arithmetic, logical, shift, compare, move and conditional move are
      unconditionally safe, and so are the dividers: divmod* returns zero on a
      zero divisor rather than trapping, which is why -mdivmod0-trap exists as a
-     separate check.  Of 1741 lvx_v2 opcodes only 273 carry a THROW in their
+     separate check.  Of 1741 lvx_2 opcodes only 273 carry a THROW in their
      Behavior and 210 of those are the atomics.
    - A load only in its dismissible variant, `.s' or `.us' -- Modifier.yml
      marks both Dismissible.  THROW is NOT the test here: a plain load carries

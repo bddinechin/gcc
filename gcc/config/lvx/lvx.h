@@ -41,14 +41,12 @@
       if (lvx_arch_name == LVX_ARCH_LVX_1)                                     \
 	{                                                                      \
 	  builtin_assert ("machine=lvx-1");                                    \
-	  builtin_define ("__lvxarch_lvx_1");                                  \
 	  builtin_define ("__lvx_1__");                                        \
 	  builtin_define ("__LVX_64__");                                       \
 	}                                                                      \
       if (lvx_arch_name == LVX_ARCH_LVX_2)                                     \
 	{                                                                      \
 	  builtin_assert ("machine=lvx-2");                                    \
-	  builtin_define ("__lvxarch_lvx_2");                                  \
 	  builtin_define ("__lvx_2__");                                        \
 	  builtin_define ("__LVX_64__");                                       \
 	}                                                                      \

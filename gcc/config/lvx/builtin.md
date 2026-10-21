@@ -2658,7 +2658,7 @@
 )
 
 ;; FMULWC is the only complex FP multiply the ISA has, and it is 64-bit --
-;; one complex float pair, on lvx_v1.  There is no fmulwcp, so
+;; one complex float pair, on lvx_1.  There is no fmulwcp, so
 ;; HAVE_LVX_CPLX_MULT_V4SF is correctly (0) and the 256-bit aggregate has to
 ;; come down in four pieces rather than two.
 
@@ -3684,7 +3684,7 @@
   [(set (match_operand:DF 0 "register_operand" "=r")
         (unspec:DF [(match_operand:SF 1 "register_operand" "r")
                     (match_operand 2 "" "")] UNSPEC_FWIDEN))]
-  ;; not LVX_2: fwidenwd is a scalar SF->DF widen and is on lvx_v1 too.
+  ;; not LVX_2: fwidenwd is a scalar SF->DF widen and is on lvx_1 too.
   ""
   "fwidenwd%2 %0 = %1"
   [(set_attr "type" "alu")

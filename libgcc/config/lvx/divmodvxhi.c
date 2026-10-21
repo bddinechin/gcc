@@ -52,7 +52,7 @@
 #include "divmodtypes.h"
 
 /* SIMD and the STSU family are lvx-2 only.  */
-#if defined(__lvxarch_lvx_2)
+#if defined(__lvx_2__)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -200,4 +200,4 @@ __divmodv16hi4 (int16x16_t a, int16x16_t b, int16x16_t *c)
   return __builtin_lvx_cat256 (qlo, qhi);
 }
 
-#endif//__lvxarch_lvx_2
+#endif//__lvx_2__

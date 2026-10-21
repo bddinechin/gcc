@@ -61,7 +61,7 @@ GCC_12.0.0 {
   __modv16hi3
 }
 
-%if defined(__lvxarch_lvx_1)
+%if defined(__lvx_1__)
 %inherit GCC_12.0.0 GCC_7.0.0
 GCC_12.0.0 {
   __udivv16qi3

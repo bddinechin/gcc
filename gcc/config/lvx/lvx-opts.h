@@ -28,8 +28,8 @@ enum lvx_arch_type
 };
 
 /* lvx-2 is a strict extension of lvx-1: every lvx-1 instruction exists on
-   lvx-2 (checked against opcodes/lvx-opc.c -- 0 mnemonics are lvx_v1-only,
-   293 are lvx_v2-only).  So LVX is "any LVX", LVX_1 means "exactly lvx-1"
+   lvx-2 (checked against opcodes/lvx-opc.c -- 0 mnemonics are lvx_1-only,
+   293 are lvx_2-only).  So LVX is "any LVX", LVX_1 means "exactly lvx-1"
    and LVX_2 gates everything the SIMD surface needs.  */
 #define LVX (1)
 #define LVX_1 (lvx_arch_name == LVX_ARCH_LVX_1)
@@ -56,10 +56,10 @@ enum lvx_arch_type
 #define HAVE_LVX_MULD_ONLY_I32_IMMEDIATE (1)
 /* COMPD and CMOVED take one immediate form, upper27_lower5, and they take it
    on both cores -- Opcode.table has COMPD/CMOVED _registerY_ and
-   _upper27_lower5_ and nothing wider for either lvx_v1 or lvx_v2.  Gating
+   _upper27_lower5_ and nothing wider for either lvx_1 or lvx_2.  Gating
    these on LVX_1 let -march=lvx-2 select the 64-bit-immediate alternatives,
-   which gas rejects ("expected one of [Immediate_lvx_v2_wrapped32,
-   RegClass_lvx_v2_singleReg]").  */
+   which gas rejects ("expected one of [Immediate_lvx_2_wrapped32,
+   RegClass_lvx_2_singleReg]").  */
 #define HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE (1)
 #define HAVE_LVX_COMP_SIDI_ALL_NALL (0)
 #define HAVE_LVX_COMPD_MAX_IMMEDIATE_I32 (1)

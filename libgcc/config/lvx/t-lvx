@@ -2,7 +2,7 @@ HOST_LIBGCC2_CFLAGS += -ffunction-sections -fdata-sections
 
 # Nothing to exclude from soft-fp any more.  divsf3.c and divdf3.c used to
 # replace the soft-fp versions with a Newton-Raphson sequence, but the backend
-# expands divsf3/divdf3/divhf3 straight to fdivw/fdivd/fdivh (all lvx_v1), so
+# expands divsf3/divdf3/divhf3 straight to fdivw/fdivd/fdivh (all lvx_1), so
 # no library routine is reached at all.  Same for square root now that
 # sqrt<mode>2 emits fsqrth/fsqrtw/fsqrtd.
 softfp_func_exclude :=
@@ -35,7 +35,7 @@ softfp_exclude_libgcc2 := n
 # correct (see below) and compiles and assembles clean at -march=lvx-2.  It is
 # kept so the measurement can be repeated if the STSU latency or the LITE slot
 # count ever changes.  What was wrong with it, and is now fixed:
-# an inverted `#if defined(__lvxarch_lvx_1)` guard that compiled SIMD code on
+# an inverted `#if defined(__lvx_1__)` guard that compiled SIMD code on
 # the core without SIMD and nothing on the core with it; a branch that widened
 # to FOUR times the lane width and called STSUDO (four STSUDP each); 256-bit
 # paths that formed 512-bit values with no register home; and
@@ -93,7 +93,7 @@ softfp_exclude_libgcc2 := n
 # __divmodv16qi4 and divmodvxqi.c supplies the other five, divmodvxhi.c defines
 # all TWELVE hi symbols -- div/mod/udiv/umod and divmod/udivmod, at v8hi and
 # v16hi -- so divv.c's six hi regions (three prototype blocks and three
-# definition blocks) all carry the !__lvxarch_lvx_2 guard now.  Checked both
+# definition blocks) all carry the !__lvx_2__ guard now.  Checked both
 # ways: on lvx-2 divv.o defines none of the twelve, on lvx-1 it still defines
 # all of them.  The same would apply to its v4si block if divmodvxsi.c were
 # ever wanted, which on these numbers it is not.
@@ -110,7 +110,7 @@ softfp_exclude_libgcc2 := n
 # divmoddi.c and divmodsi.c are retired: they implemented 32- and 64-bit
 # divide/modulo in software, by Newton-Raphson refinement of a reciprocal
 # seed, and LVX has the operation in hardware -- divmodw, divmodd, divmoduw
-# and divmodud, all on lvx_v1.  They were also the last users of
+# and divmodud, all on lvx_1.  They were also the last users of
 # __builtin_lvx_frec*, which no longer exists (LVX has only the seed form,
 # fsrec*).  The div/mod expanders no longer call out to them: their
 # optimize_size paths, the only ones that did, are gone.

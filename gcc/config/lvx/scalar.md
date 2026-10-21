@@ -3257,7 +3257,7 @@
 ;; divmodw / divmoduw / divmodd / divmodud compute the quotient and the
 ;; remainder in one FULL-slot instruction, writing both into a 128-bit
 ;; register pair: quotient in the low 64 bits, remainder in the high 64.
-;; All four are on lvx_v1.
+;; All four are on lvx_1.
 ;;
 ;; The 32-bit forms take the signextw modifier.  The scalar patterns use .sx
 ;; so the SImode results are sign-extended the way sub-word values are kept in
@@ -3367,7 +3367,7 @@
 
 ;; ---- FSQRT*: hardware square root ------------------------------------------
 ;;
-;; fsqrth / fsqrtw / fsqrtd, all on lvx_v1, take a floatmode rounding modifier
+;; fsqrth / fsqrtw / fsqrtd, all on lvx_1, take a floatmode rounding modifier
 ;; (".rn", ".rz", ... or "" for the mode in $cs).  These replace the previous
 ;; sqrtsf2/sqrthf2, which were guarded by flag_reciprocal_math and computed
 ;; x * rsqrt_seed(x) -- an approximation, and only with fast-math; without it

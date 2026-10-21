@@ -51,7 +51,7 @@
 
 #include "divmodtypes.h"
 
-#if defined(__lvxarch_lvx_2)
+#if defined(__lvx_2__)
 ////////////////////////////////////////////////////////////////////////////////
 
 static inline uint8x32_t
@@ -176,5 +176,5 @@ __modv32qi3 (int8x32_t a, int8x32_t b)
 					    __builtin_lvx_high128 (b)));
 }
 
-#endif//__lvxarch_lvx_2
+#endif//__lvx_2__
 
