@@ -11443,6 +11443,16 @@ lvx_superblock_layout_loop (class loop *loop)
   return changed;
 }
 
+/* True if INSN is a doloop_end: the decrement-test-branch that reorg_loops
+   will consume into a LOOPDO, leaving only a `# loopdo end' comment behind.  */
+static bool
+lvx_doloop_end_p (rtx_insn *insn)
+{
+  return (JUMP_P (insn)
+	  && condjump_in_parallel_p (insn)
+	  && doloop_condition_get (insn) != NULL_RTX);
+}
+
 /* True if LOOP is already a hardware loop, which reorg_loops will put a
    LOOPDO on.  Unfolding one of those would mean halving the trip count and
    peeling the odd iteration; a loop without one needs neither, because the
@@ -11459,13 +11469,8 @@ lvx_loop_has_doloop_p (class loop *loop)
 
   body = get_loop_body (loop);
   for (unsigned i = 0; i < loop->num_nodes && !found; i++)
-    {
-      rtx_insn *end = BB_END (body[i]);
-      if (JUMP_P (end)
-	  && condjump_in_parallel_p (end)
-	  && doloop_condition_get (end) != NULL_RTX)
-	found = true;
-    }
+    if (lvx_doloop_end_p (BB_END (body[i])))
+      found = true;
   free (body);
   return found;
 }
@@ -11982,11 +11987,73 @@ lvx_cms_delta (const auto_vec<lvx_cms_arc> &arcs)
    target with no counted resources, but where the counters exist they give the
    exact subset bound instead of an order-dependent greedy fit.  */
 
+/* Accumulate INSN's demand on a bundle for CMS, which is the machine
+   description's answer for everything EXCEPT a doloop_end.
+
+   A doloop_end carries no `issue' attribute, so it takes the default, which is
+   `all' -- the saturating vector that claims every function unit and so an
+   entire exclusive bundle.  As a description of the code that is emitted that
+   is badly wrong in one direction: the instruction prints `# loopdo end', a
+   comment, and the loop engine does the decrement and the branch for free.  As
+   a description of what CMS would emit it is wrong in the other, because a
+   modulo schedule cannot keep the hardware loop as it stands: the trip count
+   changes by the stages in flight, and a prolog and epilog need somewhere to
+   branch, which an implicit loopback has not got.
+
+   So the honest charge is neither `all' nor zero but the decrement-test-branch
+   the hardware loop stands for: one ALU_TINY for `addd $r = $r, -1' and one
+   BCU reading it for `cb.dnez $r? .L'.  That is what the RTL already says --
+   the pattern is a PARALLEL of exactly that branch and that decrement, which
+   is why the register dependences were right all along and only the resource
+   charge was not.
+
+   It is conservative by one branch in K, and deliberately.  With the unroll
+   factor a power of two the k-unrolled kernel's own loopback converts back to
+   a hardware loop cheaply, the trip-count division being a shift, while the
+   other K - 1 exits inverted become early exits from the kernel and stay real
+   branches.  So one iteration in K pays nothing and K - 1 pay in full, and
+   charging every iteration in full overstates by 1/K -- which is the right
+   direction for a bound, and vanishes as K grows.  */
+
+static void
+lvx_cms_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
+{
+  if (!lvx_doloop_end_p (insn))
+    {
+      lvx_sched_resources_add (resources, insn);
+      return;
+    }
+
+  const struct lvx_issue_resources *dec = &lvx_issue_table[ISSUE_TINY];
+  const struct lvx_issue_resources *br = &lvx_issue_table[ISSUE_BCU_BRRP];
+
+  resources->insn_count++;
+  resources->ninsns_count += dec->ninsns + br->ninsns;
+#define LVX_CMS_DOLOOP_ADD(R) resources->R##_count += dec->R + br->R;
+  LVX_ISSUE_RESOURCES (LVX_CMS_DOLOOP_ADD)
+#undef LVX_CMS_DOLOOP_ADD
+}
+
+/* INSN's processing time in cycles: how long after its issue date its result
+   is ready, which is what a makespan runs to.  Floored at one cycle because an
+   instruction occupies its issue cycle whatever the DFA says, and some say
+   zero -- a doloop_end among them, whose `all'/alu attribute pair matches no
+   reservation at all.  A mapped-back decrement-test-branch is a branch, and a
+   branch feeds no in-iteration consumer, so one cycle is its whole cost.  */
+
+static int
+lvx_cms_latency (rtx_insn *insn)
+{
+  if (lvx_doloop_end_p (insn))
+    return 1;
+  return MAX (1, insn_default_latency (insn));
+}
+
 static bool
 lvx_cms_slot_fits_p (const struct lvx_sched_resources *slot, rtx_insn *insn)
 {
   struct lvx_sched_resources trial = *slot;
-  lvx_sched_resources_add (&trial, insn);
+  lvx_cms_resources_add (&trial, insn);
 
   if (trial.ninsns_count > (unsigned) lvx_sched_issue_rate ())
     return false;
@@ -12116,7 +12183,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	    break;
 	  when++;
 	}
-      lvx_sched_resources_add (&cyc[when], seq[bi]);
+      lvx_cms_resources_add (&cyc[when], seq[bi]);
       date[(unsigned) best] = when;
       placed++;
 
@@ -12193,7 +12260,7 @@ lvx_cms_verify (const auto_vec<rtx_insn *> &seq,
       int at = ((sigma[i] % ii) + ii) % ii;
       if (!lvx_cms_slot_fits_p (&slot[at], seq[i]))
 	return "modulo reservation overflows";
-      lvx_sched_resources_add (&slot[at], seq[i]);
+      lvx_cms_resources_add (&slot[at], seq[i]);
     }
   return NULL;
 }
@@ -12528,23 +12595,21 @@ lvx_cms_bounds (class loop *loop, basic_block *body,
   /* M, the MAKESPAN of one iteration with no overlap: the last instruction's
      start date plus its own processing time, not plus one.  HEIGHT[i] is a
      start date, so a schedule is finished when every instruction has had its
-     latency, and insn_default_latency is what that latency is -- an issue slot
-     is what an instruction takes, but a multi-cycle result is not ready when
-     the slot closes.  Taking + 1 instead measured the span as if every
-     instruction retired in the cycle it issued, which understates any body
-     ending in a load or a multiply.  Floored at one cycle because an
-     instruction occupies its issue cycle whatever the DFA says its latency
-     is, and some are zero.  */
+     processing time, which is what lvx_cms_latency gives -- an issue slot is
+     what an instruction takes, but a multi-cycle result is not ready when the
+     slot closes.  Taking + 1 instead measured the span as if every instruction
+     retired in the cycle it issued, which understates any body ending in a
+     load, a multiply or a reduction's FP add.  */
   int m = 1;
   for (unsigned i = 0; i < n; i++)
-    m = MAX (m, height[i] + MAX (1, insn_default_latency (seq[i])));
+    m = MAX (m, height[i] + lvx_cms_latency (seq[i]));
 
   /* R, from the machine description.  */
   struct lvx_sched_resources resources;
   memset (&resources, 0, sizeof (resources));
   for (unsigned i = 0; i < loop->num_nodes; i++)
     FOR_BB_INSNS (body[i], insn)
-      lvx_sched_resources_add (&resources, insn);
+      lvx_cms_resources_add (&resources, insn);
   int r = (int) lvx_sched_resources_full_bundles (&resources);
   r = r ? r : 1;
 
@@ -12658,10 +12723,10 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      path ends in an FP add.  It reported a reduction at II=4 with a 7-cycle
      iteration as span=4, hence nstages=1 and `no gain', when two iterations
      are in fact in flight.  */
-  int lo = sigma[0], hi = sigma[0] + MAX (1, insn_default_latency (seq[0]));
+  int lo = sigma[0], hi = sigma[0] + lvx_cms_latency (seq[0]);
   for (unsigned i = 1; i < sigma.length (); i++)
     {
-      int done = sigma[i] + MAX (1, insn_default_latency (seq[i]));
+      int done = sigma[i] + lvx_cms_latency (seq[i]);
       if (lo > sigma[i])
 	lo = sigma[i];
       if (hi < done)
