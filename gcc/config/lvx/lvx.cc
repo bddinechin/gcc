@@ -11942,7 +11942,11 @@ lvx_cms_force_speculative_loads (const auto_vec<rtx_insn *> &seq,
   return promoted;
 }
 
-/* Delta: the largest iteration distance any arc spans.  This is what replaces
+/* The furthest iteration distance the scheduler keeps copies for.  Beyond it an
+   arc is slack by arithmetic; see lvx_cms_delta.  */
+#define LVX_CMS_MAX_DELTA 8
+
+/* Delta: the largest iteration distance any arc spans that can bind.  This is what replaces
    kvx-unfold.cc's `max_distance = 1; // FIXME' -- that literal was the two-copy
    structure asserting nothing spans more than one instance, which is an
    artefact of having two physical copies rather than anything CMS requires.
@@ -11955,6 +11959,15 @@ lvx_cms_delta (const auto_vec<lvx_cms_arc> &arcs)
   for (unsigned i = 0; i < arcs.length (); i++)
     {
       HOST_WIDE_INT w = arcs[i].omega < 0 ? -arcs[i].omega : arcs[i].omega;
+      if (w > LVX_CMS_MAX_DELTA)
+	/* An arc reaching farther than the window cannot bind -- its
+	   requirement theta - omega * II is already hugely negative -- so it
+	   must not inflate the window itself.  This is the rule that a
+	   dependence farther away than the iterations in flight may be
+	   dropped, applied at the window rather than at a stage count the
+	   scheduler does not know until it has finished.  A safelen of INT_MAX
+	   from #pragma GCC ivdep arrives here.  */
+	continue;
       if (delta < (int) w)
 	delta = (int) w;
     }
@@ -12200,8 +12213,13 @@ static bool
 lvx_cms_build_graph (class loop *loop, basic_block *body,
 		     auto_vec<rtx_insn *> &seq,
 		     auto_vec<lvx_cms_arc> &arcs,
-		     auto_vec<int> &height)
+		     auto_vec<int> &height,
+		     int *dropped_safelen)
 {
+  /* The weakest safelen of any memory arc dropped below, or 0 if none was.
+     The caller must check it against the converged NSTAGES: dropping is sound
+     only while safelen >= nstages.  */
+  *dropped_safelen = 0;
   auto_bitmap inloop;
   rtx_insn *insn;
 
@@ -12357,25 +12375,54 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		}
 	    }
 
-	  /* Across the back edge, unless the loop says there is no dependence
-	     between consecutive iterations.  loop->safelen is how many may run
-	     concurrently, so a distance of one is covered by any value above
-	     one -- what #pragma ivdep and #pragma omp simd leave behind.  The
-	     generic ddg does not read it; this does.  */
-	  if (loop->safelen > 1 || lvx_cms_assume_ivdep)
-	    continue;
+	  /* Across the back edge.  loop->safelen is how many iterations may run
+	     concurrently without a memory dependence binding, so a dependence
+	     that exists at all cannot bind NEARER than SAFELEN iterations away:
+	     its distance is SAFELEN, not one.  #pragma GCC ivdep leaves INT_MAX
+	     there and #pragma omp simd safelen(n) leaves n.  The generic ddg
+	     does not read it; this does.
+
+	     Carrying it as the distance is both correct and self-limiting,
+	     which is why there is no separate rule dropping the arc: the
+	     requirement is theta - omega * II, so a large distance makes that
+	     hugely negative and the arc simply never binds.  An arc farther
+	     away than the iterations in flight is slack by arithmetic rather
+	     than by a special case.
+
+	     Dropping the arc outright -- which this did until 2026-10-21 -- is
+	     WRONG for any finite safelen.  A dependence at distance 4 in a loop
+	     scheduled with six stages overlapping does bind, and skipping it
+	     would have produced a schedule that violates it.  */
+	  int sl = lvx_cms_assume_ivdep ? INT_MAX
+		   : (loop->safelen > 1 ? loop->safelen : 1);
+
+	  if (sl > LVX_CMS_MAX_DELTA)
+	    /* Farther away than the iterations this scheduler ever keeps in
+	       flight, so it cannot bind and is dropped rather than carried as
+	       a huge distance -- which would be arcs that never bind, and
+	       INT_MAX arithmetic through theta - omega * II.  Soundness is not
+	       assumed: the weakest dropped safelen is reported out, and the
+	       caller rejects the schedule unless safelen >= nstages.  */
+	    {
+	      if (*dropped_safelen == 0 || *dropped_safelen > sl)
+		*dropped_safelen = sl;
+	      continue;
+	    }
+
+	  HOST_WIDE_INT mw = sl;
 
 	  if (a_w && b_r)
-	    lvx_cms_push_arc (arcs, p, q, lvx_arc_latency (a, b, REG_DEP_TRUE), 1);
+	    lvx_cms_push_arc (arcs, p, q,
+			 lvx_arc_latency (a, b, REG_DEP_TRUE), mw);
 	  else if (a_w && b_w && p != q)
 	    lvx_cms_push_arc (arcs, p, q,
-			 lvx_arc_latency (a, b, REG_DEP_OUTPUT), 1);
+			 lvx_arc_latency (a, b, REG_DEP_OUTPUT), mw);
 	  else if (a_r && b_w && p != q)
 	    {
 	      lvx_cms_push_arc (arcs, p, q,
-			   lvx_arc_latency (a, b, REG_DEP_ANTI), 1);
+			   lvx_arc_latency (a, b, REG_DEP_ANTI), mw);
 	      lvx_cms_push_arc (arcs, q, p,
-			   lvx_arc_latency (b, a, REG_DEP_TRUE), 1);
+			   lvx_arc_latency (b, a, REG_DEP_TRUE), mw);
 	    }
 	}
     }
@@ -12500,7 +12547,8 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
   auto_vec<int> height;
   rtx_insn *insn;
 
-  if (!lvx_cms_build_graph (loop, body, seq, arcs, height))
+  int dropped_safelen = 0;
+  if (!lvx_cms_build_graph (loop, body, seq, arcs, height, &dropped_safelen))
     {
       if (dump_file)
 	fprintf (dump_file, ";; lvx unfold: loop %d declined, body is not"
@@ -12621,6 +12669,12 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	  int makespan = hi - lo + 1;
 	  int nstages = (makespan + found - 1) / found;
 
+	  /* The drop rule, checked rather than assumed: a memory dependence
+	     dropped at distance SAFELEN is only absent from the schedule if
+	     iterations k and k + safelen never overlap, which needs
+	     safelen >= nstages.  */
+	  bool drop_ok = (dropped_safelen == 0 || dropped_safelen >= nstages);
+
 	  /* Loads the schedule relies on being promoted to .s/.us.  */
 	  auto_bitmap bodydef;
 	  for (unsigned i = 0; i < seq.length (); i++)
@@ -12638,12 +12692,13 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
 	    spec = -lvx_cms_force_speculative_loads (seq, bodydef);
 
 	  fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d"
-		   " makespan=%d nstages=%d delta=%d, %u nodes %u arcs,"
+		   " makespan=%d nstages=%d delta=%d safelen=%d, %u nodes %u arcs,"
 		   " %d loads %s .s -- %s\n",
 		   loop->num, found, lower, found - lower, makespan, nstages,
-		   delta, seq.length (), sarcs.length (),
+		   delta, (int) loop->safelen, seq.length (), sarcs.length (),
 		   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
-		   nstages > 1 ? "PIPELINES" : "no gain");
+		   !drop_ok ? "UNSOUND: dropped safelen below nstages"
+		   : nstages > 1 ? "PIPELINES" : "no gain");
 	}
     }
 
