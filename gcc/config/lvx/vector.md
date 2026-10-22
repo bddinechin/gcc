@@ -4433,6 +4433,21 @@
     rtx rm = gen_rtx_CONST_STRING (VOIDmode, "");
     rtx rn = gen_rtx_CONST_STRING (VOIDmode, ".rn");
     rtx a = operands[1], b = operands[2];
+
+    /* Operand 1's predicate is register_float1_operand, which accepts the
+       constant 1.0 vector as well as a register so that a reciprocal can be
+       recognised here.  Every gen_lvx_* below wants a REGISTER, and these are
+       unvalidated calls -- nothing between here and the vregs pass calls
+       extract_insn on them -- so a constant must be loaded first or it reaches
+       vregs as an unrecognizable insn.  `1.0f / b[i]' under -freciprocal-math
+       did exactly that.
+
+       The VXDF expander below has never had this bug because it reaches its
+       multiply through gen_mul<mode>3, an EXPANDER, which legalises its own
+       operands.  That is the whole of the float-versus-double asymmetry: the
+       float path hand-builds the insns and so owns their operand legality.  */
+    if (!register_operand (a, <MODE>mode))
+      a = force_reg (<MODE>mode, a);
     /* No unguarded 1.0/b shortcut.  frec*, an exact reciprocal, is not an LVX
        instruction -- the fdiv* instructions generalise it -- but only at scalar
        width, so there is nothing exact to use here.  fsrec* is a *seed*, so
