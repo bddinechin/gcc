@@ -9335,6 +9335,8 @@ lvx_sched_set_sched_flags (struct spec_info_def *spec_info)
 #undef TARGET_SCHED_CAN_SPECULATE_INSN
 #define TARGET_SCHED_CAN_SPECULATE_INSN hook_bool_rtx_insn_true
 
+static void lvx_cms_probe_ddg (struct ddg *, int);
+
 static int
 lvx_sched_sms_res_mii (struct ddg *g)
 {
@@ -9348,7 +9350,18 @@ lvx_sched_sms_res_mii (struct ddg *g)
     }
 
   unsigned full_bundles = lvx_sched_resources_full_bundles (&resources);
-  return full_bundles ? full_bundles : 1;
+  int r = full_bundles ? (int) full_bundles : 1;
+
+  /* The comparison against SMS, run from the same graph.  This hook is the one
+     place a target is handed the ddg, once per loop, before scheduling -- which
+     is exactly the input and the moment the convergent scheduler needs, so
+     kvx-unfold.cc used it the same way.  A piggyback rather than a design: the
+     hook's job is to answer ResMII, and the probe is a side effect of being
+     called with the right argument.  */
+  if (dump_file && lvx_cms_probe)
+    lvx_cms_probe_ddg (g, r);
+
+  return r;
 }
 
 #undef TARGET_SCHED_SMS_RES_MII
@@ -13793,6 +13806,141 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	  }
       fprintf (dump_file, "\n");
     }
+}
+
+/* Run the convergent scheduler over SMS's OWN dependence graph, so the two
+   schedulers can be compared from identical input.  R is what this target just
+   answered for ResMII, and is reused rather than recomputed: the point of
+   feeding one graph to both is that the bounds are the same by construction,
+   and recomputing R from the ddg with the CMS resource model would reintroduce
+   the one difference worth eliminating.
+
+   The conversion is mechanical because a ddg node IS an insn and a ddg edge
+   already carries exactly (latency, distance):
+
+     seq[i]  = g->nodes[i].insn,  and cuid == i (create_ddg sets it so)
+     arc     = (src->cuid, dest->cuid, e->latency, e->distance)
+
+   Single copy, not the base/twin pair kvx-unfold.cc built from this same graph.
+   Two copies cannot represent a distance above one, and here they need not: the
+   distance is carried on the arc.  It happens that a ddg never has one anyway --
+   add_inter_loop_mem_dep hard-codes 1 and the register paths use 0 or 1, which
+   is what kvx-unfold.cc's `gcc_assert (latency >= 0 && distance <= 1)' relies
+   on -- but the single-copy form does not depend on that holding.
+
+   On classifying the arcs: dep_data_type has FOUR values, not two
+   (REG_OR_MEM_DEP, REG_DEP, MEM_DEP, REG_AND_MEM_DEP), so a bare `== REG_DEP'
+   test silently lumps three of them together.  That is the bug in
+   kvx-unfold.cc:4998, which sets its "register dependence" flag on memory
+   dependences and clears it on register ones -- latent only because nothing
+   reads the flag.  Anything not purely REG_DEP is treated as memory here.
+
+   What this does NOT equalise, and must be said rather than discovered: SMS
+   builds this graph BEFORE register allocation, so its register arcs are true
+   dataflow over pseudos, while lvx_cms_build_graph reconstructs them after
+   allocation from reaching definitions.  Comparing the two K values for one
+   loop is therefore a test of that reconstruction against ground truth, which
+   is the most valuable thing this arrangement buys.  */
+
+static void
+lvx_cms_probe_ddg (struct ddg *g, int r)
+{
+  auto_vec<rtx_insn *> seq;
+  auto_vec<lvx_cms_arc> arcs;
+  auto_vec<int> height;
+  unsigned n = (unsigned) g->num_nodes;
+
+  if (n == 0)
+    return;
+
+  for (unsigned i = 0; i < n; i++)
+    seq.safe_push (g->nodes[i].insn);
+  height.safe_grow_cleared (n);
+
+  for (unsigned i = 0; i < n; i++)
+    for (ddg_edge_ptr e = g->nodes[i].out; e != NULL; e = e->next_out)
+      {
+	unsigned src = (unsigned) g->nodes[i].cuid;
+	unsigned dst = (unsigned) e->dest->cuid;
+	enum lvx_cms_arc_kind kind;
+
+	if (e->data_type == REG_DEP)
+	  kind = (e->type == TRUE_DEP ? LVX_ARC_REG_RAW
+		  : e->type == ANTI_DEP ? LVX_ARC_REG_WAR
+		  : LVX_ARC_REG_WAW);
+	else
+	  kind = e->distance ? LVX_ARC_MEM_CROSS : LVX_ARC_MEM_INTRA;
+
+	lvx_cms_push_arc (arcs, src, dst, e->latency, e->distance, kind);
+
+	/* The dependence height, relaxed forward.  An intra-iteration edge runs
+	   forward in program order -- create_ddg asserts src->cuid <
+	   dest->cuid -- so ascending order settles it in one sweep.  */
+	if (e->distance == 0 && height[dst] < height[src] + e->latency)
+	  height[dst] = height[src] + e->latency;
+      }
+
+  /* K, by the same parametric solve the loop path uses: node 0 is the solver's
+     root and node i + 1 is seq[i], with a root arc to each so every node is
+     reachable.  */
+  lvx_plc plc;
+  for (unsigned i = 0; i <= n; i++)
+    plc.add_node ();
+  for (unsigned i = 0; i < n; i++)
+    plc.add_arc (0, i + 1, 0, 0);
+  for (unsigned i = 0; i < arcs.length (); i++)
+    plc.add_arc (arcs[i].src + 1, arcs[i].dst + 1, arcs[i].theta,
+		 arcs[i].omega);
+  if (plc.solve (1) != LVX_PLC_SOLVED)
+    {
+      fprintf (dump_file, ";; lvx cms-on-ddg: recurrence bound did not solve\n");
+      return;
+    }
+  int k = (int) plc.period ();
+
+  int m = 1;
+  for (unsigned i = 0; i < n; i++)
+    m = MAX (m, height[i] + lvx_cms_latency (seq[i]));
+
+  int delta = lvx_cms_delta (arcs);
+  int lower = MAX (k, r);
+  auto_vec<int> sigma;
+  int passes = 0, found = 0;
+  const char *last_bad = NULL;
+  int budget = MAX (1, lvx_cms_swo_budget);
+
+  for (int try_ii = lower; try_ii <= lower + 8 && !found; try_ii++)
+    if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
+			   budget, &passes, &last_bad, NULL))
+      found = try_ii;
+
+  if (!found)
+    {
+      fprintf (dump_file, ";; lvx cms-on-ddg: NO schedule through II=%d"
+	       " lower=%d ResMII=%d RecMII=%d M=%d passes=%d,"
+	       " %u nodes %u arcs%s%s\n", lower + 8, lower, r, k, m, passes,
+	       n, arcs.length (),
+	       last_bad ? " -- converged but unverified: " : "",
+	       last_bad ? last_bad : "");
+      return;
+    }
+
+  int lo = sigma[0], hi = sigma[0] + lvx_cms_latency (seq[0]);
+  for (unsigned i = 1; i < n; i++)
+    {
+      int done = sigma[i] + lvx_cms_latency (seq[i]);
+      if (lo > sigma[i])
+	lo = sigma[i];
+      if (hi < done)
+	hi = done;
+    }
+  int span = hi - lo;
+  int nstages = (span + found - 1) / found;
+
+  fprintf (dump_file, ";; lvx cms-on-ddg: II=%d lower=%d excess=%d ResMII=%d"
+	   " RecMII=%d M=%d span=%d nstages=%d delta=%d passes=%d,"
+	   " %u nodes %u arcs\n", found, lower, found - lower, r, k, m, span,
+	   nstages, delta, passes, n, arcs.length ());
 }
 
 /* Whether CMS may consider LOOP at all.  This is NOT lvx_unfoldable_loop_p:
