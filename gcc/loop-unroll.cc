@@ -284,19 +284,31 @@ unroll_loops (int flags)
   /* Scan the loops, inner ones first.  */
   for (auto loop : loops_list (cfun, LI_FROM_INNERMOST))
     {
-      /* And perform the appropriate transformations.  */
+      /* And perform the appropriate transformations.  Each unrolls by
+	 lpt_decision.times + 1 -- the decision records the number of EXTRA
+	 copies, which is why the niter arithmetic below divides by
+	 max_unroll + 1 -- so safelen, which counts iterations that may run
+	 concurrently, must be divided by the same factor.  Leaving it alone
+	 overstates it: a safelen of four unrolled by four would still claim
+	 four unrolled iterations, which is sixteen original ones, are
+	 independent.  That is latent only because pass_rtl_loop_done destroys
+	 the loop structure before any consumer reads the field.  */
+      unsigned HOST_WIDE_INT unroll_factor = loop->lpt_decision.times + 1;
       switch (loop->lpt_decision.decision)
 	{
 	case LPT_UNROLL_CONSTANT:
 	  unroll_loop_constant_iterations (loop);
+	  adjust_loop_safelen (loop, unroll_factor);
 	  changed = true;
 	  break;
 	case LPT_UNROLL_RUNTIME:
 	  unroll_loop_runtime_iterations (loop);
+	  adjust_loop_safelen (loop, unroll_factor);
 	  changed = true;
 	  break;
 	case LPT_UNROLL_STUPID:
 	  unroll_loop_stupid (loop);
+	  adjust_loop_safelen (loop, unroll_factor);
 	  changed = true;
 	  break;
 	case LPT_NONE:

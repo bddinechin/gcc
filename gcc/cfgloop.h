@@ -391,6 +391,36 @@ extern edge single_exit (const class loop *);
 extern edge single_likely_exit (class loop *loop, const vec<edge> &);
 extern unsigned num_loop_branches (const class loop *);
 
+/* Adjust LOOP's safelen for a transformation after which one iteration of LOOP
+   covers FACTOR of the iterations it covered before -- unrolling by FACTOR, or
+   vectorizing with FACTOR lanes.
+
+   safelen is the number of iterations that may execute concurrently, so M new
+   iterations span M * FACTOR old ones and are safe exactly when
+   M * FACTOR <= safelen.  The new value is therefore safelen / FACTOR.
+
+   Both of the things done instead were wrong in opposite directions.  Clearing
+   it, which the vectorizer did, discards an assertion that is still partly
+   true: safelen(8) vectorized by two is safelen(4), not nothing.  Leaving it
+   alone, which the unrollers do, OVERSTATES it by FACTOR and is unsound for any
+   consumer that believes it -- harmless only while the field is destroyed at
+   pass_rtl_loop_done before anyone reads it.
+
+   INT_MAX is kept exactly rather than divided.  It is the sentinel for
+   `#pragma GCC ivdep', "no two iterations conflict at any distance", which is
+   scale-invariant; and a divided sentinel would stop comparing equal to the
+   tests that look for it.  */
+
+inline void
+adjust_loop_safelen (class loop *loop, unsigned HOST_WIDE_INT factor)
+{
+  if (loop->safelen <= 1 || factor <= 1)
+    return;
+  if (loop->safelen == INT_MAX)
+    return;
+  loop->safelen = (int) (loop->safelen / factor);
+}
+
 extern edge loop_preheader_edge (const class loop *);
 extern edge loop_latch_edge (const class loop *);
 

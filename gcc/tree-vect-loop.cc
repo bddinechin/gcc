@@ -11605,8 +11605,18 @@ vect_transform_loop (loop_vec_info loop_vinfo, gimple *loop_vectorized_call)
      the ordering is why this is not observable in the vectorizer's own output:
      the assignment runs at the END of vect_transform_loop, after this loop has
      already been vectorized, so only later consumers can see the difference.  */
-  if (loop->safelen != INT_MAX)
-    loop->safelen = 0;
+  {
+    /* ADJUST, do not clear: one vectorized iteration covers VF of the
+       iterations safelen was stated about, so the assertion survives divided
+       by VF.  See adjust_loop_safelen.  A non-constant VF has no known upper
+       bound, and dividing by its lower bound would overstate the result, so
+       that case keeps the old conservative clear.  */
+    unsigned HOST_WIDE_INT vf;
+    if (LOOP_VINFO_VECT_FACTOR (loop_vinfo).is_constant (&vf))
+      adjust_loop_safelen (loop, vf);
+    else if (loop->safelen != INT_MAX)
+      loop->safelen = 0;
+  }
 
   if (epilogue)
     {

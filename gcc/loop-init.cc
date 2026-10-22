@@ -78,6 +78,98 @@ apply_loop_flags (unsigned flags)
     record_loop_exits ();
 }
 
+/* Carrying safelen across pass_rtl_loop_done.
+
+   safelen survives the tree to RTL boundary -- loop_optimizer_finalize has a
+   path that preserves the structure when PROP_loops is set, and the field is
+   still intact at loop2_init.  It dies at pass_rtl_loop_done, whose
+   properties_destroyed names PROP_loops, so finalize takes the FREE path and
+   every later loop_optimizer_init rebuilds through flow_loops_find and
+   alloc_loop, where ggc_cleared_alloc zeroes it.  The consumers that want it --
+   the swing modulo scheduler at pass_sms, and a target's machine_reorg -- both
+   run after that point and so have never been able to see #pragma GCC ivdep.
+
+   Rather than stop that pass destroying the property, which would change what
+   every later pass may assume, the value is stashed as the structure is freed
+   and restored as it is rebuilt.
+
+   The key is an INSN_UID, not a basic block index: block indices are reused
+   after a block is deleted, so a stale entry could be restored onto an
+   unrelated loop, while an insn's UID is unique for the life of the function.
+   The header's first real insn is recorded, and a rebuilt loop claims an entry
+   when its own header still contains that insn.  A loop whose header insn has
+   since been deleted simply does not match, and is left at zero -- losing the
+   annotation, which is the safe direction.  */
+
+static hash_map<int_hash<int, -1, -2>, int> *safelen_by_header_insn;
+
+/* Which function the table above describes.  INSN_UIDs are allocated PER
+   FUNCTION, so an entry saved for one function names a different insn in the
+   next and must never be restored there -- and the first restore in a function
+   runs before that function's own save, so without this the table consulted is
+   the previous function's.  Getting it wrong gives a loop safelen it was never
+   annotated with, which is the unsound direction: it asserts an independence
+   the user did not claim.  */
+
+static function *safelen_owner;
+
+/* Record the safelen of every loop that has one, before the structure goes.  */
+
+static void
+save_loop_safelens (struct function *fn)
+{
+  /* Start a fresh table for this function; see safelen_owner.  */
+  if (safelen_by_header_insn)
+    safelen_by_header_insn->empty ();
+  safelen_owner = fn;
+
+  for (auto loop : loops_list (fn, 0))
+    {
+      if (loop->safelen <= 1 || loop->header == NULL)
+	continue;
+      /* EVERY insn of the header, not just the first.  Keying on the first
+	 alone was too fragile: register allocation prepends reload insns, so
+	 the first insn of the rebuilt header is one that did not exist when
+	 the value was saved, and the lookup missed.  Recording them all means
+	 the entry is found as long as ANY of the original insns survives.  */
+      rtx_insn *insn;
+      FOR_BB_INSNS (loop->header, insn)
+	if (INSN_P (insn))
+	  {
+	    if (!safelen_by_header_insn)
+	      safelen_by_header_insn
+		= new hash_map<int_hash<int, -1, -2>, int>;
+	    safelen_by_header_insn->put (INSN_UID (insn), loop->safelen);
+	  }
+    }
+}
+
+/* Give it back to whichever rebuilt loop still owns that insn.  */
+
+static void
+restore_loop_safelens (void)
+{
+  if (!safelen_by_header_insn || safelen_owner != cfun)
+    return;
+
+  for (auto loop : loops_list (cfun, 0))
+    {
+      if (loop->safelen != 0 || loop->header == NULL)
+	continue;
+      rtx_insn *insn;
+      FOR_BB_INSNS (loop->header, insn)
+	if (INSN_P (insn))
+	  {
+	    int *v = safelen_by_header_insn->get (INSN_UID (insn));
+	    if (v)
+	      {
+		loop->safelen = *v;
+		break;
+	      }
+	  }
+    }
+}
+
 /* Initialize loop structures.  This is used by the tree and RTL loop
    optimizers.  FLAGS specify what properties to compute and/or ensure for
    loops.  */
@@ -124,6 +216,12 @@ loop_optimizer_init (unsigned flags)
   /* Apply flags to loops.  */
   apply_loop_flags (flags);
 
+  /* Hand back any safelen stashed before pass_rtl_loop_done freed the
+     structure; see save_loop_safelens.  */
+  if (cfun->curr_properties & PROP_rtl)
+    restore_loop_safelens ();
+
+
   /* Dump loops.  */
   flow_loops_dump (dump_file, NULL, 1);
 
@@ -165,6 +263,12 @@ loop_optimizer_finalize (struct function *fn, bool clean_loop_closed_phi)
       loops_state_set (fn, LOOPS_MAY_HAVE_MULTIPLE_LATCHES);
       goto loop_fini_done;
     }
+
+  /* About to free the structure, so stash what the late consumers want.  Only
+     on the RTL side (PROP_rtl): on trees the loops are not rebuilt from insns
+     and there would be no UID to key on.  */
+  if (fn->curr_properties & PROP_rtl)
+    save_loop_safelens (fn);
 
   for (auto loop : loops_list (fn, 0))
     free_simple_loop_desc (loop);
