@@ -115,6 +115,10 @@ mcms-probe
 Target Var(lvx_cms_probe) Init(0) Optimization
 Dump the convergent-modulo-scheduling probe for each measured inner loop.
 
+mcms-release=
+Target RejectNegative Joined UInteger Var(lvx_cms_release_policy) Init(1) Optimization
+-mcms-release=N	SWO release-date policy: 0 none, 1 every unblamed task with slack to its ALAP, 2 only culprits of resource contention.
+
 mcms-priority=
 Target RejectNegative Joined UInteger Var(lvx_cms_priority) Init(0) Optimization
 -mcms-priority=N	List-scheduling priority: 0 longest path from source (ASAP), 1 longest path to sink, 2 lowest slack first.

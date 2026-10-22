@@ -12450,6 +12450,72 @@ lvx_cms_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
 #undef LVX_CMS_DOLOOP_ADD
 }
 
+/* The issue counters by name and index, so a blame can say WHICH resource
+   refused a task.  The index past the last counter stands for the issue rate,
+   which is a bound on the bundle rather than a counter in Resource.yml.  */
+
+static const char *const lvx_cms_resource_name[] = {
+#define LVX_CMS_RESOURCE_NAME(R) #R,
+  LVX_ISSUE_RESOURCES (LVX_CMS_RESOURCE_NAME)
+#undef LVX_CMS_RESOURCE_NAME
+  "issue"
+};
+
+#define LVX_CMS_NRESOURCES   ((int) (sizeof (lvx_cms_resource_name) / sizeof (lvx_cms_resource_name[0])))
+
+/* Which counter refuses INSN in SLOT, as an index into
+   lvx_cms_resource_name, or -1 if it fits.  The first that overflows is
+   reported: a task displaced from a cycle is displaced by one thing, and
+   attributing it to the first is enough to aim the next construction.  */
+
+static int
+lvx_cms_blocking_resource (const struct lvx_sched_resources *slot,
+			   rtx_insn *insn)
+{
+  struct lvx_sched_resources trial = *slot;
+  int idx = 0;
+
+  lvx_cms_resources_add (&trial, insn);
+
+#define LVX_CMS_BLOCK(R)						\
+  {									\
+    if (trial.R##_count > (unsigned) lvx_issue_availability.R)		\
+      return idx;							\
+    idx++;								\
+  }
+  LVX_ISSUE_RESOURCES (LVX_CMS_BLOCK)
+#undef LVX_CMS_BLOCK
+
+  if (trial.ninsns_count > (unsigned) lvx_sched_issue_rate ())
+    return idx;
+  return -1;
+}
+
+/* Whether INSN reserves anything of the counter at index WANT.  Used to find
+   the tasks holding the resource that displaced another -- the culprits a
+   release date should move out of the way.  */
+
+static bool
+lvx_cms_insn_uses_resource_p (rtx_insn *insn, int want)
+{
+  struct lvx_sched_resources d;
+  int idx = 0;
+
+  memset (&d, 0, sizeof (d));
+  lvx_cms_resources_add (&d, insn);
+
+#define LVX_CMS_USES(R)							\
+  {									\
+    if (idx == want)							\
+      return d.R##_count > 0;						\
+    idx++;								\
+  }
+  LVX_ISSUE_RESOURCES (LVX_CMS_USES)
+#undef LVX_CMS_USES
+
+  return idx == want && d.ninsns_count > 0;
+}
+
 /* INSN's processing time in cycles: how long after its issue date its result
    is ready, which is what a makespan runs to.  Floored at one cycle because an
    instruction occupies its issue cycle whatever the DFA says, and some say
@@ -12505,7 +12571,8 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		  const auto_vec<int> &prio,
 		  const auto_vec<int> &release,
 		  int ii, int delta, auto_vec<int> &sigma,
-		  auto_vec<int> *blame)
+		  auto_vec<int> *blame, auto_vec<int> *culprit,
+		  int *resblame)
 {
   unsigned n = seq.length ();
   if (n == 0 || ii <= 0)
@@ -12611,8 +12678,11 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	    earliest = r;
 	}
 
-      /* First resource-feasible date at or after it.  */
+      /* First resource-feasible date at or after it, remembering WHICH counter
+	 refused it the first time -- that is the resource to blame, and the
+	 one whose holders a release date should move.  */
       int when = earliest;
+      int blocked_by = -1;
       while (true)
 	{
 	  while ((int) cyc.length () <= when)
@@ -12623,6 +12693,8 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	    }
 	  if (lvx_cms_slot_fits_p (&cyc[when], seq[bi]))
 	    break;
+	  if (blocked_by < 0)
+	    blocked_by = lvx_cms_blocking_resource (&cyc[when], seq[bi]);
 	  when++;
 	}
       lvx_cms_resources_add (&cyc[when], seq[bi]);
@@ -12631,9 +12703,31 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 
       /* BLAME, for SWO's analysis phase: how far resource contention pushed
 	 this task past the date its dependences and release allowed.  A task
-	 that is repeatedly displaced is the squeaky wheel.  */
+	 that is repeatedly displaced is the squeaky wheel.
+
+	 And ATTRIBUTION, which is what lets the next construction aim rather
+	 than merely try harder.  The displaced task is one half of the story;
+	 the other is whoever was holding the counter that refused it.  Those
+	 are credited as CULPRITS, and a culprit with slack is exactly what a
+	 release date should move out of the way -- where the previous rule
+	 delayed every slack task indiscriminately, whether or not it was ever
+	 in anyone's way.  */
       if (blame != NULL && when > earliest)
-	(*blame)[bi] += when - earliest;
+	{
+	  (*blame)[bi] += when - earliest;
+
+	  if (blocked_by >= 0)
+	    {
+	      if (resblame != NULL)
+		resblame[blocked_by] += when - earliest;
+
+	      if (culprit != NULL)
+		for (unsigned ck = 0; ck < cells; ck++)
+		  if (date[ck] >= earliest && date[ck] < when
+		      && lvx_cms_insn_uses_resource_p (seq[ck % n], blocked_by))
+		    (*culprit)[ck % n]++;
+	    }
+	}
 
       /* Release the successors of this cell.  */
       for (unsigned a = 0; a < arcs.length (); a++)
@@ -12766,11 +12860,14 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		   const auto_vec<lvx_cms_arc> &arcs,
 		   const auto_vec<int> &height,
 		   int ii, int delta, auto_vec<int> &sigma,
-		   int budget, int *passes, const char **last_bad)
+		   int budget, int *passes, const char **last_bad,
+		   int *resblame_out)
 {
   unsigned n = seq.length ();
-  auto_vec<int> prio, release, blame, cumulative, tosink, slack, base;
+  auto_vec<int> prio, release, blame, culprit, cumulative, tosink, slack, base;
+  int resblame[LVX_CMS_NRESOURCES];
 
+  memset (resblame, 0, sizeof (resblame));
   prio.safe_grow_cleared (n);
   release.safe_grow_cleared (n);
   cumulative.safe_grow_cleared (n);
@@ -12802,14 +12899,20 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
     {
       blame.truncate (0);
       blame.safe_grow_cleared (n);
+      culprit.truncate (0);
+      culprit.safe_grow_cleared (n);
 
       (*passes)++;
       if (lvx_cms_converge (seq, arcs, prio, release, ii, delta, sigma,
-			    &blame))
+			    &blame, &culprit, resblame))
 	{
 	  const char *bad = lvx_cms_verify (seq, arcs, ii, sigma);
 	  if (!bad)
-	    return true;
+	    {
+	      if (resblame_out)
+		memcpy (resblame_out, resblame, sizeof (resblame));
+	      return true;
+	    }
 	  *last_bad = bad;
 	}
 
@@ -12820,7 +12923,11 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	if (blame[i] > 0)
 	  squeaked = true;
       if (!squeaked)
-	return false;
+	{
+	  if (resblame_out)
+	    memcpy (resblame_out, resblame, sizeof (resblame));
+	  return false;
+	}
 
       /* PRIORITIZE, first lever: escalate, cumulatively.  */
       for (unsigned i = 0; i < n; i++)
@@ -12836,13 +12943,44 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	 earliest over its successors of their latest start minus the arc's
 	 latency.  Only omega = 0 arcs take part, the cross-iteration ones being
 	 accounted for by the modulo constraint rather than by this slack.  */
+      /* PRIORITIZE, second lever: the release dates.
+
+	 Policy 1, every unblamed task with slack to its ALAP, is a GLOBAL bias
+	 change -- it turns an ASAP-leaning construction into an ALAP-leaning
+	 one for everything that can move, which compacts the whole schedule.
+
+	 Policy 2 aims instead: move only a CULPRIT, a task that held the
+	 counter which displaced someone, and only when it has slack and was
+	 not itself displaced -- delaying a victim would make the contention
+	 worse.  It is the better-motivated rule and it measures WORSE, which
+	 is why both are kept selectable rather than one being replaced.  On
+	 PolyBench under assumed ivdep at budget 16 it left the 32 loops it was
+	 designed for exactly as they were, 32 still missing the bound, and
+	 degraded the saturated ones from 15 missing to 19; total excess 65 to
+	 79, over more passes.
+
+	 The likely reason is that it has no damping.  Release is recomputed
+	 from scratch each pass, so a culprit delayed in one pass becomes a
+	 victim in the next, resets to zero, and is a culprit again -- a limit
+	 cycle, visible in the non-monotone excess across budgets (90, 95, 84,
+	 79).  Priority escalates cumulatively and does not oscillate this way.
+	 Damping the release the same way is the obvious next thing to try.  */
       for (unsigned i = 0; i < n; i++)
-	if (blame[i] == 0 && slack[i] > 0)
-	  release[i] = height[i] + slack[i];	/* its ALAP */
-	else
-	  release[i] = 0;
+	{
+	  bool move = false;
+	  switch (lvx_cms_release_policy)
+	    {
+	    case 0:  move = false; break;
+	    case 2:  move = (culprit[i] > 0 && blame[i] == 0 && slack[i] > 0);
+		     break;
+	    default: move = (blame[i] == 0 && slack[i] > 0); break;
+	    }
+	  release[i] = move ? height[i] + slack[i] : 0;	/* its ALAP */
+	}
     }
 
+  if (resblame_out)
+    memcpy (resblame_out, resblame, sizeof (resblame));
   return false;
 }
 
@@ -13480,10 +13618,23 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      cycle existed, so the baseline is reproducible with -mcms-swo-budget=1.  */
   int passes = 0;
   int budget = MAX (1, lvx_cms_swo_budget);
+  int resblame[LVX_CMS_NRESOURCES];
+  memset (resblame, 0, sizeof (resblame));
   for (int try_ii = lower; try_ii <= lower + 8 && !found; try_ii++)
     if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
-			   budget, &passes, &last_bad))
+			   budget, &passes, &last_bad, resblame))
       found = try_ii;
+
+  /* The counter that cost the most displacement across the whole search: what
+     SWO was fighting, as opposed to what merely bounded ResMII.  */
+  const char *blamed = "none";
+  int blamed_cost = 0;
+  for (int i = 0; i < LVX_CMS_NRESOURCES; i++)
+    if (resblame[i] > blamed_cost)
+      {
+	blamed_cost = resblame[i];
+	blamed = lvx_cms_resource_name[i];
+      }
 
   /* Whether reorg_loops will put a LOOPDO on this loop.  Reported rather than
      refused: a hardware loop is a HELP to a pipeliner, not an obstacle --
@@ -13553,11 +13704,11 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d nstages=%d delta=%d safelen=%d"
-	   " passes=%d tight=%s:%d/%d, %u nodes %u arcs,"
+	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
 	   loop->num, found, lower, found - lower, m, r, k, span, nstages,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
-	   seq.length (), arcs.length (),
+	   blamed, blamed_cost, seq.length (), arcs.length (),
 	   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
 	   hw ? " hwloop" : "",
 	   !drop_ok ? "UNSOUND: dropped safelen below nstages"
