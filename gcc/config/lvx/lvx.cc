@@ -13597,6 +13597,43 @@ lvx_cms_bounds (class loop *loop, basic_block *body,
   return true;
 }
 
+/* Dump a dependence graph keyed by INSN_UID, so the graph CMS builds for itself
+   after register allocation can be compared arc by arc with the one SMS builds
+   before it.
+
+   UID is the key because it is the only identity an insn keeps across reload: a
+   register substitution preserves it, where node indices, chain positions and
+   loop numbers all change between pass_sms and machine_reorg.  Insns that
+   reload created or deleted simply have no counterpart and fall out of the
+   comparison -- the joiner counts them rather than dropping them quietly, since
+   a large unmatched set is itself a statement about how much reload moved.
+
+   The node list is dumped as well as the arcs, so the joiner can pair a ddg
+   loop with a CMS loop by the overlap of their node sets and need not rely on
+   loop numbers or source locations agreeing.  */
+
+static void
+lvx_cms_dump_arcs (const char *tag, int loopnum,
+		   const auto_vec<rtx_insn *> &seq,
+		   const auto_vec<lvx_cms_arc> &arcs)
+{
+  if (!dump_file || !lvx_cms_dump_arcs_p)
+    return;
+
+  fprintf (dump_file, ";; lvx graph %s loop %d nodes %u arcs %u uids:",
+	   tag, loopnum, seq.length (), arcs.length ());
+  for (unsigned i = 0; i < seq.length (); i++)
+    fprintf (dump_file, " %d", INSN_UID (seq[i]));
+  fprintf (dump_file, "\n");
+
+  for (unsigned a = 0; a < arcs.length (); a++)
+    fprintf (dump_file, ";; lvx arc %s %d %d %d %s " HOST_WIDE_INT_PRINT_DEC
+	     " " HOST_WIDE_INT_PRINT_DEC "\n", tag, loopnum,
+	     INSN_UID (seq[arcs[a].src]), INSN_UID (seq[arcs[a].dst]),
+	     lvx_cms_arc_kind_name[(int) arcs[a].kind],
+	     arcs[a].theta, arcs[a].omega);
+}
+
 /* Schedule LOOP's body as a modulo schedule and report what it took.  Tries
    initiation intervals from the lower bound upward and reports the first that
    converges AND verifies.
@@ -13630,6 +13667,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	       " the analysis can walk\n", loop->num);
       return;
     }
+
+  lvx_cms_dump_arcs ("cms", loop->num, seq, arcs);
 
   int m, r, k;
   auto_vec<int> crit;
@@ -13879,6 +13918,8 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
 	if (e->distance == 0 && height[dst] < height[src] + e->latency)
 	  height[dst] = height[src] + e->latency;
       }
+
+  lvx_cms_dump_arcs ("ddg", (int) BLOCK_FOR_INSN (seq[0])->index, seq, arcs);
 
   /* K, by the same parametric solve the loop path uses: node 0 is the solver's
      root and node i + 1 is seq[i], with a root arc to each so every node is

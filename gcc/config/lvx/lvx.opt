@@ -119,6 +119,10 @@ mcms-release=
 Target RejectNegative Joined UInteger Var(lvx_cms_release_policy) Init(1) Optimization
 -mcms-release=N	SWO release-date policy: 0 none, 1 every unblamed task with slack to its ALAP, 2 only culprits of resource contention, 3 culprits damped by accumulated guilt, 4 every task with slack.
 
+mcms-dump-arcs
+Target Var(lvx_cms_dump_arcs_p) Init(0) Optimization
+Dump each modulo-scheduling dependence graph keyed by INSN_UID, so the graph built after register allocation can be compared with the one SMS builds before it.
+
 mcms-priority=
 Target RejectNegative Joined UInteger Var(lvx_cms_priority) Init(1) Optimization
 -mcms-priority=N	List-scheduling priority: 0 longest path from source (ASAP), 1 longest path to sink (default), 2 lowest slack first.
