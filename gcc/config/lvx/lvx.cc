@@ -13978,7 +13978,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      MVESPLIT applies the window; MVESPLITR additionally requires a free issue
      slot in the copy's modulo cycle, which is the whole premise of doing this
      in spare resources.  MVENOSPL counts values whose window is empty.  */
-  int mvesplit = 1, mvesplitr = 1, mvenospl = 0;
+  int mvesplit0 = 1, mvesplit = 1, mvesplitr = 1, mvenospl = 0;
   {
     /* Modulo-cycle occupancy of the TINY counter, which is what a register
        move takes: availability 4, covering ALU0/ALU1/LSU0/LSU1.  */
@@ -14000,7 +14000,21 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	int deg = sp_deg[v];
 	/* A move costs one cycle before its reader.  */
 	int tlo = d + MAX (1, lat), thi = last - 1;
-	int best = deg, bestr = deg;
+	int best = deg, bestr = deg, best0 = deg;
+
+	/* MVESPLIT0 is the same minimisation with the window ignored -- the
+	   unconstrained projection, and the only honest baseline for what the
+	   window costs.  Splitting every expanded value once in both, so the
+	   two differ in exactly the constraint under test.  */
+	for (int t = d; t <= last; t++)
+	  {
+	    int a = (t - d + found - 1) / found;
+	    int b = (last - t + found - 1) / found;
+	    int cand = MAX (MAX (a, b), 1);
+	    if (cand < best0)
+	      best0 = cand;
+	  }
+
 	if (tlo > thi)
 	  mvenospl++;
 	else
@@ -14014,6 +14028,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	      if (cand < bestr && tinyuse[(t - lo) % found] < tinycap)
 		bestr = cand;
 	    }
+	if (best0 > mvesplit0)
+	  mvesplit0 = best0;
 	if (best > mvesplit)
 	  mvesplit = best;
 	if (bestr > mvesplitr)
@@ -14024,14 +14040,14 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
-	   " mvesplit=%d mvesplitr=%d mvenospl=%d"
+	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvenospl=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
 	   loop->num, found, lower, found - lower, m, r, k, span, nstages,
 	   bs, preps, mvemax, mvep2,
 	   mvelcm_overflow ? 0 : (int) mvelcm,
-	   mven, mvetop, mve2nd, mvesplit, mvesplitr, mvenospl,
+	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvenospl,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
 	   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
