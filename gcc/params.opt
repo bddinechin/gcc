@@ -1073,10 +1073,6 @@ The number of prefetches that can run at the same time.
 Common Joined UInteger Var(param_sink_frequency_threshold) Init(75) IntegerRange(0, 100) Param Optimization
 Target block's relative execution frequency (as a percentage) required to sink a statement.
 
--param=sms-assume-ivdep=
-Common Joined UInteger Var(param_sms_assume_ivdep) Init(0) IntegerRange(0, 1) Param Optimization
-Assume loop iterations are independent when building the modulo-scheduling dependence graph, dropping cross-iteration memory dependences.  For measurement only: unsound for code generation.
-
 -param=sms-dfa-history=
 Common Joined UInteger Var(param_sms_dfa_history) IntegerRange(0, 16) Param Optimization
 The number of cycles the swing modulo scheduler considers when checking conflicts using DFA.
