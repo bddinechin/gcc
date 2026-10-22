@@ -13450,6 +13450,27 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
   int delta = lvx_cms_delta (arcs);
   int lower = MAX (k, r);
+
+  /* How tight the resource bound is at LOWER: for the most-demanded counter,
+     DEMAND against LOWER * AVAILABILITY.  When those are equal, achieving
+     ResMII needs a PERFECT packing of the modulo reservation table -- every
+     cycle completely full in that resource -- which is a bin-packing question
+     and usually infeasible.  Reported because it decides whether an II of
+     lower + 1 is a scheduler failure or an unachievable bound.  */
+  struct lvx_sched_resources rdem;
+  memset (&rdem, 0, sizeof (rdem));
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    {
+      rtx_insn *bi;
+      FOR_BB_INSNS (body[i], bi)
+	lvx_cms_resources_add (&rdem, bi);
+    }
+  const char *tight_name = "none";
+  int tight_dem = 0, tight_cap = 0;
+  double tight_frac = 0.0;
+#define LVX_CMS_TIGHT(R)						  {									    unsigned avail = lvx_issue_availability.R;				    if (avail > 0 && rdem.R##_count > 0)				      {										double f = (double) rdem.R##_count / ((double) lower * avail);		if (f > tight_frac)							  {									    tight_frac = f; tight_name = #R;					    tight_dem = (int) rdem.R##_count;					    tight_cap = (int) (lower * avail);					  }								      }									  }
+  LVX_ISSUE_RESOURCES (LVX_CMS_TIGHT)
+#undef LVX_CMS_TIGHT
   auto_vec<int> sigma;
   int found = 0;
   const char *last_bad = NULL;
@@ -13532,9 +13553,11 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d nstages=%d delta=%d safelen=%d"
-	   " passes=%d, %u nodes %u arcs, %d loads %s .s%s -- %s\n",
+	   " passes=%d tight=%s:%d/%d, %u nodes %u arcs,"
+	   " %d loads %s .s%s -- %s\n",
 	   loop->num, found, lower, found - lower, m, r, k, span, nstages,
-	   delta, (int) loop->safelen, passes, seq.length (), arcs.length (),
+	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
+	   seq.length (), arcs.length (),
 	   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
 	   hw ? " hwloop" : "",
 	   !drop_ok ? "UNSOUND: dropped safelen below nstages"
