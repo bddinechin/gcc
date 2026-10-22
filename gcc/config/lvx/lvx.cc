@@ -12880,9 +12880,14 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
      merit has to be negated to become a cost.
 
      0  ASAP, the longest path FROM the source: issue breadth-first from the
-	inputs.  The default, and what this scheduler has always used.
+	inputs.  What this scheduler used before the three were compared.
      1  the longest path TO the sink, negated: issue the critical path first,
-	which is the classical list-scheduling choice.
+	which is the classical list-scheduling choice.  THE DEFAULT: best at
+	every budget measured, 65 against 68 for slack and 69 for ASAP on
+	PolyBench under assumed ivdep at budget 16, and 45 against 46 and 49
+	on the default levers.  The per-loop virtual best over all three is 63,
+	so little is left on the table and a restart over priorities -- which
+	only three loops in 128 would benefit from -- is not worth building.
      2  slack, ALAP - ASAP: issue what has least room to move, which is the
 	critical path by another name on a chain but differs wherever the body
 	branches, since slack accounts for the path on BOTH sides of a node.  */

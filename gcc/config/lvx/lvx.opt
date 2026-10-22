@@ -120,12 +120,12 @@ Target RejectNegative Joined UInteger Var(lvx_cms_release_policy) Init(1) Optimi
 -mcms-release=N	SWO release-date policy: 0 none, 1 every unblamed task with slack to its ALAP, 2 only culprits of resource contention, 3 culprits damped by accumulated guilt, 4 every task with slack.
 
 mcms-priority=
-Target RejectNegative Joined UInteger Var(lvx_cms_priority) Init(0) Optimization
--mcms-priority=N	List-scheduling priority: 0 longest path from source (ASAP), 1 longest path to sink, 2 lowest slack first.
+Target RejectNegative Joined UInteger Var(lvx_cms_priority) Init(1) Optimization
+-mcms-priority=N	List-scheduling priority: 0 longest path from source (ASAP), 1 longest path to sink (default), 2 lowest slack first.
 
 mcms-swo-budget=
-Target RejectNegative Joined UInteger Var(lvx_cms_swo_budget) Init(1) Optimization
--mcms-swo-budget=N	Allow N squeaky-wheel passes at each candidate initiation interval before trying the next.
+Target RejectNegative Joined UInteger Var(lvx_cms_swo_budget) Init(4) Optimization
+-mcms-swo-budget=N	Allow N squeaky-wheel passes at each candidate initiation interval before trying the next.  One is a single greedy construction, the pre-SWO behaviour.
 
 mcms-inductive-relaxation
 Target Var(lvx_cms_inductive_relaxation) Init(0) Optimization
