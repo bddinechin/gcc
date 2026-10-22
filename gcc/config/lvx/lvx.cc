@@ -11917,16 +11917,37 @@ struct lvx_mem_iv
   bool valid;
 };
 
-/* True if INSN has a definition of REGNO.  */
+/* True if INSN has a definition of REGNO.  PARTIAL, when non-null, is set when
+   that definition writes only part of the register -- a subreg destination, or
+   one half of a register tuple -- which is NOT a full definition of the value:
+   the untouched part still comes from whatever defined it earlier.
+
+   The reaching-definition walk below needs that distinction and does not model
+   it.  Taking the last definition before a use and stopping is right only for a
+   FULL write; after a partial one, the use also depends on whichever definition
+   supplied the rest, and an arc from the partial write alone omits a true
+   dependence -- the unsound direction.
+
+   No such write currently reaches machine_reorg.  Measured on PolyBench
+   vectorized for lvx-2, and on 256-bit quads and __int128 pairs written
+   deliberately: ten `set (subreg ...)' insns exist at pass_sms, which is why
+   SMS refuses those loops outright ("subreg in lhs"), and zero survive register
+   allocation.  So this is a latent hazard rather than a live bug, and the
+   caller declines the loop rather than modelling it -- a visible refusal in
+   place of a silent omission, costing nothing while the count is zero.  */
 
 static bool
-lvx_insn_defs_regno_p (rtx_insn *insn, unsigned regno)
+lvx_insn_defs_regno_p (rtx_insn *insn, unsigned regno, bool *partial = NULL)
 {
   df_ref def;
 
   FOR_EACH_INSN_DEF (def, insn)
     if (DF_REF_REGNO (def) == regno)
-      return true;
+      {
+	if (partial != NULL && (DF_REF_FLAGS (def) & DF_REF_PARTIAL) != 0)
+	  *partial = true;
+	return true;
+      }
   return false;
 }
 
@@ -13196,9 +13217,22 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  HOST_WIDE_INT w = 0;
 
 	  /* The last definition strictly before Q.  */
+	  bool partial_def = false;
 	  for (int i = (int) q - 1; i >= 0 && p < 0; i--)
-	    if (lvx_insn_defs_regno_p (seq[i], regno))
+	    if (lvx_insn_defs_regno_p (seq[i], regno, &partial_def))
 	      p = i;
+
+	  /* A partial reaching definition does not define the whole value, so
+	     one arc from it would omit the dependence on whatever supplied the
+	     rest.  Refuse rather than under-constrain.  */
+	  if (partial_def)
+	    {
+	      if (dump_file)
+		fprintf (dump_file, ";; lvx cms: loop %d declined, partial"
+			 " definition of r%u reaches a use\n", loop->num,
+			 regno);
+	      return false;
+	    }
 
 	  /* None: the value is the previous iteration's, from the last
 	     definition anywhere in the body.  */
