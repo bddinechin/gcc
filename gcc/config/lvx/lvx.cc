@@ -11507,9 +11507,21 @@ lvx_insns_may_alias_p (rtx_insn *insn1, rtx_insn *insn2)
    The base is taken directly rather than from insn_sched_cost, which caches
    into the haifa insn data and so may only be called inside the scheduler.
    For the same reason note that lvx_sched_adjust_cost's REG_DEP_ANTI branch
-   walks SD_LIST_BACK when the producer is a CLOBBER: unreachable from here
-   only because CLOBBERs are filtered out of the instruction sequence, and a
-   trap if that filter is ever relaxed.  */
+   walks SD_LIST_BACK when the producer is a CLOBBER.  That is unreachable here
+   three times over -- lvx_cms_build_graph skips USE and CLOBBER patterns, skips
+   anything with recog_memoized < 0, and the guard below returns 0 when either
+   side fails recog_memoized, which a CLOBBER always does -- but it is why this
+   function must not be handed arbitrary insns.
+
+   DO NOT replace this with dep_cost.  It was considered and rejected
+   (2026-10-22, docs/cms-foundations.md §7sedecies.8).  dep_cost takes a dep_t,
+   which exists only in sched_analyze's lists, and those carry the omega = 0
+   dependences and nothing else; CMS is the single-copy design and computes
+   omega itself from reaching definitions, so sourcing arcs from sched_analyze
+   would mean giving that up and going back to two loop copies, which cannot
+   represent omega > 1.  And the substitution is measured as a null change:
+   §7nonies ran CMS on the SMS ddg, whose latencies are dep_cost-derived, and
+   the recurrence bound agreed on 336 of 336 loops.  */
 
 static int
 lvx_arc_latency (rtx_insn *prod, rtx_insn *cons, enum reg_note dep_type)
