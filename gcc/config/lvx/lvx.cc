@@ -13792,6 +13792,26 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      k + safelen never overlap, which needs safelen >= nstages.  */
   bool drop_ok = (dropped_safelen == 0 || dropped_safelen >= nstages);
 
+  /* Empty modulo cycles.  Bundle formation on LVX is an annotation: asm output
+     closes a bundle only where LVX_SCHED2_INSN_STOP is set, and nothing
+     materialises a cycle that holds no instruction.  So a kernel whose modulo
+     cycle C is empty is emitted one bundle short and runs in fewer than II
+     cycles, which is not the schedule that was computed -- on an interlocked
+     machine it is correct but stalls, and the achieved II is not the scheduled
+     one.  Counting them says whether the annotation has to emit explicit nop
+     bundles.  See docs/cms-foundations.md §7sedecies.  */
+  int emptycyc = 0;
+  {
+    auto_vec<bool> occupied;
+    for (int c = 0; c < found; c++)
+      occupied.safe_push (false);
+    for (unsigned i = 0; i < seq.length (); i++)
+      occupied[(sigma[i] - lo) % found] = true;
+    for (int c = 0; c < found; c++)
+      if (!occupied[c])
+	emptycyc++;
+  }
+
   /* BS, the stage in which the loop-back branch issues, and the partial
      epilogues it implies.  Llosa & Freudenberger (MICRO-35 2002) factor a
      pipelined loop's code size into three terms -- the stage count, this
@@ -13986,7 +14006,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
-	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvenospl=%d"
+	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvenospl=%d emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
@@ -13994,6 +14014,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   bs, preps, mvemax, mvep2,
 	   mvelcm_overflow ? 0 : (int) mvelcm,
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvenospl,
+	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
 	   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
