@@ -411,6 +411,27 @@ add_intra_loop_mem_dep (ddg_ptr g, ddg_node_ptr from, ddg_node_ptr to)
 static void
 add_inter_loop_mem_dep (ddg_ptr g, ddg_node_ptr from, ddg_node_ptr to)
 {
+  /* With sms-assume-ivdep, the iterations are taken to be independent, so no
+     memory dependence crosses the back edge.  This is the only place such an
+     edge is created -- cross-iteration REGISTER dependences come from
+     add_cross_iteration_register_deps and are unaffected, as they must be:
+     ivdep licenses nothing about the registers.
+
+     The edge is DROPPED rather than given a larger distance because nothing
+     downstream expects one: this function hard-codes a distance of 1, and both
+     the swing scheduler and the convergent scheduler that reads this graph
+     assume no edge reaches further than one iteration.
+
+     Why a parameter and not loop->safelen, which is what the pragma sets:
+     safelen is 0 here.  It lives on the TREE loop structure, pass_tree_loop_done
+     calls loop_optimizer_finalize, and pass_rtl_loop_init then builds fresh
+     loops with alloc_loop, whose ggc_cleared_alloc zeroes the field.  So
+     #pragma GCC ivdep cannot reach this point at all until the value is carried
+     through the IR, and this parameter stands in for it meanwhile -- which is
+     also why it is documented as measurement only.  */
+  if (param_sms_assume_ivdep)
+    return;
+
   if (!insns_may_alias_p (from->insn, to->insn))
     /* Do not create edge if memory references have disjoint alias sets.  */
     return;
