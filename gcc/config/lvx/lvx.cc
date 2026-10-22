@@ -13846,6 +13846,99 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      k + safelen never overlap, which needs safelen >= nstages.  */
   bool drop_ok = (dropped_safelen == 0 || dropped_safelen >= nstages);
 
+  /* BS, the stage in which the loop-back branch issues, and the partial
+     epilogues it implies.  Llosa & Freudenberger (MICRO-35 2002) factor a
+     pipelined loop's code size into three terms -- the stage count, this
+     branch stage, and the modulo expansion degree -- and SC - BS - 1 partial
+     epilogues are needed to finish the iterations left in flight by the early
+     exits that a prologue-scheduled branch leaves open.  A branch in the last
+     stage therefore costs none, which is what a hardware loop gives for free.
+     See docs/cms-foundations.md §7undecies.2.
+
+     SEQ is in chain order from the header, so the loop-back branch is the LAST
+     jump in it; an earlier jump is an exit, not the back edge.  */
+  int bs = -1;
+  for (unsigned i = 0; i < seq.length (); i++)
+    if (JUMP_P (seq[i]))
+      bs = (sigma[i] - lo) / found;
+  int preps = bs < 0 ? 0 : MAX (0, nstages - bs - 1);
+
+  /* The modulo expansion degree, per value and for the loop.  A value defined
+     by SEQ[i] and read through a reg-RAW arc (i -> u) of distance OMEGA is
+     consumed, in absolute time, at SIGMA[u] + OMEGA * II, so the value's
+     lifetime is the latest such date less its own.  PaCT 1997 §3 needs
+     m_i = ceil (lifetime / II) names for it.
+
+     Three figures, because the three designs of §7undecies.3 differ in exactly
+     this: MVEMAX is the largest m_i, which is the kernel unroll factor only if
+     every value is expanded that many times (Llosa's global Kmin); MVEP2 is the
+     largest m_i rounded up to a power of two, which is the reference's KUNROLL
+     and is a legal common multiple because the rounding closes the degrees
+     under divisibility; MVELCM is what exact per-value degrees would require,
+     reported as 0 when it exceeds the 2^20 cap, which already means unusable.
+     MVEN counts the values needing expansion at all and MVETOP how many attain
+     the maximum -- Llosa observed that a large degree is usually caused by a
+     single lifetime, which MVETOP == 1 is the test of.  MVE2ND is the largest
+     degree below the maximum, which is what says whether splitting the longest
+     lifetime with one copy would actually help: after one split the degree
+     becomes max (MVE2ND, ceil (MVEMAX / 2)).  */
+  int mvemax = 1, mvep2 = 1, mven = 0, mvetop = 0, mve2nd = 0;
+  unsigned HOST_WIDE_INT mvelcm = 1;
+  bool mvelcm_overflow = false;
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      int last = -1;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].src == i && arcs[a].kind == LVX_ARC_REG_RAW)
+	  {
+	    int when = sigma[arcs[a].dst] + (int) arcs[a].omega * found;
+	    if (when > last)
+	      last = when;
+	  }
+      if (last < 0)
+	continue;
+      int life = last - sigma[i];
+      if (life <= 0)
+	continue;
+      int m_i = (life + found - 1) / found;
+      if (m_i <= 1)
+	continue;
+      mven++;
+      int p2 = 1;
+      while (p2 < m_i)
+	p2 <<= 1;
+      if (m_i > mvemax)
+	{
+	  if (mvemax > mve2nd)
+	    mve2nd = mvemax;
+	  mvemax = m_i;
+	  mvetop = 1;
+	}
+      else if (m_i == mvemax)
+	mvetop++;
+      else if (m_i > mve2nd)
+	mve2nd = m_i;
+      if (p2 > mvep2)
+	mvep2 = p2;
+      /* lcm, guarded: a product past a few thousand already says "unusable",
+	 so saturate rather than wrap.  */
+      if (!mvelcm_overflow)
+	{
+	  unsigned HOST_WIDE_INT a = mvelcm, b = (unsigned HOST_WIDE_INT) m_i;
+	  while (b)
+	    {
+	      unsigned HOST_WIDE_INT t = a % b;
+	      a = b;
+	      b = t;
+	    }
+	  unsigned HOST_WIDE_INT nl = mvelcm / a * (unsigned HOST_WIDE_INT) m_i;
+	  if (nl > 1u << 20)
+	    mvelcm_overflow = true;
+	  else
+	    mvelcm = nl;
+	}
+    }
+
   /* Loads the schedule relies on being promoted to .s/.us.  */
   auto_bitmap bodydef;
   for (unsigned i = 0; i < seq.length (); i++)
@@ -13863,10 +13956,15 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     spec = -lvx_cms_force_speculative_loads (seq, bodydef);
 
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
-	   " ResMII=%d RecMII=%d span=%d nstages=%d delta=%d safelen=%d"
+	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
+	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
+	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
 	   loop->num, found, lower, found - lower, m, r, k, span, nstages,
+	   bs, preps, mvemax, mvep2,
+	   mvelcm_overflow ? 0 : (int) mvelcm,
+	   mven, mvetop, mve2nd,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
 	   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
