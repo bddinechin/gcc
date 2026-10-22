@@ -8953,73 +8953,19 @@ lvx_sched_reorder2 (FILE *, int, rtx_insn **ready, int *nreadyp, int)
 #undef TARGET_SCHED_REORDER2
 #define TARGET_SCHED_REORDER2 lvx_sched_reorder2
 
-/* Implements TARGET_SCHED_REORDER2_RECONSIDER_DISABLED_BB_P.
-   Returns true if flag_modulo_sched is set and BB should forcefully
-   be considered by schedule_ebbs.  */
-static bool
-lvx_sched_reorder2_reconsider_disabled_bb_p (basic_block bb)
-{
-  /* This hook should only ever be called during post-pass
-     reordering, after register allocation, for bb whom
-     schedule was disabled.  */
-  gcc_assert (reload_completed && (bb->flags & BB_DISABLE_SCHEDULE));
-
-  /* BB_DISABLE_SCHEDULE is misnamed as it is only ever set by
-     the modulo scheduler in generic code.
-     Non-upstream targets may uses it otherwise, but it is irrevelant
-     here since then we wouldn't be in lvx code.  */
-  return flag_modulo_sched;
-}
-
-#undef TARGET_SCHED_REORDER2_RECONSIDER_DISABLED_BB_P
-#define TARGET_SCHED_REORDER2_RECONSIDER_DISABLED_BB_P                         \
-  lvx_sched_reorder2_reconsider_disabled_bb_p
-
 /* Implements TARGET_SCHED_DEPENDENCIES_EVALUATION_HOOK.
    If SCHED_VERBOSE is high enough, dumps dependencies information.
-   During reorder2 if HEAD and TAIL are the boundaries of a basic block
-   for which TARGET_SCHED_REORDER2_RECONSIDER_DISABLED_BB_P holds then
-   adds ANTI dependencies of cost 0 in-between each insn of the bb.  */
+
+   This used to also pin a modulo-scheduled kernel in place, by threading its
+   instructions with cost-0 ANTI dependences so that schedule_ebbs would bundle
+   the block without reordering it.  That was SMS scaffolding and it is gone:
+   see docs/cms-foundations.md §7quindecies.  CMS has no need of it -- its
+   kernel schedule already satisfies every dependence and resource constraint,
+   so it annotates insn_cycle/insn_flags itself and marks the kernel
+   BB_DISABLE_SCHEDULE to keep this pass away.  */
 static void
 lvx_sched_dependencies_evaluation_hook (rtx_insn *head, rtx_insn *tail)
 {
-  /* If modulo scheduled loops were left untouched by other scheduling
-     passes then prevent any clumsy shuffling by injecting ANTI dep
-     of cost 0 in-between each subsequent insn.
-     Doing so allows us to use the gears of the scheduler
-     without risking poisoning the SMS modulo schedule.
-     The more accurate the view on resources has SMS, the better this
-     bundling will be.  */
-  if (reload_completed && flag_modulo_sched_bundle && flag_modulo_sched)
-    {
-      rtx_insn *insn = NULL, *next = NULL;
-      for (insn = head; insn != tail; insn = next)
-	{
-	  while (!!(next = next_nonnote_nondebug_insn (insn))
-		 && next != next_nonnote_nondebug_insn (tail)
-		 && !INSN_P (next));
-
-	  if (!next || next == next_nonnote_nondebug_insn (tail))
-	    break;
-
-	  basic_block bb = BLOCK_FOR_INSN (insn);
-	  basic_block nextbb = BLOCK_FOR_INSN (next);
-	  if (!(bb->flags & BB_DISABLE_SCHEDULE)
-	      || !(nextbb->flags & BB_DISABLE_SCHEDULE)
-	      || !lvx_sched_reorder2_reconsider_disabled_bb_p (bb)
-	      || !lvx_sched_reorder2_reconsider_disabled_bb_p (nextbb))
-	    continue;
-
-	  /* Add ANTI dependence with cost 0 between each insn
-	     of a modulo scheduled ebb so that they aren't moved
-	     around by the haifa-sched.  */
-	  dep_def _new_dep, *new_dep = &_new_dep;
-	  init_dep (new_dep, insn, next, REG_DEP_ANTI);
-	  DEP_COST (new_dep) = 0;
-	  sd_add_dep (new_dep, false);
-	}
-    }
-
   if (!sched_dump || sched_verbose < 9)
     return;
 
