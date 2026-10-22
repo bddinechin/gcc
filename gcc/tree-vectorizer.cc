@@ -312,25 +312,39 @@ adjust_simduid_builtins (hash_table<simduid_to_vf> *htab, function *fun)
 	  gcc_assert (TREE_CODE (arg) == SSA_NAME);
 	  simduid_to_vf *p = NULL, data;
 	  data.simduid = DECL_UID (SSA_NAME_VAR (arg));
-	  /* Need to nullify loop safelen field since it's value is not
-	     valid after transformation.  INT_MAX is the exception, for the
-	     same reason as in vect_transform_loop: a finite safelen is a
-	     distance that the transformation consumes, while INT_MAX is how
-	     #pragma GCC ivdep and annot_expr_parallel_kind spell "no two
-	     iterations conflict at ANY distance" (tree-cfg.cc:242,258).  That
-	     is scale-invariant and stays true afterwards, so clearing it here
-	     would discard a still-valid user assertion -- and this test looks
-	     only at the value, not at where it came from, so an ivdep loop
-	     reaching this path would lose its annotation.  */
-	  if (bb->loop_father && bb->loop_father->safelen > 0
-	      && bb->loop_father->safelen != INT_MAX)
-	    bb->loop_father->safelen = 0;
 	  if (htab)
 	    {
 	      p = htab->find (&data);
 	      if (p)
 		vf = p->vf;
 	    }
+
+	  /* Adjust the loop's safelen, rather than nullifying it.  A finite
+	     safelen is a distance the transformation CONSUMES rather than
+	     invalidates: one vectorized iteration covers VF of the iterations
+	     the assertion was stated about, so safelen / VF is still true and
+	     is what a later consumer -- a modulo scheduler, say -- can use.
+	     Clearing it threw that away.  See adjust_loop_safelen.
+
+	     INT_MAX is left alone, being how #pragma GCC ivdep and
+	     annot_expr_parallel_kind spell "no two iterations conflict at ANY
+	     distance" (tree-cfg.cc:242,258).  That is scale-invariant, so no
+	     amount of vectorizing consumes it.
+
+	     The lookup above has to come first: VF is what this divides by, and
+	     it is only known once the simduid has been resolved.
+
+	     One caveat kept from the original.  This reaches bb->loop_father,
+	     which after vectorization need not be the loop the simduid names,
+	     so the adjustment may land on a loop that was not the one
+	     transformed.  Dividing is the better behaviour under that
+	     uncertainty than clearing: an over-large safelen is the unsound
+	     direction and division only ever shrinks it.  */
+	  unsigned HOST_WIDE_INT cvf;
+	  if (bb->loop_father && vf.is_constant (&cvf))
+	    adjust_loop_safelen (bb->loop_father, cvf);
+	  else if (bb->loop_father && bb->loop_father->safelen != INT_MAX)
+	    bb->loop_father->safelen = 0;
 	  switch (ifn)
 	    {
 	    case IFN_GOMP_SIMD_VF:
