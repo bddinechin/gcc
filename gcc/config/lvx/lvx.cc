@@ -12865,12 +12865,14 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 {
   unsigned n = seq.length ();
   auto_vec<int> prio, release, blame, culprit, cumulative, tosink, slack, base;
+  auto_vec<int> guilt;
   int resblame[LVX_CMS_NRESOURCES];
 
   memset (resblame, 0, sizeof (resblame));
   prio.safe_grow_cleared (n);
   release.safe_grow_cleared (n);
   cumulative.safe_grow_cleared (n);
+  guilt.safe_grow_cleared (n);
   base.safe_grow_cleared (n);
   lvx_cms_path_metrics (seq, arcs, height, tosink, slack);
 
@@ -12965,14 +12967,48 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	 cycle, visible in the non-monotone excess across budgets (90, 95, 84,
 	 79).  Priority escalates cumulatively and does not oscillate this way.
 	 Damping the release the same way is the obvious next thing to try.  */
+      /* Policy 3, DAMPED: the integral of accumulated culpability rather than a
+	 proportional response to an instantaneous signal.
+
+	 Policy 2 oscillates because its trigger is self-defeating -- it moves a
+	 task BECAUSE it is a culprit, and moving it stops it being one, so the
+	 condition is measured on the very quantity the action destroys.  Three
+	 changes together:
+
+	   MEMORY     GUILT accumulates and is never reset within an II attempt,
+		      the way CUMULATIVE does for priority, so a task cannot
+		      snap back to zero the pass after it is moved.
+	   SMALL STEP the delay is one cycle per unit of guilt, clamped to the
+		      task's slack, so a repeat offender drifts late instead of
+		      jumping the whole way to its ALAP into a region nothing
+		      has measured.
+	   RATCHET    release only ever rises within the attempt, which removes
+		      the snap-back half of the cycle outright.
+
+	 Note what is NOT conditioned on: instantaneous blame.  A task that was
+	 itself displaced this pass keeps whatever delay its history earned,
+	 because withdrawing it is what closed the loop through the
+	 measurement.  */
       for (unsigned i = 0; i < n; i++)
 	{
+	  if (lvx_cms_release_policy == 3)
+	    {
+	      guilt[i] += culprit[i];
+	      int want = height[i] + MIN (slack[i], guilt[i]);
+	      if (slack[i] <= 0)
+		want = 0;
+	      if (release[i] < want)		/* ratchet */
+		release[i] = want;
+	      continue;
+	    }
+
 	  bool move = false;
 	  switch (lvx_cms_release_policy)
 	    {
 	    case 0:  move = false; break;
 	    case 2:  move = (culprit[i] > 0 && blame[i] == 0 && slack[i] > 0);
 		     break;
+	    case 4:  move = (slack[i] > 0); break;	/* no selectivity at all */
 	    default: move = (blame[i] == 0 && slack[i] > 0); break;
 	    }
 	  release[i] = move ? height[i] + slack[i] : 0;	/* its ALAP */
