@@ -12503,7 +12503,9 @@ static bool
 lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		  const auto_vec<lvx_cms_arc> &arcs,
 		  const auto_vec<int> &prio,
-		  int ii, int delta, auto_vec<int> &sigma)
+		  const auto_vec<int> &release,
+		  int ii, int delta, auto_vec<int> &sigma,
+		  auto_vec<int> *blame)
 {
   unsigned n = seq.length ();
   if (n == 0 || ii <= 0)
@@ -12539,8 +12541,11 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
   int placed = 0;
   while (placed < (int) cells)
     {
-      /* Pick a ready cell: lowest copy first, then the longest remaining
-	 dependence path, then program order.  */
+      /* Pick a ready cell: lowest copy first, then by PRIO ascending, then
+	 program order.  Ascending, so a priority is a cost and not a merit --
+	 longest-path-to-sink therefore enters negated.  This comment used to
+	 say "the longest remaining dependence path", which is the path to the
+	 SINK and the opposite of what the default priority is.  */
       int best = -1;
       for (int c = 0; c < ncopy; c++)
 	{
@@ -12585,6 +12590,27 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
       if (earliest < 0)
 	earliest = 0;
 
+      /* The RELEASE DATE, II-PERIODIC, enforced here rather than by an arc
+	 from the dependence graph's source node.
+
+	 Two reasons it belongs in the scheduler and not in the graph.  First,
+	 periodicity: copy C of task I is iteration C's instance, so its release
+	 is RELEASE[I] + C * II, and an arc from the source would pin only copy
+	 zero -- expressing the periodic form would need one arc per copy, which
+	 is a graph that changes with II.  Second, and the reason this is a safe
+	 SWO parameter at all: the graph is left alone, so RecMII and the lower
+	 bound are the same whatever the release dates are, and no amount of
+	 perturbation can make the problem infeasible the way an added arc can.
+	 A release only ever delays a task that is already dependence-ready; it
+	 never removes it from the ready set, so the construction still
+	 terminates.  */
+      if (!release.is_empty () && release[bi] > 0)
+	{
+	  int r = release[bi] + bc * ii;
+	  if (earliest < r)
+	    earliest = r;
+	}
+
       /* First resource-feasible date at or after it.  */
       int when = earliest;
       while (true)
@@ -12602,6 +12628,12 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
       lvx_cms_resources_add (&cyc[when], seq[bi]);
       date[(unsigned) best] = when;
       placed++;
+
+      /* BLAME, for SWO's analysis phase: how far resource contention pushed
+	 this task past the date its dependences and release allowed.  A task
+	 that is repeatedly displaced is the squeaky wheel.  */
+      if (blame != NULL && when > earliest)
+	(*blame)[bi] += when - earliest;
 
       /* Release the successors of this cell.  */
       for (unsigned a = 0; a < arcs.length (); a++)
@@ -12634,6 +12666,181 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	      return true;
 	    }
 	}
+    }
+
+  return false;
+}
+
+/* Longest path from each node to the end over the INTRA-iteration arcs,
+   counting the node's own processing time: TOSINK.  The makespan is the largest
+   ASAP + latency, ALAP is the makespan less TOSINK, and SLACK is the room
+   between ALAP and ASAP -- how many cycles a node may be delayed without
+   lengthening one iteration.
+
+   ASAP, passed in, is HEIGHT: a FORWARD relaxation, so it is the longest path
+   FROM the source, not to the sink.  Worth saying because the list scheduler's
+   own comment claimed otherwise for a while, and the two are different
+   orderings with different characters: ASAP ascending issues breadth-first from
+   the inputs, TOSINK descending issues the critical path first.  */
+
+static void
+lvx_cms_path_metrics (const auto_vec<rtx_insn *> &seq,
+		      const auto_vec<lvx_cms_arc> &arcs,
+		      const auto_vec<int> &asap,
+		      auto_vec<int> &tosink, auto_vec<int> &slack)
+{
+  unsigned n = seq.length ();
+
+  tosink.truncate (0);
+  slack.truncate (0);
+  tosink.safe_grow_cleared (n);
+  slack.safe_grow_cleared (n);
+
+  for (unsigned i = 0; i < n; i++)
+    tosink[i] = lvx_cms_latency (seq[i]);
+
+  /* Reverse relaxation.  An omega = 0 arc runs forward in chain order, so one
+     reverse sweep settles it; a second costs nothing at these sizes and makes
+     the result independent of that assumption.  */
+  for (unsigned round = 0; round < 2; round++)
+    for (int i = (int) n - 1; i >= 0; i--)
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].omega == 0 && (int) arcs[a].src == (unsigned) i)
+	  {
+	    int cand = (int) arcs[a].theta + tosink[arcs[a].dst];
+	    if (tosink[i] < cand)
+	      tosink[i] = cand;
+	  }
+
+  int makespan = 1;
+  for (unsigned i = 0; i < n; i++)
+    makespan = MAX (makespan, asap[i] + lvx_cms_latency (seq[i]));
+  for (unsigned i = 0; i < n; i++)
+    slack[i] = (makespan - tosink[i]) - asap[i];
+}
+
+static const char *lvx_cms_verify (const auto_vec<rtx_insn *> &,
+				   const auto_vec<lvx_cms_arc> &,
+				   int, const auto_vec<int> &);
+
+/* SQUEAKY WHEEL OPTIMIZATION at a fixed II, after Joslin and Clements, JAIR
+   1999: Construct, Analyze, Prioritize, and go round again.
+
+   The construction is the greedy list scheduler of lvx_cms_converge, which does
+   not backtrack -- that is the point.  SWO does not search within one
+   construction; it changes the PARAMETERS the next construction reads, so each
+   pass is as cheap as the first and the whole cycle is linear in the budget.
+   The two parameters are the two the scheduler takes:
+
+     PRIORITY   which of the dependence-ready tasks is picked first.
+     RELEASE    when a task becomes eligible at all, II-periodically.
+
+   Release is the stronger of the two and the one a pure priority scheme cannot
+   imitate.  Priority only reorders tasks that are ALREADY ready, so it can
+   never hold a task back; release can.  That matters here because the
+   characteristic failure of a greedy modulo scheduler at a tight II is placing
+   a task with slack early, spending a resource that a critical task needs in
+   that cycle and cannot defer.  No priority can fix it -- the slack task is
+   ready and something must be chosen -- but a release date on the slack task
+   leaves the slot alone.
+
+   ANALYZE blames each task for the cycles resource contention pushed it past
+   its dependence-feasible date, summed over the copies.  PRIORITIZE then:
+
+     - escalates the priority of blamed tasks, cumulatively, so a repeat
+       offender keeps rising rather than oscillating;
+     - and pushes tasks that have SLACK and no blame back to their latest
+       feasible start, which is what frees the early slots the blamed tasks
+       were denied.
+
+   Slack comes from a backward pass over the intra-iteration arcs against the
+   makespan the previous construction achieved: a task whose latest start
+   exceeds its earliest has room to be delayed for free.
+
+   Returns true with SIGMA set when a construction both converged and verified.
+   The budget bounds the passes; exhausting it is how the caller learns to try
+   II + 1 instead.  */
+
+static bool
+lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
+		   const auto_vec<lvx_cms_arc> &arcs,
+		   const auto_vec<int> &height,
+		   int ii, int delta, auto_vec<int> &sigma,
+		   int budget, int *passes, const char **last_bad)
+{
+  unsigned n = seq.length ();
+  auto_vec<int> prio, release, blame, cumulative, tosink, slack, base;
+
+  prio.safe_grow_cleared (n);
+  release.safe_grow_cleared (n);
+  cumulative.safe_grow_cleared (n);
+  base.safe_grow_cleared (n);
+  lvx_cms_path_metrics (seq, arcs, height, tosink, slack);
+
+  /* The base priority, before SWO escalates it.  The pick is ascending, so a
+     merit has to be negated to become a cost.
+
+     0  ASAP, the longest path FROM the source: issue breadth-first from the
+	inputs.  The default, and what this scheduler has always used.
+     1  the longest path TO the sink, negated: issue the critical path first,
+	which is the classical list-scheduling choice.
+     2  slack, ALAP - ASAP: issue what has least room to move, which is the
+	critical path by another name on a chain but differs wherever the body
+	branches, since slack accounts for the path on BOTH sides of a node.  */
+  for (unsigned i = 0; i < n; i++)
+    switch (lvx_cms_priority)
+      {
+      case 1:  base[i] = -tosink[i]; break;
+      case 2:  base[i] = slack[i];   break;
+      default: base[i] = height[i];  break;
+      }
+
+  for (unsigned i = 0; i < n; i++)
+    prio[i] = base[i];
+
+  for (int pass = 0; pass < budget; pass++)
+    {
+      blame.truncate (0);
+      blame.safe_grow_cleared (n);
+
+      (*passes)++;
+      if (lvx_cms_converge (seq, arcs, prio, release, ii, delta, sigma,
+			    &blame))
+	{
+	  const char *bad = lvx_cms_verify (seq, arcs, ii, sigma);
+	  if (!bad)
+	    return true;
+	  *last_bad = bad;
+	}
+
+      /* ANALYZE: nothing squeaked, so no parameter change would differ and
+	 another pass would reconstruct the same schedule.  */
+      bool squeaked = false;
+      for (unsigned i = 0; i < n; i++)
+	if (blame[i] > 0)
+	  squeaked = true;
+      if (!squeaked)
+	return false;
+
+      /* PRIORITIZE, first lever: escalate, cumulatively.  */
+      for (unsigned i = 0; i < n; i++)
+	{
+	  cumulative[i] += blame[i];
+	  prio[i] = base[i] - cumulative[i];
+	}
+
+      /* PRIORITIZE, second lever: delay what has slack and did not squeak.
+
+	 ASAP is the intra-iteration longest path already in HEIGHT.  ALAP is
+	 the backward pass against the makespan: a task's latest start is the
+	 earliest over its successors of their latest start minus the arc's
+	 latency.  Only omega = 0 arcs take part, the cross-iteration ones being
+	 accounted for by the modulo constraint rather than by this slack.  */
+      for (unsigned i = 0; i < n; i++)
+	if (blame[i] == 0 && slack[i] > 0)
+	  release[i] = height[i] + slack[i];	/* its ALAP */
+	else
+	  release[i] = 0;
     }
 
   return false;
@@ -13247,15 +13454,15 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int found = 0;
   const char *last_bad = NULL;
 
+  /* At each candidate II, spend the SWO budget before moving on.  A budget of
+     one is a single greedy construction, which is what this did before the SWO
+     cycle existed, so the baseline is reproducible with -mcms-swo-budget=1.  */
+  int passes = 0;
+  int budget = MAX (1, lvx_cms_swo_budget);
   for (int try_ii = lower; try_ii <= lower + 8 && !found; try_ii++)
-    if (lvx_cms_converge (seq, arcs, height, try_ii, delta, sigma))
-      {
-	const char *bad = lvx_cms_verify (seq, arcs, try_ii, sigma);
-	if (!bad)
-	  found = try_ii;
-	else
-	  last_bad = bad;
-      }
+    if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
+			   budget, &passes, &last_bad))
+      found = try_ii;
 
   /* Whether reorg_loops will put a LOOPDO on this loop.  Reported rather than
      refused: a hardware loop is a HELP to a pipeliner, not an obstacle --
@@ -13267,8 +13474,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   if (!found)
     {
       fprintf (dump_file, ";; lvx cms: loop %d NO schedule through II=%d"
-	       " (lower=%d delta=%d M=%d, %u nodes %u arcs)%s%s%s\n",
-	       loop->num, lower + 8, lower, delta, m,
+	       " (lower=%d delta=%d M=%d passes=%d, %u nodes %u arcs)%s%s%s\n",
+	       loop->num, lower + 8, lower, delta, m, passes,
 	       seq.length (), arcs.length (), hw ? " hwloop" : "",
 	       last_bad ? " -- converged but unverified: " : "",
 	       last_bad ? last_bad : "");
@@ -13324,10 +13531,10 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     spec = -lvx_cms_force_speculative_loads (seq, bodydef);
 
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
-	   " ResMII=%d RecMII=%d span=%d nstages=%d delta=%d safelen=%d,"
-	   " %u nodes %u arcs, %d loads %s .s%s -- %s\n",
+	   " ResMII=%d RecMII=%d span=%d nstages=%d delta=%d safelen=%d"
+	   " passes=%d, %u nodes %u arcs, %d loads %s .s%s -- %s\n",
 	   loop->num, found, lower, found - lower, m, r, k, span, nstages,
-	   delta, (int) loop->safelen, seq.length (), arcs.length (),
+	   delta, (int) loop->safelen, passes, seq.length (), arcs.length (),
 	   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
 	   hw ? " hwloop" : "",
 	   !drop_ok ? "UNSOUND: dropped safelen below nstages"
