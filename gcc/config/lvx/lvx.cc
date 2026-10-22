@@ -13883,6 +13883,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      lifetime with one copy would actually help: after one split the degree
      becomes max (MVE2ND, ceil (MVEMAX / 2)).  */
   int mvemax = 1, mvep2 = 1, mven = 0, mvetop = 0, mve2nd = 0;
+  /* Per expanded value, what a splitting copy would have to work with.  */
+  auto_vec<int> sp_def, sp_lat, sp_last, sp_deg;
   unsigned HOST_WIDE_INT mvelcm = 1;
   bool mvelcm_overflow = false;
   for (unsigned i = 0; i < seq.length (); i++)
@@ -13904,6 +13906,10 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       if (m_i <= 1)
 	continue;
       mven++;
+      sp_def.safe_push (sigma[i]);
+      sp_lat.safe_push (lvx_cms_latency (seq[i]));
+      sp_last.safe_push (last);
+      sp_deg.safe_push (m_i);
       int p2 = 1;
       while (p2 < m_i)
 	p2 <<= 1;
@@ -13955,16 +13961,77 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   if (lvx_cms_force_spec_loads && spec)
     spec = -lvx_cms_force_speculative_loads (seq, bodydef);
 
+  /* Can a splitting copy actually be placed?  §7undecies.4 projects a large
+     reduction in the expansion degree from splitting the longest lifetime with
+     one copy, and that projection is unconditional -- which the author objected
+     to (2026-10-22): a copy reading the value cannot issue before the
+     producer's result exists, so the split point is confined to
+
+	 [ sigma (def) + latency (def),  last_use - latency (copy) ]
+
+     and if that window is empty there is no split, while if it is narrow the
+     split cannot be balanced and buys far less than half.  On an exposed-latency
+     VLIW this is a correctness bound rather than a stall, so it is strict.
+     Llosa & Freudenberger state the CONSEQUENCE -- Kmin is floored by the
+     longest operation latency -- but never the window, and never measure it.
+
+     MVESPLIT applies the window; MVESPLITR additionally requires a free issue
+     slot in the copy's modulo cycle, which is the whole premise of doing this
+     in spare resources.  MVENOSPL counts values whose window is empty.  */
+  int mvesplit = 1, mvesplitr = 1, mvenospl = 0;
+  {
+    /* Modulo-cycle occupancy of the TINY counter, which is what a register
+       move takes: availability 4, covering ALU0/ALU1/LSU0/LSU1.  */
+    auto_vec<int> tinyuse;
+    for (int c = 0; c < found; c++)
+      tinyuse.safe_push (0);
+    for (unsigned i = 0; i < seq.length (); i++)
+      {
+	struct lvx_sched_resources one;
+	memset (&one, 0, sizeof (one));
+	lvx_cms_resources_add (&one, seq[i]);
+	tinyuse[(sigma[i] - lo) % found] += (int) one.tiny_count;
+      }
+    int tinycap = (int) lvx_issue_availability.tiny;
+
+    for (unsigned v = 0; v < sp_deg.length (); v++)
+      {
+	int d = sp_def[v], lat = sp_lat[v], last = sp_last[v];
+	int deg = sp_deg[v];
+	/* A move costs one cycle before its reader.  */
+	int tlo = d + MAX (1, lat), thi = last - 1;
+	int best = deg, bestr = deg;
+	if (tlo > thi)
+	  mvenospl++;
+	else
+	  for (int t = tlo; t <= thi; t++)
+	    {
+	      int a = (t - d + found - 1) / found;
+	      int b = (last - t + found - 1) / found;
+	      int cand = MAX (MAX (a, b), 1);
+	      if (cand < best)
+		best = cand;
+	      if (cand < bestr && tinyuse[(t - lo) % found] < tinycap)
+		bestr = cand;
+	    }
+	if (best > mvesplit)
+	  mvesplit = best;
+	if (bestr > mvesplitr)
+	  mvesplitr = bestr;
+      }
+  }
+
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
+	   " mvesplit=%d mvesplitr=%d mvenospl=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
 	   loop->num, found, lower, found - lower, m, r, k, span, nstages,
 	   bs, preps, mvemax, mvep2,
 	   mvelcm_overflow ? 0 : (int) mvelcm,
-	   mven, mvetop, mve2nd,
+	   mven, mvetop, mve2nd, mvesplit, mvesplitr, mvenospl,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
 	   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
