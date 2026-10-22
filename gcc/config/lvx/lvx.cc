@@ -13402,7 +13402,11 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     Dropping the arc outright -- which this did until 2026-10-21 -- is
 	     WRONG for any finite safelen.  A dependence at distance 4 in a loop
 	     scheduled with six stages overlapping does bind, and skipping it
-	     would have produced a schedule that violates it.  */
+	     would have produced a schedule that violates it.
+
+	     SAFELEN is a floor on the distance, not the distance: the stride
+	     test below scans upward from it for the first distance that can
+	     actually conflict.  */
 	  int sl = lvx_cms_assume_ivdep ? INT_MAX
 		   : (loop->safelen > 1 ? loop->safelen : 1);
 
@@ -13419,12 +13423,41 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	      continue;
 	    }
 
-	  HOST_WIDE_INT mw = sl;
-
 	  /* The stride test, which is what makes a self-dependence of one array
-	     through a unit-stride pointer go away without a pragma.  */
-	  if (lvx_cms_mem_independent_p (mivs[p], mivs[q], mw))
-	    continue;
+	     through a unit-stride pointer go away without a pragma.
+
+	     SCANNED, not tested once.  Testing only at SL was unsound: for
+	     `b[i] = b[i-4] + a[i]' the two references are four elements apart,
+	     so they are provably independent at distance one and the arc was
+	     DROPPED -- losing a real dependence whose distance is four, which
+	     binds as soon as five iterations are in flight.  PolyBench could
+	     not expose it, every same-array pair there having its real
+	     dependence at distance zero or one, which is also why no circuit in
+	     that corpus had a distance above one.
+
+	     So find the SMALLEST distance at or beyond SL at which the two are
+	     not provably independent, and carry the arc at that distance.  The
+	     scan is what lets a computed distance exceed SL at all, and so it is
+	     the only mechanism here that produces omega > 1 -- neither safelen,
+	     which is 0 in practice, nor the generic ddg, which hard-codes 1.
+
+	     Independent at every distance in range means the references never
+	     conflict within the window the scheduler can overlap.  Beyond the
+	     window nothing is claimed: the distance is reported out as a dropped
+	     safelen, and the caller rejects the schedule unless it is at least
+	     nstages -- the same check that already guards the SL > MAX_DELTA
+	     case above.  */
+	  HOST_WIDE_INT mw = sl;
+	  while (mw <= LVX_CMS_MAX_DELTA
+		 && lvx_cms_mem_independent_p (mivs[p], mivs[q], mw))
+	    mw++;
+
+	  if (mw > LVX_CMS_MAX_DELTA)
+	    {
+	      if (*dropped_safelen == 0 || *dropped_safelen > mw)
+		*dropped_safelen = mw;
+	      continue;
+	    }
 
 	  if (a_w && b_r)
 	    lvx_cms_push_arc (arcs, p, q,
