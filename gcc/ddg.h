@@ -126,6 +126,13 @@ struct ddg
      loop, and then no such deps are needed.  */
   int closing_branch_deps;
 
+  /* The weakest loop->safelen that licensed dropping a cross-iteration memory
+     dependence while building this graph, or 0 if none was dropped.  Dropping
+     is sound only while safelen is at least the number of iterations the
+     schedule puts in flight, which is not known until the stage count is, so
+     the caller must check it against stage_count before committing.  */
+  int dropped_safelen;
+
   /* Array and number of backarcs (edges with distance > 0) in the DDG.  */
   int num_backarcs;
   ddg_edge_ptr *backarcs;

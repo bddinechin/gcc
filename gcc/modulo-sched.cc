@@ -1663,10 +1663,19 @@ sms_schedule (void)
 	  if (stage_count < param_sms_min_sc
 	      || (count_init && (loop_count <= stage_count))
 	      || (max_trip_count >= 0 && max_trip_count <= stage_count)
-	      || (trip_count >= 0 && trip_count <= stage_count))
+	      || (trip_count >= 0 && trip_count <= stage_count)
+	      /* A cross-iteration memory dependence dropped on the strength of
+		 safelen is only truly absent from this schedule if the schedule
+		 keeps no more than safelen iterations in flight.  See
+		 add_inter_loop_mem_dep.  */
+	      || (g->dropped_safelen != 0 && g->dropped_safelen < stage_count))
 	    {
 	      if (dump_file)
 		{
+		  if (g->dropped_safelen != 0
+		      && g->dropped_safelen < stage_count)
+		    fprintf (dump_file, "SMS safelen %d below stage count %d\n",
+			     g->dropped_safelen, stage_count);
 		  fprintf (dump_file, "SMS failed... \n");
 		  fprintf (dump_file, "SMS sched-failed (stage-count=%d,"
 			   " loop-count=", stage_count);

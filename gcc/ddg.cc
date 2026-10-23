@@ -26,6 +26,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "rtl.h"
 #include "df.h"
 #include "insn-attr.h"
+#include "cfgloop.h"
 #include "sched-int.h"
 #include "ddg.h"
 #include "rtl-iter.h"
@@ -411,6 +412,28 @@ add_intra_loop_mem_dep (ddg_ptr g, ddg_node_ptr from, ddg_node_ptr to)
 static void
 add_inter_loop_mem_dep (ddg_ptr g, ddg_node_ptr from, ddg_node_ptr to)
 {
+  /* #pragma GCC ivdep and #pragma omp simd safelen(N) say that N iterations
+     may run concurrently with no memory dependence between them, so a
+     dependence that crosses the back edge does not exist.  This is the only
+     place such an edge is created; cross-iteration REGISTER dependences come
+     from add_cross_iteration_register_deps and are untouched, as they must be,
+     since safelen licenses nothing about registers.
+
+     The edge is DROPPED rather than widened because this function hard-codes a
+     distance of 1 and the consumers assume nothing reaches further.  That
+     conservatism is also why safelen must be checked again later: a distance-1
+     edge here stands in for a dependence at ANY distance, so removing it is
+     sound only while the schedule keeps fewer than safelen iterations in
+     flight.  Record the weakest safelen relied on and let the caller compare it
+     with the stage count.  */
+  class loop *loop = g->bb->loop_father;
+  if (loop != NULL && loop->safelen > 1)
+    {
+      if (g->dropped_safelen == 0 || loop->safelen < g->dropped_safelen)
+	g->dropped_safelen = loop->safelen;
+      return;
+    }
+
   if (!insns_may_alias_p (from->insn, to->insn))
     /* Do not create edge if memory references have disjoint alias sets.  */
     return;
