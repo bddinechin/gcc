@@ -14794,7 +14794,12 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      unpinned.  II is never lost and the epilogue saving is taken wherever it
      costs nothing.  */
   int pin = lvx_cms_branch_stage;
-  for (int try_ii = lower; try_ii <= lower + 8 && !found; try_ii++)
+  /* -mcms-ii-bias starts the search above the bound.  It exists to answer a
+     question the ordinary search cannot: when two schedulers disagree only
+     because one of them had to take a larger II, comparing them needs both to
+     be at the SAME larger II.  §7quinvicies.  */
+  int first_ii = lower + (int) lvx_cms_ii_bias;
+  for (int try_ii = first_ii; try_ii <= first_ii + 8 && !found; try_ii++)
     {
       if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
 			     budget, &passes, &last_bad, resblame,
