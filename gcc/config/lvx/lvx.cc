@@ -14686,9 +14686,9 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  if (partial_def)
 	    {
 	      if (dump_file)
-		fprintf (dump_file, ";; lvx cms: loop %d declined, partial"
-			 " definition of r%u reaches a use\n", loop->num,
-			 regno);
+		fprintf (dump_file, ";; lvx cms: fn=%s loop %d declined, partial"
+			 " definition of r%u reaches a use\n",
+			 current_function_name (), loop->num, regno);
 	      return false;
 	    }
 
@@ -14729,8 +14729,8 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
     }
 
   if (dump_file && lvx_cms_probe)
-    fprintf (dump_file, ";; lvx cms: loop %d, %u simple inductions,"
-	     " %u relaxed arcs dropped\n", loop->num,
+    fprintf (dump_file, ";; lvx cms: fn=%s loop %d, %u simple inductions,"
+	     " %u relaxed arcs dropped\n", current_function_name (), loop->num,
 	     bitmap_count_bits (inductions), nrelaxed);
 
   /* WAR, to the KILLING definition only -- the same correction RAW needs, and
@@ -15151,8 +15151,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
   if (!lvx_cms_build_graph (loop, body, seq, arcs, height, &dropped_safelen))
     {
-      fprintf (dump_file, ";; lvx cms: loop %d declined, body is not a chain"
-	       " the analysis can walk\n", loop->num);
+      fprintf (dump_file, ";; lvx cms: fn=%s loop %d declined, body is not a"
+	       " chain the analysis can walk\n", current_function_name (),
+	       loop->num);
       return;
     }
 
@@ -15160,8 +15161,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   auto_vec<int> crit;
   if (!lvx_cms_bounds (loop, body, seq, arcs, height, &m, &r, &k, &crit))
     {
-      fprintf (dump_file, ";; lvx cms: loop %d declined, the recurrence bound"
-	       " did not solve\n", loop->num);
+      fprintf (dump_file, ";; lvx cms: fn=%s loop %d declined, the recurrence"
+	       " bound did not solve\n", current_function_name (), loop->num);
       return;
     }
 
@@ -15309,9 +15310,10 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
   if (!found)
     {
-      fprintf (dump_file, ";; lvx cms: loop %d NO schedule through II=%d"
+      fprintf (dump_file, ";; lvx cms: fn=%s loop %d NO schedule through II=%d"
 	       " (lower=%d delta=%d M=%d passes=%d, %u nodes %u arcs)%s%s%s\n",
-	       loop->num, lower + 8, lower, delta, m, passes,
+	       current_function_name (), loop->num, lower + 8, lower, delta, m,
+	       passes,
 	       seq.length (), arcs.length (), hw ? " hwloop" : "",
 	       last_bad ? " -- converged but unverified: " : "",
 	       last_bad ? last_bad : "");
@@ -16042,7 +16044,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       }
   }
 
-  fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
+  fprintf (dump_file, ";; lvx cms: fn=%s loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d spanlat=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
 	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
@@ -16059,7 +16061,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
-	   loop->num, found, lower, found - lower, m, r, k, span, spanlat,
+	   current_function_name (), loop->num, found, lower, found - lower, m,
+	   r, k, span, spanlat,
 	   nstages, bs, preps, mvemax, mvep2,
 	   mvelcm_overflow ? 0 : (int) mvelcm,
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
@@ -16101,10 +16104,10 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	    sw += arcs[crit[i]].omega;
 	    nreal++;
 	  }
-      fprintf (dump_file, ";; lvx cms: loop %d RecMII circuit, %u arcs,"
+      fprintf (dump_file, ";; lvx cms: fn=%s loop %d RecMII circuit, %u arcs,"
 	       " sum theta=" HOST_WIDE_INT_PRINT_DEC
-	       " sum omega=" HOST_WIDE_INT_PRINT_DEC ":", loop->num, nreal,
-	       st, sw);
+	       " sum omega=" HOST_WIDE_INT_PRINT_DEC ":",
+	       current_function_name (), loop->num, nreal, st, sw);
       for (unsigned i = 0; i < crit.length (); i++)
 	if (crit[i] >= 0)
 	  {
@@ -16399,8 +16402,8 @@ lvx_cms_probe_loops (void)
 	}
 
       if (!lvx_cms_eligible_loop_p (loop, body, insns, &why))
-	fprintf (dump_file, ";; lvx cms: loop %d declined, %s\n",
-		 loop->num, why);
+	fprintf (dump_file, ";; lvx cms: fn=%s loop %d declined, %s\n",
+		 current_function_name (), loop->num, why);
       else
 	lvx_cms_probe_loop (loop, body);
 
