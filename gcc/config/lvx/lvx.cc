@@ -12648,6 +12648,78 @@ lvx_cms_squeeze (enum lvx_cms_rclass n, const int deg[LVX_RC_N])
   return MIN (sq, lvx_cms_rclass_size[n]);
 }
 
+/* Would splitting the value defined by SEQ[I], or spilling it, still fit the II
+   we are currently trying?  §7novodecies.
+
+   The author's constraint (2026-10-27), and it is what distinguishes this from
+   Touzeau, Dehnert and Ruttenberg: **only consider a range split or a
+   spill/restore that does not push either bound above the II being scheduled
+   and allocated for.**  All three references let the II grow -- Touzeau's
+   binary search on DEPTH, Dehnert's reschedule-and-retry, Ruttenberg's doubling
+   escalation -- so none of them needs this test.  Under it a repair is free in
+   rate or it is not a candidate.
+
+   Note the bound is the CURRENT II, not MinII, and the difference matters:
+   a loop scheduled above its lower bound has slack, and a repair may consume
+   that slack without costing anything.  Testing against MinII would reject
+   repairs that are in fact free.  Equivalently, each of ResMII and RecMII must
+   stay at or below the II being tried -- which is weaker than "MinII must not
+   change" and is the right question.
+
+   Two ways to break it, both checkable before anything is emitted:
+
+   ResMII -- the added operations must fit in the resource budget the current II
+	     already provides.  COST_TINY extra TINY slots raise ResMII only if
+	     they push the counted demand past II * availability.
+
+   RecMII -- a copy on the dataflow path from a definition to its consumers
+	     lengthens every path through it, so a circuit containing it grows
+	     by the copy's latency.  Re-solving the parametric period with the
+	     affected arcs lengthened answers it exactly, which is cheap enough
+	     to do per candidate: the graph is small and lvx_plc is a label
+	     correcting solve, not an enumeration.
+
+   A spill is the same test with two instructions and the load's latency in
+   place of a copy's one -- which is why an UNCACHED spill reload (15 cycles,
+   §7septies.8) can almost never be MinII-preserving inside a recurrence, and
+   why the distinction between a value on a critical circuit and one off it
+   decides everything here.  */
+
+static bool
+lvx_cms_repair_fits_ii_p (const auto_vec<rtx_insn *> &seq,
+			    const auto_vec<lvx_cms_arc> &arcs,
+			    const struct lvx_sched_resources *demand,
+			    unsigned i, int ii, int extra_lat, int cost_tiny)
+{
+  unsigned n = seq.length ();
+
+  /* ResMII: would the extra operations need another bundle?  */
+  struct lvx_sched_resources with = *demand;
+  with.tiny_count += cost_tiny;
+  with.ninsns_count += cost_tiny;
+  if ((int) lvx_sched_resources_full_bundles (&with) > ii)
+    return false;
+
+  /* RecMII: lengthen every true-dependence arc out of I by the inserted
+     latency -- the copy or the reload sits between the definition and its
+     readers -- and ask the parametric period again.  */
+  lvx_plc plc;
+  for (unsigned k = 0; k <= n; k++)
+    plc.add_node ();
+  for (unsigned k = 0; k < n; k++)
+    plc.add_arc (0, k + 1, 0, 0);
+  for (unsigned a = 0; a < arcs.length (); a++)
+    {
+      HOST_WIDE_INT th = arcs[a].theta;
+      if (arcs[a].src == i && arcs[a].kind == LVX_ARC_REG_RAW)
+	th += extra_lat;
+      plc.add_arc (arcs[a].src + 1, arcs[a].dst + 1, th, arcs[a].omega);
+    }
+  if (plc.solve (1) != LVX_PLC_SOLVED)
+    return false;
+  return (int) plc.period () <= ii;
+}
+
 /* MRIS lineage formation on the OMEGA = 0 SUBGRAPH.  §7octodecies.5.
 
    Govindarajan et al. (IPDPS 2001, IEEE TC 2003) form lineages -- chains of
@@ -14840,6 +14912,55 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       }
   }
 
+  /* How many expanded values admit a repair that keeps MinII?  §7novodecies.
+     SPLITOK counts those a splitting COPYD could serve (one extra TINY per
+     register, latency 1); SPILLOK those a store/reload could (two extra
+     instructions, and the reload's latency, which under -mcms-load-latency is
+     the uncached figure).  */
+  int splitok = 0, spillok = 0, cand = 0;
+  {
+    struct lvx_sched_resources dem;
+    memset (&dem, 0, sizeof (dem));
+    for (unsigned i = 0; i < loop->num_nodes; i++)
+      {
+	rtx_insn *bi;
+	FOR_BB_INSNS (body[i], bi)
+	  lvx_cms_resources_add (&dem, bi);
+      }
+    /* A spill reload is a CACHED load whatever the data loads are (author,
+       2026-10-27): the slot is in the frame, which is hot, so it is priced at
+       the description's cached figure of 3 and NOT at -mcms-load-latency's
+       uncached one.  That option models the loop's data stream, which may be
+       streamed and not reused; the frame is neither.  The distinction matters
+       because 15 cycles of reload latency inside a recurrence could almost
+       never fit the current II, which would have made spilling look useless
+       for exactly the loops where the uncached regime makes it necessary.  */
+    int rl = 3;
+    for (unsigned i = 0; i < seq.length (); i++)
+      {
+	/* Only values that are expanded at all are candidates: a range inside
+	   one stage has nothing to split.  */
+	int last = -1;
+	for (unsigned a = 0; a < arcs.length (); a++)
+	  if (arcs[a].src == i && arcs[a].kind == LVX_ARC_REG_RAW)
+	    {
+	      int when = sigma[arcs[a].dst] + (int) arcs[a].omega * found;
+	      if (when > last)
+		last = when;
+	    }
+	if (last < 0 || last - sigma[i] <= found)
+	  continue;
+	cand++;
+	rtx ds = single_set (seq[i]);
+	int nr = (ds && REG_P (SET_DEST (ds))) ? REG_NREGS (SET_DEST (ds)) : 1;
+	nr = MAX (nr, 1);
+	if (lvx_cms_repair_fits_ii_p (seq, arcs, &dem, i, found, 1, nr))
+	  splitok++;
+	if (lvx_cms_repair_fits_ii_p (seq, arcs, &dem, i, found, rl, 2 * nr))
+	  spillok++;
+      }
+  }
+
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
@@ -14848,6 +14969,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " mveregs=%d mveregsx=%d mvepress=%d"
 	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
 	   " lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
+	   " cand=%d splitok=%d spillok=%d"
 	   " emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
@@ -14859,6 +14981,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
 	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
 	   igec, nlin, nseq, linnodes, linedges, linsq, linspill,
+	   cand, splitok, spillok,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
