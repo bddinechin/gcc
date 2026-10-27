@@ -13896,7 +13896,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      becomes max (MVE2ND, ceil (MVEMAX / 2)).  */
   int mvemax = 1, mvep2 = 1, mven = 0, mvetop = 0, mve2nd = 0;
   /* Per expanded value, what a splitting copy would have to work with.  */
-  auto_vec<int> sp_def, sp_lat, sp_last, sp_deg;
+  auto_vec<int> sp_def, sp_lat, sp_last, sp_deg, sp_nregs;
   unsigned HOST_WIDE_INT mvelcm = 1;
   bool mvelcm_overflow = false;
   for (unsigned i = 0; i < seq.length (); i++)
@@ -13922,6 +13922,16 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       sp_lat.safe_push (lvx_cms_latency (seq[i]));
       sp_last.safe_push (last);
       sp_deg.safe_push (m_i);
+      /* How many 64-bit registers the value occupies, which is how many copy
+	 instructions a split costs: a pair needs two COPYD or one CATDQ, a
+	 quad two CATDQ.  See §7undecies.4d.  */
+      {
+	rtx dset = single_set (seq[i]);
+	int nr = 1;
+	if (dset && REG_P (SET_DEST (dset)))
+	  nr = REG_NREGS (SET_DEST (dset));
+	sp_nregs.safe_push (MAX (nr, 1));
+      }
       int p2 = 1;
       while (p2 < m_i)
 	p2 <<= 1;
@@ -13991,6 +14001,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      slot in the copy's modulo cycle, which is the whole premise of doing this
      in spare resources.  MVENOSPL counts values whose window is empty.  */
   int mvesplit0 = 1, mvesplit = 1, mvesplitr = 1, mvesplitx = 1, mvenospl = 0;
+  int mvewide = 0, mvewidemax = 1;
   {
     /* Modulo-cycle occupancy of the TINY counter, which is what a register
        move takes: availability 4, covering ALU0/ALU1/LSU0/LSU1.  */
@@ -14086,13 +14097,24 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	int v = order[oi];
 	int d = sp_def[v], lat = sp_lat[v], last = sp_last[v];
 	int deg = sp_deg[v];
+	int nr = sp_nregs[v];
+	if (nr > 1)
+	  {
+	    mvewide++;
+	    if (nr > mvewidemax)
+	      mvewidemax = nr;
+	  }
 	int tlo = d + MAX (1, lat), thi = last - 1;
 	int best = deg, bestt = -1;
 	for (int t = tlo; t <= thi; t++)
 	  {
 	    int slot = (t - lo) % found;
-	    if (use[slot] >= tinycap)
-	      continue;			/* no room for the copy here */
+	    /* A wide value costs one COPYD per 64-bit register, and they must
+	       all land before the first use of the copy -- taken here as the
+	       same cycle, which is also the only way the new name is complete
+	       at a single date.  So the cycle needs NR free TINY, not one.  */
+	    if (use[slot] + nr > tinycap)
+	      continue;
 	    int aa = (t - d + found - 1) / found;
 	    int bb = (last - t + found - 1) / found;
 	    int cand = MAX (MAX (aa, bb), 1);
@@ -14103,7 +14125,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	      }
 	  }
 	if (bestt >= 0)
-	  use[(bestt - lo) % found]++;	/* the copy is now occupying it */
+	  use[(bestt - lo) % found] += nr;   /* the copies now occupy it */
 	if (best > mvesplitx)
 	  mvesplitx = best;
       }
@@ -14113,7 +14135,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
 	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
-	   " mvenospl=%d emptycyc=%d"
+	   " mvenospl=%d mvewide=%d mvewidemax=%d emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
@@ -14121,7 +14143,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   bs, preps, mvemax, mvep2,
 	   mvelcm_overflow ? 0 : (int) mvelcm,
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
-	   mvenospl,
+	   mvenospl, mvewide, mvewidemax,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
