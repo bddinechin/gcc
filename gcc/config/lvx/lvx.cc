@@ -15229,14 +15229,19 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int mcrl_used = 0, mcrl_arm = 0;
   for (int try_ii = first_ii; try_ii <= first_ii + 8 && !found; try_ii++)
     {
+      /* The un-seeded attempt -- un-seeded by DEFAULT, since
+	 lvx_cms_mcrl_release is 0 unless asked for.  Passing a literal 0 here
+	 instead made `-mcms-mcrl-release=' dead, which the normalised lever
+	 sweep caught by reading it as bit-identical to the baseline in every
+	 column (§7octovicies.4).  */
       if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
 			     budget, &passes, &last_bad, resblame,
-			     pin == 3 ? 1 : pin, 0))
+			     pin == 3 ? 1 : pin, lvx_cms_mcrl_release))
 	found = try_ii;
       else if (pin == 3
 	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
 				     budget, &passes, &last_bad, resblame, 0,
-				     0))
+				     lvx_cms_mcrl_release))
 	found = try_ii;
       /* Arm A: this II refused an un-seeded construction.  Before raising it,
 	 ask MCRL where the tasks want to go.
@@ -15263,7 +15268,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      did not find it.  Of the 18 PolyBench loops in that state, MCRL recovers
      the bound on five -- and those five are the deep pipelines whose stage
      count is what the expansion pays for.  */
-  if (found && lvx_cms_mcrl_gate && !mcrl_used)
+  if (found && lvx_cms_mcrl_gate && !mcrl_used && !lvx_cms_mcrl_release)
     {
       auto_vec<int> ts, sl, nodates;
       int wfirst = -1, wmake = 0, wempty = 0;
