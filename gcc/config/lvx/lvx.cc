@@ -12775,13 +12775,18 @@ static bool
 lvx_cms_repair_fits_ii_p (const auto_vec<rtx_insn *> &seq,
 			    const auto_vec<lvx_cms_arc> &arcs,
 			    const struct lvx_sched_resources *demand,
-			    unsigned i, int ii, int extra_lat, int cost_tiny)
+			    unsigned i, int ii, int extra_lat, int cost_tiny,
+			    int cost_lsu = 0, int cost_memw = 0)
 {
   unsigned n = seq.length ();
 
-  /* ResMII: would the extra operations need another bundle?  */
+  /* ResMII: would the extra operations need another bundle?  A copy takes a
+     TINY; a store or a reload takes a TINY and an LSU, and a store takes the
+     MEMW write port too, so the caller passes all three.  */
   struct lvx_sched_resources with = *demand;
   with.tiny_count += cost_tiny;
+  with.lsu_count += cost_lsu;
+  with.memw_count += cost_memw;
   with.ninsns_count += cost_tiny;
   if ((int) lvx_sched_resources_full_bundles (&with) > ii)
     return false;
@@ -13125,6 +13130,186 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 
 static int lvx_cms_latency (rtx_insn *);
 
+/* Repair an uncolourable kernel by SPILL/RESTORE at the current II.
+   §7duovicies.
+
+   The difference from splitting, and it is the whole point: a split leaves two
+   CONTIGUOUS ranges covering the same span, so occupancy -- and therefore
+   MaxLive -- is unchanged (§7unvicies).  A spill leaves two ranges with a GAP
+   between the store and the reload, and across that gap the value is in memory
+   and holds no register.  So a spill is the only one of these repairs that
+   lowers pressure.
+
+   For a value defined at D with consumers at U1 < ... < Uk, the register must
+   be live at D and at every Ui, so the spillable interval is the largest gap
+   between consecutive required points.  Store just after the earlier point,
+   reload the cached-load latency before the later one, and the value's
+   occupancy loses the interior.
+
+   Costs, charged to the II test: two instructions per register, each a TINY and
+   an LSU, the store also a MEMW; and the reload's latency on the path, priced
+   CACHED at 3 because the slot is in the frame (§7novodecies).  One spill slot
+   per expansion copy, per the author -- which the frame pays for and the
+   register file does not, so it does not enter this test.  */
+
+#define LVX_CMS_RELOAD_LATENCY 3
+
+static int
+lvx_cms_spill_until_colourable (const auto_vec<rtx_insn *> &seq,
+				const auto_vec<lvx_cms_arc> &arcs,
+				const auto_vec<int> &sigma,
+				const struct lvx_sched_resources *demand,
+				int ii, int lo, int *spill_out, int *nodes_out,
+				int *spill0_out)
+{
+  auto_vec<int> cdef, clast, cdeg, cnr, cec, cown;
+  lvx_cms_collect_values (seq, arcs, sigma, ii, cdef, clast, cdeg, cnr, cec,
+			  &cown);
+
+  auto_vec<int> tiny, lsu;
+  for (int c = 0; c < ii; c++)
+    tiny.safe_push (0), lsu.safe_push (0);
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      struct lvx_sched_resources one;
+      memset (&one, 0, sizeof (one));
+      lvx_cms_resources_add (&one, seq[i]);
+      tiny[(sigma[i] - lo) % ii] += (int) one.tiny_count;
+      lsu[(sigma[i] - lo) % ii] += (int) one.lsu_count;
+    }
+  int tinycap = (int) lvx_issue_availability.tiny;
+  int lsucap = (int) lvx_issue_availability.lsu;
+
+  auto_vec<bool> declined;
+  declined.safe_grow_cleared (cdeg.length ());
+  for (unsigned v = 0; v < cdeg.length (); v++)
+    declined[v] = false;
+
+  int added_tiny = 0, added_lsu = 0, spills = 0;
+  int why_nogap = 0, why_ii = 0, why_slot = 0, why_nocand = 0;
+  for (int attempt = 0; attempt <= 8; attempt++)
+    {
+      int nn, ne, msq, spl, per, kun;
+      lvx_cms_colour (cdef, clast, cdeg, cnr, cec, ii, lo,
+		      &nn, &ne, &msq, &spl, &per, &kun);
+      if (attempt == 0)
+	*spill0_out = spl;
+      if (spl == 0 || attempt == 8)
+	{
+	  *spill_out = spl;
+	  *nodes_out = why_nogap * 1000000 + why_ii * 1000
+		       + why_slot + why_nocand * 1000000000;
+	  return spills;
+	}
+
+      /* Ruttenberg's victim: span over references, the largest first -- a long
+	 range with one reader is worth spilling, one with many is not.  */
+      int best = -1;
+      double bestratio = -1.0;
+      for (unsigned v = 0; v < cdeg.length (); v++)
+	{
+	  if (declined[v] || cdeg[v] <= 1 || cown[v] < 0)
+	    continue;
+	  int refs = 0;
+	  for (unsigned a = 0; a < arcs.length (); a++)
+	    if (arcs[a].src == (unsigned) cown[v]
+		&& arcs[a].kind == LVX_ARC_REG_RAW)
+	      refs++;
+	  double ratio = (double) (clast[v] - cdef[v]) / MAX (refs, 1);
+	  if (ratio > bestratio)
+	    bestratio = ratio, best = (int) v;
+	}
+      if (best < 0)
+	{
+	  *spill_out = spl;
+	  *nodes_out = why_nogap * 1000000 + why_ii * 1000
+		       + why_slot + why_nocand * 1000000000;
+	  return spills;
+	}
+
+      int d = cdef[best], last = clast[best], nr = cnr[best];
+      int i = cown[best];
+
+      /* The required points: the definition and every consumer inside this
+	 value's own range.  */
+      auto_vec<int> pts;
+      pts.safe_push (d);
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].src == (unsigned) i && arcs[a].kind == LVX_ARC_REG_RAW)
+	  {
+	    int when = sigma[arcs[a].dst] + (int) arcs[a].omega * ii;
+	    if (when > d && when <= last)
+	      pts.safe_push (when);
+	  }
+      for (unsigned x = 0; x + 1 < pts.length (); x++)
+	for (unsigned y = x + 1; y < pts.length (); y++)
+	  if (pts[y] < pts[x])
+	    std::swap (pts[x], pts[y]);
+
+      /* The widest gap between consecutive required points.  */
+      int gp = -1, gq = -1, gap = 0;
+      for (unsigned x = 0; x + 1 < pts.length (); x++)
+	if (pts[x + 1] - pts[x] > gap)
+	  gap = pts[x + 1] - pts[x], gp = pts[x], gq = pts[x + 1];
+      if (gp < 0)
+	{
+	  why_nocand++;
+	  declined[best] = true;
+	  continue;
+	}
+
+      int latd = MAX (1, lvx_cms_latency (seq[i]));
+      int ts = (gp == d) ? d + latd : gp + 1;
+      int tr = gq - LVX_CMS_RELOAD_LATENCY;
+      if (tr <= ts)
+	{
+	  why_nogap++;
+	  declined[best] = true;	/* no room for a memory round trip */
+	  continue;
+	}
+
+      struct lvx_sched_resources dem2 = *demand;
+      dem2.tiny_count += added_tiny;
+      dem2.lsu_count += added_lsu;
+      dem2.ninsns_count += added_tiny;
+      if (!lvx_cms_repair_fits_ii_p (seq, arcs, &dem2, i, ii,
+				     LVX_CMS_RELOAD_LATENCY, 2 * nr,
+				     2 * nr, nr))
+	{
+	  why_ii++;
+	  declined[best] = true;
+	  continue;
+	}
+
+      /* Slots for the store and the reload, in their own modulo cycles.  */
+      int cs = (ts - lo) % ii, cr = (tr - lo) % ii;
+      if (tiny[cs] + nr > tinycap || lsu[cs] + nr > lsucap
+	  || tiny[cr] + nr > tinycap || lsu[cr] + nr > lsucap)
+	{
+	  why_slot++;
+	  declined[best] = true;
+	  continue;
+	}
+      tiny[cs] += nr, lsu[cs] += nr;
+      tiny[cr] += nr, lsu[cr] += nr;
+      added_tiny += 2 * nr, added_lsu += 2 * nr;
+
+      /* The value now occupies [D, TS] and [TR, LAST], with no register in
+	 between -- which is what lowers MaxLive.  */
+      clast[best] = ts;
+      cdeg[best] = (ts - d + ii - 1) / ii;
+      cdef.safe_push (tr);
+      clast.safe_push (last);
+      cdeg.safe_push ((last - tr + ii - 1) / ii);
+      cnr.safe_push (nr);
+      cec.safe_push (0);
+      cown.safe_push (-1);		/* the reload, not a graph instruction */
+      declined.safe_push (true);
+      spills++;
+    }
+  return spills;
+}
+
 /* Repair an uncolourable kernel by SPLITTING RANGES at the current II, and
    report whether it worked.  §7unvicies.
 
@@ -13197,7 +13382,7 @@ lvx_cms_split_until_colourable (const auto_vec<rtx_insn *> &seq,
       /* Pick the splittable value with the largest degree.  */
       int best = -1;
       for (unsigned v = 0; v < cdeg.length (); v++)
-	if (!declined[v] && cdeg[v] > 1
+	if (!declined[v] && cdeg[v] > 1 && cown[v] >= 0
 	    && (best < 0 || cdeg[v] > cdeg[best]))
 	  best = (int) v;
       if (best < 0)
@@ -15147,7 +15332,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      instructions, and the reload's latency, which under -mcms-load-latency is
      the uncached figure).  */
   int splitok = 0, spillok = 0, cand = 0, nsplit = 0, spl_after = -1;
-  int spl_nodes = 0, spl_before = -1;
+  int spl_nodes = 0, spl_before = -1, nspill = 0, sp_after = -1, sp_why = 0;
   {
     struct lvx_sched_resources dem;
     memset (&dem, 0, sizeof (dem));
@@ -15193,10 +15378,16 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     /* And does splitting actually make the kernel colourable?  Only asked when
        it was not, since otherwise there is nothing to repair.  */
     if (igspill > 0)
-      nsplit = lvx_cms_split_until_colourable (seq, arcs, sigma, &dem, found,
-					       lvx_cms_sigma_min (sigma),
-					       &spl_after, &spl_nodes,
-					       &spl_before);
+      {
+	nsplit = lvx_cms_split_until_colourable (seq, arcs, sigma, &dem, found,
+						 lvx_cms_sigma_min (sigma),
+						 &spl_after, &spl_nodes,
+						 &spl_before);
+	int dummy;
+	nspill = lvx_cms_spill_until_colourable (seq, arcs, sigma, &dem, found,
+						 lvx_cms_sigma_min (sigma),
+						 &sp_after, &sp_why, &dummy);
+      }
   }
 
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
@@ -15208,6 +15399,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
 	   " lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
 	   " cand=%d splitok=%d spillok=%d staged=%d nsplit=%d before=%d after=%d"
+	   " nspill=%d spafter=%d spwhy=%d"
 	   " emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
@@ -15220,6 +15412,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
 	   igec, nlin, nseq, linnodes, linedges, linsq, linspill,
 	   cand, splitok, spillok, staged, nsplit, spl_before, spl_after,
+	   nspill, sp_after, sp_why,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
