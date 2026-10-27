@@ -12853,7 +12853,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		   const auto_vec<int> &height,
 		   int ii, int delta, auto_vec<int> &sigma,
 		   int budget, int *passes, const char **last_bad,
-		   int *resblame_out)
+		   int *resblame_out, int pin)
 {
   unsigned n = seq.length ();
   auto_vec<int> prio, release, blame, culprit, cumulative, tosink, slack, base;
@@ -12867,6 +12867,57 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
   guilt.safe_grow_cleared (n);
   base.safe_grow_cleared (n);
   lvx_cms_path_metrics (seq, arcs, height, tosink, slack);
+
+  /* PIN THE LOOP-BACK BRANCH TO THE LAST STAGE.
+     Llosa & Freudenberger factor a pipelined loop's code size into the stage
+     count, the modulo expansion degree, and the stage the loop-back branch
+     lands in -- the last of these because SC - BS - 1 partial epilogues are
+     needed to finish the iterations an early prologue exit leaves in flight.
+     A branch in the last stage needs none.  §7undecies.2a measured BS = 0 on
+     73% of loops and 98% once the hardware loop is kept, so we were giving
+     that term away wholesale.
+
+     Why a floor set HERE and not left to the release policy, which already
+     moves every slack task to its ALAP: the policy assigns RELEASE only at the
+     END of a pass, for the next one, so a loop that schedules on its first
+     pass never gets a release at all -- and most do.  The branch needs a
+     structural pin, not an SWO reaction, which is also why this is cheap: no
+     search, no extra pass.
+
+     The loop-back branch is the LAST jump in SEQ, which is in chain order from
+     the header, so it is the latch terminator.  An earlier jump is an exit,
+     not the back edge -- the distinction §7quinquies.2a found the reference
+     making with a flag of its own, and getting right.  */
+  int branch_i = -1;
+  int branch_floor = 0;
+  if (pin > 0)
+    {
+      for (unsigned i = 0; i < n; i++)
+	if (JUMP_P (seq[i]))
+	  branch_i = (int) i;
+      if (branch_i >= 0)
+	{
+	  if (pin == 1)
+	    /* Its ALAP: as late as the dependences allow without lengthening
+	       the schedule.  Cannot cost anything in II; may not reach the
+	       last stage.  */
+	    branch_floor = height[branch_i] + slack[branch_i];
+	  else
+	    {
+	      /* The last stage of the dependence-only makespan.  Reaches the
+		 target by construction, but is not clamped to the ALAP, so it
+		 can stretch the schedule -- which is the trade to measure.  */
+	      int m = 1;
+	      for (unsigned i = 0; i < n; i++)
+		m = MAX (m, height[i] + lvx_cms_latency (seq[i]));
+	      int stages = (m + ii - 1) / ii;
+	      branch_floor = MAX (stages - 1, 0) * ii;
+	    }
+	  if (branch_floor < 0)
+	    branch_floor = 0;
+	  release[branch_i] = branch_floor;
+	}
+    }
 
   /* The base priority, before SWO escalates it.  The pick is ascending, so a
      merit has to be negated to become a cost.
@@ -13010,6 +13061,13 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	    }
 	  release[i] = move ? height[i] + slack[i] : 0;	/* its ALAP */
 	}
+
+      /* The branch pin is structural, so it survives the policy's
+	 reassignment above -- which sets RELEASE to 0 for every task it
+	 declines to move, and would otherwise undo the pin on the first
+	 pass that blames the branch.  */
+      if (branch_i >= 0 && release[branch_i] < branch_floor)
+	release[branch_i] = branch_floor;
     }
 
   if (resblame_out)
@@ -13699,10 +13757,25 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int budget = MAX (1, lvx_cms_swo_budget);
   int resblame[LVX_CMS_NRESOURCES];
   memset (resblame, 0, sizeof (resblame));
+  /* The branch pin can raise II -- it is a release floor, so it cannot make the
+     problem infeasible, but it can make this II infeasible and push the search
+     on.  Measured on PolyBench it improves 17 loops and costs one (syr2k's
+     loop 8, II 3 -> 6).  Policy 3 therefore takes the pin only where it is
+     free: try each II pinned, and before giving up on that II, try it again
+     unpinned.  II is never lost and the epilogue saving is taken wherever it
+     costs nothing.  */
+  int pin = lvx_cms_branch_stage;
   for (int try_ii = lower; try_ii <= lower + 8 && !found; try_ii++)
-    if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
-			   budget, &passes, &last_bad, resblame))
-      found = try_ii;
+    {
+      if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
+			     budget, &passes, &last_bad, resblame,
+			     pin == 3 ? 1 : pin))
+	found = try_ii;
+      else if (pin == 3
+	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
+				     budget, &passes, &last_bad, resblame, 0))
+	found = try_ii;
+    }
 
   /* The counter that cost the most displacement across the whole search: what
      SWO was fighting, as opposed to what merely bounded ResMII.  */
@@ -14138,7 +14211,9 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
 
   for (int try_ii = lower; try_ii <= lower + 8 && !found; try_ii++)
     if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
-			   budget, &passes, &last_bad, NULL))
+			   budget, &passes, &last_bad, NULL,
+			   lvx_cms_branch_stage == 3 ? 1
+			   : lvx_cms_branch_stage))
       found = try_ii;
 
   if (!found)
