@@ -12806,6 +12806,7 @@ lvx_cms_repair_fits_ii_p (const auto_vec<rtx_insn *> &seq,
   return (int) plc.period () <= ii;
 }
 
+
 /* MRIS lineage formation on the OMEGA = 0 SUBGRAPH.  §7octodecies.5.
 
    Govindarajan et al. (IPDPS 2001, IEEE TC 2003) form lineages -- chains of
@@ -13120,6 +13121,132 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
   
   *nn_out = nn; *ne_out = ne; *msq_out = msq; *spl_out = spl;
   *per_out = per; *kun_out = kun;
+}
+
+static int lvx_cms_latency (rtx_insn *);
+
+/* Repair an uncolourable kernel by SPLITTING RANGES at the current II, and
+   report whether it worked.  §7unvicies.
+
+   Each split replaces one value by two -- definition..copy and copy..last use
+   -- and costs one COPYD per register at the copy's cycle.  A candidate is
+   taken only if it keeps the II (lvx_cms_repair_fits_ii_p: the extra TINY must
+   fit the resource budget and the extra cycle of latency must not push the
+   parametric period past the II), and only if a cycle exists inside the
+   producer-latency window with a free TINY in the cumulative table.
+
+   Victim order is descending degree, which is what sets the expansion and so
+   the node count.  Ruttenberg's span-over-references ratio would be the better
+   choice for a SPILL, where the cost is the reference count; for a split the
+   degree is what the repair reduces, so it is the natural key.  Capped at 8
+   splits, after Ruttenberg's cap on escalation.  */
+
+static int
+lvx_cms_split_until_colourable (const auto_vec<rtx_insn *> &seq,
+				const auto_vec<lvx_cms_arc> &arcs,
+				const auto_vec<int> &sigma,
+				const struct lvx_sched_resources *demand,
+				int ii, int lo, int *spill_out, int *nodes_out,
+				int *spill0_out)
+{
+  auto_vec<int> cdef, clast, cdeg, cnr, cec, cown;
+  lvx_cms_collect_values (seq, arcs, sigma, ii, cdef, clast, cdeg, cnr, cec,
+			  &cown);
+
+  /* Modulo TINY occupancy of the schedule, which the copies draw down.  */
+  auto_vec<int> tiny;
+  for (int c = 0; c < ii; c++)
+    tiny.safe_push (0);
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      struct lvx_sched_resources one;
+      memset (&one, 0, sizeof (one));
+      lvx_cms_resources_add (&one, seq[i]);
+      tiny[(sigma[i] - lo) % ii] += (int) one.tiny_count;
+    }
+  int tinycap = (int) lvx_issue_availability.tiny;
+  int added_tiny = 0;
+
+  /* Declining a candidate must NOT touch CDEG: that array is the colouring's
+     input, so marking a value "skip" by zeroing its degree would shrink the
+     graph and manufacture a colouring.  A separate flag keeps the two
+     apart.  */
+  auto_vec<bool> declined;
+  declined.safe_grow_cleared (cdeg.length ());
+  for (unsigned v = 0; v < cdeg.length (); v++)
+    declined[v] = false;
+
+  int splits = 0;
+  for (int attempt = 0; attempt <= 8; attempt++)
+    {
+      int nn, ne, msq, spl, per, kun;
+      lvx_cms_colour (cdef, clast, cdeg, cnr, cec, ii, lo,
+		      &nn, &ne, &msq, &spl, &per, &kun);
+      /* The colouring BEFORE any split, over the complete value list, so the
+	 caller can see whether that list agrees with the one the report built
+	 -- it does not, and §7unvicies says why.  */
+      if (attempt == 0)
+	*spill0_out = spl;
+      if (spl == 0 || attempt == 8)
+	{
+	  *spill_out = spl;
+	  *nodes_out = nn;
+	  return splits;
+	}
+
+      /* Pick the splittable value with the largest degree.  */
+      int best = -1;
+      for (unsigned v = 0; v < cdeg.length (); v++)
+	if (!declined[v] && cdeg[v] > 1
+	    && (best < 0 || cdeg[v] > cdeg[best]))
+	  best = (int) v;
+      if (best < 0)
+	{
+	  *spill_out = spl;
+	  *nodes_out = nn;
+	  return splits;
+	}
+
+      int d = cdef[best], last = clast[best], nr = cnr[best];
+      int i = cown[best];
+
+      /* Does a copy here keep the II, counting the copies already added?  */
+      struct lvx_sched_resources dem2 = *demand;
+      dem2.tiny_count += added_tiny;
+      dem2.ninsns_count += added_tiny;
+      if (!lvx_cms_repair_fits_ii_p (seq, arcs, &dem2, i, ii, 1, nr))
+	{
+	  declined[best] = true;	/* look at the next one */
+	  continue;
+	}
+
+      /* A cycle in the producer-latency window with NR free TINY.  */
+      int lat = MAX (1, lvx_cms_latency (seq[i]));
+      int t = -1;
+      for (int c = d + lat; c <= last - 1 && t < 0; c++)
+	if (tiny[(c - lo) % ii] + nr <= tinycap)
+	  t = c;
+      if (t < 0)
+	{
+	  declined[best] = true;
+	  continue;
+	}
+
+      /* Split: the value becomes def..copy, and a new value copy..last use.  */
+      tiny[(t - lo) % ii] += nr;
+      added_tiny += nr;
+      clast[best] = t;
+      cdeg[best] = (t - d + ii - 1) / ii;
+      cdef.safe_push (t);
+      clast.safe_push (last);
+      cdeg.safe_push ((last - t + ii - 1) / ii);
+      cnr.safe_push (nr);
+      cec.safe_push (0);
+      cown.safe_push (i);
+      declined.safe_push (false);
+      splits++;
+    }
+  return splits;
 }
 
 static int
@@ -15019,7 +15146,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      register, latency 1); SPILLOK those a store/reload could (two extra
      instructions, and the reload's latency, which under -mcms-load-latency is
      the uncached figure).  */
-  int splitok = 0, spillok = 0, cand = 0;
+  int splitok = 0, spillok = 0, cand = 0, nsplit = 0, spl_after = -1;
+  int spl_nodes = 0, spl_before = -1;
   {
     struct lvx_sched_resources dem;
     memset (&dem, 0, sizeof (dem));
@@ -15061,6 +15189,14 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	if (lvx_cms_repair_fits_ii_p (seq, arcs, &dem, i, found, rl, 2 * nr))
 	  spillok++;
       }
+
+    /* And does splitting actually make the kernel colourable?  Only asked when
+       it was not, since otherwise there is nothing to repair.  */
+    if (igspill > 0)
+      nsplit = lvx_cms_split_until_colourable (seq, arcs, sigma, &dem, found,
+					       lvx_cms_sigma_min (sigma),
+					       &spl_after, &spl_nodes,
+					       &spl_before);
   }
 
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
@@ -15071,7 +15207,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " mveregs=%d mveregsx=%d mvepress=%d"
 	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
 	   " lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
-	   " cand=%d splitok=%d spillok=%d staged=%d"
+	   " cand=%d splitok=%d spillok=%d staged=%d nsplit=%d before=%d after=%d"
 	   " emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
@@ -15083,7 +15219,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
 	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
 	   igec, nlin, nseq, linnodes, linedges, linsq, linspill,
-	   cand, splitok, spillok, staged,
+	   cand, splitok, spillok, staged, nsplit, spl_before, spl_after,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
