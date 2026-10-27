@@ -14031,6 +14031,58 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	  switch (lvx_cms_release_policy)
 	    {
 	    case 0:  move = false; break;
+	    case 5:
+	      /* HUFF'S STRETCHABLE-SIDE DECISION (§7tervicies, §7quatervicies).
+		 Placing an operation EARLY stretches the values it defines;
+		 placing it LATE stretches the values it reads.  Huff decides
+		 per operation which side is the stretchable one and places it
+		 away from that side -- which is what makes the heuristic
+		 bidirectional rather than the global bias §7vicies found
+		 vacuous.
+
+		 Here "place late" is a release date at the ALAP, which is the
+		 lever §7octies already has, so the decision costs nothing
+		 structurally and leaves the graph alone.
+
+		 The arithmetic: moving I from its ASAP to its ALAP shortens
+		 each out-value's span by SLACK and lengthens each in-value's
+		 by SLACK, so the net is SLACK * (in_count - out_count) and
+		 going late pays iff OUT_COUNT > IN_COUNT.  Huff's refinement
+		 is to count only the values this operation can ACTUALLY
+		 stretch: a consumer U cannot stretch its input when
+		 Estart(def) + MinLT >= omega*II + Lstart(U), because something
+		 else already holds the value that long.  MinLT is taken as
+		 max over the out-arcs of (omega*II + theta), a lower bound on
+		 Huff's MinDist version -- which makes the pruning
+		 conservative, counting a value stretchable when in doubt.  */
+	      {
+		int minlt = 0;
+		for (unsigned a = 0; a < arcs.length (); a++)
+		  if (arcs[a].src == i && arcs[a].kind == LVX_ARC_REG_RAW)
+		    {
+		      int c = (int) arcs[a].omega * ii + (int) arcs[a].theta;
+		      if (c > minlt)
+			minlt = c;
+		    }
+		int nout = 0, nin = 0;
+		for (unsigned a = 0; a < arcs.length (); a++)
+		  {
+		    if (arcs[a].kind != LVX_ARC_REG_RAW)
+		      continue;
+		    if (arcs[a].src == i)
+		      {
+			unsigned u = arcs[a].dst;
+			int lstart_u = height[u] + slack[u];
+			if (height[i] + minlt
+			    < (int) arcs[a].omega * ii + lstart_u)
+			  nout++;		/* U can stretch it */
+		      }
+		    else if (arcs[a].dst == i)
+		      nin++;
+		  }
+		move = (nout > nin && slack[i] > 0);
+	      }
+	      break;
 	    case 2:  move = (culprit[i] > 0 && blame[i] == 0 && slack[i] > 0);
 		     break;
 	    case 4:  move = (slack[i] > 0); break;	/* no selectivity at all */
