@@ -77,6 +77,7 @@
 #include "function-abi.h"
 #include "regrename.h"
 #include "config/lvx/lvx-plc.h"
+#include "config/lvx/lvx-network.h"
 #include "reload.h"
 #include "rtl-iter.h"
 #include "sched-int.h"
@@ -13183,7 +13184,9 @@ lvx_cms_dates_in_window (const auto_vec<rtx_insn *> &seq,
 			 const auto_vec<int> &dates,
 			 const auto_vec<int> &tosink,
 			 int ii, int *first_out, int *makespan_out,
-			 int *empty_out)
+			 int *empty_out, auto_vec<int> *estart_out = NULL,
+			 auto_vec<int> *lstart_out = NULL,
+			 int makespan_floor = 0)
 {
   unsigned n = seq.length ();
   *first_out = -1;
@@ -13217,6 +13220,14 @@ lvx_cms_dates_in_window (const auto_vec<rtx_insn *> &seq,
 	estop = e;
     }
   int makespan = ((estop + ii - 1) / ii) * ii;
+  /* The author's feedback (§7quinvicies.4): the dependence-only bound can sit
+     BELOW the span list scheduling achieves -- measured in 45 of 163 loops --
+     and solving inside such a window asks for dates the resources have already
+     disproved.  MAKESPAN_FLOOR carries the achieved span back in, rounded up
+     to whole stages like the bound itself.  Zero on the first solve, which is
+     where the iteration starts.  */
+  if (makespan_floor > makespan)
+    makespan = ((makespan_floor + ii - 1) / ii) * ii;
   *makespan_out = makespan;
 
   int bad = 0, empty = 0;
@@ -13224,6 +13235,10 @@ lvx_cms_dates_in_window (const auto_vec<rtx_insn *> &seq,
     {
       int estart = (int) plc.date (i + 1) - root;
       int lstart = makespan - tosink[i];
+      if (estart_out)
+	estart_out->safe_push (estart);
+      if (lstart_out)
+	lstart_out->safe_push (lstart);
       if (estart > lstart)
 	empty++;
       if (dates.length () != n)
@@ -13238,6 +13253,200 @@ lvx_cms_dates_in_window (const auto_vec<rtx_insn *> &seq,
     }
   *empty_out = empty;
   return bad;
+}
+
+/* MCRL: minimum cumulative register lifetime dates, by min-cost flow.
+   Dupont de Dinechin, LCPC 1996, the half lvx-plc.cc does not implement.
+   §7quinvicies.
+
+   THE PRIMAL.  With DATE the dates, LIFE the lifetimes and NREGS the width in
+   registers of the value a node produces, at period II:
+
+       min   sum over i of  NREGS (i) * LIFE (i)
+       s.t.  date (j) - date (i)  >=  theta - II * omega        (D, every arc)
+             life (i) - date (j) + date (i)  >=  II * omega     (L, RAW arcs)
+
+   (L) is the lifetime of i's value as seen by consumer j: the value i writes
+   in iteration k is read by j in iteration k + omega, so the span is
+   date (j) + II * omega - date (i).  The objective is therefore a sum of
+   MAXIMA, which is what makes this an LP rather than a longest path, and the
+   dual of that LP is a flow.
+
+   THE DUAL, derived rather than asserted, because every sign here is a place
+   to be wrong.  Let y_a >= 0 be the multiplier of (D) on arc a and z_a >= 0
+   that of (L).  Then
+
+     per LIFE (i):  sum of z over the RAW arcs out of i  =  NREGS (i)
+     per DATE (i):  sum_in y + sum_{z of i} z  =  sum_out y + sum_{z into i} z
+
+   The second is flow conservation ONCE z is carried on the REVERSED arc: z_a
+   for a = (i, j) leaves the CONSUMER j and arrives at the PRODUCER i.  The
+   first is not a conservation law but a fixed total, so the producer is split
+   in two: a date node D_i carrying the y-flow, and a collector C_i that the
+   z-arcs enter.  Requiring D_i to SUPPLY nregs (i) and C_i to CONSUME it makes
+   the two equations hold together -- which is exactly the author's adjustment
+   (2026-10-27): THE FLOW LEAVING A PRODUCER NODE IS THE NUMBER OF REGISTERS IN
+   THE PRODUCED TUPLE.  It is a requirement on a node, not a cost on an arc, so
+   nothing in the objective is rescaled and the tuple widths enter by
+   conservation.
+
+   The dual maximises sum y (theta - II omega) + sum z (II omega), so as a
+   MINIMISATION the arc costs are the negatives:
+
+       y-arc  D_i -> D_j   cost  II * omega - theta      capacity unbounded
+       z-arc  D_j -> C_i   cost  -II * omega             capacity unbounded
+
+   READING THE DATES BACK.  This solver keeps shortest-path potentials,
+   pi (head) <= pi (tail) + cost on every residual arc.  On the y-arc that is
+   pi (D_j) - pi (D_i) <= II omega - theta, so with
+
+       date (i)  =  -pi (D_i)
+
+   we get date (j) - date (i) >= theta - II * omega: the dependences hold BY
+   CONSTRUCTION, for every arc, because every capacity is unbounded and so no
+   arc can saturate.  Where an arc carries flow its reverse residual gives the
+   opposite inequality too, hence equality -- complementary slackness putting
+   the tight dependences exactly on the critical arcs.
+
+   WHY THE WINDOW ARCS.  Unbounded dates would let a node with no consumer
+   float anywhere feasible.  A virtual node D_0 and the two arcs
+
+       D_0 -> D_i  cost -estart (i)        (date (i) >= estart (i))
+       D_i -> D_0  cost  lstart (i)        (date (i) <= lstart (i))
+
+   pin every date into the window at this II, which is the author's
+   requirement that the makespan be limited like the Lstart dates.  Their
+   round trip costs lstart (i) - estart (i) >= 0 exactly when the window is
+   non-empty, and a y-cycle costs II * Omega - Theta >= 0 exactly when
+   II >= RecMII, so at a feasible II with a non-empty window the network has
+   no negative circuit and the solve is bounded.  C_i has no outgoing arc, so
+   no z-arc lies on a cycle.
+
+   Returns the network status.  On LVX_NETWORK_SOLVED, DATES holds one date per
+   node, normalised so the smallest is zero.  */
+
+static enum lvx_network_result
+lvx_cms_mcrl_dates (const auto_vec<rtx_insn *> &seq,
+		    const auto_vec<lvx_cms_arc> &arcs,
+		    const auto_vec<int> &estart,
+		    const auto_vec<int> &lstart,
+		    int ii, auto_vec<int> &dates,
+		    HOST_WIDE_INT *cost_out, unsigned *nn_out,
+		    unsigned *ne_out)
+{
+  unsigned n = seq.length ();
+  *cost_out = 0;
+  *nn_out = *ne_out = 0;
+  if (n == 0 || estart.length () != n || lstart.length () != n)
+    return LVX_NETWORK_INFEASIBLE;
+
+  lvx_network net;
+
+  /* D_0, then one date node per instruction, then the collectors.  */
+  unsigned d0 = net.add_node (0);
+  auto_vec<unsigned> dnode, cnode;
+  for (unsigned i = 0; i < n; i++)
+    dnode.safe_push (net.add_node (0));
+  for (unsigned i = 0; i < n; i++)
+    cnode.safe_push (net.add_node (0));
+
+  /* NREGS per producer, counted only where the value is actually read: a
+     definition nothing consumes has no lifetime and must not demand flow,
+     which would make the instance infeasible rather than free.  This is the
+     same criterion lvx_cms_collect_values applies.  */
+  auto_vec<int> nregs;
+  for (unsigned i = 0; i < n; i++)
+    {
+      bool consumed = false;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].src == i && arcs[a].kind == LVX_ARC_REG_RAW)
+	  {
+	    consumed = true;
+	    break;
+	  }
+      int nr = 0;
+      if (consumed)
+	{
+	  rtx ds = single_set (seq[i]);
+	  nr = (ds && REG_P (SET_DEST (ds))) ? REG_NREGS (SET_DEST (ds)) : 1;
+	  nr = MAX (nr, 1);
+	}
+      nregs.safe_push (nr);
+      if (nr)
+	{
+	  net.set_requirement (dnode[i], nr);
+	  net.set_requirement (cnode[i], -nr);
+	}
+    }
+
+  /* The dependence arcs, every kind: they all constrain the dates.  */
+  for (unsigned a = 0; a < arcs.length (); a++)
+    net.add_arc (dnode[arcs[a].src], dnode[arcs[a].dst], -1,
+		 (HOST_WIDE_INT) ii * arcs[a].omega - arcs[a].theta);
+
+  /* The lifetime arcs, RAW only, and reversed: consumer to producer.  */
+  for (unsigned a = 0; a < arcs.length (); a++)
+    if (arcs[a].kind == LVX_ARC_REG_RAW && nregs[arcs[a].src])
+      net.add_arc (dnode[arcs[a].dst], cnode[arcs[a].src], -1,
+		   -(HOST_WIDE_INT) ii * arcs[a].omega);
+
+  /* The window.  */
+  for (unsigned i = 0; i < n; i++)
+    {
+      net.add_arc (d0, dnode[i], -1, -estart[i]);
+      net.add_arc (dnode[i], d0, -1, lstart[i]);
+    }
+
+  *nn_out = net.node_count ();
+  *ne_out = net.arc_count ();
+
+  enum lvx_network_result r = net.solve ();
+  if (r != LVX_NETWORK_SOLVED)
+    return r;
+
+  *cost_out = net.cost ();
+
+  int lo = 0;
+  for (unsigned i = 0; i < n; i++)
+    {
+      int d = -(int) net.potential (dnode[i]);
+      dates.safe_push (d);
+      if (i == 0 || d < lo)
+	lo = d;
+    }
+  for (unsigned i = 0; i < n; i++)
+    dates[i] -= lo;
+
+  return LVX_NETWORK_SOLVED;
+}
+
+/* The cumulative register lifetime of DATES, weighted by tuple width, which
+   is the quantity MCRL minimises and the only honest way to say whether it
+   did better than the alternative.  */
+
+static HOST_WIDE_INT
+lvx_cms_cumulative_lifetime (const auto_vec<rtx_insn *> &seq,
+			     const auto_vec<lvx_cms_arc> &arcs,
+			     const auto_vec<int> &dates, int ii)
+{
+  HOST_WIDE_INT total = 0;
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      int life = 0;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].src == i && arcs[a].kind == LVX_ARC_REG_RAW)
+	  {
+	    int span = dates[arcs[a].dst] + (int) arcs[a].omega * ii - dates[i];
+	    if (span > life)
+	      life = span;
+	  }
+      if (life <= 0)
+	continue;
+      rtx ds = single_set (seq[i]);
+      int nr = (ds && REG_P (SET_DEST (ds))) ? REG_NREGS (SET_DEST (ds)) : 1;
+      total += (HOST_WIDE_INT) MAX (nr, 1) * life;
+    }
+  return total;
 }
 
 /* Repair an uncolourable kernel by SPILL/RESTORE at the current II.
@@ -14958,29 +15167,61 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      forced stretching; M is its dependence-only lower bound.  nstages counts
      iterations in flight, so it is the achieved one that decides.
 
-     SIGMA holds START dates, so the extent runs to the last instruction's
-     COMPLETION -- the same correction M needs, and for the same reason.  Taking
-     hi - lo + 1 understated it by the final instruction's latency less one,
-     which is zero for single-cycle code and three for a body whose critical
-     path ends in an FP add.  It reported a reduction at II=4 with a 7-cycle
-     iteration as span=4, hence nstages=1 and `no gain', when two iterations
-     are in fact in flight.  */
-  int lo = sigma[0], hi = sigma[0] + lvx_cms_latency (seq[0]);
+     THE CYCLIC MAKESPAN DOES NOT CARRY THE LAST INSTRUCTION'S LATENCY, and
+     this is the author's point (2026-10-27): a makespan runs from the first
+     schedule date to the last cycle a RESOURCE is in use, and under CMS's
+     model every reservation occupies exactly one cycle
+     (lvx_cms_slot_fits_p tests a single cycle's counters), so that last cycle
+     is the last ISSUE and the makespan is hi - lo + 1.  `kvx-unfold.cc' has
+     it right: `makespan = max_sched_date - min_sched_date + 1'.
+
+     Adding the final latency is right ACYCLICALLY, for a reason that is
+     specifically acyclic: nothing follows the last instruction, so if the
+     region's makespan does not wait for its result, nobody does.  Cyclically
+     the latency is on the ARC, and the arcs are what a modulo schedule
+     satisfies by construction: a consumer at omega = 0 sits at >= sigma +
+     theta, already inside the span, and a consumer at omega > 0 has its
+     latency paid by sigma (dst) - sigma (src) >= theta - omega * II, which is
+     what RecMII is made of.  Charging it to the span charges it twice.
+
+     And from what nstages is FOR: an iteration is in flight in the KERNEL
+     from its first issue to its last issue -- once its last instruction has
+     issued the kernel has nothing further to do for it, and the result still
+     in the pipe is collected by a consumer that belongs to its own stage and
+     is counted THERE.  The one place the latency belongs is the epilogue,
+     where a live-out must be complete before the exit reads it; that is the
+     live-out reconciliation of §7quater.5, an epilogue length rather than a
+     stage count.  So M keeps the correction (M is one iteration with NO
+     overlap, the acyclic figure compared against K) and the span loses it.
+
+     The + 1 is required, not cosmetic: dates 0..6 at II = 3 overlap three
+     iterations at cycle 6 -- iteration 0's last, 1's middle, 2's first -- and
+     ceil (7/3) = 3 where ceil (6/3) = 2.
+
+     SPANLAT is the latency-inclusive figure, kept for the DROP_OK gate below
+     and to measure the difference.  §7quinvicies.5.  */
+  int lo = sigma[0], hi = sigma[0], hilat = sigma[0] + lvx_cms_latency (seq[0]);
   for (unsigned i = 1; i < sigma.length (); i++)
     {
       int done = sigma[i] + lvx_cms_latency (seq[i]);
       if (lo > sigma[i])
 	lo = sigma[i];
-      if (hi < done)
-	hi = done;
+      if (hi < sigma[i])
+	hi = sigma[i];
+      if (hilat < done)
+	hilat = done;
     }
-  int span = hi - lo;
+  int span = hi - lo + 1;
+  int spanlat = hilat - lo;
   int nstages = (span + found - 1) / found;
 
   /* The drop rule, checked rather than assumed: a memory dependence dropped
      at distance SAFELEN is only absent from the schedule if iterations k and
-     k + safelen never overlap, which needs safelen >= nstages.  */
-  bool drop_ok = (dropped_safelen == 0 || dropped_safelen >= nstages);
+     k + safelen never overlap, which needs safelen >= nstages.  Deliberately
+     on the LATENCY-INCLUSIVE span: a correctness gate should not be loosened
+     as a side effect of a makespan definition, and spanlat >= span always.  */
+  int nstageslat = (spanlat + found - 1) / found;
+  bool drop_ok = (dropped_safelen == 0 || dropped_safelen >= nstageslat);
 
   /* Empty modulo cycles.  Bundle formation on LVX is an annotation: asm output
      closes a bundle only where LVX_SCHED2_INSN_STOP is set, and nothing
@@ -15564,15 +15805,86 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      graph's own makespan bound.  Applying it to an MCRL date is the gate that
      comes when the MCRL graph construction lands.  §7quinvicies.2.  */
   int winempty = 0, winfirst = -1, winmake = 0;
+  /* MCRL at this II, and the author's makespan feedback.  Two solves: one in
+     the dependence-only window, one in the window the achieved SPAN widens to.
+     MCRLBAD counts dates outside the window -- which must be zero, the window
+     arcs being part of the network -- and MCRLDEP counts violated dependences,
+     which must be zero by complementary slackness.  Both are assertions
+     written as counters so a failure is reported rather than silent.
+     §7quinvicies.4, §7quinvicies.6.  */
+  int mcrl = -1, mcrlbad = -1, mcrldep = -1, mcrlmake = 0;
+  int mcrl2 = -1, mcrlmake2 = 0;
+  unsigned mcrlnn = 0, mcrlne = 0;
+  HOST_WIDE_INT mcrllife = -1, mcrllife2 = -1, mcrlsigma = -1;
   {
     auto_vec<int> ts, sl, nodates;
     lvx_cms_path_metrics (seq, arcs, height, ts, sl);
-    lvx_cms_dates_in_window (seq, arcs, nodates, ts, found,
-			     &winfirst, &winmake, &winempty);
+    for (int round = 0; round < 2; round++)
+      {
+	auto_vec<int> es, ls;
+	int floor_ = round ? span : 0;
+	int wempty = 0, wfirst = -1, wmake = 0;
+	lvx_cms_dates_in_window (seq, arcs, nodates, ts, found,
+				 &wfirst, &wmake, &wempty, &es, &ls, floor_);
+	if (round == 0)
+	  {
+	    winempty = wempty;
+	    winfirst = wfirst;
+	    winmake = wmake;
+	    mcrlmake = wmake;
+	  }
+	else
+	  mcrlmake2 = wmake;
+	if (wempty || es.length () != seq.length ())
+	  continue;
+
+	auto_vec<int> md;
+	HOST_WIDE_INT mcost;
+	unsigned nn, ne;
+	enum lvx_network_result r
+	  = lvx_cms_mcrl_dates (seq, arcs, es, ls, found, md, &mcost, &nn, &ne);
+	if (round == 0)
+	  {
+	    mcrl = (int) r;
+	    mcrlnn = nn;
+	    mcrlne = ne;
+	  }
+	else
+	  mcrl2 = (int) r;
+	if (r != LVX_NETWORK_SOLVED)
+	  continue;
+
+	HOST_WIDE_INT life
+	  = lvx_cms_cumulative_lifetime (seq, arcs, md, found);
+	if (round == 0)
+	  {
+	    mcrllife = life;
+	    /* The two checks.  */
+	    int bad = 0;
+	    for (unsigned i = 0; i < seq.length (); i++)
+	      if (md[i] < es[i] || md[i] > ls[i])
+		bad++;
+	    mcrlbad = bad;
+	    int dep = 0;
+	    for (unsigned a = 0; a < arcs.length (); a++)
+	      if (md[arcs[a].dst] - md[arcs[a].src]
+		  < arcs[a].theta - (HOST_WIDE_INT) found * arcs[a].omega)
+		dep++;
+	    mcrldep = dep;
+	    /* What the achieved schedule costs on the same objective.  */
+	    auto_vec<int> sg;
+	    int slo = lvx_cms_sigma_min (sigma);
+	    for (unsigned i = 0; i < sigma.length (); i++)
+	      sg.safe_push (sigma[i] - slo);
+	    mcrlsigma = lvx_cms_cumulative_lifetime (seq, arcs, sg, found);
+	  }
+	else
+	  mcrllife2 = life;
+      }
   }
 
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
-	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
+	   " ResMII=%d RecMII=%d span=%d spanlat=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
 	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
 	   " mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d"
@@ -15581,12 +15893,15 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
 	   " cand=%d splitok=%d spillok=%d staged=%d nsplit=%d before=%d after=%d"
 	   " nspill=%d spafter=%d spwhy=%d winempty=%d winmake=%d"
+	   " mcrl=%d mcrlbad=%d mcrldep=%d mcrlmake=%d mcrlnn=%u mcrlne=%u"
+	   " mcrllife=" HOST_WIDE_INT_PRINT_DEC " mcrlsigma=" HOST_WIDE_INT_PRINT_DEC
+	   " mcrl2=%d mcrlmake2=%d mcrllife2=" HOST_WIDE_INT_PRINT_DEC
 	   " emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
-	   loop->num, found, lower, found - lower, m, r, k, span, nstages,
-	   bs, preps, mvemax, mvep2,
+	   loop->num, found, lower, found - lower, m, r, k, span, spanlat,
+	   nstages, bs, preps, mvemax, mvep2,
 	   mvelcm_overflow ? 0 : (int) mvelcm,
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
 	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
@@ -15594,6 +15909,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   igec, nlin, nseq, linnodes, linedges, linsq, linspill,
 	   cand, splitok, spillok, staged, nsplit, spl_before, spl_after,
 	   nspill, sp_after, sp_why, winempty, winmake,
+	   mcrl, mcrlbad, mcrldep, mcrlmake, mcrlnn, mcrlne,
+	   mcrllife, mcrlsigma, mcrl2, mcrlmake2, mcrllife2,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
@@ -15761,16 +16078,17 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
       return;
     }
 
-  int lo = sigma[0], hi = sigma[0] + lvx_cms_latency (seq[0]);
+  int lo = sigma[0], hi = sigma[0];
   for (unsigned i = 1; i < n; i++)
     {
-      int done = sigma[i] + lvx_cms_latency (seq[i]);
       if (lo > sigma[i])
 	lo = sigma[i];
-      if (hi < done)
-	hi = done;
+      if (hi < sigma[i])
+	hi = sigma[i];
     }
-  int span = hi - lo;
+  /* The cyclic makespan: last ISSUE, not last completion.  See the long note
+     at the main dump site and §7quinvicies.5.  */
+  int span = hi - lo + 1;
   int nstages = (span + found - 1) / found;
 
   fprintf (dump_file, ";; lvx cms-on-ddg: II=%d lower=%d excess=%d ResMII=%d"
