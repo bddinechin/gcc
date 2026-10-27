@@ -12938,6 +12938,25 @@ lvx_cms_sigma_min (const auto_vec<int> &sigma)
   return lo;
 }
 
+/* The cyclic makespan of a schedule: first issue to last issue inclusive.  The
+   latency of the last instruction is NOT part of it -- see the long note at the
+   main dump site and §7quinvicies.5.  */
+static int
+lvx_cms_sigma_span (const auto_vec<int> &sigma)
+{
+  if (sigma.is_empty ())
+    return 0;
+  int lo = sigma[0], hi = sigma[0];
+  for (unsigned i = 1; i < sigma.length (); i++)
+    {
+      if (sigma[i] < lo)
+	lo = sigma[i];
+      if (sigma[i] > hi)
+	hi = sigma[i];
+    }
+  return hi - lo + 1;
+}
+
 /* The values a schedule creates, as the colouring and the split analysis both
    want them: for each instruction defining a register that something reads,
    its definition date, the date of its last reader (in absolute cycles, so a
@@ -14092,8 +14111,12 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		   const auto_vec<int> &height,
 		   int ii, int delta, auto_vec<int> &sigma,
 		   int budget, int *passes, const char **last_bad,
-		   int *resblame_out, int pin)
+		   int *resblame_out, int pin, int mcrl_release = -1)
 {
+  /* -1 means `whatever the option says'; the gate below passes an explicit
+     setting so it can try a II both ways.  */
+  if (mcrl_release < 0)
+    mcrl_release = lvx_cms_mcrl_release;
   unsigned n = seq.length ();
   auto_vec<int> prio, release, blame, culprit, cumulative, tosink, slack, base;
   auto_vec<int> guilt;
@@ -14137,7 +14160,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
      first call, and §7quinvicies.6.2 measured the feedback as changing the
      MCRL optimum in one loop of forty-five, so nothing is lost by it.  */
   auto_vec<int> mcrl;
-  if (lvx_cms_mcrl_release)
+  if (mcrl_release)
     {
       auto_vec<int> es, ls, nodates;
       int wfirst = -1, wmake = 0, wempty = 0;
@@ -14156,7 +14179,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	      /* As FLOORS only when asked: priority 3 wants the dates for
 		 ORDERING, and applying them as floors too would measure both
 		 mechanisms at once.  */
-	      if (lvx_cms_mcrl_release)
+	      if (mcrl_release)
 		for (unsigned i = 0; i < n; i++)
 		  release[i] = md[i];
 	    }
@@ -14476,7 +14499,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	    }
 	  /* Its ALAP when moved.  When not moved, back to the MCRL date under
 	     the persistent-base reading and to nothing under the pass-0 one. */
-	  int home = (lvx_cms_mcrl_release == 2 && !mcrl.is_empty ()
+	  int home = (mcrl_release == 2 && !mcrl.is_empty ()
 		      ? mcrl[i] : 0);
 	  release[i] = move ? height[i] + slack[i] : home;
 	}
@@ -15189,16 +15212,81 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      because one of them had to take a larger II, comparing them needs both to
      be at the SAME larger II.  §7quinvicies.  */
   int first_ii = lower + (int) lvx_cms_ii_bias;
+  /* THE MCRL GATE (§7septvicies.4).  MCRL release dates reduce pressure 12.8%
+     and recover the dependence-only makespan on the loops that overshot it
+     most -- cholesky, lu and ludcmp from 18 stages to 10 -- but applied
+     unconditionally they cost II in 43 of 162 loops, because a release date is
+     a floor and a loop that was not register-constrained pays for pressure
+     that was not binding.  So they are gated, in the shape the branch pin's
+     policy 3 already uses: try each II WITHOUT them first, and only reach for
+     them before giving up on that II.  II is never lost.
+
+     That is arm A, the register case.  Arm B is the makespan case, which the
+     first arm cannot see because there the un-seeded construction SUCCEEDS:
+     if its span overshoots the graph's own makespan bound, MCRL is tried at
+     the same II and kept only if it verifies and the span is shorter.  */
+  int mcrl_used = 0, mcrl_arm = 0;
   for (int try_ii = first_ii; try_ii <= first_ii + 8 && !found; try_ii++)
     {
       if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
 			     budget, &passes, &last_bad, resblame,
-			     pin == 3 ? 1 : pin))
+			     pin == 3 ? 1 : pin, 0))
 	found = try_ii;
       else if (pin == 3
 	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
-				     budget, &passes, &last_bad, resblame, 0))
+				     budget, &passes, &last_bad, resblame, 0,
+				     0))
 	found = try_ii;
+      /* Arm A: this II refused an un-seeded construction.  Before raising it,
+	 ask MCRL where the tasks want to go.
+
+	 ARM A IS ONLY SOUND WITH THE COLOURING IN ACCEPTANCE, and measurement
+	 showed why rather than argument: with -mno-cms-regalloc-feasible the
+	 acceptance test is verification alone, so arm A happily takes a
+	 SMALLER II with a kernel that cannot be coloured -- fdtd-2d's loop 14
+	 went II 9 -> 7 and 0 -> 20 uncolourable values, a smaller II being more
+	 stages and so more pressure (§7octodecies).  With the colouring in
+	 acceptance the same loop goes 11 -> 9 and stays colourable.  That is
+	 why -mcms-regalloc-feasible now defaults ON: the two are one mechanism,
+	 and the gate is what pays back most of what the colouring costs in II.
+	 §7septvicies.5.  */
+      else if (lvx_cms_mcrl_gate
+	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
+				     budget, &passes, &last_bad, resblame,
+				     pin == 3 ? 1 : pin, 2))
+	found = try_ii, mcrl_used = 1, mcrl_arm = 1;
+    }
+
+  /* Arm B: the span overshoots the graph's makespan bound, so a shorter one
+     exists as far as the dependences are concerned and list scheduling simply
+     did not find it.  Of the 18 PolyBench loops in that state, MCRL recovers
+     the bound on five -- and those five are the deep pipelines whose stage
+     count is what the expansion pays for.  */
+  if (found && lvx_cms_mcrl_gate && !mcrl_used)
+    {
+      auto_vec<int> ts, sl, nodates;
+      int wfirst = -1, wmake = 0, wempty = 0;
+      lvx_cms_path_metrics (seq, arcs, height, ts, sl);
+      lvx_cms_dates_in_window (seq, arcs, nodates, ts, found, &wfirst, &wmake,
+			       &wempty);
+      int have = lvx_cms_sigma_span (sigma);
+      if (wmake > 0 && have > wmake)
+	{
+	  auto_vec<int> alt;
+	  int p2 = 0;
+	  const char *b2 = NULL;
+	  if (lvx_cms_swo_at_ii (seq, arcs, height, found, delta, alt, budget,
+				 &p2, &b2, NULL, pin == 3 ? 1 : pin, 2)
+	      && lvx_cms_sigma_span (alt) < have)
+	    {
+	      sigma.truncate (0);
+	      for (unsigned i = 0; i < alt.length (); i++)
+		sigma.safe_push (alt[i]);
+	      passes += p2;
+	      mcrl_used = 1;
+	      mcrl_arm = 2;
+	    }
+	}
     }
 
   /* The counter that cost the most displacement across the whole search: what

@@ -122,7 +122,7 @@ Target RejectNegative Joined UInteger Var(lvx_cms_load_latency) Init(15) Optimiz
 -mcms-load-latency=N	Charge every load N cycles of latency instead of what the machine description gives, 0 uses the description, and the default of 15 is the uncached .us variant, which is the regime to design for.
 
 mcms-regalloc-feasible
-Target Var(lvx_cms_regalloc_feasible) Init(0) Optimization
+Target Var(lvx_cms_regalloc_feasible) Init(1) Optimization
 Reject an initiation interval whose modulo kernel cannot be register allocated, making colourability a feasibility test inside the II search rather than a property discovered afterwards.
 
 mcms-exact-degree
@@ -172,3 +172,7 @@ Assume every inner loop carries #pragma GCC ivdep; for measurement only, not a l
 mcms-mcrl-release=
 Target RejectNegative Joined UInteger Var(lvx_cms_mcrl_release) Init(0) Optimization
 -mcms-mcrl-release=N	Seed the SWO release dates from the minimum cumulative register lifetime solution: 0 off, 1 the first construction only, 2 as a persistent base the release policy diversifies around.
+
+mcms-mcrl-gate
+Target Var(lvx_cms_mcrl_gate) Init(1) Optimization
+Reach for the minimum cumulative register lifetime dates at the current initiation interval when an unseeded construction fails there, or when its makespan overshoots the dependence graph's own bound.
