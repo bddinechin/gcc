@@ -12648,6 +12648,120 @@ lvx_cms_squeeze (enum lvx_cms_rclass n, const int deg[LVX_RC_N])
   return MIN (sq, lvx_cms_rclass_size[n]);
 }
 
+/* MRIS lineage formation on the OMEGA = 0 SUBGRAPH.  §7octodecies.5.
+
+   Govindarajan et al. (IPDPS 2001, IEEE TC 2003) form lineages -- chains of
+   descendants that can all share one register, the register passing from each
+   node to its HEIR -- and add a sequencing edge from every other descendant to
+   the heir, so the heir really is the last use of its parent's value.  The
+   construction is defined on a DAG and the heir is chosen by HEIGHT so that the
+   added edges cannot close a cycle.
+
+   A modulo-scheduling graph is not a DAG, which is why the author proposed
+   restricting the construction to the omega = 0 arcs: those are the
+   intra-iteration dataflow and they ARE acyclic (a zero-distance circuit with
+   positive latency is infeasible, so lvx_plc would already have refused the
+   loop).  Height is therefore well founded on that subgraph and the heir rule
+   keeps its guarantee.
+
+   A value whose consumers are all cross-iteration ends its lineage: it is live
+   across the back edge, so it cannot hand its register to a consumer inside the
+   iteration.  That is the natural boundary the restriction creates, and it is
+   where this departs from the papers.  */
+
+/* Heights over the omega = 0 true-dependence subgraph: 1 for a node with no
+   such consumer, else one more than the tallest consumer.  */
+static void
+lvx_cms_lineage_heights (const auto_vec<lvx_cms_arc> &arcs, unsigned n,
+			 auto_vec<int> &ht)
+{
+  ht.safe_grow_cleared (n);
+  for (unsigned i = 0; i < n; i++)
+    ht[i] = 0;
+  /* Longest path by relaxation; the subgraph is acyclic so n rounds suffice.  */
+  for (unsigned round = 0; round < n; round++)
+    {
+      bool moved = false;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].omega == 0 && arcs[a].kind == LVX_ARC_REG_RAW)
+	  {
+	    int want = ht[arcs[a].dst] + 1;
+	    if (ht[arcs[a].src] < want)
+	      ht[arcs[a].src] = want, moved = true;
+	  }
+      if (!moved)
+	break;
+    }
+}
+
+/* Form lineages and report what they cost and buy.  LIN[i] is the lineage id
+   of the value defined by SEQ[i], or -1 if SEQ[i] defines nothing read.  */
+static void
+lvx_cms_lineages (const auto_vec<lvx_cms_arc> &arcs, unsigned n,
+		  const auto_vec<bool> &defines,
+		  auto_vec<int> &lin, int *nlin_out, int *nseq_out)
+{
+  auto_vec<int> ht;
+  lvx_cms_lineage_heights (arcs, n, ht);
+
+  /* HEIR[i] is the consumer that inherits i's register, or -1.  A node can be
+     the heir of at most one parent, which is what makes the lineages disjoint
+     chains rather than a tree.  */
+  auto_vec<int> heir, taken;
+  heir.safe_grow_cleared (n);
+  taken.safe_grow_cleared (n);
+  for (unsigned i = 0; i < n; i++)
+    heir[i] = -1, taken[i] = 0;
+
+  int nseq = 0;
+  for (unsigned i = 0; i < n; i++)
+    {
+      if (!defines[i])
+	continue;
+      int best = -1, bestht = -1, cons = 0;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].src == i && arcs[a].omega == 0
+	    && arcs[a].kind == LVX_ARC_REG_RAW)
+	  {
+	    unsigned d = arcs[a].dst;
+	    cons++;
+	    /* Height priority, and only a node nobody has claimed: that is
+	       what keeps the augmented graph acyclic and the chains
+	       disjoint.  */
+	    if (!taken[d] && defines[d] && ht[d] > bestht)
+	      bestht = ht[d], best = (int) d;
+	  }
+      if (best >= 0)
+	{
+	  heir[i] = best;
+	  taken[best] = 1;
+	  /* One sequencing edge from each OTHER descendant to the heir.  */
+	  if (cons > 1)
+	    nseq += cons - 1;
+	}
+    }
+
+  /* Walk the chains from their heads.  */
+  lin.safe_grow_cleared (n);
+  for (unsigned i = 0; i < n; i++)
+    lin[i] = -1;
+  int nlin = 0;
+  for (unsigned i = 0; i < n; i++)
+    {
+      if (!defines[i] || taken[i])
+	continue;			/* not a chain head */
+      int id = nlin++;
+      for (int at = (int) i; at >= 0; at = heir[at])
+	{
+	  lin[at] = id;
+	  if (heir[at] < 0)
+	    break;
+	}
+    }
+  *nlin_out = nlin;
+  *nseq_out = nseq;
+}
+
 /* SIGMA's minimum, the schedule's origin.  */
 static int
 lvx_cms_sigma_min (const auto_vec<int> &sigma)
@@ -12743,9 +12857,18 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	    int d = def_[v] - lo0 + (ec ? 0 : 1);
 	    int l = last_[v] - def_[v] - (ec ? 0 : 1);
 	    int nr = nregs_[v];
+	    /* One name per stage the value spans.  Rounded up to a power of two
+	       because that is what the reference allocates (§7quater.5) -- but
+	       the rounding is not neutral when ranges are COMBINED, since
+	       p2 (a + b) can exceed p2 (a) + p2 (b) even though
+	       ceil ((a+b)/II) <= ceil (a/II) + ceil (b/II) always holds.
+	       -mcms-exact-degree separates the two effects.  */
 	    int p2 = 1;
-	    while (p2 < deg[v])
-	      p2 <<= 1;
+	    if (lvx_cms_exact_degree)
+	      p2 = MAX (deg[v], 1);
+	    else
+	      while (p2 < deg[v])
+		p2 <<= 1;
 	    if (l <= 0)
 	      continue;
 
@@ -14651,6 +14774,72 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		  &ignodes, &igedges, &igmaxsq, &igspill, &igperiod,
 		  &igkunroll);
 
+  /* LINEAGES over the omega = 0 subgraph, and the interference graph they give
+     instead of the one over individual values.  §7octodecies.5.  */
+  int nlin = 0, nseq = 0, linnodes = 0, linedges = 0, linsq = 0, linspill = 0;
+  {
+    auto_vec<bool> defines;
+    defines.safe_grow_cleared (seq.length ());
+    for (unsigned i = 0; i < seq.length (); i++)
+      defines[i] = false;
+    for (unsigned a = 0; a < arcs.length (); a++)
+      if (arcs[a].kind == LVX_ARC_REG_RAW)
+	defines[arcs[a].src] = true;
+
+    auto_vec<int> lin;
+    lvx_cms_lineages (arcs, seq.length (), defines, lin, &nlin, &nseq);
+
+    /* A lineage's live range runs from the definition of its head to the last
+       use of its tail -- the concatenation of its members' ranges, which is
+       the point of forming it.  Its class is the widest member's, since one
+       register must hold them all.  */
+    if (nlin > 0)
+      {
+	auto_vec<int> ldef, llast, lnr;
+	ldef.safe_grow_cleared (nlin);
+	llast.safe_grow_cleared (nlin);
+	lnr.safe_grow_cleared (nlin);
+	for (int k = 0; k < nlin; k++)
+	  ldef[k] = INT_MAX, llast[k] = -1, lnr[k] = 1;
+
+	for (unsigned i = 0; i < seq.length (); i++)
+	  {
+	    if (lin[i] < 0)
+	      continue;
+	    int k = lin[i];
+	    if (sigma[i] < ldef[k])
+	      ldef[k] = sigma[i];
+	    for (unsigned a = 0; a < arcs.length (); a++)
+	      if (arcs[a].src == i && arcs[a].kind == LVX_ARC_REG_RAW)
+		{
+		  int when = sigma[arcs[a].dst] + (int) arcs[a].omega * found;
+		  if (when > llast[k])
+		    llast[k] = when;
+		}
+	    rtx ds = single_set (seq[i]);
+	    int nr = (ds && REG_P (SET_DEST (ds))) ? REG_NREGS (SET_DEST (ds)) : 1;
+	    if (MAX (nr, 1) > lnr[k])
+	      lnr[k] = MAX (nr, 1);
+	  }
+
+	auto_vec<int> cdef, clast, cdeg, cnr, cec;
+	for (int k = 0; k < nlin; k++)
+	  {
+	    if (ldef[k] == INT_MAX || llast[k] <= ldef[k])
+	      continue;
+	    cdef.safe_push (ldef[k]);
+	    clast.safe_push (llast[k]);
+	    cdeg.safe_push ((llast[k] - ldef[k] + found - 1) / found);
+	    cnr.safe_push (lnr[k]);
+	    cec.safe_push (0);
+	  }
+	int per, kun;
+	lvx_cms_colour (cdef, clast, cdeg, cnr, cec, found,
+			lvx_cms_sigma_min (sigma), &linnodes, &linedges,
+			&linsq, &linspill, &per, &kun);
+      }
+  }
+
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
@@ -14658,6 +14847,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d"
 	   " mveregs=%d mveregsx=%d mvepress=%d"
 	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
+	   " lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
 	   " emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
@@ -14668,7 +14858,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
 	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
 	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
-	   igec,
+	   igec, nlin, nseq, linnodes, linedges, linsq, linspill,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
