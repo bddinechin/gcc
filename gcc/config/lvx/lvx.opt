@@ -118,8 +118,8 @@ Target RejectNegative Joined UInteger Var(lvx_cms_split_wide) Init(0) Optimizati
 -mcms-split-wide=N	How a lifetime-splitting copy of a value wider than one register is costed: 0 one COPYD per register (TINY each), 1 prefer CATDQ (one per 128 bits, costing a LITE and a TINY).
 
 mcms-load-latency=
-Target RejectNegative Joined UInteger Var(lvx_cms_load_latency) Init(0) Optimization
--mcms-load-latency=N	Charge every load N cycles of latency instead of what the machine description gives, for a sensitivity study against the uncached .us variant: 0 uses the description.
+Target RejectNegative Joined UInteger Var(lvx_cms_load_latency) Init(15) Optimization
+-mcms-load-latency=N	Charge every load N cycles of latency instead of what the machine description gives, 0 uses the description, and the default of 15 is the uncached .us variant, which is the regime to design for.
 
 mcms-branch-stage=
 Target RejectNegative Joined UInteger Var(lvx_cms_branch_stage) Init(3) Optimization

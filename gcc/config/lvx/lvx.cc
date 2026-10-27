@@ -14218,11 +14218,34 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	  }
 	if (best > mvesplitx)
 	  mvesplitx = best;
+
+	/* The register cost AFTER splitting, and the arithmetic is not the
+	   same as the degree's (author, 2026-10-27).  MVESPLITX is the larger
+	   of the two halves, because the KERNEL UNROLL FACTOR is a maximum
+	   over values -- that is a code-size quantity.  The NAME COUNT is not:
+	   both halves need names, so it is the SUM.
+
+	   Splitting therefore *raises* the name count.  Lifetime 10 at II 4
+	   needs ceil (10/4) = 3 names; split in half it needs
+	   ceil (5/4) + ceil (5/4) = 4.  A copy cannot reduce register
+	   pressure -- at the copy the source and the destination are both
+	   live -- and it cannot reduce the number of names either.  What it
+	   buys is a smaller unroll factor and a more colourable interference
+	   graph at the same pressure, which is Llosa's claim and Stotzer's.
+	   An earlier version of this charged only MVESPLITX here and so
+	   reported a reduction that cannot exist.  */
 	{
-	  int bp = 1;
-	  while (bp < best)
-	    bp <<= 1;
-	  mveregsx += nr * bp;
+	  int h1 = bestt >= 0 ? (bestt - d + found - 1) / found : deg;
+	  int h2 = bestt >= 0 ? (last - bestt + found - 1) / found : 0;
+	  int p1 = 1, p2b = 1;
+	  while (p1 < MAX (h1, 1))
+	    p1 <<= 1;
+	  if (h2 > 0)
+	    while (p2b < h2)
+	      p2b <<= 1;
+	  else
+	    p2b = 0;
+	  mveregsx += nr * (p1 + p2b);
 	}
       }
   }
