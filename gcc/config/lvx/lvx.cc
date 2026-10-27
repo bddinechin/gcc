@@ -13990,7 +13990,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      MVESPLIT applies the window; MVESPLITR additionally requires a free issue
      slot in the copy's modulo cycle, which is the whole premise of doing this
      in spare resources.  MVENOSPL counts values whose window is empty.  */
-  int mvesplit0 = 1, mvesplit = 1, mvesplitr = 1, mvenospl = 0;
+  int mvesplit0 = 1, mvesplit = 1, mvesplitr = 1, mvesplitx = 1, mvenospl = 0;
   {
     /* Modulo-cycle occupancy of the TINY counter, which is what a register
        move takes: availability 4, covering ALU0/ALU1/LSU0/LSU1.  */
@@ -14047,19 +14047,81 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	if (bestr > mvesplitr)
 	  mvesplitr = bestr;
       }
+
+    /* MVESPLITX, the exact figure.  The three above test each value against the
+       ORIGINAL occupancy, so each is told a slot is free that an earlier copy
+       may already have taken -- optimistic by construction, and a loop needs
+       2.09 copies on average.  This places them for real: largest degree first,
+       since that is the value setting the loop's degree, and each placement
+       reserves its TINY in a table the next placement sees.
+
+       The window is the same one, and it is where "the producer latency must
+       have elapsed" is enforced:
+
+	   t >= sigma (def) + latency (def)        the value exists to be copied
+	   t <= last_use - 1                       the copy lands before its reader
+
+       LAT comes from lvx_cms_latency, the producer's own processing time.  That
+       is the right number here rather than lvx_arc_latency's bypassed one,
+       and the reason is worth recording: the bypasses in scheduling.md shorten
+       a producer's latency only into a STORE's data operand or an imadd
+       accumulator (§7sedecies.4b), and a register copy is neither -- so
+       lvx_arc_latency (prod, copy, REG_DEP_TRUE) would return
+       insn_default_latency unchanged.  A copy is the one consumer that gets no
+       discount, which is exactly why the window binds at all.  */
+    auto_vec<int> order;
+    for (unsigned v = 0; v < sp_deg.length (); v++)
+      order.safe_push ((int) v);
+    for (unsigned a = 0; a + 1 < order.length (); a++)
+      for (unsigned b = a + 1; b < order.length (); b++)
+	if (sp_deg[order[b]] > sp_deg[order[a]])
+	  std::swap (order[a], order[b]);
+
+    auto_vec<int> use;
+    for (int c = 0; c < found; c++)
+      use.safe_push (tinyuse[c]);
+
+    for (unsigned oi = 0; oi < order.length (); oi++)
+      {
+	int v = order[oi];
+	int d = sp_def[v], lat = sp_lat[v], last = sp_last[v];
+	int deg = sp_deg[v];
+	int tlo = d + MAX (1, lat), thi = last - 1;
+	int best = deg, bestt = -1;
+	for (int t = tlo; t <= thi; t++)
+	  {
+	    int slot = (t - lo) % found;
+	    if (use[slot] >= tinycap)
+	      continue;			/* no room for the copy here */
+	    int aa = (t - d + found - 1) / found;
+	    int bb = (last - t + found - 1) / found;
+	    int cand = MAX (MAX (aa, bb), 1);
+	    if (cand < best)
+	      {
+		best = cand;
+		bestt = t;
+	      }
+	  }
+	if (bestt >= 0)
+	  use[(bestt - lo) % found]++;	/* the copy is now occupying it */
+	if (best > mvesplitx)
+	  mvesplitx = best;
+      }
   }
 
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
-	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvenospl=%d emptycyc=%d"
+	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
+	   " mvenospl=%d emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
 	   loop->num, found, lower, found - lower, m, r, k, span, nstages,
 	   bs, preps, mvemax, mvep2,
 	   mvelcm_overflow ? 0 : (int) mvelcm,
-	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvenospl,
+	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
+	   mvenospl,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
