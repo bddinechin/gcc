@@ -13130,6 +13130,116 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 
 static int lvx_cms_latency (rtx_insn *);
 
+/* Is every date within its Estart/Lstart window at this II?  §7quinvicies.2.
+
+   The author's invariant (2026-10-27): a date handed to a scheduler -- an MCRL
+   date, or any other -- must satisfy
+
+       Estart (i)  <=  date (i)  <=  Lstart (i)
+
+   at the II in force, "else something is wrong".  It is the right check
+   because both bounds are properties of the graph and the period alone, so a
+   date outside them cannot be realised by any feasible schedule: the
+   formulation that produced it is wrong, not merely unlucky.
+
+   Estart is taken from lvx_plc, which is exact and parametric -- the earliest
+   potentials at the period, over arc lengths theta - lambda * omega, so the
+   cross-iteration arcs are accounted for rather than ignored.
+
+   Lstart needs a makespan, and THE MAKESPAN MUST BE BOUNDED BY THE GRAPH, not
+   read off the schedule (author, 2026-10-27: "the makespan of the graph must be
+   limited like for the LStart dates").  Using the achieved span would make the
+   test self-referential -- the schedule would define the window it is then
+   judged against, and could not violate it.  Huff's bound is the one to use:
+
+       Lstart (Stop) = ceil (Estart (Stop) / II) * II
+
+   the critical path rounded up to a whole number of stages, which is a
+   function of the graph and the period alone.  Huff sets it deliberately loose
+   in exactly this way to buy slack and reduce backtracking (§7tervicies).
+
+   WHAT THIS MUST AND MUST NOT BE APPLIED TO (author, 2026-10-27: "it is not
+   the CMS dates, it is the first dates from Bellman-Ford at the current II").
+   The window is a DEPENDENCE-ONLY object.  A resource-feasible schedule may
+   legitimately sit outside it, because resources stretch a schedule past the
+   dependence critical path -- measured on PolyBench lvx-2, SIGMA lies outside
+   the window in 45 of 163 loops over 267 nodes, with spans of 38 against a
+   bound of 24.  None of those is an error.  So the invariant belongs to the
+   dates the SCHEDULER STARTS FROM -- Bellman-Ford's at the current II, and the
+   MCRL dates that refine them -- not to the schedule it ends with.
+
+   Two things are therefore checkable.  EMPTY tells whether the window itself
+   is non-empty, Estart (i) <= Lstart (i) for every node, which is a property of
+   the graph, the period and the makespan bound; an empty window means the II
+   cannot carry the dependence graph within the bound.  And BAD counts the
+   given dates that fall outside, which is the gate an MCRL date must pass.
+
+   Returns BAD, with the first offender through FIRST, the bound through
+   MAKESPAN, and the empty-window count through EMPTY.  */
+
+static int
+lvx_cms_dates_in_window (const auto_vec<rtx_insn *> &seq,
+			 const auto_vec<lvx_cms_arc> &arcs,
+			 const auto_vec<int> &dates,
+			 const auto_vec<int> &tosink,
+			 int ii, int *first_out, int *makespan_out,
+			 int *empty_out)
+{
+  unsigned n = seq.length ();
+  *first_out = -1;
+
+  /* Estart at this II, from the parametric potentials.  */
+  lvx_plc plc;
+  for (unsigned k = 0; k <= n; k++)
+    plc.add_node ();
+  for (unsigned k = 0; k < n; k++)
+    plc.add_arc (0, k + 1, 0, 0);
+  for (unsigned a = 0; a < arcs.length (); a++)
+    plc.add_arc (arcs[a].src + 1, arcs[a].dst + 1, arcs[a].theta,
+		 arcs[a].omega);
+  if (plc.solve (ii) != LVX_PLC_SOLVED)
+    return -1;				/* cannot judge */
+
+  int lo = dates.is_empty () ? 0 : dates[0];
+  for (unsigned i = 1; i < dates.length (); i++)
+    if (dates[i] < lo)
+      lo = dates[i];
+
+  int root = (int) plc.date (0);
+
+  /* Estart (Stop): the earliest the sink can go, over every node's own
+     processing time.  Then round it up to whole stages.  */
+  int estop = 1;
+  for (unsigned i = 0; i < n; i++)
+    {
+      int e = (int) plc.date (i + 1) - root + lvx_cms_latency (seq[i]);
+      if (e > estop)
+	estop = e;
+    }
+  int makespan = ((estop + ii - 1) / ii) * ii;
+  *makespan_out = makespan;
+
+  int bad = 0, empty = 0;
+  for (unsigned i = 0; i < n; i++)
+    {
+      int estart = (int) plc.date (i + 1) - root;
+      int lstart = makespan - tosink[i];
+      if (estart > lstart)
+	empty++;
+      if (dates.length () != n)
+	continue;			/* nothing to judge */
+      int d = dates[i] - lo;
+      if (d < estart || d > lstart)
+	{
+	  if (*first_out < 0)
+	    *first_out = (int) i;
+	  bad++;
+	}
+    }
+  *empty_out = empty;
+  return bad;
+}
+
 /* Repair an uncolourable kernel by SPILL/RESTORE at the current II.
    §7duovicies.
 
@@ -15447,6 +15557,20 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       }
   }
 
+  /* The author's window invariant.  Checked on the WINDOW, not on SIGMA: a
+     resource-feasible schedule may sit outside a dependence-only window and
+     usually does, so the thing worth asserting here is that the window is
+     non-empty at this II -- Estart (i) <= Lstart (i) everywhere, within the
+     graph's own makespan bound.  Applying it to an MCRL date is the gate that
+     comes when the MCRL graph construction lands.  §7quinvicies.2.  */
+  int winempty = 0, winfirst = -1, winmake = 0;
+  {
+    auto_vec<int> ts, sl, nodates;
+    lvx_cms_path_metrics (seq, arcs, height, ts, sl);
+    lvx_cms_dates_in_window (seq, arcs, nodates, ts, found,
+			     &winfirst, &winmake, &winempty);
+  }
+
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
@@ -15456,7 +15580,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
 	   " lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
 	   " cand=%d splitok=%d spillok=%d staged=%d nsplit=%d before=%d after=%d"
-	   " nspill=%d spafter=%d spwhy=%d"
+	   " nspill=%d spafter=%d spwhy=%d winempty=%d winmake=%d"
 	   " emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
@@ -15469,7 +15593,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
 	   igec, nlin, nseq, linnodes, linedges, linsq, linspill,
 	   cand, splitok, spillok, staged, nsplit, spl_before, spl_after,
-	   nspill, sp_after, sp_why,
+	   nspill, sp_after, sp_why, winempty, winmake,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
