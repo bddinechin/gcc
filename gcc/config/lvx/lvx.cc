@@ -11523,6 +11523,34 @@ lvx_insns_may_alias_p (rtx_insn *insn1, rtx_insn *insn2)
    §7nonies ran CMS on the SMS ddg, whose latencies are dep_cost-derived, and
    the recurrence bound agreed on 336 of 336 loops.  */
 
+/* How much longer -mcms-load-latency says this instruction's result takes than
+   the machine description does, or 0.
+
+   A load carries a "variant" (cached, speculate, uncached, preload) and the
+   description prices them apart: a cached or speculative load is 3 cycles (4
+   for an xload) while an UNCACHED one is 15, because it commits at SR, the last
+   pipeline stage.  The probe otherwise sees whatever GCC emitted, which is the
+   cached form -- so every figure in §7septies through §7undecies is a
+   cached-memory figure.  A kernel streaming data it will not reuse, or one
+   whose speculated loads can only be had as `.us' (uncached AND dismissible),
+   pays 15.  This lever charges that so the sensitivity can be measured rather
+   than guessed; see §7septies.8.
+
+   Returned as a DELTA added to whatever the normal path computed, so that the
+   bypasses survive: a load feeding a store's data operand keeps its one-cycle
+   discount (§7sedecies.4b) rather than having it overwritten.  */
+
+static int
+lvx_cms_load_latency_delta (rtx_insn *insn)
+{
+  if (lvx_cms_load_latency == 0 || recog_memoized (insn) < 0)
+    return 0;
+  if (!lvx_load_class_p (get_attr_type (insn)))
+    return 0;
+  int have = insn_default_latency (insn);
+  return (int) lvx_cms_load_latency > have ? (int) lvx_cms_load_latency - have : 0;
+}
+
 static int
 lvx_arc_latency (rtx_insn *prod, rtx_insn *cons, enum reg_note dep_type)
 {
@@ -11555,6 +11583,12 @@ lvx_arc_latency (rtx_insn *prod, rtx_insn *cons, enum reg_note dep_type)
 
   if (targetm.sched.adjust_cost)
     cost = targetm.sched.adjust_cost (cons, (int) dep_type, prod, cost, 0);
+
+  /* The uncached-load study, added after the fact and as a delta so the
+     bypasses above keep their effect.  Only a flow dependence carries the
+     producer's result, so an anti or output arc is unaffected.  */
+  if (dep_type == REG_DEP_TRUE)
+    cost += lvx_cms_load_latency_delta (prod);
 
   return cost < 0 ? 0 : cost;
 }
@@ -12520,7 +12554,8 @@ lvx_cms_latency (rtx_insn *insn)
 {
   if (lvx_doloop_end_p (insn))
     return 1;
-  return MAX (1, insn_default_latency (insn));
+  return MAX (1, insn_default_latency (insn)
+		 + lvx_cms_load_latency_delta (insn));
 }
 
 static bool
@@ -13894,7 +13929,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      degree below the maximum, which is what says whether splitting the longest
      lifetime with one copy would actually help: after one split the degree
      becomes max (MVE2ND, ceil (MVEMAX / 2)).  */
-  int mvemax = 1, mvep2 = 1, mven = 0, mvetop = 0, mve2nd = 0;
+  int mvemax = 1, mvep2 = 1, mven = 0, mvetop = 0, mve2nd = 0, mveregs = 0;
   /* Per expanded value, what a splitting copy would have to work with.  */
   auto_vec<int> sp_def, sp_lat, sp_last, sp_deg, sp_nregs;
   unsigned HOST_WIDE_INT mvelcm = 1;
@@ -13948,6 +13983,23 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	mve2nd = m_i;
       if (p2 > mvep2)
 	mvep2 = p2;
+
+      /* The REGISTER COST of expanding this value: one name per stage it
+	 spans, times the registers each name occupies.  This is the figure
+	 uncached loads make interesting -- a 15-cycle load at II=4 gives its
+	 result a four-stage lifetime, so four names, and a quad result four
+	 aligned quads.  Summed over the loop it is what modulo expansion
+	 actually demands of the 64 GPRs, and it is the pressure the degree is
+	 only a proxy for.  MVEREGS uses the power-of-two degree because that is
+	 what the reference allocates (§7quater.5); MVEREGSX the degree that
+	 survives copy insertion.  */
+      {
+	rtx dset0 = single_set (seq[i]);
+	int nr0 = 1;
+	if (dset0 && REG_P (SET_DEST (dset0)))
+	  nr0 = REG_NREGS (SET_DEST (dset0));
+	mveregs += MAX (nr0, 1) * p2;
+      }
       /* lcm, guarded: a product past a few thousand already says "unusable",
 	 so saturate rather than wrap.  */
       if (!mvelcm_overflow)
@@ -14001,7 +14053,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      slot in the copy's modulo cycle, which is the whole premise of doing this
      in spare resources.  MVENOSPL counts values whose window is empty.  */
   int mvesplit0 = 1, mvesplit = 1, mvesplitr = 1, mvesplitx = 1, mvenospl = 0;
-  int mvewide = 0, mvewidemax = 1, mvecatdq = 0;
+  int mvewide = 0, mvewidemax = 1, mvecatdq = 0, mveregsx = 0;
   {
     /* Modulo-cycle occupancy of the TINY counter, which is what a register
        move takes: availability 4, covering ALU0/ALU1/LSU0/LSU1.  */
@@ -14166,6 +14218,12 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	  }
 	if (best > mvesplitx)
 	  mvesplitx = best;
+	{
+	  int bp = 1;
+	  while (bp < best)
+	    bp <<= 1;
+	  mveregsx += nr * bp;
+	}
       }
   }
 
@@ -14173,7 +14231,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
 	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
-	   " mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d emptycyc=%d"
+	   " mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d"
+	   " mveregs=%d mveregsx=%d emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
@@ -14181,7 +14240,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   bs, preps, mvemax, mvep2,
 	   mvelcm_overflow ? 0 : (int) mvelcm,
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
-	   mvenospl, mvewide, mvewidemax, mvecatdq,
+	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),

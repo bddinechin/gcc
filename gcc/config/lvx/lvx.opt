@@ -117,6 +117,10 @@ mcms-split-wide=
 Target RejectNegative Joined UInteger Var(lvx_cms_split_wide) Init(0) Optimization
 -mcms-split-wide=N	How a lifetime-splitting copy of a value wider than one register is costed: 0 one COPYD per register (TINY each), 1 prefer CATDQ (one per 128 bits, costing a LITE and a TINY).
 
+mcms-load-latency=
+Target RejectNegative Joined UInteger Var(lvx_cms_load_latency) Init(0) Optimization
+-mcms-load-latency=N	Charge every load N cycles of latency instead of what the machine description gives, for a sensitivity study against the uncached .us variant: 0 uses the description.
+
 mcms-branch-stage=
 Target RejectNegative Joined UInteger Var(lvx_cms_branch_stage) Init(3) Optimization
 -mcms-branch-stage=N	Release-date floor for the loop-back branch, to push it into the last stage and so remove the partial epilogues an early prologue exit needs: 0 none, 1 its ALAP, 2 the last stage of the dependence-only makespan, 3 as 1 but retried unpinned at the same II so the pin never costs II.
