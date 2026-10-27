@@ -14035,6 +14035,57 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   if (lvx_cms_force_spec_loads && spec)
     spec = -lvx_cms_force_speculative_loads (seq, bodydef);
 
+  /* REGISTER PRESSURE of the modulo kernel: MaxLive, in registers.
+     (Author, 2026-10-27: the name count is not a useful measure; what counts
+     is pressure and colourability.)
+
+     In steady state every value recurs every II cycles, so a value defined at
+     D with lifetime L has, at the cycle whose phase relative to D is P, exactly
+
+	 ceil ((L - P) / II)      instances live, for P in [0, II)
+
+     which is ceil (L/II) at P = 0 and falls by one each time P crosses a
+     multiple of II.  Summing that over the values, weighted by how many
+     registers each occupies, and taking the maximum over the II cycles of the
+     kernel gives MaxLive -- the figure an allocator must fit into 64 GPRs, and
+     the one a splitting copy cannot reduce.
+
+     Note this is NOT the sum of the per-value degrees: a value contributes
+     ceil(L/II) only at one phase and less at the others, so summing degrees
+     over-counts.  The old mveregs did exactly that.  */
+  int mvepress = 0;
+  {
+    for (int c = 0; c < found; c++)
+      {
+	int live = 0;
+	for (unsigned i = 0; i < seq.length (); i++)
+	  {
+	    int lastu = -1;
+	    for (unsigned a = 0; a < arcs.length (); a++)
+	      if (arcs[a].src == i && arcs[a].kind == LVX_ARC_REG_RAW)
+		{
+		  int when = sigma[arcs[a].dst] + (int) arcs[a].omega * found;
+		  if (when > lastu)
+		    lastu = when;
+		}
+	    if (lastu < 0)
+	      continue;
+	    int l = lastu - sigma[i];
+	    if (l <= 0)
+	      continue;
+	    int ph = ((c - (sigma[i] - lo)) % found + found) % found;
+	    if (l <= ph)
+	      continue;
+	    int inst = (l - ph + found - 1) / found;
+	    rtx ds = single_set (seq[i]);
+	    int nr = (ds && REG_P (SET_DEST (ds))) ? REG_NREGS (SET_DEST (ds)) : 1;
+	    live += MAX (nr, 1) * inst;
+	  }
+	if (live > mvepress)
+	  mvepress = live;
+      }
+  }
+
   /* Can a splitting copy actually be placed?  §7undecies.4 projects a large
      reduction in the expansion degree from splitting the longest lifetime with
      one copy, and that projection is unconditional -- which the author objected
@@ -14255,7 +14306,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
 	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
 	   " mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d"
-	   " mveregs=%d mveregsx=%d emptycyc=%d"
+	   " mveregs=%d mveregsx=%d mvepress=%d emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
@@ -14264,6 +14315,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mvelcm_overflow ? 0 : (int) mvelcm,
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
 	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
+	   mvepress,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
