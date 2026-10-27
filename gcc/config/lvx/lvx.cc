@@ -14001,19 +14001,23 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      slot in the copy's modulo cycle, which is the whole premise of doing this
      in spare resources.  MVENOSPL counts values whose window is empty.  */
   int mvesplit0 = 1, mvesplit = 1, mvesplitr = 1, mvesplitx = 1, mvenospl = 0;
-  int mvewide = 0, mvewidemax = 1;
+  int mvewide = 0, mvewidemax = 1, mvecatdq = 0;
   {
     /* Modulo-cycle occupancy of the TINY counter, which is what a register
        move takes: availability 4, covering ALU0/ALU1/LSU0/LSU1.  */
-    auto_vec<int> tinyuse;
+    auto_vec<int> tinyuse, liteuse;
     for (int c = 0; c < found; c++)
-      tinyuse.safe_push (0);
+      {
+	tinyuse.safe_push (0);
+	liteuse.safe_push (0);
+      }
     for (unsigned i = 0; i < seq.length (); i++)
       {
 	struct lvx_sched_resources one;
 	memset (&one, 0, sizeof (one));
 	lvx_cms_resources_add (&one, seq[i]);
 	tinyuse[(sigma[i] - lo) % found] += (int) one.tiny_count;
+	liteuse[(sigma[i] - lo) % found] += (int) one.lite_count;
       }
     int tinycap = (int) lvx_issue_availability.tiny;
 
@@ -14088,9 +14092,13 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	if (sp_deg[order[b]] > sp_deg[order[a]])
 	  std::swap (order[a], order[b]);
 
-    auto_vec<int> use;
+    auto_vec<int> use, luse;
     for (int c = 0; c < found; c++)
-      use.safe_push (tinyuse[c]);
+      {
+	use.safe_push (tinyuse[c]);
+	luse.safe_push (liteuse[c]);
+      }
+    int litecap = (int) lvx_issue_availability.lite;
 
     for (unsigned oi = 0; oi < order.length (); oi++)
       {
@@ -14105,15 +14113,38 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	      mvewidemax = nr;
 	  }
 	int tlo = d + MAX (1, lat), thi = last - 1;
-	int best = deg, bestt = -1;
+	int best = deg, bestt = -1, bestt_t = nr, bestt_l = 0;
 	for (int t = tlo; t <= thi; t++)
 	  {
 	    int slot = (t - lo) % found;
-	    /* A wide value costs one COPYD per 64-bit register, and they must
-	       all land before the first use of the copy -- taken here as the
-	       same cycle, which is also the only way the new name is complete
-	       at a single date.  So the cycle needs NR free TINY, not one.  */
-	    if (use[slot] + nr > tinycap)
+
+	    /* The copies must all land before the first use of the copy --
+	       taken here as the same cycle, which is also the only way the new
+	       name is complete at a single date.  Two routes for a value wider
+	       than one register, and they spend different counters
+	       (lvx-issue-table.inc: a LITE instruction reserves a TINY too):
+
+		 COPYD  one per 64-bit register   NR tiny
+		 CATDQ  one per 128 bits          NR/2 lite + NR/2 tiny
+
+	       CATDQ halves the TINY cost of a pair but spends the scarcer
+	       counter -- availability 2 against 4 -- and a quad's two CATDQ
+	       saturate LITE outright.  With -mcms-split-wide=1 take CATDQ
+	       where it fits and fall back to COPYD, which is the better way
+	       round: TINY is the binding counter on this corpus (§7septies.3's
+	       tight= field names it in 46 of 51 missing loops).  */
+	    int need_t = nr, need_l = 0;
+	    if (lvx_cms_split_wide == 1 && nr >= 2)
+	      {
+		int cat = nr / 2;
+		if (luse[slot] + cat <= litecap && use[slot] + cat <= tinycap)
+		  {
+		    need_t = cat;
+		    need_l = cat;
+		  }
+	      }
+	    if (use[slot] + need_t > tinycap
+		|| luse[slot] + need_l > litecap)
 	      continue;
 	    int aa = (t - d + found - 1) / found;
 	    int bb = (last - t + found - 1) / found;
@@ -14122,10 +14153,17 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	      {
 		best = cand;
 		bestt = t;
+		bestt_t = need_t;
+		bestt_l = need_l;
 	      }
 	  }
 	if (bestt >= 0)
-	  use[(bestt - lo) % found] += nr;   /* the copies now occupy it */
+	  {
+	    use[(bestt - lo) % found] += bestt_t;
+	    luse[(bestt - lo) % found] += bestt_l;
+	    if (bestt_l > 0)
+	      mvecatdq++;
+	  }
 	if (best > mvesplitx)
 	  mvesplitx = best;
       }
@@ -14135,7 +14173,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
 	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
-	   " mvenospl=%d mvewide=%d mvewidemax=%d emptycyc=%d"
+	   " mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
@@ -14143,7 +14181,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   bs, preps, mvemax, mvep2,
 	   mvelcm_overflow ? 0 : (int) mvelcm,
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
-	   mvenospl, mvewide, mvewidemax,
+	   mvenospl, mvewide, mvewidemax, mvecatdq,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
