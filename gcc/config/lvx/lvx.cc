@@ -12648,6 +12648,92 @@ lvx_cms_squeeze (enum lvx_cms_rclass n, const int deg[LVX_RC_N])
   return MIN (sq, lvx_cms_rclass_size[n]);
 }
 
+/* STAGE SCHEDULING: shift operations by whole multiples of II to shorten live
+   ranges.  Eichenberger's skip factors (MICRO-27 1994, thesis ch. 4);
+   §7octodecies.2 and §7octodecies.3.
+
+   Moving a node by a multiple of II leaves SIGMA mod II unchanged, so it keeps
+   its slot in the modulo reservation table: resources stay feasible by
+   construction and the II cannot change.  Only the STAGE moves, which is what
+   lifetimes are measured in.
+
+   Only OUTGOING arcs can break when a node moves LATER, since every incoming
+   constraint sigma(i) - sigma(h) >= theta - omega*II only loosens.  So the room
+   a node has is
+
+       min over arcs (i -> j) of  floor ((sigma(j) - sigma(i) - theta
+					 + omega*II) / II)
+
+   and shifting a definition later by that much shortens its own value's range
+   without touching anything else's lower bound.  Applied greedily, which
+   Mangione-Smith et al. proved optimal only for values with a single use --
+   our graphs have CSE and loop-carried dependences, so this is a heuristic
+   (§7octodecies.3).  */
+
+static int
+lvx_cms_stage_schedule (const auto_vec<lvx_cms_arc> &arcs, unsigned n,
+			auto_vec<int> &sigma, int ii)
+{
+  int moved = 0;
+  for (int round = 0; round < 8; round++)
+    {
+      bool any = false;
+      for (unsigned i = 0; i < n; i++)
+	{
+	  /* How many whole periods this node may be delayed.  */
+	  int room = INT_MAX;
+	  for (unsigned a = 0; a < arcs.length (); a++)
+	    if (arcs[a].src == i)
+	      {
+		int lhs = sigma[arcs[a].dst] - sigma[i]
+			  - (int) arcs[a].theta + (int) arcs[a].omega * ii;
+		int k = lhs / ii;
+		if (lhs < 0)
+		  k = 0;
+		if (k < room)
+		  room = k;
+	      }
+	  if (room == INT_MAX)
+	    room = 0;		/* nothing reads it: moving buys nothing */
+	  if (room <= 0)
+	    continue;
+
+	  /* Delaying I shortens the ranges of the values I defines, and
+	     lengthens those of the values it reads -- so take the step only
+	     if the sum of the spans it touches falls.  */
+	  int before = 0, after = 0;
+	  for (unsigned a = 0; a < arcs.length (); a++)
+	    {
+	      if (arcs[a].kind != LVX_ARC_REG_RAW)
+		continue;
+	      if (arcs[a].src == i)
+		{
+		  before += sigma[arcs[a].dst] + (int) arcs[a].omega * ii
+			    - sigma[i];
+		  after += sigma[arcs[a].dst] + (int) arcs[a].omega * ii
+			   - (sigma[i] + ii);
+		}
+	      else if (arcs[a].dst == i)
+		{
+		  before += sigma[i] + (int) arcs[a].omega * ii
+			    - sigma[arcs[a].src];
+		  after += sigma[i] + ii + (int) arcs[a].omega * ii
+			   - sigma[arcs[a].src];
+		}
+	    }
+	  if (after >= before)
+	    continue;
+
+	  sigma[i] += ii;
+	  moved++;
+	  any = true;
+	}
+      if (!any)
+	break;
+    }
+  return moved;
+}
+
 /* Would splitting the value defined by SEQ[I], or spilling it, still fit the II
    we are currently trying?  §7novodecies.
 
@@ -13461,6 +13547,14 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
       {
       case 1:  base[i] = -tosink[i]; break;
       case 2:  base[i] = slack[i];   break;
+	/* There was a case 3 here, "latest start first", meant as a PRESSURE
+	   priority after Dehnert's remedy of placing definitions close to
+	   their uses.  It is removed because it is VACUOUS: ALAP is
+	   makespan - tosink (see lvx_cms_path_metrics, where
+	   slack = makespan - tosink - asap and asap is HEIGHT), so
+	   height + slack = makespan - tosink, and ordering by that is
+	   ordering by -tosink -- which is case 1.  The dumps were
+	   byte-identical, as they had to be.  §7vicies.  */
       default: base[i] = height[i];  break;
       }
 
@@ -14572,6 +14666,14 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   if (lvx_cms_force_spec_loads && spec)
     spec = -lvx_cms_force_speculative_loads (seq, bodydef);
 
+  /* Stage scheduling, if asked: shift operations by whole periods to shorten
+     live ranges.  Done here, after the II search has converged and before
+     anything measures the result, because it cannot change the II or the
+     resource feasibility -- only the stages.  §7octodecies.2.  */
+  int staged = 0;
+  if (lvx_cms_stage_sched)
+    staged = lvx_cms_stage_schedule (arcs, seq.length (), sigma, found);
+
   /* REGISTER PRESSURE of the modulo kernel: MaxLive, in registers.
      (Author, 2026-10-27: the name count is not a useful measure; what counts
      is pressure and colourability.)
@@ -14969,7 +15071,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " mveregs=%d mveregsx=%d mvepress=%d"
 	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
 	   " lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
-	   " cand=%d splitok=%d spillok=%d"
+	   " cand=%d splitok=%d spillok=%d staged=%d"
 	   " emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
@@ -14981,7 +15083,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
 	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
 	   igec, nlin, nseq, linnodes, linedges, linsq, linspill,
-	   cand, splitok, spillok,
+	   cand, splitok, spillok, staged,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
