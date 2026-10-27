@@ -12549,6 +12549,76 @@ lvx_cms_insn_uses_resource_p (rtx_insn *insn, int want)
    reservation at all.  A mapped-back decrement-test-branch is a branch, and a
    branch feeds no in-iteration consumer, so one cycle is its whole cost.  */
 
+/* Interference graph over the UNROLLED modulo kernel, coloured by Smith's
+   squeeze.  See docs/cms-foundations.md §7ter.9 and §7ter.10.
+
+   Why unroll first rather than test interference cyclically.  kvx-unfold.cc
+   replicates each range p2unroll - 1 times and then asks
+   unfold_range_overlap_p, which shifts one range's dates by multiples of II in
+   both directions until it finds an overlap or runs past.  That is correct but
+   delicate -- and its two `first_def_p' terms are commented out, so the
+   earlyclobber adjustment of §7ter.2a is not applied.  Materialising KUNROLL
+   instances instead turns the question back into a plain overlap, and the
+   power-of-two closure of §7quater.5 is what makes it exact: p2unroll divides
+   KUNROLL, so name J of a value occupies exactly KUNROLL / p2unroll intervals,
+   evenly spaced p2unroll * II apart, and a lifetime never exceeds p2unroll * II
+   so those intervals cannot overlap each other.
+
+   A node is therefore (value, name) with an occupancy bitmap over the unrolled
+   period P = KUNROLL * II, and two nodes interfere iff their bitmaps meet.  */
+
+#define LVX_CMS_IG_MAX_NODES 512
+#define LVX_CMS_IG_MAX_PERIOD 1024
+
+/* Register classes, by how many consecutive registers a value occupies.  */
+enum lvx_cms_rclass { LVX_RC_SINGLE = 0, LVX_RC_PAIR, LVX_RC_QUAD, LVX_RC_N };
+
+static const int lvx_cms_rclass_size[LVX_RC_N] = { 64, 32, 16 };
+
+/* worst_1 (N, C): the most names of class N that one neighbour of class C can
+   deny.  Nine numbers, and they are this simple only because LVX's tuples are
+   ALIGNED, which makes the alias relation a laminar family -- a single belongs
+   to exactly one pair and one quad, never to two overlapping ones.  Smith's
+   motivating case has worst_1 (double, single) = 2 as well, which needs
+   unaligned doubles; here every reverse direction is 1.  And because aligned
+   classes partition rather than overlap,
+
+       worst_m (N, C) = min (m * worst_1 (N, C), |N|)
+
+   so no search over subsets is needed.  */
+static const int lvx_cms_worst1[LVX_RC_N][LVX_RC_N] = {
+  /*        C=SINGLE  PAIR  QUAD */
+  /* N=SINGLE */ { 1,   2,   4 },
+  /* N=PAIR   */ { 1,   1,   2 },
+  /* N=QUAD   */ { 1,   1,   1 },
+};
+
+static enum lvx_cms_rclass
+lvx_cms_rclass_of (int nregs)
+{
+  if (nregs >= 4)
+    return LVX_RC_QUAD;
+  if (nregs >= 2)
+    return LVX_RC_PAIR;
+  return LVX_RC_SINGLE;
+}
+
+/* Smith's squeeze for node N given how many live neighbours it has of each
+   class, with the saturation bound: several classes together cannot deny more
+   than their alias sets hold, which on a laminar family is |N| itself.  */
+static int
+lvx_cms_squeeze (enum lvx_cms_rclass n, const int deg[LVX_RC_N])
+{
+  int sq = 0;
+  for (int c = 0; c < LVX_RC_N; c++)
+    {
+      int w = deg[c] * lvx_cms_worst1[n][c];
+      int cap = lvx_cms_rclass_size[n];
+      sq += MIN (w, cap);
+    }
+  return MIN (sq, lvx_cms_rclass_size[n]);
+}
+
 static int
 lvx_cms_latency (rtx_insn *insn)
 {
@@ -14301,12 +14371,131 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       }
   }
 
+  /* Build the interference graph over the unrolled kernel and colour it with
+     the squeeze, reporting whether the schedule is allocatable.  §7ter.10.  */
+  int ignodes = 0, igedges = 0, igmaxsq = 0, igspill = 0, igperiod = 0;
+  int igkunroll = 1;
+  {
+    /* KUNROLL is the max per-value power-of-two degree (§7.8), and the
+       unrolled period is KUNROLL * II.  */
+    for (unsigned v = 0; v < sp_deg.length (); v++)
+      {
+	int p2 = 1;
+	while (p2 < sp_deg[v])
+	  p2 <<= 1;
+	if (p2 > igkunroll)
+	  igkunroll = p2;
+      }
+    igperiod = igkunroll * found;
+
+    if (igperiod > 0 && igperiod <= LVX_CMS_IG_MAX_PERIOD)
+      {
+	auto_vec<unsigned HOST_WIDE_INT *> occ;
+	auto_vec<int> ncls;
+	int words = (igperiod + 63) / 64;
+
+	for (unsigned v = 0;
+	     v < sp_deg.length () && ignodes < LVX_CMS_IG_MAX_NODES; v++)
+	  {
+	    int d = sp_def[v] - lo, l = sp_last[v] - sp_def[v];
+	    int nr = sp_nregs[v];
+	    int p2 = 1;
+	    while (p2 < sp_deg[v])
+	      p2 <<= 1;
+	    if (l <= 0)
+	      continue;
+
+	    /* One node per NAME of this value.  Name J carries the instances
+	       of iterations congruent to J modulo P2, which is every P2-th
+	       kernel copy -- exact because P2 divides KUNROLL.  */
+	    for (int j = 0; j < p2 && ignodes < LVX_CMS_IG_MAX_NODES; j++)
+	      {
+		unsigned HOST_WIDE_INT *b = XCNEWVEC (unsigned HOST_WIDE_INT,
+						      words);
+		for (int k = j; k < igkunroll; k += p2)
+		  for (int t = 0; t < l; t++)
+		    {
+		      int c = (d + k * found + t) % igperiod;
+		      b[c / 64] |= (unsigned HOST_WIDE_INT) 1 << (c % 64);
+		    }
+		occ.safe_push (b);
+		ncls.safe_push ((int) lvx_cms_rclass_of (nr));
+		ignodes++;
+	      }
+	  }
+
+	/* Interference: two nodes meet iff their occupancies share a cycle.
+	   Per-class neighbour counts are what the squeeze consumes.  */
+	auto_vec<int> degc;
+	degc.safe_grow_cleared (ignodes * LVX_RC_N);
+	for (int a = 0; a < ignodes; a++)
+	  for (int b2 = a + 1; b2 < ignodes; b2++)
+	    {
+	      bool meet = false;
+	      for (int w = 0; w < words && !meet; w++)
+		if (occ[a][w] & occ[b2][w])
+		  meet = true;
+	      if (!meet)
+		continue;
+	      igedges++;
+	      degc[a * LVX_RC_N + ncls[b2]]++;
+	      degc[b2 * LVX_RC_N + ncls[a]]++;
+	    }
+
+	/* SIMPLIFY: repeatedly remove a node whose squeeze is below its class
+	   size, which is Smith's trivially-colourable test in place of
+	   Chaitin's degree one.  Whatever cannot be removed would have to be
+	   spilled or the II raised -- which is the feasibility answer §7.8
+	   wants inside the II search.  */
+	auto_vec<bool> gone;
+	gone.safe_grow_cleared (ignodes);
+	int removed = 0;
+	bool progress = true;
+	while (progress)
+	  {
+	    progress = false;
+	    for (int a = 0; a < ignodes; a++)
+	      {
+		if (gone[a])
+		  continue;
+		int deg[LVX_RC_N];
+		for (int c = 0; c < LVX_RC_N; c++)
+		  deg[c] = degc[a * LVX_RC_N + c];
+		int sq = lvx_cms_squeeze ((enum lvx_cms_rclass) ncls[a], deg);
+		if (sq > igmaxsq)
+		  igmaxsq = sq;
+		if (sq < lvx_cms_rclass_size[ncls[a]])
+		  {
+		    gone[a] = true;
+		    removed++;
+		    progress = true;
+		    for (int b2 = 0; b2 < ignodes; b2++)
+		      {
+			if (gone[b2] || b2 == a)
+			  continue;
+			bool meet = false;
+			for (int w = 0; w < words && !meet; w++)
+			  if (occ[a][w] & occ[b2][w])
+			    meet = true;
+			if (meet)
+			  degc[b2 * LVX_RC_N + ncls[a]]--;
+		      }
+		  }
+	      }
+	  }
+	igspill = ignodes - removed;
+	for (int a = 0; a < ignodes; a++)
+	  XDELETEVEC (occ[a]);
+      }
+  }
+
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
 	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
 	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
 	   " mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d"
-	   " mveregs=%d mveregsx=%d mvepress=%d emptycyc=%d"
+	   " mveregs=%d mveregsx=%d mvepress=%d"
+	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
@@ -14315,7 +14504,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mvelcm_overflow ? 0 : (int) mvelcm,
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
 	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
-	   mvepress,
+	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
