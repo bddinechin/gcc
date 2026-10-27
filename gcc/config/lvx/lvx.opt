@@ -121,6 +121,10 @@ mcms-load-latency=
 Target RejectNegative Joined UInteger Var(lvx_cms_load_latency) Init(15) Optimization
 -mcms-load-latency=N	Charge every load N cycles of latency instead of what the machine description gives, 0 uses the description, and the default of 15 is the uncached .us variant, which is the regime to design for.
 
+mcms-regalloc-feasible
+Target Var(lvx_cms_regalloc_feasible) Init(0) Optimization
+Reject an initiation interval whose modulo kernel cannot be register allocated, making colourability a feasibility test inside the II search rather than a property discovered afterwards.
+
 mcms-branch-stage=
 Target RejectNegative Joined UInteger Var(lvx_cms_branch_stage) Init(3) Optimization
 -mcms-branch-stage=N	Release-date floor for the loop-back branch, to push it into the last stage and so remove the partial epilogues an early prologue exit needs: 0 none, 1 its ALAP, 2 the last stage of the dependence-only makespan, 3 as 1 but retried unpinned at the same II so the pin never costs II.

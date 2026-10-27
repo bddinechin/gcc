@@ -11775,6 +11775,35 @@ lvx_mems_disjoint_p (const vec<rtx_insn *> &seq, unsigned p, unsigned q)
    which case renaming cannot separate its read from its write and the
    anti-dependence between them is real.  */
 
+/* True if INSN's destination is EARLYCLOBBER in the alternative that was
+   chosen: the output is written before the inputs are read, so it must not
+   share a register with an input.
+
+   That is a statement about WHEN THE RANGE BEGINS, not about whether the value
+   may be renamed (§7ter.2a).  A normal definition's range may start one cycle
+   after the def, because the write lands after the reads and sharing an input's
+   register is legal; an earlyclobber one may not.  Feeding this into the
+   interference test is all the "must differ from the inputs" rule needs -- no
+   special case in the allocator.  */
+
+static bool
+lvx_insn_dest_earlyclobber_p (rtx_insn *insn)
+{
+  if (recog_memoized (insn) < 0)
+    return false;
+  extract_insn (insn);
+  preprocess_constraints (insn);
+  if (which_alternative < 0)
+    return false;
+
+  const operand_alternative *alt
+    = &recog_op_alt[which_alternative * recog_data.n_operands];
+  for (int i = 0; i < recog_data.n_operands; i++)
+    if (recog_data.operand_type[i] != OP_IN && alt[i].earlyclobber)
+      return true;
+  return false;
+}
+
 static bool
 lvx_insn_has_tied_operand_p (rtx_insn *insn)
 {
@@ -12619,6 +12648,199 @@ lvx_cms_squeeze (enum lvx_cms_rclass n, const int deg[LVX_RC_N])
   return MIN (sq, lvx_cms_rclass_size[n]);
 }
 
+/* SIGMA's minimum, the schedule's origin.  */
+static int
+lvx_cms_sigma_min (const auto_vec<int> &sigma)
+{
+  int lo = sigma.is_empty () ? 0 : sigma[0];
+  for (unsigned i = 1; i < sigma.length (); i++)
+    if (sigma[i] < lo)
+      lo = sigma[i];
+  return lo;
+}
+
+/* The values a schedule creates, as the colouring and the split analysis both
+   want them: for each instruction defining a register that something reads,
+   its definition date, the date of its last reader (in absolute cycles, so a
+   cross-iteration read counts OMEGA periods later), the expansion degree, the
+   width in registers, and whether the destination is earlyclobber.  */
+static void
+lvx_cms_collect_values (const auto_vec<rtx_insn *> &seq,
+			const auto_vec<lvx_cms_arc> &arcs,
+			const auto_vec<int> &sigma, int ii,
+			auto_vec<int> &def_, auto_vec<int> &last_,
+			auto_vec<int> &deg, auto_vec<int> &nregs_,
+			auto_vec<int> &ec_, auto_vec<int> *owner = NULL)
+{
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      int last = -1;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].src == i && arcs[a].kind == LVX_ARC_REG_RAW)
+	  {
+	    int when = sigma[arcs[a].dst] + (int) arcs[a].omega * ii;
+	    if (when > last)
+	      last = when;
+	  }
+      if (last < 0)
+	continue;
+      int life = last - sigma[i];
+      if (life <= 0)
+	continue;
+      def_.safe_push (sigma[i]);
+      last_.safe_push (last);
+      deg.safe_push ((life + ii - 1) / ii);
+      rtx ds = single_set (seq[i]);
+      int nr = (ds && REG_P (SET_DEST (ds))) ? REG_NREGS (SET_DEST (ds)) : 1;
+      nregs_.safe_push (MAX (nr, 1));
+      ec_.safe_push (lvx_insn_dest_earlyclobber_p (seq[i]) ? 1 : 0);
+      if (owner)
+	owner->safe_push ((int) i);
+    }
+}
+
+/* Build the interference graph over the kernel unrolled KUNROLL times and
+   colour it with the squeeze, reporting the counts and how many nodes could
+   not be removed.  Shared by the II search -- where it is the feasibility test
+   §7.8 asks for -- and by the report.  §7ter.10.  */
+
+static void
+lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
+		const auto_vec<int> &deg, const auto_vec<int> &nregs_,
+		const auto_vec<int> &ec_, int ii, int lo0,
+		int *nn_out, int *ne_out, int *msq_out, int *spl_out,
+		int *per_out, int *kun_out, auto_vec<int> *stuck = NULL)
+{
+  int nn = 0, ne = 0, msq = 0, spl = 0, per = 0, kun = 1;
+
+    /* KUNROLL is the max per-value power-of-two degree (§7.8), and the
+       unrolled period is KUNROLL * II.  */
+    for (unsigned v = 0; v < deg.length (); v++)
+      {
+	int p2 = 1;
+	while (p2 < deg[v])
+	  p2 <<= 1;
+	if (p2 > kun)
+	  kun = p2;
+      }
+    per = kun * ii;
+
+    if (per > 0 && per <= LVX_CMS_IG_MAX_PERIOD)
+      {
+	auto_vec<unsigned HOST_WIDE_INT *> occ;
+	auto_vec<int> ncls, nval;
+	int words = (per + 63) / 64;
+
+	for (unsigned v = 0;
+	     v < deg.length () && nn < LVX_CMS_IG_MAX_NODES; v++)
+	  {
+	    /* The range starts one cycle AFTER a normal definition and AT an
+	       earlyclobber one (§7ter.2a).  kvx-unfold.cc computes the
+	       equivalent UNFOLD_RANGE_FLAG_DEF_FIRST, dumps it, and has both
+	       consumers commented out -- see §7ter.11 for why re-enabling it
+	       there is coupled to fixing the effect classification.  */
+	    int ec = ec_[v];
+	    int d = def_[v] - lo0 + (ec ? 0 : 1);
+	    int l = last_[v] - def_[v] - (ec ? 0 : 1);
+	    int nr = nregs_[v];
+	    int p2 = 1;
+	    while (p2 < deg[v])
+	      p2 <<= 1;
+	    if (l <= 0)
+	      continue;
+
+	    /* One node per NAME of this value.  Name J carries the instances
+	       of iterations congruent to J modulo P2, which is every P2-th
+	       kernel copy -- exact because P2 divides KUNROLL.  */
+	    for (int j = 0; j < p2 && nn < LVX_CMS_IG_MAX_NODES; j++)
+	      {
+		unsigned HOST_WIDE_INT *b = XCNEWVEC (unsigned HOST_WIDE_INT,
+						      words);
+		for (int k = j; k < kun; k += p2)
+		  for (int t = 0; t < l; t++)
+		    {
+		      int c = (d + k * ii + t) % per;
+		      b[c / 64] |= (unsigned HOST_WIDE_INT) 1 << (c % 64);
+		    }
+		occ.safe_push (b);
+		ncls.safe_push ((int) lvx_cms_rclass_of (nr));
+		nval.safe_push ((int) v);
+		nn++;
+	      }
+	  }
+
+	/* Interference: two nodes meet iff their occupancies share a cycle.
+	   Per-class neighbour counts are what the squeeze consumes.  */
+	auto_vec<int> degc;
+	degc.safe_grow_cleared (nn * LVX_RC_N);
+	for (int a = 0; a < nn; a++)
+	  for (int b2 = a + 1; b2 < nn; b2++)
+	    {
+	      bool meet = false;
+	      for (int w = 0; w < words && !meet; w++)
+		if (occ[a][w] & occ[b2][w])
+		  meet = true;
+	      if (!meet)
+		continue;
+	      ne++;
+	      degc[a * LVX_RC_N + ncls[b2]]++;
+	      degc[b2 * LVX_RC_N + ncls[a]]++;
+	    }
+
+	/* SIMPLIFY: repeatedly remove a node whose squeeze is below its class
+	   size, which is Smith's trivially-colourable test in place of
+	   Chaitin's degree one.  Whatever cannot be removed would have to be
+	   spilled or the II raised -- which is the feasibility answer §7.8
+	   wants inside the II search.  */
+	auto_vec<bool> gone;
+	gone.safe_grow_cleared (nn);
+	int removed = 0;
+	bool progress = true;
+	while (progress)
+	  {
+	    progress = false;
+	    for (int a = 0; a < nn; a++)
+	      {
+		if (gone[a])
+		  continue;
+		int deg[LVX_RC_N];
+		for (int c = 0; c < LVX_RC_N; c++)
+		  deg[c] = degc[a * LVX_RC_N + c];
+		int sq = lvx_cms_squeeze ((enum lvx_cms_rclass) ncls[a], deg);
+		if (sq > msq)
+		  msq = sq;
+		if (sq < lvx_cms_rclass_size[ncls[a]])
+		  {
+		    gone[a] = true;
+		    removed++;
+		    progress = true;
+		    for (int b2 = 0; b2 < nn; b2++)
+		      {
+			if (gone[b2] || b2 == a)
+			  continue;
+			bool meet = false;
+			for (int w = 0; w < words && !meet; w++)
+			  if (occ[a][w] & occ[b2][w])
+			    meet = true;
+			if (meet)
+			  degc[b2 * LVX_RC_N + ncls[a]]--;
+		      }
+		  }
+	      }
+	  }
+	spl = nn - removed;
+	if (stuck)
+	  for (int a = 0; a < nn; a++)
+	    if (!gone[a])
+	      stuck->safe_push (nval[a]);
+	for (int a = 0; a < nn; a++)
+	  XDELETEVEC (occ[a]);
+      }
+  
+  *nn_out = nn; *ne_out = ne; *msq_out = msq; *spl_out = spl;
+  *per_out = per; *kun_out = kun;
+}
+
 static int
 lvx_cms_latency (rtx_insn *insn)
 {
@@ -13064,11 +13286,60 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	  const char *bad = lvx_cms_verify (seq, arcs, ii, sigma);
 	  if (!bad)
 	    {
-	      if (resblame_out)
-		memcpy (resblame_out, resblame, sizeof (resblame));
-	      return true;
+	      /* ALLOCATION IS PART OF ACCEPTANCE, AT THIS II.
+		 A schedule that verifies may still produce a kernel the
+		 allocator cannot colour -- §7ter.10 measured 27 of 158 lvx-2
+		 loops, twelve of them at a pressure that fits.  The author's
+		 instruction (2026-10-27) is that colourability must NOT be
+		 wired into the II search: raising II is not the answer, and
+		 among the schedules SWO already explores at a given II some
+		 will allocate and some will not.  So an uncolourable kernel is
+		 just another squeak -- the values whose nodes could not be
+		 removed are blamed, the parameters move, and the budget is
+		 spent looking for a schedule at THIS II that both verifies and
+		 allocates.  Only when the budget runs out does the II rise, by
+		 the ordinary path.  */
+	      bool allocates = true;
+	      if (lvx_cms_regalloc_feasible)
+		{
+		  auto_vec<int> cdef, clast, cdeg, cnr, cec, cown, stuck;
+		  lvx_cms_collect_values (seq, arcs, sigma, ii, cdef, clast,
+					  cdeg, cnr, cec, &cown);
+		  int nn, ne, msq, spl, per, kun;
+		  lvx_cms_colour (cdef, clast, cdeg, cnr, cec, ii,
+				  lvx_cms_sigma_min (sigma), &nn, &ne, &msq,
+				  &spl, &per, &kun, &stuck);
+		  if (spl > 0)
+		    {
+		      allocates = false;
+		      *last_bad = "kernel not colourable";
+		      /* Blame the DEFINING instruction of every value left in
+			 the graph.  Its range is what interferes, and the
+			 release lever below moves a task later -- which
+			 shortens a value's live range from its definition
+			 end, lowering interference without touching II.  */
+		      for (unsigned q = 0; q < stuck.length (); q++)
+			{
+			  int v = stuck[q];
+			  if (v >= 0 && v < (int) cown.length ())
+			    {
+			      int i = cown[v];
+			      if (i >= 0 && i < (int) n)
+				blame[i]++, culprit[i]++;
+			    }
+			}
+		    }
+		}
+
+	      if (allocates)
+		{
+		  if (resblame_out)
+		    memcpy (resblame_out, resblame, sizeof (resblame));
+		  return true;
+		}
 	    }
-	  *last_bad = bad;
+	  else
+	    *last_bad = bad;
 	}
 
       /* ANALYZE: nothing squeaked, so no parameter change would differ and
@@ -14001,7 +14272,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      becomes max (MVE2ND, ceil (MVEMAX / 2)).  */
   int mvemax = 1, mvep2 = 1, mven = 0, mvetop = 0, mve2nd = 0, mveregs = 0;
   /* Per expanded value, what a splitting copy would have to work with.  */
-  auto_vec<int> sp_def, sp_lat, sp_last, sp_deg, sp_nregs;
+  auto_vec<int> sp_def, sp_lat, sp_last, sp_deg, sp_nregs, sp_ec;
   unsigned HOST_WIDE_INT mvelcm = 1;
   bool mvelcm_overflow = false;
   for (unsigned i = 0; i < seq.length (); i++)
@@ -14037,6 +14308,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	  nr = REG_NREGS (SET_DEST (dset));
 	sp_nregs.safe_push (MAX (nr, 1));
       }
+      sp_ec.safe_push (lvx_insn_dest_earlyclobber_p (seq[i]) ? 1 : 0);
       int p2 = 1;
       while (p2 < m_i)
 	p2 <<= 1;
@@ -14371,123 +14643,13 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       }
   }
 
-  /* Build the interference graph over the unrolled kernel and colour it with
-     the squeeze, reporting whether the schedule is allocatable.  §7ter.10.  */
   int ignodes = 0, igedges = 0, igmaxsq = 0, igspill = 0, igperiod = 0;
-  int igkunroll = 1;
-  {
-    /* KUNROLL is the max per-value power-of-two degree (§7.8), and the
-       unrolled period is KUNROLL * II.  */
-    for (unsigned v = 0; v < sp_deg.length (); v++)
-      {
-	int p2 = 1;
-	while (p2 < sp_deg[v])
-	  p2 <<= 1;
-	if (p2 > igkunroll)
-	  igkunroll = p2;
-      }
-    igperiod = igkunroll * found;
-
-    if (igperiod > 0 && igperiod <= LVX_CMS_IG_MAX_PERIOD)
-      {
-	auto_vec<unsigned HOST_WIDE_INT *> occ;
-	auto_vec<int> ncls;
-	int words = (igperiod + 63) / 64;
-
-	for (unsigned v = 0;
-	     v < sp_deg.length () && ignodes < LVX_CMS_IG_MAX_NODES; v++)
-	  {
-	    int d = sp_def[v] - lo, l = sp_last[v] - sp_def[v];
-	    int nr = sp_nregs[v];
-	    int p2 = 1;
-	    while (p2 < sp_deg[v])
-	      p2 <<= 1;
-	    if (l <= 0)
-	      continue;
-
-	    /* One node per NAME of this value.  Name J carries the instances
-	       of iterations congruent to J modulo P2, which is every P2-th
-	       kernel copy -- exact because P2 divides KUNROLL.  */
-	    for (int j = 0; j < p2 && ignodes < LVX_CMS_IG_MAX_NODES; j++)
-	      {
-		unsigned HOST_WIDE_INT *b = XCNEWVEC (unsigned HOST_WIDE_INT,
-						      words);
-		for (int k = j; k < igkunroll; k += p2)
-		  for (int t = 0; t < l; t++)
-		    {
-		      int c = (d + k * found + t) % igperiod;
-		      b[c / 64] |= (unsigned HOST_WIDE_INT) 1 << (c % 64);
-		    }
-		occ.safe_push (b);
-		ncls.safe_push ((int) lvx_cms_rclass_of (nr));
-		ignodes++;
-	      }
-	  }
-
-	/* Interference: two nodes meet iff their occupancies share a cycle.
-	   Per-class neighbour counts are what the squeeze consumes.  */
-	auto_vec<int> degc;
-	degc.safe_grow_cleared (ignodes * LVX_RC_N);
-	for (int a = 0; a < ignodes; a++)
-	  for (int b2 = a + 1; b2 < ignodes; b2++)
-	    {
-	      bool meet = false;
-	      for (int w = 0; w < words && !meet; w++)
-		if (occ[a][w] & occ[b2][w])
-		  meet = true;
-	      if (!meet)
-		continue;
-	      igedges++;
-	      degc[a * LVX_RC_N + ncls[b2]]++;
-	      degc[b2 * LVX_RC_N + ncls[a]]++;
-	    }
-
-	/* SIMPLIFY: repeatedly remove a node whose squeeze is below its class
-	   size, which is Smith's trivially-colourable test in place of
-	   Chaitin's degree one.  Whatever cannot be removed would have to be
-	   spilled or the II raised -- which is the feasibility answer §7.8
-	   wants inside the II search.  */
-	auto_vec<bool> gone;
-	gone.safe_grow_cleared (ignodes);
-	int removed = 0;
-	bool progress = true;
-	while (progress)
-	  {
-	    progress = false;
-	    for (int a = 0; a < ignodes; a++)
-	      {
-		if (gone[a])
-		  continue;
-		int deg[LVX_RC_N];
-		for (int c = 0; c < LVX_RC_N; c++)
-		  deg[c] = degc[a * LVX_RC_N + c];
-		int sq = lvx_cms_squeeze ((enum lvx_cms_rclass) ncls[a], deg);
-		if (sq > igmaxsq)
-		  igmaxsq = sq;
-		if (sq < lvx_cms_rclass_size[ncls[a]])
-		  {
-		    gone[a] = true;
-		    removed++;
-		    progress = true;
-		    for (int b2 = 0; b2 < ignodes; b2++)
-		      {
-			if (gone[b2] || b2 == a)
-			  continue;
-			bool meet = false;
-			for (int w = 0; w < words && !meet; w++)
-			  if (occ[a][w] & occ[b2][w])
-			    meet = true;
-			if (meet)
-			  degc[b2 * LVX_RC_N + ncls[a]]--;
-		      }
-		  }
-	      }
-	  }
-	igspill = ignodes - removed;
-	for (int a = 0; a < ignodes; a++)
-	  XDELETEVEC (occ[a]);
-      }
-  }
+  int igkunroll = 1, igec = 0;
+  for (unsigned v = 0; v < sp_ec.length (); v++)
+    igec += sp_ec[v];
+  lvx_cms_colour (sp_def, sp_last, sp_deg, sp_nregs, sp_ec, found, lo,
+		  &ignodes, &igedges, &igmaxsq, &igspill, &igperiod,
+		  &igkunroll);
 
   fprintf (dump_file, ";; lvx cms: loop %d II=%d lower=%d excess=%d M=%d"
 	   " ResMII=%d RecMII=%d span=%d nstages=%d BS=%d preps=%d"
@@ -14495,7 +14657,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
 	   " mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d"
 	   " mveregs=%d mveregsx=%d mvepress=%d"
-	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d emptycyc=%d"
+	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
+	   " emptycyc=%d"
 	   " delta=%d safelen=%d"
 	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
 	   " %d loads %s .s%s -- %s\n",
@@ -14505,6 +14668,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
 	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
 	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
+	   igec,
 	   emptycyc,
 	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 	   blamed, blamed_cost, seq.length (), arcs.length (),
