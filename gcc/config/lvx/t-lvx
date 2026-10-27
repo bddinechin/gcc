@@ -37,3 +37,9 @@ lvx-plc.o: $(srcdir)/config/lvx/lvx-plc.cc \
   $(BACKEND_H) selftest.h
 	$(COMPILE) $<
 	$(POSTCOMPILE)
+
+lvx-network.o: $(srcdir)/config/lvx/lvx-network.cc \
+  $(srcdir)/config/lvx/lvx-network.h $(CONFIG_H) $(SYSTEM_H) coretypes.h \
+  $(BACKEND_H) selftest.h
+	$(COMPILE) $<
+	$(POSTCOMPILE)

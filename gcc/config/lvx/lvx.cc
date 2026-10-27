@@ -16472,6 +16472,7 @@ lvx_regrename_inner_loops (void)
 #if CHECKING_P
 namespace selftest {
 extern void lvx_plc_cc_tests (void);
+extern void lvx_network_cc_tests (void);
 
 /* Implements TARGET_RUN_TARGET_SELFTESTS.  */
 
@@ -16479,6 +16480,7 @@ static void
 lvx_run_selftests (void)
 {
   lvx_plc_cc_tests ();
+  lvx_network_cc_tests ();
 }
 
 } /* namespace selftest */
