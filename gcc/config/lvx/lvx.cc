@@ -14107,6 +14107,62 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
   base.safe_grow_cleared (n);
   lvx_cms_path_metrics (seq, arcs, height, tosink, slack);
 
+  /* THE MCRL DATES AS THE FIRST RELEASE DATES (author, 2026-10-27).
+
+     MCRL (§7quinvicies.6) gives, before any placement, the dates minimising
+     the cumulative register lifetime weighted by tuple width -- measured 24.2%
+     below what SWO's own schedule achieves on that objective.  Those dates are
+     not a schedule: they ignore resources entirely.  But they are exactly what
+     a release date is for, which is to say where a task WANTS to go before
+     contention is known.
+
+     Why this is safe as an SWO parameter, and it is the same argument the
+     release mechanism already rests on: the graph is untouched, so RecMII and
+     the lower bound do not move, and a release only ever delays a task that is
+     already dependence-ready.  No perturbation here can make the problem
+     infeasible, unlike an added arc (§7octies).
+
+     Two readings of `the first release dates around which SWO diversifies',
+     separated because the release policy ZEROES every task it declines to move
+     at the end of each pass -- the same erasure the branch pin had to be
+     structural to survive:
+
+       1  pass-0 only.  MCRL seeds the first construction and the policy takes
+	  over from pass 1.  The literal reading of `first'.
+       2  a persistent base.  The policy's `decline to move' returns a task to
+	  its MCRL date rather than to zero, so every pass diversifies AROUND
+	  the MCRL dates instead of away from them once and for all.
+
+     The makespan floor is zero here: there is no achieved span yet on the
+     first call, and §7quinvicies.6.2 measured the feedback as changing the
+     MCRL optimum in one loop of forty-five, so nothing is lost by it.  */
+  auto_vec<int> mcrl;
+  if (lvx_cms_mcrl_release)
+    {
+      auto_vec<int> es, ls, nodates;
+      int wfirst = -1, wmake = 0, wempty = 0;
+      lvx_cms_dates_in_window (seq, arcs, nodates, tosink, ii,
+			       &wfirst, &wmake, &wempty, &es, &ls, 0);
+      if (!wempty && es.length () == n && ls.length () == n)
+	{
+	  HOST_WIDE_INT mcost;
+	  unsigned nn, ne;
+	  auto_vec<int> md;
+	  if (lvx_cms_mcrl_dates (seq, arcs, es, ls, ii, md, &mcost, &nn, &ne)
+	      == LVX_NETWORK_SOLVED)
+	    {
+	      for (unsigned i = 0; i < n; i++)
+		mcrl.safe_push (md[i]);
+	      /* As FLOORS only when asked: priority 3 wants the dates for
+		 ORDERING, and applying them as floors too would measure both
+		 mechanisms at once.  */
+	      if (lvx_cms_mcrl_release)
+		for (unsigned i = 0; i < n; i++)
+		  release[i] = md[i];
+	    }
+	}
+    }
+
   /* PIN THE LOOP-BACK BRANCH TO THE LAST STAGE.
      Llosa & Freudenberger factor a pipelined loop's code size into the stage
      count, the modulo expansion degree, and the stage the loop-back branch
@@ -14154,7 +14210,10 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	    }
 	  if (branch_floor < 0)
 	    branch_floor = 0;
-	  release[branch_i] = branch_floor;
+	  /* A FLOOR over whatever MCRL asked for: the pin is structural and
+	     must win, but MCRL may already want the branch later still.  */
+	  if (release[branch_i] < branch_floor)
+	    release[branch_i] = branch_floor;
 	}
     }
 
@@ -14178,6 +14237,14 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
       {
       case 1:  base[i] = -tosink[i]; break;
       case 2:  base[i] = slack[i];   break;
+      /* There was a priority 3 here, the MCRL date ascending, on the
+	 reasoning that a release date is a FLOOR and so can only delay, while
+	 an ORDERING costs no II by construction.  Measured and removed:
+	 bit-identical to the default on 157 of 162 loops -- same span, same
+	 pressure, same stages -- and it changed II in five, four of them for
+	 the worse.  The MCRL dates satisfy the dependences tightly, so ordering
+	 by them is a topological order the critical-path priority already
+	 produces.  The effect lives entirely in the FLOORS.  §7septvicies.3. */
 	/* There was a case 3 here, "latest start first", meant as a PRESSURE
 	   priority after Dehnert's remedy of placing definitions close to
 	   their uses.  It is removed because it is VACUOUS: ALAP is
@@ -14407,7 +14474,11 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	    case 4:  move = (slack[i] > 0); break;	/* no selectivity at all */
 	    default: move = (blame[i] == 0 && slack[i] > 0); break;
 	    }
-	  release[i] = move ? height[i] + slack[i] : 0;	/* its ALAP */
+	  /* Its ALAP when moved.  When not moved, back to the MCRL date under
+	     the persistent-base reading and to nothing under the pass-0 one. */
+	  int home = (lvx_cms_mcrl_release == 2 && !mcrl.is_empty ()
+		      ? mcrl[i] : 0);
+	  release[i] = move ? height[i] + slack[i] : home;
 	}
 
       /* The branch pin is structural, so it survives the policy's
