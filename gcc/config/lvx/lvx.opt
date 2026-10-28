@@ -151,7 +151,7 @@ Target RejectNegative Joined UInteger Var(lvx_cms_swo_budget) Init(4) Optimizati
 
 mcms-inductive-relaxation
 Target Var(lvx_cms_inductive_relaxation) Init(0) Optimization
-Drop scheduling arcs from a simple induction's definition to its uses as a base+displacement base, assuming codegen adjusts the displacements.
+Drop scheduling arcs from a simple induction's definition to its uses as a base+displacement base, assuming codegen adjusts the displacements; for measurement only until it does, and rejected without -mcms-probe.
 
 mcms-stride-test
 Target Var(lvx_cms_stride_test) Init(1) Optimization
@@ -167,7 +167,7 @@ Emit loop-variant-address loads in pipelined inner loops as their dismissible va
 
 mcms-assume-ivdep
 Target Var(lvx_cms_assume_ivdep) Init(0) Optimization
-Assume every inner loop carries #pragma GCC ivdep; for measurement only, not a legal transformation.
+Assume every inner loop carries #pragma GCC ivdep; for measurement only, not a legal transformation, and rejected without -mcms-probe.
 
 mcms-mcrl-release=
 Target RejectNegative Joined UInteger Var(lvx_cms_mcrl_release) Init(0) Optimization

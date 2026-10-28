@@ -10411,6 +10411,37 @@ lvx_option_override (void)
 	}
     }
 
+  /* THE TWO UNSOUND MEASUREMENT SWITCHES MAY NOT REACH A REAL COMPILE.
+     §7decies, the one retirement item with a correctness deadline.
+
+     `-mcms-assume-ivdep' drops genuine cross-iteration memory dependences on
+     an assumption nothing verifies -- measured in §7sexvicies as changing 103
+     of 162 loops' recurrence bound, so on PolyBench it would miscompile 162 of
+     162 rather than some corner.  `-mcms-inductive-relaxation' drops arcs that
+     are legal only once codegen performs the displacement adjustment of
+     PaCT 1997 §4 (`fixRelaxed'), which does not exist yet.
+
+     Both are harmless only while the probe emits nothing.  The moment CMS
+     generates code each becomes a flag that silently produces wrong programs,
+     so they are tied to the probe HERE, before any codegen exists to be
+     endangered -- an error a user cannot miss rather than a miscompile they
+     cannot see.  An error, not a silent disable: a sweep that forgot
+     `-mcms-probe' would otherwise quietly measure a different compiler than it
+     reported.
+
+     `-mcms-force-speculative-loads' is deliberately NOT gated.  It promotes a
+     loop-variant-address load to its dismissible variant, which is what the
+     schedule it measures actually requires, so it becomes mandatory rather
+     than dangerous once codegen exists.  */
+  if (lvx_cms_assume_ivdep && !lvx_cms_probe)
+    error ("%<-mcms-assume-ivdep%> drops real cross-iteration memory "
+	   "dependences and is for measurement only; it requires "
+	   "%<-mcms-probe%>");
+  if (lvx_cms_inductive_relaxation && !lvx_cms_probe)
+    error ("%<-mcms-inductive-relaxation%> needs a displacement adjustment in "
+	   "code generation that does not exist yet, and is for measurement "
+	   "only; it requires %<-mcms-probe%>");
+
   /* Unfolding an inner loop implies renaming through it.  The dependence
      model the unfold is justified by drops the anti- and output dependences
      register allocation introduced, which is sound only because a renaming
