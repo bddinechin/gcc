@@ -14377,6 +14377,10 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
      everything the function is using around it.  Values the renaming rewrites
      are subtracted below, so a live-in that IS a renamed value -- the
      induction variable, the accumulator -- is still freed.  */
+  /* The reservations nothing in the loop can release, kept aside so the
+     body-derived subtraction below cannot clear them.  */
+  HARD_REG_SET hard;
+
   *reserved = fixed_reg_set;
 
   /* A CALLEE-SAVED REGISTER THE FUNCTION HAS NOT ALREADY SAVED IS NOT
@@ -14406,6 +14410,7 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
 	if (r < FIRST_PSEUDO_REGISTER)
 	  SET_HARD_REG_BIT (*reserved, r);
     }
+  hard = *reserved;
 
   for (unsigned i = 0; i < seq.length (); i++)
     {
@@ -14436,9 +14441,29 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
 	  nren[reg + w]++;
     }
 
+  /* THE SUBTRACTION MUST NOT FREE A HARD RESERVATION.  It ran last and
+     cleared any register whose definitions all belong to renamed values --
+     overriding the fixed, live-in, live-out and not-already-saved bits set
+     above, because a register can satisfy both tests at once.
+
+     It freed r3 on store.c's `init'.  r3 held a renamed value AND was the
+     array base of a store, the base being a loop-invariant defined in the
+     preheader and therefore not in the value table at all.  Freed, r3 was
+     handed to the value, the substitution rewrote EVERY r3 in the pattern
+     including the base, and the emitted store read
+     `sd $r32[$r6] = $r32' -- the same register as base and as data, with a
+     double's bit pattern used as an address.  The ISS died on
+     writeBlob(0x41efffffffc20380).
+
+     So the hard set is kept aside and ORed back after the freeing.  The
+     body-derived bits remain freeable, which is the whole point of the
+     subtraction; what is not freeable is what something outside the loop
+     relies on.  */
   for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
     if (ndefs[r] > 0 && ndefs[r] == nren[r])
       CLEAR_HARD_REG_BIT (*reserved, r);
+
+  *reserved |= hard;
 }
 
 /* THE RENAME MAP.  §7ter.14, and the first half of make_insns.
@@ -18481,7 +18506,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int tnclass = 0, tnmerged = 0, tbiggest = 0, torphan = 0;
   /* The registers live on an edge LEAVING the loop.  A class holding one of
      them cannot be renamed, because nothing rewrites the reader.  */
-  int cgliveout_renamed = 0;
+  int cgliveout_renamed = 0, cgambig_classes = 0;
   bitmap liveout = BITMAP_ALLOC (NULL);
   {
     edge e;
@@ -18584,6 +18609,32 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
        The fix that buys those loops back is a copy in the epilogue from the
        final name to the original register, which is real work and is not
        this.  */
+    /* TWO CLASSES SHARING AN ORIGINAL REGISTER MAKE THE SUBSTITUTION
+       AMBIGUOUS.  §7tricies.22.
+
+       The rewrite finds the operand to change BY REGISTER NUMBER: it walks
+       the pattern and replaces every REG whose regno is the class's
+       original.  If two classes have the same original -- ordinary RA reuse
+       -- an instruction mentioning both has one of them rewritten with the
+       other's register.
+
+       AMBIG has reported this at value level since §7tricies.1 and the
+       class-level dry run never tested it, which was recorded as the reason
+       `correlation' loop 2 was declined and then not acted on.  It is what
+       store.c's `init' was failing on: two classes in r3, one an integer byte
+       offset and one a double, and the emitted store read
+       `sd $r32[$r6] = $r32' -- the double's register as the index.  The ISS
+       died on writeBlob(0x41efffffffc20380), which is that double's bit
+       pattern.
+
+       Declined rather than repaired.  Repairing it means rewriting by df_ref
+       location instead of by regno, so the operand that reads a class is the
+       one the arc names; that is the right answer and it is not this.  */
+    for (unsigned a = 0; a < c_regno.length (); a++)
+      for (unsigned b = a + 1; b < c_regno.length (); b++)
+	if (c_regno[a] >= 0 && c_regno[a] == c_regno[b])
+	  cgambig_classes++;
+
     for (unsigned c = 0; c < c_regno.length (); c++)
       {
 	if (c_regno[c] < 0 || c_uf[c])
@@ -18793,8 +18844,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   lvx_cms_dump (";; lvx cms: fn=%s loop %d antidep %s short=%d pairs=%d"
 		" first=%d/%d/%d\n", current_function_name (), loop->num,
 		adok ? "ok" : "BAD", adshort, adpair, ada, adb, adc);
-  lvx_cms_dump (";; lvx cms: fn=%s loop %d liveoutrenamed=%d\n",
-		current_function_name (), loop->num, cgliveout_renamed);
+  lvx_cms_dump (";; lvx cms: fn=%s loop %d liveoutrenamed=%d"
+		" ambigclasses=%d\n", current_function_name (), loop->num,
+		cgliveout_renamed, cgambig_classes);
   lvx_cms_dump (";; lvx cms: fn=%s loop %d classocc %s conf=%d unseen=%d"
 		" ambig=%d unass=%d misal=%d nondiv=%d clash=%d\n",
 		current_function_name (), loop->num, cgocc ? "ok" : "BAD",
@@ -18875,6 +18927,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		iwhy = "a slot's insn refuses the rename substitution";
 	      else if (!site.antidep_ok)
 		iwhy = "an unrenamed register's order is not preserved";
+	      else if (cgambig_classes)
+		iwhy = "two classes share an original register";
 	      else if (cgliveout_renamed)
 		iwhy = "a class live out of the loop would be renamed";
 	      else if (!site.classocc_ok)
