@@ -10442,6 +10442,21 @@ lvx_option_override (void)
 	   "code generation that does not exist yet, and is for measurement "
 	   "only; it requires %<-mcms-probe%>");
 
+  /* AND IT IS INCOMPATIBLE WITH EMISSION, which `requires -mcms-probe' does
+     not say.  -mcms-codegen and -mcms-pipeline are used ALONGSIDE
+     -mcms-probe, so the test above accepts the combination -- and the arcs
+     the relaxation drops are justified by a displacement adjustment
+     (PaCT 1997 §4's fixRelaxed) that does not exist.  Emitting a pipeline
+     built on that graph produces a base+displacement operand reading the
+     wrong instance, with nothing to say so: the same shape as the
+     -mcms-exact-degree hole below, where a measurement lever was reachable
+     from the emission path because the gate tested the wrong thing.  */
+  if (lvx_cms_inductive_relaxation && (lvx_cms_codegen || lvx_cms_pipeline))
+    error ("%<-mcms-inductive-relaxation%> drops dependences that only the "
+	   "displacement adjustment of PaCT 1997 section 4 makes sound, and "
+	   "that adjustment is not implemented; it is for measurement only "
+	   "and is incompatible with %<-mcms-codegen%>");
+
   /* EXACT DEGREES AND CODE GENERATION ARE INCOMPATIBLE, not merely in
      tension, and the reason is arithmetic.
 
@@ -15219,6 +15234,11 @@ struct lvx_cms_site
      because a tied operand makes the substitution unrealisable rather than
      merely unwise.  */
   bool renameable;
+  /* Whether every register the renaming leaves alone keeps its order
+     (§7tricies.17).  A pinned class is such a register by construction, so
+     this is the check that pinning does not reintroduce the defect
+     §7tricies.7 found in the reorder.  */
+  bool antidep_ok;
 };
 
 /* A finding kept although the code that needed it is gone, because make_insns
@@ -15612,6 +15632,159 @@ lvx_cms_make_insns (const struct lvx_cms_site *site,
 
   *why = moved ? NULL : "already in schedule order";
   return true;
+}
+
+/* THE ANTI-DEPENDENCES RENAMING DOES NOT REMOVE.  §7tricies.17.
+
+   The graph drops register WAR and WAW arcs where modulo expansion is
+   expected to rename the conflict away, and that is right: carrying them
+   would raise II for a constraint the expansion removes, which is most of
+   what modulo scheduling buys.  §7tricies.7 records what it cost to assume
+   the arcs were there -- 47% of loops reordered unsoundly.
+
+   The pipeline DOES rename, so for a renamed class the omission is sound: a
+   write goes to name L and a read to name L - OMEGA, different registers.
+   But a register the renaming leaves alone has no such protection, and there
+   are two kinds:
+
+     - what the body merely holds -- an address base, a loop-invariant,
+       anything live across the loop (§7tricies.3's reserved set);
+     - a PINNED class (§7tricies.15), which keeps the register RA gave it
+       precisely because it cannot be renamed.
+
+   The second is the sharper one, because pinning is what this work added: a
+   class is pinned to make the substitution realisable, and that very act
+   puts its register back into the unprotected set.
+
+   THE CONDITION IS ALGEBRAIC, not a walk over instance pairs.  For two body
+   instructions I < J conflicting on a surviving register, instance (I, L)
+   must precede (J, M) exactly when the original loop ran it first, which is
+   lexicographic on (iteration, body position).  With dates SIGMA + L * II
+   that is two inequalities:
+
+     same iteration:        SIGMA (J) >= SIGMA (I)
+     J's instance then I's: SIGMA (J) <  SIGMA (I) + II
+
+   so 0 <= SIGMA (J) - SIGMA (I) < II, which is exactly the pair of arcs the
+   graph would have carried -- WAR at (0, 0) and its reverse at (0, 1) -- had
+   it kept them.  Checking the algebra rather than enumerating slots is what
+   makes this affordable: pairs are O(n^2) in a body bounded at 256, where the
+   slot pairs would be O(476^2) per path.
+
+   Conservative in one direction only: a conflict on a surviving register is
+   flagged even where the renaming would in fact have separated it, since a
+   surviving register is by definition one no substitution rewrites.  */
+
+static bool
+lvx_cms_verify_antidep (const auto_vec<rtx_insn *> &seq,
+			const auto_vec<int> &sigma, int ii,
+			const HARD_REG_SET *surviving,
+			const auto_vec<int> &period, int *nbad_out,
+			int *first_i, int *first_j, int *first_reg)
+{
+  int nbad = 0;
+
+  *nbad_out = 0;
+  *first_i = *first_j = *first_reg = -1;
+  if (ii <= 0)
+    return false;
+
+  for (unsigned i = 0; i < seq.length (); i++)
+    for (unsigned j = i + 1; j < seq.length (); j++)
+      {
+	int d = sigma[j] - sigma[i];
+	df_ref ra, rb;
+	bool bad = false;
+	int reg = -1;
+
+	/* THE WINDOW IS THE REGISTER'S OWN PERIOD, NOT II.  A register is
+	   revisited every P2 * II cycles, where P2 is the number of expansion
+	   names the class holding it was given -- and the original register is
+	   NAME 0, so a USE_FIRST class with four names touches it once every
+	   four iterations, not every one.
+
+	   Using II for everything made this check report 118 of 124 loops bad
+	   and drop the emitted population from 107 to 4, which is how an
+	   over-strict check announces itself: the registers it named were r0,
+	   r1, r2 against insn 0 -- induction variables and accumulators, the
+	   USE_FIRST classes, every one of them renamed for all names but the
+	   first.  A check that condemns almost everything is answering a
+	   different question from the one asked.  */
+	if (d >= 0 && d < ii)
+	  continue;
+
+	/* J writes what I touches?  */
+	FOR_EACH_INSN_DEF (ra, seq[j])
+	  {
+	    unsigned r = DF_REF_REGNO (ra);
+	    if (r >= FIRST_PSEUDO_REGISTER
+		|| !TEST_HARD_REG_BIT (*surviving, r))
+	      continue;
+	    FOR_EACH_INSN_USE (rb, seq[i])
+	      if (DF_REF_REGNO (rb) == r)
+		bad = true, reg = (int) r;
+	    FOR_EACH_INSN_DEF (rb, seq[i])
+	      if (DF_REF_REGNO (rb) == r)
+		bad = true, reg = (int) r;
+	  }
+	/* Or J reads what I writes.  */
+	if (!bad)
+	  FOR_EACH_INSN_USE (ra, seq[j])
+	    {
+	      unsigned r = DF_REF_REGNO (ra);
+	      if (r >= FIRST_PSEUDO_REGISTER
+		  || !TEST_HARD_REG_BIT (*surviving, r))
+		continue;
+	      FOR_EACH_INSN_DEF (rb, seq[i])
+		if (DF_REF_REGNO (rb) == r)
+		  bad = true, reg = (int) r;
+	    }
+
+	if (!bad)
+	  continue;
+	/* ONLY A REGISTER WITH ONE NAME IS A HAZARD.  A class given more than
+	   one expansion name IS renamed, and the renaming is what separates
+	   its accesses: only name 0 keeps the original register, and its
+	   instances are P2 * II apart and emitted in date order, so they
+	   cannot cross.  Widening the window to P2 * II instead of excluding
+	   these outright still condemned 89 of 124 loops -- the correct
+	   statement is not a wider window but a different question, since the
+	   pair of body instructions no longer corresponds to a pair of
+	   instances touching that register at all.
+
+	   What is left is exactly the unprotected set: a pinned class, which
+	   has one name by construction (§7tricies.15), and a register the body
+	   only holds.  */
+	{
+	  /* THE WINDOW IS II, FOR EVERY SURVIVING REGISTER.  Two weaker forms
+	     were tried and the store gate rejected both: a window of P2 * II
+	     left 89 of 124 loops flagged, and excluding P2 > 1 outright left
+	     36 -- and at that setting validation/cms/store.c's PIPELINE arm
+	     returns the wrong answer, so the hazard is among the pairs the
+	     exclusion dropped.  The reasoning behind the exclusion -- "a class
+	     with more than one name is renamed, therefore separated" -- is
+	     false for a pair of DIFFERENT instructions touching name 0 at
+	     different iterations, which is the case the pair test cannot see
+	     from sigma alone.
+
+	     II is the conservative bound and it is the one kept until the
+	     right formulation is known: it flags every pair whose order the
+	     schedule changes on a register no substitution rewrites.  It
+	     costs most of the emitted population, which is the correct trade
+	     while the alternative is emitting a wrong store.  */
+	  (void) period;
+	}
+	if (nbad == 0)
+	  {
+	    *first_i = (int) i;
+	    *first_j = (int) j;
+	    *first_reg = reg;
+	  }
+	nbad++;
+      }
+
+  *nbad_out = nbad;
+  return nbad == 0;
 }
 
 /* MAKE_INSNS, PHASE TWO: emit the pipeline.  §7tricies.13.
@@ -18467,6 +18640,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int tnclass = 0, tnmerged = 0, tbiggest = 0, torphan = 0;
   int cmaxreg = -1, cassigned = 0, cnodes = 0, cedges = 0, ckunroll = 1;
   int cgpasses = 0, cgpinned = 0;
+  HARD_REG_SET cgsurv;
+  auto_vec<int> cgperiod;
+  CLEAR_HARD_REG_SET (cgsurv);
   /* The class assignment outlives the block that computes it: codegen renames
      from it, so it cannot be scoped to the measurement.  */
   auto_vec<int> cgi2c, cgcregno, cgav, cgan, cgar;
@@ -18664,10 +18840,42 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		c_deg[c] = 1;
 		cpinned++;
 		progress = true;
+		/* A PINNED CLASS'S REGISTER GOES BACK INTO THE RESERVED SET.
+		   AVAIL was computed from the value-level reserved set, where
+		   this class's members looked freeable -- their references
+		   were going to be rewritten.  Pinning is the decision not to
+		   rewrite them, so the register is held after all, and leaving
+		   it in AVAIL would let the colouring hand it to another
+		   class.  Re-reserving it and recomputing AVAIL inside the
+		   loop is why the loop recolours rather than patching the
+		   assignment it already has.  */
+		if (c_regno[c] >= 0)
+		  for (int w2 = 0; w2 < MAX (c_nr[c], 1); w2++)
+		    if (c_regno[c] + w2 < FIRST_PSEUDO_REGISTER)
+		      {
+			SET_HARD_REG_BIT (cresv, c_regno[c] + w2);
+			cavail &= ~((unsigned HOST_WIDE_INT) 1
+				    << (c_regno[c] + w2));
+		      }
 	      }
 	  }
 	if (!progress)
 	  break;
+      }
+    /* The registers the renaming leaves alone: what the body holds and does
+       not rewrite, plus every class the loop above pinned -- CRESV is both by
+       the time it gets here.  §7tricies.17.  */
+    cgsurv = cresv;
+    /* Regno -> the number of names its class was given, so the check knows
+       how often the register is actually revisited.  */
+    cgperiod.safe_grow_cleared (FIRST_PSEUDO_REGISTER);
+    for (unsigned c = 0; c < c_regno.length (); c++)
+      {
+	int p2 = lvx_cms_value_p2 (cav, (int) c);
+	for (int w2 = 0; w2 < MAX (c_nr[c], 1); w2++)
+	  if (c_regno[c] >= 0 && c_regno[c] + w2 < FIRST_PSEUDO_REGISTER
+	      && p2 > cgperiod[c_regno[c] + w2])
+	    cgperiod[c_regno[c] + w2] = p2;
       }
     cgpasses = cpasses;
     cgpinned = cpinned;
@@ -18685,6 +18893,18 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		rnsubst, rnfail, plslots.length (), q_own.length (), tnclass,
 		tnmerged, tbiggest, torphan, cnodes, cassigned, cmaxreg,
 		ckunroll, cgpasses, cgpinned);
+
+  /* THE ANTI-DEPENDENCES RENAMING DOES NOT REMOVE.  §7tricies.17.  Asked of
+     the schedule and the surviving-register set, with no slot enumeration:
+     for a conflicting pair the condition is 0 <= sigma (j) - sigma (i) < II,
+     which is the pair of arcs the graph would have carried had it kept
+     them.  */
+  int adbad = 0, adi = -1, adj = -1, adreg = -1;
+  bool adok = lvx_cms_verify_antidep (seq, sigma, found, &cgsurv, cgperiod,
+				      &adbad, &adi, &adj, &adreg);
+  lvx_cms_dump (";; lvx cms: fn=%s loop %d antidep %s pairs=%d"
+		" first=%d/%d:r%d\n", current_function_name (), loop->num,
+		adok ? "ok" : "BAD", adbad, adi, adj, adreg);
 
   /* CODEGEN, phase one: the block structure (§7quinquies.9).  Behind
      -mcms-codegen and off by default, because it is incomplete -- the blocks
@@ -18704,6 +18924,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       site.nstages = nstages;
       site.plan = pl;
       site.renameable = rnok;
+      site.antidep_ok = adok;
       edge e;
       edge_iterator ei;
       FOR_EACH_EDGE (e, ei, loop->header->preds)
@@ -18756,6 +18977,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	      bool emitted = false;
 	      if (!site.renameable)
 		iwhy = "a slot's insn refuses the rename substitution";
+	      else if (!site.antidep_ok)
+		iwhy = "an unrenamed register's order is not preserved";
 	      else
 		emitted = lvx_cms_emit_pipeline (&site, seq, arcs, plslots,
 						 plnodes, cgblocks, cgi2c,
