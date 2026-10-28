@@ -13861,12 +13861,52 @@ lvx_cms_cumulative_lifetime (const auto_vec<rtx_insn *> &seq,
    ALLOCATED (§7quinquies.2's three cases), and how many per-exit epilogues the
    structure needs.  */
 
+/* ONE SLOT OF THE MASTER SCHEDULE, and the node it is emitted into.
+
+   The master schedule is the whole pipeline laid out flat: every instance of
+   every instruction at its own date, walked in (date, iteration, order).
+   Recording it is what lets the plan's counts and the emission's placement be
+   the SAME walk, rather than two walks that agree today.  §7quinquies.2.  */
+
+struct lvx_cms_slot
+{
+  int insn;			/* index into SEQ */
+  int iter;			/* which iteration's instance */
+  int date;			/* master-schedule cycle, origin at zero */
+  int node;			/* index into the node list */
+};
+
+enum lvx_cms_nodekind
+{
+  LVX_CMS_NODE_PROLOGUE,
+  LVX_CMS_NODE_KERNEL,
+  LVX_CMS_NODE_EPILOGUE
+};
+
+/* A BLOCK THE PIPELINE NEEDS.  The prologue stages and the kernel come out of
+   the walk up to ITER_SLOT; the epilogues come from the exits found in it --
+   one per non-chosen jump instance, plus the main one that ITER_SLOT itself
+   falls into.  EXIT_DATE and EXIT_ITER name the instance whose exit enters an
+   epilogue, which is what decides WHICH iterations that epilogue drains.  */
+
+struct lvx_cms_node
+{
+  enum lvx_cms_nodekind kind;
+  int stage;
+  int exit_date, exit_iter, exit_insn;	/* the jump instance whose exit
+					   enters it -- which is also where
+					   a path into it LEAVES the walk */
+  bool main_epilogue;
+};
+
 struct lvx_cms_plan
 {
   int slots;			/* master slots in all */
   int prologue;			/* slots before the kernel head */
   int kernel;			/* slots in the k-unrolled kernel */
   int epilogue;			/* slots after it, the main epilogue */
+  int epilogue_sym;		/* what the old symmetry assumption gave */
+  int exit_slots;		/* slots in all the early-exit epilogues */
   int blocks_reused;		/* source body blocks taken over */
   int blocks_allocated;		/* fresh blocks the stages need */
   int exit_epilogues;		/* one per exit before ITER_SLOT */
@@ -13877,7 +13917,9 @@ struct lvx_cms_plan
 static void
 lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 		    const auto_vec<int> &sigma, int ii, int kunroll,
-		    int nstages, unsigned nblocks, struct lvx_cms_plan *pl)
+		    int nstages, unsigned nblocks, struct lvx_cms_plan *pl,
+		    auto_vec<lvx_cms_slot> *slots = NULL,
+		    auto_vec<lvx_cms_node> *nodes_out = NULL)
 {
   memset (pl, 0, sizeof (*pl));
   pl->why = "no loopback branch";
@@ -13919,6 +13961,11 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
      counting what falls where.  Everything after ITER_SLOT is filtered out,
      which is what leaves prolog + unrolled kernel + main epilog (§7.9).  */
   int prev_exit = 0, nodes = 0, split = 0;
+  auto_vec<int> exit_date, exit_iter, exit_insn;
+  if (slots)
+    slots->truncate (0);
+  if (nodes_out)
+    nodes_out->truncate (0);
   for (int d = 0; d <= iter_date; d++)
     for (int l = 0; l < instances; l++)
       for (unsigned i = 0; i < seq.length (); i++)
@@ -13946,6 +13993,25 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 	      else
 		pl->blocks_reused++;	/* case 3: reuse the source node */
 	      nodes++;
+	      if (nodes_out)
+		{
+		  lvx_cms_node n;
+		  n.kind = (d < kernel_first ? LVX_CMS_NODE_PROLOGUE
+			    : LVX_CMS_NODE_KERNEL);
+		  n.stage = d / ii;
+		  n.exit_date = n.exit_iter = n.exit_insn = -1;
+		  n.main_epilogue = false;
+		  nodes_out->safe_push (n);
+		}
+	    }
+	  if (slots)
+	    {
+	      lvx_cms_slot sl;
+	      sl.insn = (int) i;
+	      sl.iter = l;
+	      sl.date = d;
+	      sl.node = nodes - 1;
+	      slots->safe_push (sl);
 	    }
 	  prev_exit = JUMP_P (seq[i]) ? 1 : 0;
 	  /* EVERY JUMP INSTANCE IN THE WALK EXCEPT ITER_SLOT ITSELF IS AN
@@ -13964,13 +14030,104 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 	  if (JUMP_P (seq[i])
 	      && !(d == iter_date && l == iter_iteration
 		   && (int) i == loopback))
-	    pl->exit_epilogues++;
+	    {
+	      pl->exit_epilogues++;
+	      exit_date.safe_push (d);
+	      exit_iter.safe_push (l);
+	      exit_insn.safe_push ((int) i);
+	    }
 	}
 
-  /* The main epilogue drains the iterations still in flight when the kernel
-     is left, which is nstages - 1 stages' worth.  */
-  pl->epilogue = pl->prologue;	/* symmetric by construction: the ramp down
-				   mirrors the ramp up */
+  /* THE EPILOGUES, ENUMERATED RATHER THAN ASSUMED SYMMETRIC.
+
+     This read `pl->epilogue = pl->prologue', "symmetric by construction: the
+     ramp down mirrors the ramp up".  That is true of the STAGE COUNT and not
+     of the slot count, because the walk up to ITER_SLOT is truncated by the
+     ITER_SLOT filter and the drain is not, so the two tails hold different
+     numbers of instances.  The old value is kept as EPILOGUE_SYM so the two
+     can be compared rather than one silently standing for the other.
+
+     An epilogue drains the iterations in flight when its exit is taken.  Exit
+     at the loopback's instance for iteration L_E means no iteration after L_E
+     will start, and the iterations already past their own test are L <= L_E --
+     so the drain is every slot of those iterations that the walk has not
+     already emitted.  Iterations above L_E may have begun speculatively; they
+     are discarded, which is sound only because the control dependences from
+     the loopback to anything with a side effect are real arcs in the graph
+     (that is what -fno-hwloop buys, §7.0) and the schedule therefore never
+     put such an instruction before the test that guards it.
+
+     The main epilogue is the same formula at the ITER_SLOT instance, which is
+     why there is one loop here and not two.  */
+  int maxd = 0;
+  for (unsigned i = 0; i < seq.length (); i++)
+    if (sigma[i] - lo > maxd)
+      maxd = sigma[i] - lo;
+
+  pl->epilogue_sym = pl->prologue;
+  for (unsigned e = 0; e <= exit_date.length (); e++)
+    {
+      /* E == length () is ITER_SLOT, the main epilogue, taken last so the
+	 early-exit epilogues keep the walk's own order.  */
+      bool is_main = (e == exit_date.length ());
+      int de = is_main ? iter_date : exit_date[e];
+      int le = is_main ? iter_iteration : exit_iter[e];
+      int ie = is_main ? loopback : exit_insn[e];
+      int node = -1;
+
+      /* THE NODE IS CREATED WHETHER OR NOT IT HOLDS A SLOT.  An epilogue can
+	 be legitimately EMPTY -- in a two-stage pipeline whose loopback sits
+	 in the last stage, the iteration whose test fails has already
+	 finished, and the later ones are the speculatively started ones that
+	 get discarded -- but it is still the block the exit branches to, so
+	 it has to exist.  Creating it lazily left f1's two epilogues with no
+	 block at all and the node count describing only the prologue and the
+	 kernel.  */
+      if (nodes_out)
+	{
+	  lvx_cms_node n;
+	  n.kind = LVX_CMS_NODE_EPILOGUE;
+	  n.stage = (int) e;
+	  n.exit_date = de;
+	  n.exit_iter = le;
+	  n.exit_insn = ie;
+	  n.main_epilogue = is_main;
+	  nodes_out->safe_push (n);
+	  node = nodes_out->length () - 1;
+	}
+      else
+	node = nodes++;
+
+      for (int d = de; d <= maxd + le * ii; d++)
+	for (int l = 0; l <= le; l++)
+	  for (unsigned i = 0; i < seq.length (); i++)
+	    {
+	      if (sigma[i] - lo + l * ii != d)
+		continue;
+	      if (d < de || (d == de && (int) i <= ie))
+		continue;
+	      /* A jump in an epilogue cannot be an exit from it -- the
+		 iterations it would have guarded are the ones already
+		 discarded -- so the loopback's instances are dropped here
+		 rather than emitted and inverted.  */
+	      if ((int) i == loopback)
+		continue;
+	      if (is_main)
+		pl->epilogue++;
+	      else
+		pl->exit_slots++;
+	      if (slots)
+		{
+		  lvx_cms_slot sl;
+		  sl.insn = (int) i;
+		  sl.iter = l;
+		  sl.date = d;
+		  sl.node = node;
+		  slots->safe_push (sl);
+		}
+	    }
+    }
+
   pl->ok = true;
   pl->why = NULL;
 }
@@ -14391,6 +14548,166 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
      the part that would be wrong however AVAIL is set.  */
   return conflicts == 0 && unseen == 0 && ambig == 0 && unassigned == 0
 	 && misaligned == 0 && nondiv == 0;
+}
+
+/* VERIFY THE MASTER SCHEDULE'S DATAFLOW, over the recorded slots.
+
+   The plan counts slots and the rename map assigns registers, and neither
+   answers the question emission actually depends on: does every instance
+   READ a value some earlier instance WROTE, along the path that reaches it?
+   A pipeline can be correctly counted, correctly coloured, and still deliver
+   an instance whose operand was never produced on the path taken -- which is
+   a wrong answer, not a crash, and so the kind of defect an executable gate
+   finds late and a data check finds now.
+
+   THREE PATHS REACH AN INSTRUCTION, and each is checked as its own linear
+   order:
+
+     - the prologue then the kernel's first trip,
+     - the prologue, the kernel, and the main epilogue,
+     - the prologue, the kernel, and one early-exit epilogue.
+
+   For a RAW arc from producer P to consumer C at distance OMEGA, consumer
+   instance L reads what producer instance L - OMEGA wrote.  That instance
+   must appear EARLIER on the path, or be absent because it belongs to an
+   iteration before the loop began -- L - OMEGA < 0 -- which is the live-in
+   case and is exactly what USE_FIRST pins to the preheader's register
+   (§7ter.4).  Anything else is a read of an undefined register.
+
+   The kernel is CYCLIC, so "earlier" there is not position in the slot list:
+   a kernel instance may legitimately read what the PREVIOUS trip's instance
+   wrote.  So a kernel consumer is satisfied by a producer anywhere in the
+   kernel when OMEGA >= 1, and only by an earlier position when OMEGA == 0.
+   Getting that wrong in the strict direction would have reported every
+   loop-carried value as a violation.  */
+
+static bool
+lvx_cms_verify_slots (const auto_vec<rtx_insn *> &seq,
+		      const auto_vec<lvx_cms_arc> &arcs,
+		      const auto_vec<lvx_cms_slot> &slots,
+		      const auto_vec<lvx_cms_node> &nodes,
+		      int *undef_out, int *order_out, int *paths_out)
+{
+  int undef = 0, order = 0, paths = 0;
+
+  *undef_out = *order_out = *paths_out = 0;
+
+  /* One path per epilogue, plus the bare kernel path.  Each is the prologue
+     and kernel slots in walk order followed by that epilogue's slots.  */
+  for (unsigned ep = 0; ep <= nodes.length (); ep++)
+    {
+      /* EP == length () is the path that stays in the kernel.  */
+      bool bare = (ep == nodes.length ());
+      if (!bare && nodes[ep].kind != LVX_CMS_NODE_EPILOGUE)
+	continue;
+      paths++;
+
+      /* Position of each (insn, iter) on this path, and -1 for absent.  The
+	 iteration range is bounded by the slots themselves.  */
+      int maxiter = 0;
+      for (unsigned q = 0; q < slots.length (); q++)
+	if (slots[q].iter > maxiter)
+	  maxiter = slots[q].iter;
+
+      auto_vec<int> pos, inkernel;
+      pos.safe_grow_cleared (seq.length () * (maxiter + 1));
+      inkernel.safe_grow_cleared (seq.length () * (maxiter + 1));
+      for (unsigned t = 0; t < pos.length (); t++)
+	pos[t] = -1;
+
+      /* A PATH LEAVES THE WALK AT ITS EXIT.  The first version put every
+	 Phase A slot on every path, which is wrong for an epilogue path: the
+	 slots after the exit are not executed on it.  Their presence made a
+	 drain copy of an instance overwrite the Phase A copy's position, and
+	 the check then reported a producer as coming AFTER its consumer --
+	 six loops' worth of violations that were in the verification, not in
+	 the construction.  */
+      int at = 0;
+      for (unsigned q = 0; q < slots.length (); q++)
+	{
+	  int nd = slots[q].node;
+	  bool is_ep = (nd >= 0 && nd < (int) nodes.length ()
+			&& nodes[nd].kind == LVX_CMS_NODE_EPILOGUE);
+	  if (is_ep && (bare || nd != (int) ep))
+	    continue;
+	  if (!is_ep && !bare)
+	    {
+	      /* Past the exit this path takes?  Then it is not on this path.
+		 Walk order is (date, iteration, insn).  */
+	      int xd = nodes[ep].exit_date, xl = nodes[ep].exit_iter;
+	      int xi = nodes[ep].exit_insn;
+	      if (slots[q].date > xd
+		  || (slots[q].date == xd
+		      && (slots[q].iter > xl
+			  || (slots[q].iter == xl && slots[q].insn > xi))))
+		continue;
+	    }
+	  int t = slots[q].insn * (maxiter + 1) + slots[q].iter;
+	  pos[t] = at++;
+	  if (nd >= 0 && nd < (int) nodes.length ()
+	      && nodes[nd].kind == LVX_CMS_NODE_KERNEL)
+	    inkernel[t] = 1;
+	}
+
+      for (unsigned q = 0; q < slots.length (); q++)
+	{
+	  int nd = slots[q].node;
+	  bool is_ep = (nd >= 0 && nd < (int) nodes.length ()
+			&& nodes[nd].kind == LVX_CMS_NODE_EPILOGUE);
+	  if (is_ep && (bare || nd != (int) ep))
+	    continue;
+	  if (!is_ep && !bare)
+	    {
+	      int xd = nodes[ep].exit_date, xl = nodes[ep].exit_iter;
+	      int xi = nodes[ep].exit_insn;
+	      if (slots[q].date > xd
+		  || (slots[q].date == xd
+		      && (slots[q].iter > xl
+			  || (slots[q].iter == xl && slots[q].insn > xi))))
+		continue;
+	    }
+
+	  int ct = slots[q].insn * (maxiter + 1) + slots[q].iter;
+	  for (unsigned a = 0; a < arcs.length (); a++)
+	    {
+	      if (arcs[a].kind != LVX_ARC_REG_RAW
+		  || (int) arcs[a].dst != slots[q].insn)
+		continue;
+	      int pi = (int) arcs[a].src;
+	      int pl = slots[q].iter - (int) arcs[a].omega;
+	      if (pl < 0)
+		continue;		/* live-in: the preheader wrote it */
+	      if (pl > maxiter)
+		continue;		/* no such instance in the walk */
+	      int pt = pi * (maxiter + 1) + pl;
+	      if (pos[pt] < 0)
+		{
+		  undef++;
+		  continue;
+		}
+	      /* Order, with the kernel's cyclicity allowed for: a
+		 loop-carried read inside the kernel is satisfied by the
+		 previous trip.  */
+	      if (pos[pt] >= pos[ct]
+		  && !(arcs[a].omega >= 1 && inkernel[pt] && inkernel[ct]))
+		{
+		  order++;
+		  if (order <= 3)
+		    lvx_cms_dump (";; lvx cms:   slot order path=%u"
+				  " cons=%d@%d/pos%d prod=%d@%d/pos%d"
+				  " omega=%u kcons=%d kprod=%d\n", ep,
+				  slots[q].insn, slots[q].iter, pos[ct],
+				  pi, pl, pos[pt], arcs[a].omega,
+				  inkernel[ct], inkernel[pt]);
+		}
+	    }
+	}
+    }
+
+  *undef_out = undef;
+  *order_out = order;
+  *paths_out = paths;
+  return undef == 0 && order == 0;
 }
 
 /* MAKE_NODES: build the pipeline's block structure.  §7quinquies.9.
@@ -17029,8 +17346,27 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      kunroll at its initial 1 and understated every figure -- caught by hand
      arithmetic on one loop's schedule, not by anything in the dump.  */
   struct lvx_cms_plan pl;
+  auto_vec<lvx_cms_slot> plslots;
+  auto_vec<lvx_cms_node> plnodes;
   lvx_cms_build_plan (seq, sigma, found, igkunroll > 0 ? igkunroll : 1,
-		      nstages, loop->num_nodes, &pl);
+		      nstages, loop->num_nodes, &pl, &plslots, &plnodes);
+
+  /* THE MASTER SCHEDULE'S DATAFLOW, checked on the recorded slots before any
+     of it is emitted.  The plan counts and the rename map colours; neither
+     answers whether an instance reads a value some earlier instance on the
+     same path wrote, and a pipeline can be correctly counted, correctly
+     coloured and still deliver an undefined operand -- a wrong answer rather
+     than a crash.  §7quinquies.9.  */
+  int slundef = 0, slorder = 0, slpaths = 0;
+  bool slok = lvx_cms_verify_slots (seq, arcs, plslots, plnodes,
+				    &slundef, &slorder, &slpaths);
+  lvx_cms_dump (";; lvx cms: fn=%s loop %d slots %s n=%u nodes=%u paths=%d"
+		" undef=%d order=%d pro=%d ker=%d epi=%d episym=%d"
+		" exitslots=%d exep=%d\n", current_function_name (),
+		loop->num, slok ? "ok" : "BAD", plslots.length (),
+		plnodes.length (), slpaths, slundef, slorder, pl.prologue,
+		pl.kernel, pl.epilogue, pl.epilogue_sym, pl.exit_slots,
+		pl.exit_epilogues);
 
   /* CODEGEN, phase one: the block structure (§7quinquies.9).  Behind
      -mcms-codegen and off by default, because it is incomplete -- the blocks
