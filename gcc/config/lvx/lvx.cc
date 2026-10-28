@@ -15239,6 +15239,10 @@ struct lvx_cms_site
      this is the check that pinning does not reintroduce the defect
      §7tricies.7 found in the reorder.  */
   bool antidep_ok;
+  /* Whether the CLASS-level assignment -- the one codegen renames from --
+     passes the occupancy check.  The value-level one was always verified;
+     this one never was, and it was wrong.  */
+  bool classocc_ok;
 };
 
 /* A finding kept although the code that needed it is gone, because make_insns
@@ -18366,6 +18370,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int cgpasses = 0, cgpinned = 0;
   HARD_REG_SET cgsurv;
   auto_vec<int> cgperiod, cglife, cgnames;
+  bool cgocc = false;
+  int cgconf = 0, cgunseen = 0, cgambig = 0, cgunass = 0, cgmisal = 0;
+  int cgnondiv = 0, cgresv2 = 0, cgclash2 = 0;
   CLEAR_HARD_REG_SET (cgsurv);
   /* The class assignment outlives the block that computes it: codegen renames
      from it, so it cannot be scoped to the measurement.  */
@@ -18592,6 +18599,37 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     cgsurv = cresv;
     /* Regno -> the number of names its class was given, so the check knows
        how often the register is actually revisited.  */
+    /* VERIFY THE CLASS ASSIGNMENT'S OCCUPANCY.  lvx_cms_verify_rename had
+       only ever run on the VALUE-level assignment -- the one the study
+       reports -- while the CLASS-level assignment is the one codegen renames
+       from, and it was never checked at all.
+
+       It was wrong.  On a one-loop reduction the class colouring gave both
+       names of a two-name class the same register: the rename map read
+       `->r5,r5' and `->r0,r0', and two names exist only when the degree is at
+       least two, which means the life exceeds II, which means they interfere.
+       Two live values in one register is every symptom at once -- a wrong
+       answer on one program, a wild address on another, a hang on a third --
+       and all three had been chased as separate control-flow defects.
+
+       One owner insn per class is needed for the ambiguity walk; the first
+       member's will do, since the walk only asks which classes a consumer
+       reads.  */
+    {
+      auto_vec<int> c_own;
+      for (unsigned c = 0; c < c_regno.length (); c++)
+	c_own.safe_push (-1);
+      for (unsigned v = 0; v < q_own.length (); v++)
+	if (v2c[v] >= 0 && c_own[v2c[v]] < 0)
+	  c_own[v2c[v]] = q_own[v];
+      cgocc = lvx_cms_verify_rename (seq, arcs, c_def, c_last, c_nr, c_ec,
+				     c_own, c_regno, c_uf, cav, can, car,
+				     found, lo, ckunroll > 0 ? ckunroll : 1,
+				     &cgconf, &cgunseen, &cgambig, &cgunass,
+				     &cgmisal, &cgnondiv, &cgresv2,
+				     &cgclash2);
+    }
+
     /* Which registers a class owns -- part two's pair test skips them, since
        part one covers every class by its name count.  And, per class, the
        life the occupancy uses and the names it was actually given.  */
@@ -18634,6 +18672,11 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   lvx_cms_dump (";; lvx cms: fn=%s loop %d antidep %s short=%d pairs=%d"
 		" first=%d/%d/%d\n", current_function_name (), loop->num,
 		adok ? "ok" : "BAD", adshort, adpair, ada, adb, adc);
+  lvx_cms_dump (";; lvx cms: fn=%s loop %d classocc %s conf=%d unseen=%d"
+		" ambig=%d unass=%d misal=%d nondiv=%d clash=%d\n",
+		current_function_name (), loop->num, cgocc ? "ok" : "BAD",
+		cgconf, cgunseen, cgambig, cgunass, cgmisal, cgnondiv,
+		cgclash2);
 
   /* CODEGEN, phase one: the block structure (§7quinquies.9).  Behind
      -mcms-codegen and off by default, because it is incomplete -- the blocks
@@ -18654,6 +18697,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       site.plan = pl;
       site.renameable = rnok;
       site.antidep_ok = adok;
+      site.classocc_ok = cgocc;
       edge e;
       edge_iterator ei;
       FOR_EACH_EDGE (e, ei, loop->header->preds)
@@ -18708,6 +18752,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		iwhy = "a slot's insn refuses the rename substitution";
 	      else if (!site.antidep_ok)
 		iwhy = "an unrenamed register's order is not preserved";
+	      else if (!site.classocc_ok)
+		iwhy = "the class assignment puts two live names in one"
+		       " register";
 	      else
 		emitted = lvx_cms_emit_pipeline (&site, seq, arcs, plslots,
 						 plnodes, cgblocks, cgi2c,
