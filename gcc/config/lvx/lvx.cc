@@ -18629,11 +18629,48 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
        Declined rather than repaired.  Repairing it means rewriting by df_ref
        location instead of by regno, so the operand that reads a class is the
-       one the arc names; that is the right answer and it is not this.  */
-    for (unsigned a = 0; a < c_regno.length (); a++)
-      for (unsigned b = a + 1; b < c_regno.length (); b++)
-	if (c_regno[a] >= 0 && c_regno[a] == c_regno[b])
-	  cgambig_classes++;
+       one the arc names; that is the right answer and it is not this.
+
+       NARROWED TO ONE INSTRUCTION AT A TIME.  Declining whenever any two
+       classes anywhere in the loop share a register left 9 of 119 loops
+       emitting -- RA reuses registers heavily, so almost every loop has a
+       pair.  The substitution is per instruction, so what makes it ambiguous
+       is one instruction mentioning the same regno for two different
+       classes: its own definition and a class it reads, or two classes it
+       reads.  Where no instruction mixes them the blanket regno rewrite is
+       unambiguous, because the only references it can reach belong to the
+       one class.  */
+    for (unsigned i = 0; i < seq.length (); i++)
+      {
+	/* THE INSTRUCTION'S OWN CLASS COUNTS TOO.  Excluding it was tried, on
+	   the reading that the substitution already separates def from use --
+	   SET_DEST alone for the def, everything else for the uses -- which
+	   would make `fixedd.rz r0 = r0' unambiguous and recover most of the
+	   population.  store.c failed again immediately.
+
+	   The separation is not sufficient: a READ occurrence can belong to
+	   the def's own class, where the instruction reads its own previous
+	   value at omega >= 1, and the use pass then rewrites it with the
+	   other class's register.  So any two classes an instruction touches,
+	   however it touches them, make the regno rewrite ambiguous.  */
+	auto_vec<int> touched;
+	int own = i < insn2cls_pre.length () ? insn2cls_pre[i] : -1;
+
+	if (own >= 0)
+	  touched.safe_push (own);
+	for (unsigned a = 0; a < arcs.length (); a++)
+	  if (arcs[a].kind == LVX_ARC_REG_RAW && arcs[a].dst == i
+	      && arcs[a].src < insn2cls_pre.length ()
+	      && insn2cls_pre[arcs[a].src] >= 0
+	      && !touched.contains (insn2cls_pre[arcs[a].src]))
+	    touched.safe_push (insn2cls_pre[arcs[a].src]);
+
+	for (unsigned a = 0; a < touched.length (); a++)
+	  for (unsigned b = a + 1; b < touched.length (); b++)
+	    if (c_regno[touched[a]] >= 0
+		&& c_regno[touched[a]] == c_regno[touched[b]])
+	      cgambig_classes++;
+      }
 
     for (unsigned c = 0; c < c_regno.length (); c++)
       {
