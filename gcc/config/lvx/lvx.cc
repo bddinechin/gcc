@@ -13244,7 +13244,45 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	       there is coupled to fixing the effect classification.  */
 	    int ec = ec_[v];
 	    int d = def_[v] - lo0 + (ec ? 0 : 1);
-	    int l = last_[v] - def_[v] - (ec ? 0 : 1);
+	    /* THE RANGE INCLUDES THE READER'S CYCLE.  This was
+	       `last - def - (ec ? 0 : 1)', ending one cycle before the last
+	       reader, on the reading that a VLIW's read-before-write makes the
+	       final cycle free.  It does -- WITHIN A BUNDLE.  A write in a
+	       DIFFERENT, earlier cycle has no such protection, and that is
+	       exactly what modulo expansion creates: name 1's write lands
+	       II cycles after name 0's, which can be one cycle BEFORE name 0's
+	       reader.
+
+	       Measured on validation/cms/reduce.c, a seven-instruction
+	       reduction: a value defined at date 3 and read at 7 was given two
+	       names, name 1 written at 6.  The old range made them 4..6 and
+	       7..9 -- disjoint, so the colouring put both in r5 -- while the
+	       truth is 4..7 and 7..10, which overlap.  The second copy
+	       destroyed the first before its read and the program returned a
+	       wrong answer.
+
+	       THE INTERVAL IS [def + !earlyclobber, last].  The START was
+	       always right and says when the write LANDS: at the end of the
+	       defining cycle, so that cycle is not occupied -- unless the
+	       destination is earlyclobber, where it is claimed at issue.  The
+	       END was wrong because it applied the same read-before-write
+	       reasoning at the far end, where it does not hold: a DIFFERENT
+	       instance's write landing at the end of cycle last - 1 leaves the
+	       register holding the new value during cycle last, and that is
+	       not the same bundle.
+
+	       So the length is last - def + (ec ? 1 : 0), not
+	       last - def - (ec ? 1 : 0), which was the first attempt at this
+	       and shortened an earlyclobber range by two instead of
+	       lengthening it by one.  Another value may start at last + 1,
+	       which is its_def + 1 with its_def == last -- a write issued in
+	       the same cycle as the read, which read-before-write does cover.
+
+	       With the reader's cycle included, a zero-life value gets l = 1
+	       naturally and the MAX (l, 1) clamp that §7tricies.4 added becomes
+	       redundant -- the sign this is the right convention rather than
+	       another adjustment.  */
+	    int l = last_[v] - def_[v] + (ec ? 1 : 0);
 	    int nr = nregs_[v];
 	    /* One name per stage the value spans.  Rounded up to a power of two
 	       because that is what the reference allocates (§7quater.5) -- but
@@ -14338,7 +14376,10 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
 
   for (unsigned v = 0; v < def_.length (); v++)
     {
-      int life = last_[v] - def_[v] - (ec_[v] ? 0 : 1);
+      /* Same convention as lvx_cms_colour: [def + !earlyclobber, last].  A
+	 check that models the schedule differently from the allocator tests a
+	 different program.  */
+      int life = last_[v] - def_[v] + (ec_[v] ? 1 : 0);
       int reg = v < vregno.length () ? vregno[v] : -1;
       bool uf = v < vusefirst.length () && vusefirst[v];
       if (life <= 0 || reg < 0 || uf)
@@ -14519,7 +14560,10 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
   for (unsigned v = 0; v < def_.length (); v++)
     {
       int d = def_[v] - lo + (ec_[v] ? 0 : 1);
-      int life = last_[v] - def_[v] - (ec_[v] ? 0 : 1);
+      /* Same convention as lvx_cms_colour: [def + !earlyclobber, last].  A
+	 check that models the schedule differently from the allocator tests a
+	 different program.  */
+      int life = last_[v] - def_[v] + (ec_[v] ? 1 : 0);
       int nr = MAX (nregs_[v], 1);
       int p2 = lvx_cms_value_p2 (anode_value, (int) v);
 
@@ -18637,7 +18681,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     for (unsigned c = 0; c < c_regno.length (); c++)
       {
 	int p2 = lvx_cms_value_p2 (cav, (int) c);
-	cglife.safe_push (c_last[c] - c_def[c] - (c_ec[c] ? 0 : 1));
+	cglife.safe_push (c_last[c] - c_def[c] + (c_ec[c] ? 1 : 0));
 	cgnames.safe_push (p2);
 	for (int w2 = 0; w2 < MAX (c_nr[c], 1); w2++)
 	  if (c_regno[c] >= 0 && c_regno[c] + w2 < FIRST_PSEUDO_REGISTER)
