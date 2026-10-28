@@ -180,3 +180,7 @@ Reach for the minimum cumulative register lifetime dates at the current initiati
 mcms-codegen
 Target Var(lvx_cms_codegen) Init(0) Optimization
 Emit the convergent modulo schedule as code, rather than only measuring it.  Incomplete: builds the pipeline block structure only.
+
+mcms-pipeline
+Target Var(lvx_cms_pipeline) Init(0) Optimization
+Emit the software pipeline itself, not only the body in schedule order.  Requires -mcms-codegen; separate from it so that a broken pipeline cannot regress the reordering, which is verified.

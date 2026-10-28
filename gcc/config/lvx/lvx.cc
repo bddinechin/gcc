@@ -13947,6 +13947,9 @@ struct lvx_cms_plan
   int epilogue;			/* slots after it, the main epilogue */
   int epilogue_sym;		/* what the old symmetry assumption gave */
   int exit_slots;		/* slots in all the early-exit epilogues */
+  int steady_bad;		/* instructions NOT appearing kunroll times in
+				   the kernel -- nonzero means the window is
+				   not a steady state */
   int blocks_reused;		/* source body blocks taken over */
   int blocks_allocated;		/* fresh blocks the stages need */
   int exit_epilogues;		/* one per exit before ITER_SLOT */
@@ -13973,15 +13976,33 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
   int lo = lvx_cms_sigma_min (sigma);
   int instances = nstages + kunroll;
 
-  /* The kernel head is the first date at or after (nstages - 1) * II: the
-     cycle by which every stage has started, which is where the steady state
-     begins.  */
-  int kernel_first = (nstages - 1) * ii;
-
   /* ITER_SLOT: the lowest instance of the LOOPBACK branch whose iteration is
      non-zero and which sits at or after the adjusted slot, the latter being
      the loopback at iteration kunroll - 1 (§7quinquies.2a).  */
-  int adjusted = sigma[loopback] - lo + (kunroll - 1) * ii;
+  /* THE ADJUSTED SLOT IS MEASURED FROM THE LAST-SCHEDULED INSTRUCTION, not
+     from the loopback.  The kernel window ends at ITER_SLOT and is
+     kunroll * II cycles long, so every instruction's phase must fall inside
+     it -- and an instruction scheduled AFTER the loopback has a phase beyond
+     iter_date, which clips its instances and leaves the kernel short of a
+     steady state.
+
+     Taking it from the loopback's own phase left 87 of 124 loops not a steady
+     state, with a deficit of one to three instructions each: exactly the
+     instructions scheduled after the branch.  `main' loop 1 puts the jump at
+     phase 5 and its last instruction at phase 6, which is the shape -- and
+     the branch being last is an assumption, not a property, since sigma
+     places it wherever the resources allow.
+
+     With the maximum phase the window is [iter_date - kunroll * II + 1,
+     iter_date] and every phase from 0 to max is inside it, so each
+     instruction contributes exactly kunroll instances.  For a loop whose
+     branch IS last the two formulas agree, which is why f1 was already
+     right.  */
+  int maxphase = 0;
+  for (unsigned i = 0; i < seq.length (); i++)
+    if (sigma[i] - lo > maxphase)
+      maxphase = sigma[i] - lo;
+  int adjusted = maxphase + (kunroll - 1) * ii;
   int iter_date = -1, iter_iteration = -1;
   for (int l = 1; l < instances; l++)
     {
@@ -13996,6 +14017,32 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
   pl->why = "no qualifying loopback instance";
   if (iter_date < 0)
     return;
+  /* THE KERNEL IS THE KUNROLL * II CYCLES ENDING AT ITER_SLOT, not the dates
+     at or after (nstages - 1) * II.
+
+     "(nstages - 1) * II is the cycle by which every stage has started, which
+     is where the steady state begins" is true and is not the same statement
+     as "the kernel starts there".  The kernel must execute every instruction
+     exactly KUNROLL times per trip -- that is what a steady state IS -- and
+     the window has to be KUNROLL * II cycles long for that to hold.  The
+     loopback instance that closes it sits at ITER_SLOT, so the window is the
+     one ENDING there.
+
+     Found by hand-tracing the emitted f1.  With the window [5, 12] -- eight
+     cycles where kunroll * II is ten -- the kernel held two loads, two IV
+     updates, two copies and two branches but ONE fma, so the loop advanced
+     its pointer twice per accumulate and returned a wrong answer.  The
+     window [3, 12] holds exactly two of each.  Nothing in the plan's own
+     counts could have shown this: 12 slots is 12 slots however they are
+     distributed, which is why the check below counts per instruction.
+
+     KERNEL_FIRST can go negative when the schedule is shorter than the
+     unrolled period; clamped to zero, where the prologue is empty and the
+     kernel starts at the first date.  */
+  int kernel_first = iter_date - kunroll * ii + 1;
+  if (kernel_first < 0)
+    kernel_first = 0;
+
 
   /* Walk every instance of every task in (date, iteration, order) order,
      counting what falls where.  Everything after ITER_SLOT is filtered out,
@@ -14107,12 +14154,18 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
   pl->epilogue_sym = pl->prologue;
   for (unsigned e = 0; e <= exit_date.length (); e++)
     {
-      /* E == length () is ITER_SLOT, the main epilogue, taken last so the
-	 early-exit epilogues keep the walk's own order.  */
-      bool is_main = (e == exit_date.length ());
-      int de = is_main ? iter_date : exit_date[e];
-      int le = is_main ? iter_iteration : exit_iter[e];
-      int ie = is_main ? loopback : exit_insn[e];
+      /* THE MAIN EPILOGUE IS FIRST, so its block is the one immediately after
+	 the last kernel node and the kernel can FALL THROUGH into it --
+	 §7quinquies.4's "if the epilogue node is the one immediately after
+	 the iteration node".  Taking it last, which read more naturally, put
+	 the early-exit epilogues between the kernel and the drain, so the
+	 kernel's fall-through landed in an epilogue reachable only from an
+	 exit that had not been taken.  The early exits keep the walk's order
+	 after it.  */
+      bool is_main = (e == 0);
+      int de = is_main ? iter_date : exit_date[e - 1];
+      int le = is_main ? iter_iteration : exit_iter[e - 1];
+      int ie = is_main ? loopback : exit_insn[e - 1];
       int node = -1;
 
       /* THE NODE IS CREATED WHETHER OR NOT IT HOLDS A SLOT.  An epilogue can
@@ -14167,6 +14220,42 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 		}
 	    }
     }
+
+  /* STEADYBAD: instructions not appearing exactly KUNROLL times in the
+     kernel.  It found a real defect -- a window eight cycles long where the
+     period was ten held two of four instructions and one of the fifth, and
+     the loop advanced its pointer twice per accumulate -- and it is NOT a
+     correctness criterion, which took the executable gate to establish.
+
+     A kernel closed at ITER_SLOT is asymmetric whenever the loopback is not
+     the last slot of the window: the instances after the branch belong to the
+     epilogue by construction, so an instruction scheduled after it appears
+     kunroll - 1 times.  That is a legitimate rotated kernel, and the deficit
+     is absorbed across trips by the prologue and the epilogue.  `main' loop 1
+     of the gate's own program reports STEADYBAD = 2 and computes the right
+     answer at every trip count from 0 to 20.
+
+     So it is a diagnostic, not a gate: a sudden jump in it means the window
+     moved, which is worth seeing, and a nonzero value by itself means only
+     that the branch is not scheduled last.  The gate is the executable
+     differential.  */
+  {
+    auto_vec<int> per;
+    per.safe_grow_cleared (seq.length ());
+    if (slots)
+      for (unsigned q = 0; q < slots->length (); q++)
+	{
+	  int nd = (*slots)[q].node;
+	  if (nodes_out && nd >= 0 && nd < (int) nodes_out->length ()
+	      && (*nodes_out)[nd].kind == LVX_CMS_NODE_KERNEL
+	      && (*slots)[q].insn >= 0
+	      && (*slots)[q].insn < (int) seq.length ())
+	    per[(*slots)[q].insn]++;
+	}
+    for (unsigned i = 0; i < seq.length (); i++)
+      if (slots && per[i] != kunroll)
+	pl->steady_bad++;
+  }
 
   pl->ok = true;
   pl->why = NULL;
@@ -14773,7 +14862,7 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
 		       const auto_vec<int> &anode_value,
 		       const auto_vec<int> &anode_name,
 		       const auto_vec<int> &anode_regno,
-		       unsigned self, int *nsubst)
+		       unsigned self, int *nsubst, bool apply)
 {
   rtx pat = PATTERN (insn);
   rtx set = single_set (insn);
@@ -14849,8 +14938,20 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
 	}
     }
 
+  /* APPLY OR CANCEL, one function and not two.  The dry run and the real
+     substitution must agree about every operand they touch, and the only way
+     to be sure of that is for there to be one piece of code -- a separate
+     emitter would be a second rounding rule, which §7tricies.1 already
+     records as the thing that goes stale.  */
   if (num_validated_changes () > base)
-    ok = verify_changes (base);
+    {
+      ok = verify_changes (base);
+      if (ok && apply)
+	{
+	  confirm_change_group ();
+	  return true;
+	}
+    }
   cancel_changes (base);
   return ok;
 }
@@ -14879,7 +14980,7 @@ lvx_cms_rename_dryrun (const auto_vec<rtx_insn *> &seq,
 	continue;
       if (!lvx_cms_rename_insn_p (seq[i], slots[q].iter, arcs, insn2cls,
 				  cregno, anode_value, anode_name,
-				  anode_regno, i, &n))
+				  anode_regno, i, &n, false))
 	{
 	  fail++;
 	  /* WHICH insn and WHICH instance, bounded.  A refusal count cannot be
@@ -15431,6 +15532,302 @@ lvx_cms_make_insns (const struct lvx_cms_site *site,
     df_set_bb_dirty (bb);
 
   *why = moved ? NULL : "already in schedule order";
+  return true;
+}
+
+/* MAKE_INSNS, PHASE TWO: emit the pipeline.  §7tricies.13.
+
+   Phase one put one block's instructions into schedule order and changed no
+   edge (§7tricies.7).  This fills the skeleton §7tricies.12 built: every slot
+   of the master schedule, renamed for its iteration, into the block its node
+   names, with the control flow closed around them.
+
+   WHAT THE SKELETON LEAVES TO DO.  The blocks exist, empty, in a fall-through
+   chain from the preheader, in plan-node order: the prologue stages, then the
+   k-unrolled kernel, then the main epilogue, then the early-exit epilogues.
+   Three things make that a pipeline:
+
+     - every epilogue is redirected to the loop's exit, so it leaves the chain
+       and is reachable only from its own exit (§7quinquies.5's layout, where
+       the main epilogue "jumps over" the others);
+     - the ITER_SLOT instance of the loopback closes the kernel, branching to
+       the first kernel block and falling through to the main epilogue;
+     - every other loopback instance is INVERTED into a branch to its
+       epilogue, falling through to the next block in the chain
+       (§7quinquies.2a).
+
+   The inversion is not an optimisation.  A block ends with one jump, whose
+   two successors are the target and the layout successor, so "if continuing
+   go on, else drain" can only be spelled as "if NOT continuing go to the
+   epilogue" -- otherwise the epilogue would have to be the layout successor
+   of every exit, and there are kunroll - 1 of them.
+
+   THE ORIGINAL BODY IS LEFT TO DIE.  Once the last epilogue is redirected to
+   the exit, nothing reaches the header, and an unreachable block is removed
+   by the cleanup that follows.  Deleting it here would mean unlinking a block
+   that is still a live loop's header while the loop structures exist, which
+   is the shape of the ICE §7quinquies.10 already paid for once.  */
+
+static bool
+lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
+		       const auto_vec<rtx_insn *> &seq,
+		       const auto_vec<lvx_cms_arc> &arcs,
+		       const auto_vec<lvx_cms_slot> &slots,
+		       const auto_vec<lvx_cms_node> &nodes,
+		       const auto_vec<basic_block> &blocks,
+		       const auto_vec<int> &insn2cls,
+		       const auto_vec<int> &cregno,
+		       const auto_vec<int> &cav, const auto_vec<int> &can,
+		       const auto_vec<int> &car,
+		       int *nemit_out, const char **why)
+{
+  unsigned nnode = nodes.length ();
+  int nemit = 0;
+
+  *nemit_out = 0;
+  *why = "skeleton does not match the plan";
+  if (blocks.length () != nnode || nnode == 0)
+    return false;
+
+  /* ONE JUMP ONLY.  A second jump in the body is an exit the epilogue
+     enumeration does not model -- build_plan drops only the loopback from an
+     epilogue's slots -- so such a loop is declined rather than emitted with a
+     branch nothing targets.  */
+  int loopback = -1, njump = 0;
+  for (unsigned i = 0; i < seq.length (); i++)
+    if (JUMP_P (seq[i]))
+      {
+	loopback = (int) i;
+	njump++;
+      }
+  *why = "body has more than one jump";
+  if (njump != 1 || loopback < 0)
+    return false;
+
+  /* The first kernel node is the branch target that closes the loop, and the
+     main epilogue carries the ITER_SLOT instance -- which is how an emitted
+     loopback is told from an early exit.  Reading the kernel node's own
+     EXIT_DATE would not work: a kernel node has none, it is -1.  */
+  int kfirst = -1, mainep = -1;
+  for (unsigned k = 0; k < nnode; k++)
+    if (nodes[k].kind == LVX_CMS_NODE_KERNEL)
+      {
+	kfirst = (int) k;
+	break;
+      }
+  for (unsigned k = 0; k < nnode; k++)
+    if (nodes[k].kind == LVX_CMS_NODE_EPILOGUE && nodes[k].main_epilogue)
+      mainep = (int) k;
+  *why = "no kernel node or no main epilogue";
+  if (kfirst < 0 || mainep < 0)
+    return false;
+
+  /* NOTHING WITH A SIDE EFFECT MAY BE SPECULATED.
+
+     The prologue executes the early stages of iterations 0 .. nstages - 2
+     BEFORE any exit test has run, so every instruction it holds is
+     speculated.  For a load that is sound once it is dismissible -- which is
+     what -mcms-force-speculative-loads delivers and what the dependence
+     graph's branch constraint already assumed (§7.0).  For a STORE it is not
+     sound at all: there is no dismissible store, and an iteration that does
+     not exist must not write.
+
+     Measured on the gate's own program, where main's initialisation loop
+     writes A[i] and B[i]: the prologue stored past the end of both arrays.
+     The answer came back wrong rather than faulting, because what follows an
+     array in .bss is another array.
+
+     So a loop whose prologue holds a store, a call, or anything volatile is
+     declined.  This is a restriction on the EMISSION, not on the analysis:
+     the schedule is still valid, and lifting it needs either LVX's GUARD
+     predication on the speculated stages or a trip-count guard that makes
+     the prologue unconditional -- both of which are real work and neither of
+     which is a reason to emit a wrong store today.  */
+  *why = "the prologue would speculate a store or other side effect";
+  for (unsigned q = 0; q < slots.length (); q++)
+    {
+      int nd = slots[q].node;
+      unsigned i = (unsigned) slots[q].insn;
+      if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
+	continue;
+      if (nodes[nd].kind != LVX_CMS_NODE_PROLOGUE)
+	continue;
+      if (CALL_P (seq[i]) || volatile_insn_p (PATTERN (seq[i])))
+	return false;
+      {
+	subrtx_iterator::array_type array;
+	rtx pat = PATTERN (seq[i]);
+	rtx set = single_set (seq[i]);
+	FOR_EACH_SUBRTX (it, array, pat, NONCONST)
+	  if (MEM_P (*it) && (!set || *it == SET_DEST (set)))
+	    return false;
+      }
+    }
+
+  /* THE EPILOGUES LEAVE THE CHAIN FIRST, before any insn is emitted: once
+     they are redirected the chain no longer reaches the header, so nothing
+     that follows can be confused by a fall-through into the old body.
+     `redirect_edge_and_branch_force' is the entry that will create the jump a
+     fall-through block has not got -- `redirect_edge_and_branch' refuses a
+     fall-through outright, which is the distinction make_nodes' long note
+     records.  */
+  *why = "cannot redirect an epilogue to the loop exit";
+  for (unsigned k = 0; k < nnode; k++)
+    {
+      if (nodes[k].kind != LVX_CMS_NODE_EPILOGUE)
+	continue;
+      if (!single_succ_p (blocks[k]))
+	return false;
+      if (single_succ (blocks[k]) == site->exit_dest)
+	continue;
+      /* The return value is the block this had to SPLIT, and null on the
+	 ordinary path -- so testing it for failure would fail on success.
+	 The function asserts rather than returning on a redirect it cannot
+	 do, which is why there is nothing to test.  */
+      redirect_edge_and_branch_force (single_succ_edge (blocks[k]),
+				      site->exit_dest);
+    }
+
+  /* EMIT.  The slot list is already in (date, iteration, order), which is the
+     order the instructions have to appear in, so this is one pass with no
+     sorting and no per-block bookkeeping beyond where the last insn went.  */
+  auto_vec<rtx_insn *> tail;
+  for (unsigned k = 0; k < nnode; k++)
+    tail.safe_push (NULL);
+
+  for (unsigned q = 0; q < slots.length (); q++)
+    {
+      int nd = slots[q].node;
+      unsigned i = (unsigned) slots[q].insn;
+      if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
+	continue;
+      basic_block bb = blocks[nd];
+      bool is_iter = ((int) i == loopback
+		      && slots[q].date == nodes[mainep].exit_date
+		      && slots[q].iter == nodes[mainep].exit_iter);
+
+      /* Where to put it: after the last insn this block received, or after
+	 the block note on the first.  BB_HEAD can be a CODE_LABEL and the
+	 note follows it -- §7tricies.8, and the reason phase one's first
+	 version failed the verifier twice.  */
+      rtx_insn *after = tail[nd];
+      if (!after)
+	{
+	  after = BB_HEAD (bb);
+	  if (LABEL_P (after))
+	    after = NEXT_INSN (after);
+	  if (!after || !NOTE_INSN_BASIC_BLOCK_P (after))
+	    {
+	      *why = "no NOTE_INSN_BASIC_BLOCK to emit after";
+	      return false;
+	    }
+	}
+
+      if ((int) i == loopback)
+	{
+	  /* THE BRANCH.  Both kinds are the same copied jump; what differs is
+	     where it goes and whether the condition is inverted.  */
+	  rtx_insn *j = emit_jump_insn_after (copy_insn (PATTERN (seq[i])),
+					     after);
+	  /* The copy carries the original label_ref, so JUMP_LABEL is set to
+	     the original target before retargeting: `redirect_jump' and
+	     `invert_jump' both read it as the label to replace, and a null one
+	     leaves the copy ill-formed rather than merely untargeted.  */
+	  JUMP_LABEL (j) = JUMP_LABEL (seq[i]);
+	  if (JUMP_LABEL (j) && LABEL_P (JUMP_LABEL (j)))
+	    LABEL_NUSES (JUMP_LABEL (j))++;
+	  rtx_jump_insn *jj = as_a <rtx_jump_insn *> (j);
+	  basic_block target;
+
+	  if (is_iter)
+	    {
+	      target = blocks[kfirst];
+	      if (!redirect_jump (jj, block_label (target), 0))
+		{
+		  *why = "cannot retarget the kernel's closing branch";
+		  return false;
+		}
+	    }
+	  else
+	    {
+	      /* Its own epilogue: the node whose EXIT_DATE and EXIT_ITER are
+		 this instance.  */
+	      int ep = -1;
+	      for (unsigned e = 0; e < nnode; e++)
+		if (nodes[e].kind == LVX_CMS_NODE_EPILOGUE
+		    && !nodes[e].main_epilogue
+		    && nodes[e].exit_date == slots[q].date
+		    && nodes[e].exit_iter == slots[q].iter)
+		  ep = (int) e;
+	      if (ep < 0)
+		{
+		  *why = "an exit has no epilogue";
+		  return false;
+		}
+	      target = blocks[ep];
+	      if (!invert_jump (jj, block_label (target), 0))
+		{
+		  *why = "cannot invert an early exit";
+		  return false;
+		}
+	    }
+
+	  /* THE BRANCH'S OPERANDS ARE RENAMED TOO, which the first version
+	     omitted -- it emitted the jump, retargeted it, and moved on.  A
+	     branch reads the induction variable like any other consumer: the
+	     ITER_SLOT instance is the loopback at iteration kunroll - 1, so it
+	     must compare that iteration's IV name, not name 0.  Emitted
+	     unrenamed, f1's closing test compared a pointer already advanced
+	     kunroll times past the right one and the loop never exited -- the
+	     ISS ran until it was killed, which is how an omission in the
+	     emission looks from outside.
+
+	     After the retarget, because the label is not a register and the
+	     substitution walks only REGs.  */
+	  {
+	    int n = 0;
+	    if (!lvx_cms_rename_insn_p (j, slots[q].iter, arcs, insn2cls,
+					cregno, cav, can, car, i, &n, true))
+	      {
+		*why = "the renamed branch does not recognise";
+		return false;
+	      }
+	  }
+
+	  if (!find_edge (bb, target))
+	    {
+	      edge ne = make_edge (bb, target, 0);
+	      /* Two successors now, and verify_flow_info wants their
+		 probabilities to sum to one.  An even split is a placeholder
+		 and says so: the real figures are the kernel's trip estimate
+		 for the closing branch and near-never for an early exit, and
+		 getting them right is a quality question, not a correctness
+		 one -- but leaving them uninitialised is neither.  */
+	      ne->probability = profile_probability::even ();
+	      edge fe = find_fallthru_edge (bb->succs);
+	      if (fe)
+		fe->probability = profile_probability::even ();
+	    }
+	  tail[nd] = j;
+	  nemit++;
+	  continue;
+	}
+
+      /* An ordinary instruction: a copy, renamed for this iteration.  */
+      rtx_insn *c = emit_insn_after (copy_insn (PATTERN (seq[i])), after);
+      int n = 0;
+      if (!lvx_cms_rename_insn_p (c, slots[q].iter, arcs, insn2cls, cregno,
+				  cav, can, car, i, &n, true))
+	{
+	  *why = "the renamed copy does not recognise";
+	  return false;
+	}
+      tail[nd] = c;
+      nemit++;
+    }
+
+  *nemit_out = nemit;
+  *why = NULL;
   return true;
 }
 
@@ -16956,7 +17353,29 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
      multiple-exit software pipeline construction needs of a local schedule.
 
      The distance is one for anything that is not forward in the chain, since
-     the instance it constrains is then the next iteration's.  */
+     the instance it constrains is then the next iteration's.
+
+     THE LATENCY IS ONE, NOT ZERO, except between two branches.  Every one of
+     these arcs was pushed with theta = 0, which permits
+     sigma (guarded) == sigma (branch) -- the guarded instruction BUNDLED WITH
+     the branch.  On a VLIW that is not "after": both issue together and the
+     store executes whatever the branch decides, so a theta of zero expresses
+     "may be speculated" while the whole purpose of the arc is to say it may
+     not.  Theta of one makes it strictly later.
+
+     The exception is branch-to-branch, where zero is deliberate: LVX has two
+     BCU slots and keeping their relative order does not require separating
+     them, so (3) and the back edge stay at zero and two branches can be
+     bundled.
+
+     Found from the emitted code, not from the graph: a pipelined
+     initialisation loop stored past the end of its array, because the
+     prologue ran a stage containing a store before any branch had executed.
+     With theta = 1 that cannot be scheduled -- iteration L's store is
+     strictly after iteration L-1's branch in absolute date -- so the
+     emission's "refuse a prologue store" precondition becomes a check that
+     should never fire rather than the thing standing between the analysis and
+     a wrong store.  */
   int first_branch = -1, prev_branch = -1;
   for (unsigned p = 0; p < n; p++)
     {
@@ -16992,7 +17411,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  /* (1) */
 	  if (lvx_mem_write_insn_p (seq[q])
 	      || volatile_insn_p (PATTERN (seq[q])))
-	    lvx_cms_push_arc (arcs, p, q, 0, w, LVX_ARC_CTRL_STORE);
+	    lvx_cms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_STORE);
 
 	  /* (2) */
 	  if (exitbb == NULL)
@@ -17001,7 +17420,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    if (DF_REF_REGNO (def) < FIRST_PSEUDO_REGISTER
 		&& bitmap_bit_p (df_get_live_in (exitbb), DF_REF_REGNO (def)))
 	      {
-		lvx_cms_push_arc (arcs, p, q, 0, w, LVX_ARC_CTRL_LIVEOUT);
+		lvx_cms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_LIVEOUT);
 		break;
 	      }
 	}
@@ -17927,11 +18346,11 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 				    &slundef, &slorder, &slpaths);
   lvx_cms_dump (";; lvx cms: fn=%s loop %d slots %s n=%u nodes=%u paths=%d"
 		" undef=%d order=%d pro=%d ker=%d epi=%d episym=%d"
-		" exitslots=%d exep=%d\n", current_function_name (),
+		" exitslots=%d exep=%d steadybad=%d\n", current_function_name (),
 		loop->num, slok ? "ok" : "BAD", plslots.length (),
 		plnodes.length (), slpaths, slundef, slorder, pl.prologue,
 		pl.kernel, pl.epilogue, pl.epilogue_sym, pl.exit_slots,
-		pl.exit_epilogues);
+		pl.exit_epilogues, pl.steady_bad);
 
   /* THE RENAME UNIT IS THE CLASS, NOT THE VALUE.  §7tricies.11.
 
@@ -17949,6 +18368,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   bool rnok = false;
   int tnclass = 0, tnmerged = 0, tbiggest = 0, torphan = 0;
   int cmaxreg = -1, cassigned = 0, cnodes = 0, cedges = 0, ckunroll = 1;
+  /* The class assignment outlives the block that computes it: codegen renames
+     from it, so it cannot be scoped to the measurement.  */
+  auto_vec<int> cgi2c, cgcregno, cgav, cgan, cgar;
   {
     auto_vec<int> tparent;
     lvx_cms_tie_classes (seq, arcs, q_own, q_regno, av, an, ar, tparent,
@@ -18019,10 +18441,32 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       {
 	if (arcs[a].kind != LVX_ARC_REG_RAW || arcs[a].omega == 0)
 	  continue;
-	int pc = arcs[a].src < insn2cls_pre.length ()
-		 ? insn2cls_pre[arcs[a].src] : -1;
-	int cc = arcs[a].dst < insn2cls_pre.length ()
-		 ? insn2cls_pre[arcs[a].dst] : -1;
+	/* A SELF-RECURRENCE IS NOT A TIE.  `r0 = r0 + 8' is one arc from an
+	   instruction to itself at omega = 1, so src == dst and the class
+	   test below is trivially true -- which pinned EVERY self-incrementing
+	   induction variable to degree 1 and destroyed exactly the expansion
+	   modulo scheduling depends on.  The emitted kernel then used one
+	   register for the IV in both unrolled copies, so the exit test
+	   compared a pointer already advanced twice, and the ISS faulted on a
+	   wild address.  The registers happen to coincide because RA coalesced
+	   the IV, not because the pattern requires it, and substituting the
+	   USE alone recognises fine.
+
+	   The rule belongs only to a class that a tie actually MERGED, so the
+	   two values must be distinct members of one class.  */
+	if (arcs[a].src == arcs[a].dst)
+	  continue;
+	int pv = -1, cvv = -1;
+	for (unsigned v = 0; v < q_own.length (); v++)
+	  {
+	    if (q_own[v] == (int) arcs[a].src)
+	      pv = (int) v;
+	    if (q_own[v] == (int) arcs[a].dst)
+	      cvv = (int) v;
+	  }
+	if (pv < 0 || cvv < 0 || pv == cvv)
+	  continue;
+	int pc = v2c[pv], cc = v2c[cvv];
 	if (pc >= 0 && pc == cc)
 	  c_deg[pc] = 1;
       }
@@ -18050,6 +18494,11 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
     rnok = lvx_cms_rename_dryrun (seq, arcs, plslots, insn2cls_pre, c_regno,
 				  cav, can, car, &rnsubst, &rnfail);
+    cgi2c.safe_splice (insn2cls_pre);
+    cgcregno.safe_splice (c_regno);
+    cgav.safe_splice (cav);
+    cgan.safe_splice (can);
+    cgar.safe_splice (car);
   }
   lvx_cms_dump (";; lvx cms: fn=%s loop %d renameable %s subst=%d refused=%d"
 		" slots=%u values=%u classes=%d merged=%d biggest=%d"
@@ -18118,10 +18567,28 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 			built ? "built" : nwhy, cgblocks.length (),
 			plnodes.length ());
 
-	  /* PHASE TWO, as far as it goes: the body in schedule order.  Only
-	     attempted where the blocks were built, since a loop make_nodes
-	     declined is one the pipeline is not being built around.  */
-	  if (built)
+	  /* PHASE TWO.  -mcms-pipeline emits the pipeline itself; without it
+	     the body is only put into schedule order, which is verified
+	     (§7tricies.7).  Two flags rather than one so that a broken
+	     pipeline cannot regress the reordering.  */
+	  if (built && lvx_cms_pipeline)
+	    {
+	      const char *iwhy = NULL;
+	      int nemit = 0;
+	      bool emitted = false;
+	      if (!site.renameable)
+		iwhy = "a slot's insn refuses the rename substitution";
+	      else
+		emitted = lvx_cms_emit_pipeline (&site, seq, arcs, plslots,
+						 plnodes, cgblocks, cgi2c,
+						 cgcregno, cgav, cgan, cgar,
+						 &nemit, &iwhy);
+	      lvx_cms_dump (";; lvx cms: fn=%s loop %d pipeline %s emitted=%d"
+			    " slots=%u\n", current_function_name (),
+			    loop->num, emitted ? "built" : iwhy, nemit,
+			    plslots.length ());
+	    }
+	  else if (built)
 	    {
 	      const char *iwhy = NULL;
 	      bool emitted = lvx_cms_make_insns (&site, seq, sigma, &iwhy);
