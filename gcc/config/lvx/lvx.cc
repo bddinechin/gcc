@@ -15359,11 +15359,28 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
    up as a wrong answer from the gate rather than as a wrong pipeline three
    steps later.
 
-   WHY THE REORDER IS LEGAL.  The CMS graph carries WAR and WAW arcs as well
-   as RAW (§7ter.1), and sigma satisfies every arc at omega = 0, so sigma
-   order respects every intra-iteration dependence the body has.  What it
-   does not respect is anything the graph does not model, which is why this
-   runs behind -mcms-codegen and under the differential gate.
+   WHY THE REORDER IS LEGAL -- AND THE ARGUMENT THAT WAS WRONG.
+
+   This said: "the CMS graph carries WAR and WAW arcs as well as RAW
+   (§7ter.1), and sigma satisfies every arc at omega = 0, so sigma order
+   respects every intra-iteration dependence the body has."  The graph
+   carries them CONDITIONALLY.  LVX_ARC_REG_WAR is commented "register anti,
+   kept only where renaming cannot remove it" -- the arcs are dropped where
+   modulo expansion is expected to rename the conflict away.  This phase does
+   not rename anything, so a schedule built on that graph may put a write
+   above a read of the same register and still satisfy every arc in it.
+
+   It does.  On the store gate's `init' the reorder moved `addw r1 = r1, 1'
+   from cycle 8 to cycle 0, above an `addw r0 = r1, r0' at cycle 3 that had
+   been reading the OLD value -- a plain WAR violation, and a wrong answer
+   from a program whose loops only initialise an array.  pipe.c passed for
+   twelve commits because none of its loops had that shape.
+
+   So legality is CHECKED here, against DF, rather than inherited from a
+   graph built for a transformation that renames: any pair whose relative
+   order the schedule changes must be independent in both directions.  That
+   is a stronger condition than the graph's and does not depend on which arcs
+   it chose to keep.
 
    TWO CONDITIONS, both refusals rather than repairs:
 
@@ -15474,6 +15491,63 @@ lvx_cms_make_insns (const struct lvx_cms_site *site,
      That same drift is why the move below is unconditional rather than
      guarded on `PREV_INSN (me) != after': the guard compares against the
      chain, and the chain contains insns the schedule does not.  */
+  /* EVERY SWAPPED PAIR MUST BE INDEPENDENT, asked of DF directly.  O(n^2) in
+     the body size, which -mcms-max-insns bounds at 256, and the alternative
+     is trusting a graph that omits the very arcs this phase needs.  */
+  {
+    auto_vec<int> rank;
+    rank.safe_grow_cleared (seq.length ());
+    for (unsigned a = 0; a < order.length (); a++)
+      rank[order[a]] = (int) a;
+
+    for (unsigned i = 0; i < seq.length (); i++)
+      for (unsigned j = i + 1; j < seq.length (); j++)
+	{
+	  if (rank[j] > rank[i])
+	    continue;		/* order preserved, nothing to check */
+
+	  /* Registers: J must not write what I reads or writes, and must not
+	     read what I writes.  */
+	  df_ref da, db;
+	  FOR_EACH_INSN_DEF (da, seq[j])
+	    {
+	      FOR_EACH_INSN_USE (db, seq[i])
+		if (DF_REF_REGNO (da) == DF_REF_REGNO (db))
+		  {
+		    *why = "the schedule order lifts a write above a read";
+		    return false;
+		  }
+	      FOR_EACH_INSN_DEF (db, seq[i])
+		if (DF_REF_REGNO (da) == DF_REF_REGNO (db))
+		  {
+		    *why = "the schedule order swaps two writes";
+		    return false;
+		  }
+	    }
+	  FOR_EACH_INSN_USE (da, seq[j])
+	    FOR_EACH_INSN_DEF (db, seq[i])
+	      if (DF_REF_REGNO (da) == DF_REF_REGNO (db))
+		{
+		  *why = "the schedule order lifts a read above its write";
+		  return false;
+		}
+
+	  /* Memory: a pair that may alias and is not provably disjoint keeps
+	     its order, whatever the graph decided about it.  */
+	  if ((lvx_mem_write_insn_p (seq[i]) || lvx_mem_read_insn_p (seq[i]))
+	      && (lvx_mem_write_insn_p (seq[j])
+		  || lvx_mem_read_insn_p (seq[j]))
+	      && (lvx_mem_write_insn_p (seq[i])
+		  || lvx_mem_write_insn_p (seq[j]))
+	      && lvx_insns_may_alias_p (seq[i], seq[j])
+	      && !lvx_mems_disjoint_p (seq, i, j))
+	    {
+	      *why = "the schedule order swaps two memory references";
+	      return false;
+	    }
+	}
+  }
+
   /* Already in schedule order?  Reported rather than silently "reordered",
      and tested against the block's REAL insns only, since the chain holds
      notes and debug insns the schedule does not.  */
