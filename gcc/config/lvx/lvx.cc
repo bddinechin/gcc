@@ -13928,6 +13928,33 @@ struct lvx_cms_site
   struct lvx_cms_plan plan;
 };
 
+/* Redirect E to TO, whichever kind of edge it is.  Two cycles went on getting
+   this wrong in both directions, so it is one function rather than a judgement
+   at each site:
+
+     - `redirect_edge_and_branch' retargets the JUMP, and REFUSES a fall-through
+       edge outright -- there is no branch to retarget, so it returns false.
+     - `redirect_edge_succ' moves the edge and leaves the jump alone, which is
+       right for a fall-through and silently wrong for a branch.
+
+   And which is which is not what intuition says.  In a bottom-tested loop the
+   latch branches BACK to the header and FALLS THROUGH to the exit, so the back
+   edge is the branch and the loop's exit edge is the fall-through -- the
+   opposite of the way I first wrote it.  A fall-through redirect is only
+   correct when TO is laid out immediately after E's source, which every caller
+   here guarantees through create_basic_block (NULL, NULL, src).  */
+
+static bool
+lvx_cms_redirect_edge (edge e, basic_block to)
+{
+  if (e->flags & EDGE_FALLTHRU)
+    {
+      redirect_edge_succ (e, to);
+      return true;
+    }
+  return redirect_edge_and_branch (e, to) != NULL;
+}
+
 static bool
 lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
 		    const char **why)
@@ -13987,12 +14014,26 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
 	 sits BEFORE the header, so it belongs to the enclosing loop, not to
 	 this one.  */
       add_bb_to_loop (bb, loop_outer (loop));
-      /* redirect_edge_and_branch, not redirect_edge_succ: the latter moves the
-	 CFG edge and leaves the JUMP alone, so where the source ends in a
-	 branch the RTL still names the old destination and the two disagree.
-	 It happens to be harmless on a fall-through edge and is wrong on the
-	 exit edge below, so both use the form that fixes the branch too.  */
-      if (!redirect_edge_and_branch (into, bb))
+      /* redirect_edge_succ HERE, and redirect_edge_and_branch on the exit
+	 edge below -- the two edges need different functions, and an earlier
+	 version used the second for both, which is where two cycles went.
+	 `redirect_edge_and_branch' REFUSES a fall-through edge: there is no
+	 branch to retarget, so it returns false rather than moving the edge.
+	 The preheader edge is exactly that, so the redirection silently failed
+	 and make_nodes bailed.
+
+	 It bailed reporting "latch exit edge is gone", which was a SECOND bug
+	 on top of the first: *why was set before the exit-edge test and never
+	 reset, so the prologue's failure printed under the previous label and
+	 sent me reading find_edge for two cycles.  §7.5a praises the
+	 reference's 29 distinct rejection strings for exactly this reason, and
+	 the rule it implies is that every `return false' sets its own.
+
+	 A fall-through needs no branch fixed: correctness comes from the new
+	 block being laid out immediately after the source, which
+	 create_basic_block (NULL, NULL, prev) guarantees.  */
+      *why = "cannot redirect the preheader edge";
+      if (!lvx_cms_redirect_edge (into, bb))
 	return false;
       edge out = make_single_succ_edge (bb, site->header, EDGE_FALLTHRU);
       out->probability = profile_probability::always ();
@@ -14009,10 +14050,11 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
     drain->count = exit_e->count ();
     drain->flags |= BB_REACHABLE;
     basic_block dest = exit_e->dest;
-    /* The exit edge leaves a CONDITIONAL BRANCH, so the branch's label has to
-       move with it -- this is the edge redirect_edge_succ would have left
-       inconsistent.  */
-    if (!redirect_edge_and_branch (exit_e, drain))
+    /* The exit edge leaves a CONDITIONAL BRANCH, so its label has to move with
+       it -- this is the edge redirect_edge_succ WOULD leave inconsistent, and
+       the one redirect_edge_and_branch is for.  */
+    *why = "cannot redirect the latch exit edge";
+    if (!lvx_cms_redirect_edge (exit_e, drain))
       return false;
     edge out = make_single_succ_edge (drain, dest, EDGE_FALLTHRU);
     out->probability = profile_probability::always ();
