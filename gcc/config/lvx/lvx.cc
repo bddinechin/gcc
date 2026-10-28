@@ -16254,10 +16254,22 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      The II search's own call (inside SWO acceptance) deliberately still asks
      only for feasibility: it is deciding whether to accept a schedule, and
      the assignment is codegen's to take once one is accepted.  */
-  /* What codegen would emit for this loop, computed as data (§7quinquies.8).  */
-  struct lvx_cms_plan pl;
-  lvx_cms_build_plan (seq, sigma, found, igkunroll > 0 ? igkunroll : 1,
-		      nstages, loop->num_nodes, &pl);
+  /* THE SCHEDULE ITSELF, one line per loop.  Everything else here is an
+     aggregate, and an aggregate cannot be checked against the kernel it
+     describes.  Each entry is `index:cycle/stage', where cycle is
+     (sigma - lo) mod II -- the kernel position the §7sedecies.1 annotation
+     writes -- and stage is (sigma - lo) / II, which is the iteration's data
+     and so what modulo expansion names.  §7sedecies.2 keeps those two apart
+     and this is where they can be read apart.  */
+  if (!seq.is_empty ())
+    {
+      fprintf (dump_file, ";; lvx cms: fn=%s loop %d schedule II=%d:",
+	       current_function_name (), loop->num, found);
+      for (unsigned i = 0; i < seq.length (); i++)
+	fprintf (dump_file, " %u:%d/%d%s", i, (sigma[i] - lo) % found,
+		 (sigma[i] - lo) / found, JUMP_P (seq[i]) ? "J" : "");
+      fprintf (dump_file, "\n");
+    }
 
   int igmaxreg = -1, igassigned = 0, igpinned = 0, igpinfail = 0;
   {
@@ -16276,6 +16288,17 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       if (ar[q] >= 0)
 	igassigned++;
   }
+
+  /* What codegen would emit, computed as data (§7quinquies.8).  AFTER the
+     colouring, because KUNROLL is its output and the plan is a function of it:
+     the master schedule runs over nstages + kunroll instances and ITER_SLOT
+     sits at (kunroll - 1) * II, so a wrong kunroll is a wrong plan rather than
+     a slightly-off one.  Called eleven lines too early at first, which put
+     kunroll at its initial 1 and understated every figure -- caught by hand
+     arithmetic on one loop's schedule, not by anything in the dump.  */
+  struct lvx_cms_plan pl;
+  lvx_cms_build_plan (seq, sigma, found, igkunroll > 0 ? igkunroll : 1,
+		      nstages, loop->num_nodes, &pl);
 
   /* LINEAGES over the omega = 0 subgraph, and the interference graph they give
      instead of the one over individual values.  §7octodecies.5.  */
