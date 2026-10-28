@@ -13912,46 +13912,48 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
    Returns false and leaves the CFG untouched if anything cannot be built,
    which the caller treats as "do not pipeline this loop".  */
 
-static bool
-lvx_cms_make_nodes (class loop *loop, basic_block *body, int nstages,
-		    const struct lvx_cms_plan *pl, const char **why)
+/* What one pipelineable loop needs, as RAW BASIC BLOCKS.  A `class loop *' does
+   not survive loop_optimizer_finalize and neither does anything reached through
+   it, so the analysis records blocks and the transformation re-derives its edges
+   from them.  §7quinquies.10.  */
+
+/* What one pipelineable loop needs, gathered in one place so make_nodes takes
+   a described site rather than eight arguments.  Raw basic blocks, with the
+   edges re-derived at use: an edge pointer is CFG state and would survive, but
+   re-finding it cannot go stale against a redirect elsewhere.  */
+struct lvx_cms_site
 {
+  basic_block preheader, header, latch, exit_src, exit_dest;
+  int nstages;
+  struct lvx_cms_plan plan;
+};
+
+static bool
+lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
+		    const char **why)
+{
+  int nstages = site->nstages;
   *why = "plan unusable";
-  if (!pl->ok || nstages < 2)
+  if (!site->plan.ok || nstages < 2)
     return false;
 
-  /* The preheader, which §7quinquies.7 has already established exists and
-     precedes the header in layout order.  */
-  edge pre = NULL;
-  {
-    edge e;
-    edge_iterator ei;
-    FOR_EACH_EDGE (e, ei, loop->header->preds)
-      if (e->src != loop->latch)
-	pre = e;
-  }
-  *why = "no preheader edge";
+  /* Both edges are re-derived from the recorded blocks rather than stored:
+     an edge pointer is CFG state and survives, but re-finding it is cheap and
+     cannot go stale against a redirect somewhere else.  */
+  edge pre = find_edge (site->preheader, site->header);
+  *why = "preheader edge is gone";
   if (!pre)
     return false;
 
-  /* The single exit, which the drain falls into.  A multi-exit loop needs one
-     epilogue per exit (§7quinquies.5) and is left alone for now -- building
-     the simple shape first is the whole point of this phase.  */
-  edge exit_e = NULL;
-  int nexits = 0;
-  for (unsigned i = 0; i < loop->num_nodes; i++)
-    {
-      edge e;
-      edge_iterator ei;
-      FOR_EACH_EDGE (e, ei, body[i]->succs)
-	if (!flow_bb_inside_loop_p (loop, e->dest))
-	  {
-	    exit_e = e;
-	    nexits++;
-	  }
-    }
-  *why = "not a single-exit loop";
-  if (nexits != 1 || !exit_e)
+  /* THE DRAIN GOES ON THE LATCH'S EXIT EDGE, not on "the loop's single exit".
+     The first version tested that the loop had exactly one edge leaving it,
+     which rejected all four trmm loops and would reject every multi-block one:
+     a chain body has one exit per block, which IS the superblock shape CMS
+     exists for (§7.5a).  What the drain actually needs is the edge the kernel
+     falls out of, which is the latch's.  */
+  edge exit_e = find_edge (site->exit_src, site->exit_dest);
+  *why = "latch exit edge is gone";
+  if (!exit_e)
     return false;
 
   /* PROLOGUE: nstages - 1 empty blocks between the preheader and the header,
@@ -13977,7 +13979,7 @@ lvx_cms_make_nodes (class loop *loop, basic_block *body, int nstages,
 	 ordering schedule_ebbs walks (§7quaterdecies.1), so it replaces
 	 move_block_after as well.  */
       basic_block bb = create_basic_block (NULL, NULL, prev);
-      bb->count = loop->header->count;
+      bb->count = site->header->count;
       bb->flags |= BB_REACHABLE;
       /* REGISTER IT WITH THE LOOP TREE.  loop_optimizer_init (LOOPS_NORMAL) is
 	 live for codegen, so every block must belong to a loop; one that does
@@ -13992,7 +13994,7 @@ lvx_cms_make_nodes (class loop *loop, basic_block *body, int nstages,
 	 exit edge below, so both use the form that fixes the branch too.  */
       if (!redirect_edge_and_branch (into, bb))
 	return false;
-      edge out = make_single_succ_edge (bb, loop->header, EDGE_FALLTHRU);
+      edge out = make_single_succ_edge (bb, site->header, EDGE_FALLTHRU);
       out->probability = profile_probability::always ();
       prev = bb;
       into = out;
@@ -14003,10 +14005,9 @@ lvx_cms_make_nodes (class loop *loop, basic_block *body, int nstages,
      the latch, which §7quinquies.7 has established is where the post block
      sits.  */
   {
-    basic_block drain = create_basic_block (NULL, NULL, loop->latch);
+    basic_block drain = create_basic_block (NULL, NULL, site->latch);
     drain->count = exit_e->count ();
     drain->flags |= BB_REACHABLE;
-    add_bb_to_loop (drain, loop_outer (loop));
     basic_block dest = exit_e->dest;
     /* The exit edge leaves a CONDITIONAL BRANCH, so the branch's label has to
        move with it -- this is the edge redirect_edge_succ would have left
@@ -16443,12 +16444,59 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      is allowed to touch it.  */
   if (lvx_cms_codegen && pl.ok && nstages >= 2)
     {
-      const char *nwhy = NULL;
-      bool built = lvx_cms_make_nodes (loop, body, nstages, &pl, &nwhy);
-      if (dump_file)
-	fprintf (dump_file, ";; lvx cms: fn=%s loop %d make_nodes %s\n",
+      /* RECORD, do not transform: the loop structures are finalized before
+	 anything is built (§7quinquies.10), so what is captured is raw basic
+	 blocks -- a `class loop *' does not survive that, and neither does
+	 anything reached through it.  */
+      struct lvx_cms_site site;
+      memset (&site, 0, sizeof (site));
+      site.header = loop->header;
+      site.latch = loop->latch;
+      site.nstages = nstages;
+      site.plan = pl;
+      edge e;
+      edge_iterator ei;
+      FOR_EACH_EDGE (e, ei, loop->header->preds)
+	if (e->src != loop->latch)
+	  site.preheader = e->src;
+      /* The drain goes on the LATCH's exit -- the edge the kernel falls out
+	 of.  See lvx_cms_make_nodes on why "the loop's single exit" was the
+	 wrong criterion.  */
+      FOR_EACH_EDGE (e, ei, loop->latch->succs)
+	if (!flow_bb_inside_loop_p (loop, e->dest))
+	  {
+	    site.exit_src = loop->latch;
+	    site.exit_dest = e->dest;
+	  }
+      if (site.preheader && site.exit_dest)
+	{
+	  /* BUILD HERE, with the loop structures still live.  The previous
+	     attempt deferred this to after loop_optimizer_finalize, on the
+	     reading that the ICE came from transforming inside the walk.  That
+	     was wrong, and instrumenting both phases is what showed it: the
+	     block indices come out IDENTICAL either side of the finalize
+	     (pre=3 hdr=4 latch=4 exit=4->5), find_edge on the preheader edge
+	     still succeeds, and only the latch's exit edge has gone -- so the
+	     CFG is intact and the deferral itself is what lost the edge.
+
+	     The ICE was the FLAG: LOOPS_NORMAL restructures the CFG to give
+	     every loop a preheader and a simple latch, and what that leaves is
+	     what reorg_loops' cleanup cannot remove.  Two things were changed
+	     at once and only one of them was the cause.  AVOID_CFG_MODIFICATIONS
+	     is kept, which costs nothing here because none of this uses a loop
+	     helper -- create_basic_block, make_edge and redirect_edge_and_branch
+	     are raw CFG calls and do not consult the flag.  */
+	  const char *nwhy = NULL;
+	  bool built = lvx_cms_make_nodes (&site, loop, &nwhy);
+	  if (dump_file)
+	    fprintf (dump_file, ";; lvx cms: fn=%s loop %d make_nodes %s\n",
+		     current_function_name (), loop->num,
+		     built ? "built" : nwhy);
+	}
+      else if (dump_file)
+	fprintf (dump_file, ";; lvx cms: fn=%s loop %d codegen declined, %s\n",
 		 current_function_name (), loop->num,
-		 built ? "built" : nwhy);
+		 !site.preheader ? "no preheader" : "latch has no exit edge");
     }
 
   /* LINEAGES over the omega = 0 subgraph, and the interference graph they give
@@ -17132,12 +17180,24 @@ lvx_cms_probe_loops (void)
      test does its own address recognition rather than calling iv_analyze, which
      would have wanted preheaders and a DF rebuild per loop.  */
   calculate_dominance_info (CDI_DOMINATORS);
-  /* AVOID_CFG_MODIFICATIONS is right for a measurement and wrong for codegen:
-     it is what lets the probe skip preheader construction, and it is also what
-     makes every loop helper refuse to restructure anything.  Codegen needs the
-     preheaders (§7quinquies.7 tests for one) and needs the CFG writable.  */
-  loop_optimizer_init (lvx_cms_codegen ? LOOPS_NORMAL
-		       : AVOID_CFG_MODIFICATIONS);
+  /* AVOID_CFG_MODIFICATIONS, FOR CODEGEN TOO, and §7.0 says why -- a point I
+     had written down and then designed against.  The reference "finalizes loop
+     info before any transformation, so every later phase works on the raw CFG,
+     which is why all the edge manipulation is hand-rolled rather than using the
+     loop helpers."
+
+     Switching this to LOOPS_NORMAL instead was measured as an ICE: with all
+     four trmm loops declining and make_nodes building nothing, the compiler
+     still aborted in remove_insn via reorg_loops -> cleanup_cfg, so the flag
+     alone was the cause.  LOOPS_NORMAL restructures the CFG to give every loop
+     a preheader and a simple latch, and what that leaves behind is what the
+     later cleanup cannot remove.
+
+     So the transformation is deferred instead: the walk below only ANALYSES,
+     records what each pipelineable loop needs as raw basic blocks, and
+     lvx_cms_probe_loops finalizes the loop structures before building
+     anything.  §7quinquies.10.  */
+  loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
   /* lvx_cms_build_graph reads df_get_live_in to find what a branch implicitly
      uses on its exit edge, so the liveness problem has to be solved first.  */
   df_analyze ();
@@ -17185,6 +17245,7 @@ lvx_cms_probe_loops (void)
 
   dfa_finish ();
   loop_optimizer_finalize ();
+
 }
 
 /* Decide whether unfolding LOOP can pay, by comparing what one iteration
