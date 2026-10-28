@@ -13948,7 +13948,22 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 	      nodes++;
 	    }
 	  prev_exit = JUMP_P (seq[i]) ? 1 : 0;
-	  if (JUMP_P (seq[i]) && (int) i != loopback && d < iter_date)
+	  /* EVERY JUMP INSTANCE IN THE WALK EXCEPT ITER_SLOT ITSELF IS AN
+	     EARLY EXIT, the loopback's own instances included.  This excluded
+	     the loopback (`i != loopback') and undercounted: §7quinquies.2a
+	     says the chosen instance closes the k-unrolled kernel and "the
+	     other K-1 instances become inverted early exits from it", and the
+	     loopback is not always in the last stage either -- one loop of the
+	     gate's own program schedules it at stage 1 of 3, so its iteration-0
+	     instance lands in the PROLOGUE and is an exit from there.
+
+	     The figure this changes is the one that sizes make_insns, so it
+	     mattered: counting only the non-loopback exits said 117 of 124
+	     PolyBench loops needed no epilogue machinery at all, which was the
+	     wrong scope to build to.  */
+	  if (JUMP_P (seq[i])
+	      && !(d == iter_date && l == iter_iteration
+		   && (int) i == loopback))
 	    pl->exit_epilogues++;
 	}
 
