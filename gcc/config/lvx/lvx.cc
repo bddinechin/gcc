@@ -18481,6 +18481,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int tnclass = 0, tnmerged = 0, tbiggest = 0, torphan = 0;
   /* The registers live on an edge LEAVING the loop.  A class holding one of
      them cannot be renamed, because nothing rewrites the reader.  */
+  int cgliveout_renamed = 0;
   bitmap liveout = BITMAP_ALLOC (NULL);
   {
     edge e;
@@ -18561,79 +18562,38 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     for (unsigned c = 0; c < c_def.length (); c++)
       c_deg.safe_push ((c_last[c] - c_def[c] + found - 1) / found);
 
-    /* A CLASS LIVE OUT OF THE LOOP MUST KEEP ITS REGISTER.  The renaming
-       rewrites references INSIDE the loop; the code after it is untouched and
-       still reads the register RA chose.  If the class was renamed, the
-       loop's result is in a different register and the reader gets a stale
-       value.
+    /* A CLASS LIVE OUT OF THE LOOP CANNOT BE RENAMED, AND THE LOOP IS
+       DECLINED RATHER THAN PINNED.  §7tricies.21.
 
-       Found on a vectorized reduction with two partial accumulators
-       (validation/cms/store.c by way of a six-line reduction): the map read
-       `4@4:r6x2->r2', the kernel accumulated into r2r3, and the code after
-       the loop still did `copyd $r20 = $r6' and `fadddp $r6r7 = ..., $r6r7'.
-       The other accumulator happened to rename to itself, which is why one
-       half of the sum was right and the answer came back 33 instead of 55.
+       The renaming rewrites references inside the loop; the code after it is
+       untouched and still reads the register RA chose.  Found on a vectorized
+       reduction with two partial accumulators: the map read `4@4:r6x2->r2',
+       the kernel accumulated into r2r3, and the code after the loop did
+       `fadddp $r6r7 = ..., $r6r7'.  The other accumulator renamed to itself,
+       which is why half the sum was right and the answer was 33 of 55.
 
-       Spelled as the existing pin -- USE_FIRST with degree 1 -- so every
-       instance writes the original register and the last one leaves the value
-       the following code expects.  It costs the expansion on exactly the
-       values that most often want it, loop-carried accumulators, so the
-       better answer is eventually a copy in the epilogue from the final name
-       back to the original; this is the correct one, which comes first.  */
-    if (liveout)
-      for (unsigned c = 0; c < c_regno.length (); c++)
-	{
-	  if (c_regno[c] < 0)
-	    continue;
-	  for (int w2 = 0; w2 < MAX (c_nr[c], 1); w2++)
-	    if (bitmap_bit_p (liveout, c_regno[c] + w2))
-	      {
-		c_uf[c] = 1;
-		c_deg[c] = 1;
-		break;
-	      }
-	}
+       PINNING IT WAS TRIED AND REGRESSED pipe.c from a correct answer to a
+       wrong one.  A pin is USE_FIRST plus degree 1, and degree 1 is unsound
+       when the life exceeds II -- the condition §7tricies.19 derives -- so
+       pinning a long-lived live-out class trades one wrong answer for
+       another.  The antidep check should then decline the loop, and on pipe.c
+       it did not, which is a second question; until it is answered the
+       conservative reading is the one kept.
 
-    /* A CLASS CARRYING A TIE ACROSS ITERATIONS CANNOT EXPAND.  Within one
-       class the members share a register by the machine's own requirement, so
-       at OMEGA = 0 a def and a use both take name L and the tie survives any
-       number of names.  At OMEGA >= 1 the use takes name L - OMEGA and the
-       def name L: two different registers for operands the instruction
-       requires to be one.  Degree 1 is the only expansion such a class
-       admits, and forcing it here is what keeps the substitution realisable
-       instead of discovering it insn by insn.  */
-    for (unsigned a = 0; a < arcs.length (); a++)
+       So a class that is live out AND would be renamed declines the loop.
+       The fix that buys those loops back is a copy in the epilogue from the
+       final name to the original register, which is real work and is not
+       this.  */
+    for (unsigned c = 0; c < c_regno.length (); c++)
       {
-	if (arcs[a].kind != LVX_ARC_REG_RAW || arcs[a].omega == 0)
-	  continue;
-	/* A SELF-RECURRENCE IS NOT A TIE.  `r0 = r0 + 8' is one arc from an
-	   instruction to itself at omega = 1, so src == dst and the class
-	   test below is trivially true -- which pinned EVERY self-incrementing
-	   induction variable to degree 1 and destroyed exactly the expansion
-	   modulo scheduling depends on.  The emitted kernel then used one
-	   register for the IV in both unrolled copies, so the exit test
-	   compared a pointer already advanced twice, and the ISS faulted on a
-	   wild address.  The registers happen to coincide because RA coalesced
-	   the IV, not because the pattern requires it, and substituting the
-	   USE alone recognises fine.
-
-	   The rule belongs only to a class that a tie actually MERGED, so the
-	   two values must be distinct members of one class.  */
-	if (arcs[a].src == arcs[a].dst)
-	  continue;
-	int pv = -1, cvv = -1;
-	for (unsigned v = 0; v < q_own.length (); v++)
-	  {
-	    if (q_own[v] == (int) arcs[a].src)
-	      pv = (int) v;
-	    if (q_own[v] == (int) arcs[a].dst)
-	      cvv = (int) v;
-	  }
-	if (pv < 0 || cvv < 0 || pv == cvv)
-	  continue;
-	int pc = v2c[pv], cc = v2c[cvv];
-	if (pc >= 0 && pc == cc)
-	  c_deg[pc] = 1;
+	if (c_regno[c] < 0 || c_uf[c])
+	  continue;		/* USE_FIRST already keeps the original */
+	for (int w2 = 0; w2 < MAX (c_nr[c], 1); w2++)
+	  if (liveout && bitmap_bit_p (liveout, c_regno[c] + w2))
+	    {
+	      cgliveout_renamed++;
+	      break;
+	    }
       }
 
     /* AVAIL for the class colouring, from the same reserved set -- which is
@@ -18833,6 +18793,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   lvx_cms_dump (";; lvx cms: fn=%s loop %d antidep %s short=%d pairs=%d"
 		" first=%d/%d/%d\n", current_function_name (), loop->num,
 		adok ? "ok" : "BAD", adshort, adpair, ada, adb, adc);
+  lvx_cms_dump (";; lvx cms: fn=%s loop %d liveoutrenamed=%d\n",
+		current_function_name (), loop->num, cgliveout_renamed);
   lvx_cms_dump (";; lvx cms: fn=%s loop %d classocc %s conf=%d unseen=%d"
 		" ambig=%d unass=%d misal=%d nondiv=%d clash=%d\n",
 		current_function_name (), loop->num, cgocc ? "ok" : "BAD",
@@ -18913,6 +18875,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		iwhy = "a slot's insn refuses the rename substitution";
 	      else if (!site.antidep_ok)
 		iwhy = "an unrenamed register's order is not preserved";
+	      else if (cgliveout_renamed)
+		iwhy = "a class live out of the loop would be renamed";
 	      else if (!site.classocc_ok)
 		iwhy = "the class assignment puts two live names in one"
 		       " register";
