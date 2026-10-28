@@ -13940,6 +13940,83 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
   pl->why = NULL;
 }
 
+/* THE REGISTERS THE PIPELINE MUST NOT TOUCH.
+
+   Everything the body reads or writes, minus the values the renaming will
+   rewrite every reference to.  That subtraction is computable BEFORE the
+   colouring, which is what breaks the apparent circularity -- AVAIL is an
+   input to the colouring, the colouring decides which values get expansion
+   names, and the names decide what is freed.  But a value gets a name exactly
+   when its adjusted life is positive, and that is a function of the schedule
+   alone.  A USE_FIRST value is not freed: its name 0 IS the original register
+   and has to stay (§7ter.4).
+
+   Without this the colouring is handed AVAIL = all ones and hands back
+   registers the loop is already using.  Measured on the gate's own program
+   before it existed: every one of the four loops had anodes landing on held
+   registers, and on one of them the assignment put a value's four expansion
+   copies in r1, r3, r2, r0 while r2 and r3 held two zero-life values.  The
+   schedule was right, the colouring was internally consistent, and the code
+   would have been wrong -- which is the shape of defect §7ter.10's note about
+   the colouring being OPTIMISTIC predicted and did not quantify.  */
+
+static void
+lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
+		       const auto_vec<int> &def_, const auto_vec<int> &last_,
+		       const auto_vec<int> &nregs_, const auto_vec<int> &ec_,
+		       const auto_vec<int> &vregno,
+		       const auto_vec<int> &vusefirst,
+		       HARD_REG_SET *reserved)
+{
+  /* A register is FREEABLE only when EVERY definition of it in the body
+     belongs to a value the renaming rewrites.  Clearing it per value is not
+     enough, and the difference is not hypothetical: RA reuses a register for
+     two values in one loop, and on the gate's own program r3 held both a
+     renamed value and a zero-life one, so freeing it for the first destroyed
+     the second.  Counting definitions per register is what separates them.
+
+     Reads need no separate treatment while AMBIG is zero, which is gated:
+     with each read of a register belonging to exactly one producing value,
+     a read of a freeable register is a consumer of the value that defines it
+     and is rewritten with it.  A register with no in-body definition is a
+     live-in and is never freeable, which the ndefs > 0 test gives.  */
+  int ndefs[FIRST_PSEUDO_REGISTER], nren[FIRST_PSEUDO_REGISTER];
+
+  CLEAR_HARD_REG_SET (*reserved);
+  memset (ndefs, 0, sizeof (ndefs));
+  memset (nren, 0, sizeof (nren));
+
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      df_ref r;
+      FOR_EACH_INSN_DEF (r, seq[i])
+	if (DF_REF_REGNO (r) < FIRST_PSEUDO_REGISTER)
+	  {
+	    SET_HARD_REG_BIT (*reserved, DF_REF_REGNO (r));
+	    ndefs[DF_REF_REGNO (r)]++;
+	  }
+      FOR_EACH_INSN_USE (r, seq[i])
+	if (DF_REF_REGNO (r) < FIRST_PSEUDO_REGISTER)
+	  SET_HARD_REG_BIT (*reserved, DF_REF_REGNO (r));
+    }
+
+  for (unsigned v = 0; v < def_.length (); v++)
+    {
+      int life = last_[v] - def_[v] - (ec_[v] ? 0 : 1);
+      int reg = v < vregno.length () ? vregno[v] : -1;
+      bool uf = v < vusefirst.length () && vusefirst[v];
+      if (life <= 0 || reg < 0 || uf)
+	continue;
+      for (int w = 0; w < MAX (nregs_[v], 1); w++)
+	if (reg + w < FIRST_PSEUDO_REGISTER)
+	  nren[reg + w]++;
+    }
+
+  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    if (ndefs[r] > 0 && ndefs[r] == nren[r])
+      CLEAR_HARD_REG_BIT (*reserved, r);
+}
+
 /* THE RENAME MAP.  §7ter.14, and the first half of make_insns.
 
    Modulo expansion IS the renaming, so this is the part of codegen that
@@ -14025,17 +14102,30 @@ lvx_cms_rename_regno (const auto_vec<int> &anode_value,
    that are live at the same cycle of the unrolled kernel -- by counting
    occupants per (cycle, register) rather than by consulting any edge.
 
-   That check caught a hole the colouring cannot see, and it is reported
-   separately because it is not a colouring bug.  lvx_cms_collect_values keeps
-   a value only when its life is positive, and lvx_cms_colour then skips one
-   whose adjusted life L collapses to zero -- a value defined and consumed in
-   the next cycle.  Such a value has NO anode, keeps the register RA gave it,
-   and occupies cycles that the interference graph never contained.  A renamed
-   anode can therefore be handed that very register.  The fix is not in the
-   colouring but in AVAIL: codegen must pass the allocatable set MINUS every
-   register the body holds that is not itself a renamed anode.  Until it does,
-   UNSEEN counts the collisions, so the figure is measured rather than assumed
-   to be zero.
+   RESERVED is the hole the colouring structurally cannot see, and the first
+   attempt at measuring it was dead code: it skipped a value whose adjusted
+   life collapses to zero using the very test lvx_cms_colour skips it with, so
+   the counter could never fire and reported zero for the wrong reason.
+
+   The hole is larger than that value class anyway.  The interference graph
+   contains exactly the values that get an expansion name; it does not contain
+
+     - a value whose adjusted life is zero, which still CLAIMS its register at
+       the cycle it is written, even though the model gives it no occupancy
+       (the consumer reads in the cycle the producer writes, which a VLIW
+       permits -- so the range is empty but the write is not),
+     - a definition with no reader inside the loop at all, which
+       lvx_cms_collect_values drops before the graph is built,
+     - every register the body merely reads: an address base, a loop-invariant,
+       anything live across the loop.
+
+   None of those is renamed, so each holds its register for the whole kernel,
+   and a renamed anode handed that register destroys it.  The fix is in AVAIL,
+   which codegen must pass as the allocatable set MINUS the registers the body
+   touches and the renaming does not replace.  RESERVED counts that set and
+   CLASH counts the anodes landing in it, which makes the figure a measurement
+   instead of an assumption -- and makes it impossible to run emission while
+   believing the default AVAIL of all-ones is safe, because it is not.
 
    AMBIGUITY is the other thing emission needs decided here.  To rewrite a use
    the emitter must find the operand reading the value, and it finds it by
@@ -14049,30 +14139,46 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 		       const auto_vec<int> &def_, const auto_vec<int> &last_,
 		       const auto_vec<int> &nregs_, const auto_vec<int> &ec_,
 		       const auto_vec<int> &owner, const auto_vec<int> &vregno,
+		       const auto_vec<int> &vusefirst,
 		       const auto_vec<int> &anode_value,
 		       const auto_vec<int> &anode_name,
 		       const auto_vec<int> &anode_regno,
 		       int ii, int lo, int kunroll,
 		       int *conflicts_out, int *unseen_out, int *ambig_out,
 		       int *unassigned_out, int *misaligned_out,
-		       int *nondiv_out)
+		       int *nondiv_out, int *reserved_out, int *clash_out)
 {
   int conflicts = 0, unseen = 0, ambig = 0, unassigned = 0, misaligned = 0;
-  int nondiv = 0;
+  int nondiv = 0, nreserved = 0, clash = 0;
   int per = kunroll * ii;
 
   *conflicts_out = *unseen_out = *ambig_out = 0;
   *unassigned_out = *misaligned_out = *nondiv_out = 0;
+  *reserved_out = *clash_out = 0;
   if (per <= 0 || per > LVX_CMS_IG_MAX_PERIOD)
     return false;
 
-  /* Occupants per (cycle, register), and whether each occupant was a node the
-     colouring could see.  Two counters rather than one, because an unseen
-     collision is a different defect from a colouring failure and conflating
-     them would have hidden the first inside the second.  */
+  /* Occupants per (cycle, register) over the unrolled period.  Rebuilt from
+     the schedule, which is the point: the colouring's own bitmaps cannot
+     check themselves.  */
   auto_vec<int> occ, occ_unseen;
   occ.safe_grow_cleared (per * FIRST_PSEUDO_REGISTER);
+  /* Whether a (cycle, register) already holds something the interference
+     graph did not contain.  Needed to attribute a collision: charging it on
+     the CURRENT occupant alone counts a clash with a model-invisible value as
+     a colouring bug, which is the conflation this check exists to avoid.  */
   occ_unseen.safe_grow_cleared (per * FIRST_PSEUDO_REGISTER);
+
+  /* RESERVED comes from lvx_cms_reserved_regs, the same set the caller used
+     to build AVAIL -- recomputing it here would let the check and the
+     colouring disagree about what is held, which is the one disagreement this
+     function exists to make impossible.  */
+  HARD_REG_SET reserved;
+  lvx_cms_reserved_regs (seq, def_, last_, nregs_, ec_, vregno, vusefirst,
+			 &reserved);
+  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    if (TEST_HARD_REG_BIT (reserved, r))
+      nreserved++;
 
   for (unsigned v = 0; v < def_.length (); v++)
     {
@@ -14080,9 +14186,6 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
       int life = last_[v] - def_[v] - (ec_[v] ? 0 : 1);
       int nr = MAX (nregs_[v], 1);
       int p2 = lvx_cms_value_p2 (anode_value, (int) v);
-
-      if (life <= 0)
-	continue;
 
       /* THE INVARIANT THE WHOLE SCHEME RESTS ON: P2 divides KUNROLL, so that
 	 the kernel's K-th copy is always name K mod P2.  Reported as its own
@@ -14118,8 +14221,11 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 	    }
 	  else
 	    {
-	      /* Unexpanded: the register RA gave it, which the graph never
-		 contained.  */
+	      /* No expansion name: the register RA gave it, which the graph
+		 never contained.  Its occupancy is empty under the model --
+		 the consumer reads in the cycle the producer writes -- but the
+		 WRITE is not empty, so it claims the definition cycle and is
+		 entered with a single-cycle range to make that visible.  */
 	      reg = (int) v < (int) vregno.length () ? vregno[v] : -1;
 	      seen = false;
 	      if (reg < 0)
@@ -14129,22 +14235,33 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 	  if (reg + nr > FIRST_PSEUDO_REGISTER)
 	    continue;
 
-	  for (int t = 0; t < life; t++)
+	  for (int t = 0; t < MAX (life, 1); t++)
 	    {
-	      int c = (d + k * ii + t) % per;
+	      int c = ((seen ? d : def_[v] - lo) + k * ii + t) % per;
 	      for (int w = 0; w < nr; w++)
 		{
 		  int at = c * FIRST_PSEUDO_REGISTER + reg + w;
 		  if (occ[at])
 		    {
-		      /* Two occupants of one register at one cycle.  Charged to
-			 UNSEEN when either side is a value the graph did not
-			 contain, since the colouring was never given the
-			 chance to separate them.  */
-		      if (!seen || occ_unseen[at])
-			unseen++;
+		      /* A colouring bug only when BOTH occupants were nodes
+			 the graph contained; otherwise the colouring was
+			 never given the chance to separate them.  */
+		      if (seen && !occ_unseen[at])
+			{
+			  conflicts++;
+			  /* WHERE, not just how many.  A count cannot be
+			     checked against the schedule it describes, and
+			     reasoning about this one from the count alone
+			     went in a circle once already.  */
+			  if (conflicts <= 6)
+			    lvx_cms_dump (";; lvx cms:   rename conflict"
+					  " cycle=%d reg=r%d v=%u k=%d"
+					  " seen=%d p2=%d life=%d\n",
+					  c, reg + w, v, k, (int) seen, p2,
+					  life);
+			}
 		      else
-			conflicts++;
+			unseen++;
 		    }
 		  occ[at]++;
 		  if (!seen)
@@ -14152,6 +14269,35 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 		}
 	    }
 	}
+    }
+
+  /* CLASH: anodes landing on a register the body holds for something the
+     renaming does not rewrite.  Once per anode, which is once per bad choice
+     -- counting it per unroll copy would multiply one wrong register by
+     KUNROLL and make the figure unreadable against ANODES.  */
+  for (unsigned q = 0; q < anode_regno.length (); q++)
+    {
+      int reg = anode_regno[q];
+      int v = anode_value[q];
+      int nr = v >= 0 && v < (int) nregs_.length () ? MAX (nregs_[v], 1) : 1;
+      if (reg < 0)
+	continue;
+      /* A USE_FIRST value's name 0 IS the original register and the reserved
+	 set keeps it on purpose (§7ter.4), so it is not a clash.  Without this
+	 exclusion CLASH read 1 or 2 on every loop and matched the USE_FIRST
+	 count exactly -- a counter that reports the intended case as a defect
+	 is worse than no counter, because the number it prints is never zero
+	 and so never alarms.  */
+      if (anode_name[q] == 0 && v >= 0 && v < (int) vusefirst.length ()
+	  && vusefirst[v])
+	continue;
+      for (int w = 0; w < nr; w++)
+	if (reg + w < FIRST_PSEUDO_REGISTER
+	    && TEST_HARD_REG_BIT (reserved, reg + w))
+	  {
+	    clash++;
+	    break;
+	  }
     }
 
   /* AMBIGUITY: two values with the same original regno reaching one consumer.
@@ -14188,6 +14334,12 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
   *unassigned_out = unassigned;
   *misaligned_out = misaligned;
   *nondiv_out = nondiv;
+  *reserved_out = nreserved;
+  *clash_out = clash;
+  /* CLASH and RESERVED are reported, not gated on: AVAIL defaults to all-ones
+     in the probe, so a clash there is the expected consequence of asking for
+     an assignment without telling the colouring what is taken.  What gates is
+     the part that would be wrong however AVAIL is set.  */
   return conflicts == 0 && unseen == 0 && ambig == 0 && unassigned == 0
 	 && misaligned == 0 && nondiv == 0;
 }
@@ -16749,10 +16901,27 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
        assignment needs and the feasibility test never did (§7ter.14).  */
     lvx_cms_collect_values (seq, arcs, sigma, found, q_def, q_last, q_deg,
 			    q_nr, q_ec, &q_own, &q_regno, &q_uf);
+    /* AVAIL IS THE ALLOCATABLE SET MINUS WHAT THE LOOP ALREADY HOLDS, not all
+       ones.  Passing all ones is what §7ter.10 calls the OPTIMISTIC
+       colouring, and for a feasibility answer inside the II search that is
+       the intended reading -- a failure means something.  For an ASSIGNMENT
+       it is not a reading, it is wrong: the colouring hands back registers
+       the body is using and the renaming would destroy them.  The II search's
+       own call deliberately still passes all ones, so what the search accepts
+       and what can be assigned are now two different questions, and the gap
+       between them is a figure to measure rather than a thing to assume
+       away.  */
+    HARD_REG_SET resv;
+    lvx_cms_reserved_regs (seq, q_def, q_last, q_nr, q_ec, q_regno, q_uf,
+			   &resv);
+    unsigned HOST_WIDE_INT avail = 0;
+    for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
+      if (!TEST_HARD_REG_BIT (resv, r))
+	avail |= (unsigned HOST_WIDE_INT) 1 << r;
     lvx_cms_colour (q_def, q_last, q_deg, q_nr, q_ec, found, lo,
 		    &ignodes, &igedges, &igmaxsq, &igspill, &igperiod,
 		    &igkunroll, NULL, &av, &an, &ar, &igmaxreg,
-		    ~(unsigned HOST_WIDE_INT) 0, &q_regno, &q_uf,
+		    avail, &q_regno, &q_uf,
 		    &igpinned, &igpinfail);
     for (unsigned q = 0; q < ar.length (); q++)
       if (ar[q] >= 0)
@@ -16765,16 +16934,17 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      registers be renamed at all" is answerable on the whole population and is
      the precondition make_insns has no way around.  */
   {
-    int rc = 0, ru = 0, ra_ = 0, rn = 0, rm = 0, rd = 0;
+    int rc = 0, ru = 0, ra_ = 0, rn = 0, rm = 0, rd = 0, rr = 0, rx = 0;
     bool rok = lvx_cms_verify_rename (seq, arcs, q_def, q_last, q_nr, q_ec,
-				      q_own, q_regno, av, an, ar, found, lo,
-				      igkunroll > 0 ? igkunroll : 1,
-				      &rc, &ru, &ra_, &rn, &rm, &rd);
+				      q_own, q_regno, q_uf, av, an, ar, found,
+				      lo, igkunroll > 0 ? igkunroll : 1,
+				      &rc, &ru, &ra_, &rn, &rm, &rd, &rr, &rx);
     lvx_cms_dump (";; lvx cms: fn=%s loop %d rename %s anodes=%u assigned=%d"
 		  " values=%u conflicts=%d unseen=%d ambig=%d unassigned=%d"
-		  " misaligned=%d nondiv=%d\n", current_function_name (),
-		  loop->num, rok ? "ok" : "BAD", ar.length (), igassigned,
-		  q_def.length (), rc, ru, ra_, rn, rm, rd);
+		  " misaligned=%d nondiv=%d reserved=%d clash=%d\n",
+		  current_function_name (), loop->num, rok ? "ok" : "BAD",
+		  ar.length (), igassigned, q_def.length (), rc, ru, ra_, rn,
+		  rm, rd, rr, rx);
     if (lvx_cms_probe && !q_def.is_empty ())
       {
 	/* The map itself, one entry per value: the defining instruction, the
