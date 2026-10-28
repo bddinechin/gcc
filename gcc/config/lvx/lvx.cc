@@ -15127,7 +15127,8 @@ struct lvx_cms_site
 
 static bool
 lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
-		    const char **why)
+		    const auto_vec<lvx_cms_node> *nodes,
+		    auto_vec<basic_block> *blocks, const char **why)
 {
   int nstages = site->nstages;
   *why = "plan unusable";
@@ -15181,48 +15182,59 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
      does not apply here: it is about filling blocks that do not exist yet,
      where this is inserting a block between two blocks that both have insns.
      Hand-rolling is needed for make_insns, not for make_nodes.  */
+  /* ONE BLOCK PER PLAN NODE, in the plan's own order, all on the preheader
+     edge.  §7tricies.12.
+
+     This used to create `nstages - 1' stage blocks plus one drain on the
+     latch's exit, which was the right skeleton for a pipeline with no early
+     exits and is not the skeleton the plan asks for: the plan's nodes are the
+     prologue stages SPLIT AT EVERY EXIT, the k-unrolled kernel split the same
+     way, and one epilogue per exit plus the main one (§7tricies.5 --
+     plexep = kunroll - 1, so there are always more than one).  Creating them
+     all here, in node order, means make_insns places by index rather than by
+     re-deriving a structure that has to agree with the plan's counts.
+
+     THE WHOLE CHAIN GOES ON THE PREHEADER EDGE, including the epilogues.
+     That looks wrong and is what §7quinquies.4 and .5 describe: the epilogues
+     are laid out after the main one, which "jumps over them", and each is
+     reached only from its own exit.  A block in the fall-through chain that
+     nothing falls into is reached only by its edges, so building them here
+     costs an edge to remove later and buys a single creation path.  While the
+     blocks are empty the chain is a sequence of no-ops and the loop still
+     runs exactly as before -- which is the property that lets the skeleton be
+     verified against a working program before an instruction moves.
+
+     Each split takes the edge still reaching the HEADER, so the chain grows
+     in order and there is nothing to walk.  The previous version re-found the
+     edge by walking the single-successor chain, bounded by the stage count;
+     that was only ever needed because it split the same edge repeatedly
+     instead of the frontier one.  */
+  *why = "no node list";
+  if (!nodes || nodes->is_empty ())
+    return false;
+
   *why = "cannot split the preheader edge";
-  for (int st = 0; st < nstages - 1; st++)
+  basic_block prev = site->preheader;
+  for (unsigned k = 0; k < nodes->length (); k++)
     {
-      edge e = find_edge (site->preheader, site->header);
-      /* After the first split the preheader's successor is the stage just
-	 made, so the edge to split is always the one still reaching the
-	 header -- found fresh each time rather than threaded, since
-	 split_edge invalidates it.  */
-      if (!e)
-	{
-	  /* After the first split the preheader reaches the header through the
-	     stages already made, so walk the single-successor chain to find
-	     the block still edged to it.  Bounded by the stage count: an
-	     unbounded walk would spin if the chain ever closed on itself.  */
-	  basic_block p = site->preheader;
-	  for (int hop = 0; hop < nstages && single_succ_p (p)
-	       && single_succ (p) != site->header; hop++)
-	    p = single_succ (p);
-	  e = find_edge (p, site->header);
-	}
+      edge e = find_edge (prev, site->header);
       if (!e)
 	return false;
       basic_block bb = split_edge (e);
       if (!bb)
 	return false;
       bb->count = site->header->count;
+      if (blocks)
+	blocks->safe_push (bb);
+      prev = bb;
     }
 
-  /* The drain: one empty block on the latch's exit, giving the single exit
-     point §7quaterdecies.2 wants.  */
-  *why = "cannot split the latch exit edge";
-  {
-    /* Read the count BEFORE the split.  `split_edge' redirects the edge and
-       the edge object must not be touched afterwards -- doing so segfaulted
-       the compiler on the gate's own test file while trmm stayed clean, which
-       is why the gate exists: one loop compiling is not evidence.  */
-    profile_count ecount = exit_e->count ();
-    basic_block drain = split_edge (exit_e);
-    if (!drain)
-      return false;
-    drain->count = ecount;
-  }
+  /* EXIT_E is read for its existence only: the drain it used to carry is now
+     the main epilogue node, created above.  Keeping the test is not
+     redundant -- a loop whose latch has no exit edge is one whose kernel
+     cannot fall out, and the emission has nowhere to send the main
+     epilogue.  */
+  (void) exit_e;
 
   *why = NULL;
   return true;
@@ -18098,10 +18110,13 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	     helper -- create_basic_block, make_edge and redirect_edge_and_branch
 	     are raw CFG calls and do not consult the flag.  */
 	  const char *nwhy = NULL;
-	  bool built = lvx_cms_make_nodes (&site, loop, &nwhy);
-	  lvx_cms_dump (";; lvx cms: fn=%s loop %d make_nodes %s\n",
-			current_function_name (), loop->num,
-			built ? "built" : nwhy);
+	  auto_vec<basic_block> cgblocks;
+	  bool built = lvx_cms_make_nodes (&site, loop, &plnodes, &cgblocks,
+					   &nwhy);
+	  lvx_cms_dump (";; lvx cms: fn=%s loop %d make_nodes %s blocks=%u"
+			" nodes=%u\n", current_function_name (), loop->num,
+			built ? "built" : nwhy, cgblocks.length (),
+			plnodes.length ());
 
 	  /* PHASE TWO, as far as it goes: the body in schedule order.  Only
 	     attempted where the blocks were built, since a loop make_nodes
