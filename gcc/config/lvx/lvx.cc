@@ -13885,6 +13885,142 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
   pl->why = NULL;
 }
 
+/* MAKE_NODES: build the pipeline's block structure.  §7quinquies.9.
+
+   The reference's two-phase split, kept for the reason §7quinquies.6 gives --
+   "build the whole CFG, then fill it", because that is what lets the epilogue
+   shape be settled before an insn is committed.  This is phase one.
+
+   EVERY EDGE IS BUILT BY HAND, and that is not clumsiness.  `split_edge'
+   cannot operate on a block that is still empty, which the reference's own
+   comment records ("Cannot use split_edge since block from_edge->src is still
+   empty"), so the blocks are created with `create_empty_bb', wired with
+   `make_edge'/`redirect_edge_succ', and placed in layout order with
+   `move_block_after' -- layout being load-bearing because `schedule_ebbs'
+   walks `bb->next_bb' rather than the edges (§7quaterdecies.1).
+
+   WHAT THIS BUILDS AND WHAT IT DOES NOT.  The prologue stages and the epilogue
+   are created EMPTY and the body is left where it is, so the loop still runs
+   exactly as before: an empty block with a fall-through edge is a no-op, and
+   the function is semantically unchanged.  That is deliberate -- the edge
+   surgery is the part most likely to be wrong, and this way it can be verified
+   against a known-good program (`verify_flow_info' plus the 71-program
+   differential on both cores) before the schedule is allowed to move a single
+   instruction.  Filling the blocks is `make_insns', and until it exists this
+   costs a few empty blocks and changes no behaviour.
+
+   Returns false and leaves the CFG untouched if anything cannot be built,
+   which the caller treats as "do not pipeline this loop".  */
+
+static bool
+lvx_cms_make_nodes (class loop *loop, basic_block *body, int nstages,
+		    const struct lvx_cms_plan *pl, const char **why)
+{
+  *why = "plan unusable";
+  if (!pl->ok || nstages < 2)
+    return false;
+
+  /* The preheader, which §7quinquies.7 has already established exists and
+     precedes the header in layout order.  */
+  edge pre = NULL;
+  {
+    edge e;
+    edge_iterator ei;
+    FOR_EACH_EDGE (e, ei, loop->header->preds)
+      if (e->src != loop->latch)
+	pre = e;
+  }
+  *why = "no preheader edge";
+  if (!pre)
+    return false;
+
+  /* The single exit, which the drain falls into.  A multi-exit loop needs one
+     epilogue per exit (§7quinquies.5) and is left alone for now -- building
+     the simple shape first is the whole point of this phase.  */
+  edge exit_e = NULL;
+  int nexits = 0;
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    {
+      edge e;
+      edge_iterator ei;
+      FOR_EACH_EDGE (e, ei, body[i]->succs)
+	if (!flow_bb_inside_loop_p (loop, e->dest))
+	  {
+	    exit_e = e;
+	    nexits++;
+	  }
+    }
+  *why = "not a single-exit loop";
+  if (nexits != 1 || !exit_e)
+    return false;
+
+  /* PROLOGUE: nstages - 1 empty blocks between the preheader and the header,
+     in layout order, each falling through to the next.  Built by redirecting
+     the preheader edge through them rather than by splitting, since the blocks
+     have no insns to split around.  */
+  basic_block prev = pre->src;
+  edge into = pre;
+  for (int st = 0; st < nstages - 1; st++)
+    {
+      /* `create_basic_block', NOT `create_empty_bb'.  The latter only
+	 allocates the block: it emits no NOTE_INSN_BASIC_BLOCK, so BB_HEAD and
+	 BB_END are unset, and the first pass to walk the block's insns trips
+	 over it.  It cost an ICE here --
+
+	     internal compiler error: in remove_insn, at emit-rtl.cc:4493
+	     ... cleanup_cfg -> try_optimize_cfg -> delete_basic_block
+	         -> rtl_delete_block -> delete_insn_chain
+
+	 -- cleanup_cfg deciding one of these empty blocks was removable and
+	 then finding nothing to remove.  The cfghooks entry point emits the
+	 note AND places the block after AFTER, which is also the layout
+	 ordering schedule_ebbs walks (§7quaterdecies.1), so it replaces
+	 move_block_after as well.  */
+      basic_block bb = create_basic_block (NULL, NULL, prev);
+      bb->count = loop->header->count;
+      bb->flags |= BB_REACHABLE;
+      /* REGISTER IT WITH THE LOOP TREE.  loop_optimizer_init (LOOPS_NORMAL) is
+	 live for codegen, so every block must belong to a loop; one that does
+	 not is what later verification and cleanup trip over.  A prologue stage
+	 sits BEFORE the header, so it belongs to the enclosing loop, not to
+	 this one.  */
+      add_bb_to_loop (bb, loop_outer (loop));
+      /* redirect_edge_and_branch, not redirect_edge_succ: the latter moves the
+	 CFG edge and leaves the JUMP alone, so where the source ends in a
+	 branch the RTL still names the old destination and the two disagree.
+	 It happens to be harmless on a fall-through edge and is wrong on the
+	 exit edge below, so both use the form that fixes the branch too.  */
+      if (!redirect_edge_and_branch (into, bb))
+	return false;
+      edge out = make_single_succ_edge (bb, loop->header, EDGE_FALLTHRU);
+      out->probability = profile_probability::always ();
+      prev = bb;
+      into = out;
+    }
+
+  /* EPILOGUE: one empty block on the exit edge, so the drain has somewhere to
+     go and the single exit point §7quaterdecies.2 wants exists.  Placed after
+     the latch, which §7quinquies.7 has established is where the post block
+     sits.  */
+  {
+    basic_block drain = create_basic_block (NULL, NULL, loop->latch);
+    drain->count = exit_e->count ();
+    drain->flags |= BB_REACHABLE;
+    add_bb_to_loop (drain, loop_outer (loop));
+    basic_block dest = exit_e->dest;
+    /* The exit edge leaves a CONDITIONAL BRANCH, so the branch's label has to
+       move with it -- this is the edge redirect_edge_succ would have left
+       inconsistent.  */
+    if (!redirect_edge_and_branch (exit_e, drain))
+      return false;
+    edge out = make_single_succ_edge (drain, dest, EDGE_FALLTHRU);
+    out->probability = profile_probability::always ();
+  }
+
+  *why = NULL;
+  return true;
+}
+
 /* Repair an uncolourable kernel by SPILL/RESTORE at the current II.
    §7duovicies.
 
@@ -16300,6 +16436,21 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   lvx_cms_build_plan (seq, sigma, found, igkunroll > 0 ? igkunroll : 1,
 		      nstages, loop->num_nodes, &pl);
 
+  /* CODEGEN, phase one: the block structure (§7quinquies.9).  Behind
+     -mcms-codegen and off by default, because it is incomplete -- the blocks
+     are built empty and no instruction moves, so the loop is unchanged and the
+     edge surgery can be verified against a working program before the schedule
+     is allowed to touch it.  */
+  if (lvx_cms_codegen && pl.ok && nstages >= 2)
+    {
+      const char *nwhy = NULL;
+      bool built = lvx_cms_make_nodes (loop, body, nstages, &pl, &nwhy);
+      if (dump_file)
+	fprintf (dump_file, ";; lvx cms: fn=%s loop %d make_nodes %s\n",
+		 current_function_name (), loop->num,
+		 built ? "built" : nwhy);
+    }
+
   /* LINEAGES over the omega = 0 subgraph, and the interference graph they give
      instead of the one over individual values.  §7octodecies.5.  */
   int nlin = 0, nseq = 0, linnodes = 0, linedges = 0, linsq = 0, linspill = 0;
@@ -16968,7 +17119,12 @@ lvx_cms_codegen_feasible_p (class loop *loop, basic_block *body,
 static void
 lvx_cms_probe_loops (void)
 {
-  if (!dump_file)
+  /* The dump is one consumer and codegen is the other, so the walk runs for
+     either.  Every fprintf below is already guarded on DUMP_FILE being
+     non-null by the ordinary rule that dump_file is checked once per
+     caller -- made explicit here because the function used to return early
+     and that was the only guard.  */
+  if (!dump_file && !lvx_cms_codegen)
     return;
 
   /* Self-contained, so the probe does not depend on -msuperblock-loops having
@@ -16976,7 +17132,12 @@ lvx_cms_probe_loops (void)
      test does its own address recognition rather than calling iv_analyze, which
      would have wanted preheaders and a DF rebuild per loop.  */
   calculate_dominance_info (CDI_DOMINATORS);
-  loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
+  /* AVOID_CFG_MODIFICATIONS is right for a measurement and wrong for codegen:
+     it is what lets the probe skip preheader construction, and it is also what
+     makes every loop helper refuse to restructure anything.  Codegen needs the
+     preheaders (§7quinquies.7 tests for one) and needs the CFG writable.  */
+  loop_optimizer_init (lvx_cms_codegen ? LOOPS_NORMAL
+		       : AVOID_CFG_MODIFICATIONS);
   /* lvx_cms_build_graph reads df_get_live_in to find what a branch implicitly
      uses on its exit edge, so the liveness problem has to be solved first.  */
   df_analyze ();

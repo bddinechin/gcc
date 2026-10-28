@@ -176,3 +176,7 @@ Target RejectNegative Joined UInteger Var(lvx_cms_mcrl_release) Init(0) Optimiza
 mcms-mcrl-gate
 Target Var(lvx_cms_mcrl_gate) Init(1) Optimization
 Reach for the minimum cumulative register lifetime dates at the current initiation interval when an unseeded construction fails there, or when its makespan overshoots the dependence graph's own bound.
+
+mcms-codegen
+Target Var(lvx_cms_codegen) Init(0) Optimization
+Emit the convergent modulo schedule as code, rather than only measuring it.  Incomplete: builds the pipeline block structure only.
