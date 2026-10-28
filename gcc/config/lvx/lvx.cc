@@ -14340,7 +14340,7 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
 		       const auto_vec<int> &nregs_, const auto_vec<int> &ec_,
 		       const auto_vec<int> &vregno,
 		       const auto_vec<int> &vusefirst,
-		       HARD_REG_SET *reserved)
+		       bitmap livein, HARD_REG_SET *reserved)
 {
   /* A register is FREEABLE only when EVERY definition of it in the body
      belongs to a value the renaming rewrites.  Clearing it per value is not
@@ -14359,6 +14359,33 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
   CLEAR_HARD_REG_SET (*reserved);
   memset (ndefs, 0, sizeof (ndefs));
   memset (nren, 0, sizeof (nren));
+
+  /* THE BODY'S OWN REFERENCES ARE NOT THE WHOLE HELD SET.  A register can be
+     live ACROSS the loop and never mentioned inside it -- the stack pointer
+     is the obvious one, and the return address, and any callee-saved register
+     the function is using elsewhere.  None appears in SEQ, so all of them
+     looked free, and the colouring handed one out.
+
+     It handed out r12.  On validation/cms/reduce.c the rename map read
+     `0@0:r0x1->r12' -- the STACK POINTER as an expansion register -- and the
+     ISS died on `writeBlob(0xffffffffffffff90)', a store to -112.  The same
+     cause explains the fetch from 0x11 on a larger program (a clobbered
+     return address) and the hangs: four diagnoses of "the control-flow
+     defect" and it was never control flow at all, it was the allocatable set.
+
+     FIXED_REG_SET covers the architectural ones; the loop's LIVE-IN covers
+     everything the function is using around it.  Values the renaming rewrites
+     are subtracted below, so a live-in that IS a renamed value -- the
+     induction variable, the accumulator -- is still freed.  */
+  *reserved = fixed_reg_set;
+  if (livein)
+    {
+      bitmap_iterator bi;
+      unsigned r;
+      EXECUTE_IF_SET_IN_BITMAP (livein, 0, r, bi)
+	if (r < FIRST_PSEUDO_REGISTER)
+	  SET_HARD_REG_BIT (*reserved, r);
+    }
 
   for (unsigned i = 0; i < seq.length (); i++)
     {
@@ -14516,7 +14543,7 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 		       const auto_vec<int> &def_, const auto_vec<int> &last_,
 		       const auto_vec<int> &nregs_, const auto_vec<int> &ec_,
 		       const auto_vec<int> &owner, const auto_vec<int> &vregno,
-		       const auto_vec<int> &vusefirst,
+		       const auto_vec<int> &vusefirst, bitmap livein,
 		       const auto_vec<int> &anode_value,
 		       const auto_vec<int> &anode_name,
 		       const auto_vec<int> &anode_regno,
@@ -14552,7 +14579,7 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
      function exists to make impossible.  */
   HARD_REG_SET reserved;
   lvx_cms_reserved_regs (seq, def_, last_, nregs_, ec_, vregno, vusefirst,
-			 &reserved);
+			 livein, &reserved);
   for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
     if (TEST_HARD_REG_BIT (reserved, r))
       nreserved++;
@@ -15849,6 +15876,26 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       tail[nd] = c;
       nemit++;
     }
+
+  /* THE CFG AS BUILT, printed rather than inferred from the assembly.  Four
+     diagnoses of the remaining fault were made by reading emitted code and
+     all four were wrong; the edges are what the fault is about, so they are
+     what gets dumped.  */
+  if (lvx_cms_probe)
+    for (unsigned k = 0; k < nnode; k++)
+      {
+	edge e;
+	edge_iterator ei;
+	const char *kind = (nodes[k].kind == LVX_CMS_NODE_PROLOGUE ? "pro"
+			    : nodes[k].kind == LVX_CMS_NODE_KERNEL ? "ker"
+			    : nodes[k].main_epilogue ? "mainep" : "exitep");
+	lvx_cms_dump (";; lvx cms:   cfg node%u %s bb%d ->", k, kind,
+		      blocks[k]->index);
+	FOR_EACH_EDGE (e, ei, blocks[k]->succs)
+	  lvx_cms_dump (" bb%d%s", e->dest->index,
+			(e->flags & EDGE_FALLTHRU) ? "f" : "");
+	lvx_cms_dump ("\n");
+      }
 
   *nemit_out = nemit;
   *why = NULL;
@@ -18306,7 +18353,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
        away.  */
     HARD_REG_SET resv;
     lvx_cms_reserved_regs (seq, q_def, q_last, q_nr, q_ec, q_regno, q_uf,
-			   &resv);
+			   df_get_live_in (loop->header), &resv);
     unsigned HOST_WIDE_INT avail = 0;
     for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
       if (!TEST_HARD_REG_BIT (resv, r))
@@ -18329,7 +18376,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   {
     int rc = 0, ru = 0, ra_ = 0, rn = 0, rm = 0, rd = 0, rr = 0, rx = 0;
     bool rok = lvx_cms_verify_rename (seq, arcs, q_def, q_last, q_nr, q_ec,
-				      q_own, q_regno, q_uf, av, an, ar, found,
+				      q_own, q_regno, q_uf,
+				      df_get_live_in (loop->header),
+				      av, an, ar, found,
 				      lo, igkunroll > 0 ? igkunroll : 1,
 				      &rc, &ru, &ra_, &rn, &rm, &rd, &rr, &rx);
     lvx_cms_dump (";; lvx cms: fn=%s loop %d rename %s anodes=%u assigned=%d"
@@ -18526,7 +18575,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
        member's register and the freeable rule counts definitions.  */
     HARD_REG_SET cresv;
     lvx_cms_reserved_regs (seq, q_def, q_last, q_nr, q_ec, q_regno, q_uf,
-			   &cresv);
+			   df_get_live_in (loop->header), &cresv);
     unsigned HOST_WIDE_INT cavail = 0;
     for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
       if (!TEST_HARD_REG_BIT (cresv, r))
@@ -18667,7 +18716,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	if (v2c[v] >= 0 && c_own[v2c[v]] < 0)
 	  c_own[v2c[v]] = q_own[v];
       cgocc = lvx_cms_verify_rename (seq, arcs, c_def, c_last, c_nr, c_ec,
-				     c_own, c_regno, c_uf, cav, can, car,
+				     c_own, c_regno, c_uf,
+				     df_get_live_in (loop->header),
+				     cav, can, car,
 				     found, lo, ckunroll > 0 ? ckunroll : 1,
 				     &cgconf, &cgunseen, &cgambig, &cgunass,
 				     &cgmisal, &cgnondiv, &cgresv2,
