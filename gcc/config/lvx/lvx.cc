@@ -12999,7 +12999,9 @@ lvx_cms_collect_values (const auto_vec<rtx_insn *> &seq,
 			const auto_vec<int> &sigma, int ii,
 			auto_vec<int> &def_, auto_vec<int> &last_,
 			auto_vec<int> &deg, auto_vec<int> &nregs_,
-			auto_vec<int> &ec_, auto_vec<int> *owner = NULL)
+			auto_vec<int> &ec_, auto_vec<int> *owner = NULL,
+			auto_vec<int> *regno_ = NULL,
+			auto_vec<int> *usefirst_ = NULL)
 {
   for (unsigned i = 0; i < seq.length (); i++)
     {
@@ -13025,6 +13027,37 @@ lvx_cms_collect_values (const auto_vec<rtx_insn *> &seq,
       ec_.safe_push (lvx_insn_dest_earlyclobber_p (seq[i]) ? 1 : 0);
       if (owner)
 	owner->safe_push ((int) i);
+
+      /* THE ORIGINAL REGISTER, which the assignment needs twice over
+	 (§7ter.14).  To rewrite an operand codegen must know which register it
+	 is replacing, and §7ter.4's USE_FIRST normalisation needs it to pin a
+	 loop-carried value to the register the preheader wrote.  -1 where the
+	 destination is not a plain REG, which an assignment must then decline
+	 rather than guess at.  */
+      if (regno_)
+	regno_->safe_push (ds && REG_P (SET_DEST (ds))
+			   ? (int) REGNO (SET_DEST (ds)) : -1);
+
+      /* USE_FIRST: the value crosses the back edge AND is read earlier in the
+	 body than it is written, so within one kernel body the use precedes
+	 the def and is holding the PREVIOUS iteration's value (§7ter.4).  The
+	 reference finds this by merging the last range at a regno into the
+	 first; here it falls out of the graph, since a RAW arc at omega >= 1
+	 to a consumer positioned before the producer is exactly that shape.
+	 Such a value's name 0 comes from outside the kernel, so it must keep
+	 the original register rather than be renamed.  */
+      if (usefirst_)
+	{
+	  int uf = 0;
+	  for (unsigned a = 0; a < arcs.length (); a++)
+	    if (arcs[a].src == i && arcs[a].kind == LVX_ARC_REG_RAW
+		&& arcs[a].omega >= 1 && arcs[a].dst < i)
+	      {
+		uf = 1;
+		break;
+	      }
+	  usefirst_->safe_push (uf);
+	}
     }
 }
 
@@ -13065,9 +13098,13 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		auto_vec<int> *anode_name = NULL,
 		auto_vec<int> *anode_regno = NULL,
 		int *maxreg_out = NULL,
-		unsigned HOST_WIDE_INT avail = ~(unsigned HOST_WIDE_INT) 0)
+		unsigned HOST_WIDE_INT avail = ~(unsigned HOST_WIDE_INT) 0,
+		const auto_vec<int> *vregno = NULL,
+		const auto_vec<int> *vusefirst = NULL,
+		int *pinned_out = NULL, int *pinfail_out = NULL)
 {
   int nn = 0, ne = 0, msq = 0, spl = 0, per = 0, kun = 1, maxreg = -1;
+  int pinned = 0, pinfail = 0;
 
     /* KUNROLL is the max per-value power-of-two degree (§7.8), and the
        unrolled period is KUNROLL * II.  */
@@ -13230,9 +13267,89 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	reg.safe_grow_cleared (nn);
 	for (int a = 0; a < nn; a++)
 	  reg[a] = -1;
+
+	/* THE USE_FIRST PIN, applied BEFORE select so the free choices work
+	   around it rather than having to be undone (§7ter.14).  A value whose
+	   use precedes its def across the back edge gets its name 0 from
+	   OUTSIDE the kernel -- the preheader wrote the original register --
+	   so name 0 must be that register and cannot be renamed.  §7ter.4's
+	   normalisation states the rule; §7ter.7 item 3 records the reference
+	   doing it, and calls it correct for the same reason.
+	   The other names of the same value are ordinary and stay free.
+
+	   A pin that collides is COUNTED, not forced: two USE_FIRST values
+	   that interfere and arrived in the same register would be a
+	   contradiction in the input, so reporting it is the honest response
+	   where overwriting one of them silently is not.  */
+	if (vregno && vusefirst)
+	  for (int a = 0; a < nn; a++)
+	    {
+	      int v = nval[a];
+	      if (nname[a] != 0
+		  || v >= (int) vregno->length () || (*vregno)[v] < 0)
+		continue;
+	      /* ONLY USE_FIRST IS PRE-COLOURED, and the measurement that says
+		 so is worth keeping (§7ter.14).
+
+		 A USE_FIRST value's name 0 comes from outside the kernel -- the
+		 preheader wrote that register -- so pinning it is the external
+		 constraint §7ter.4 describes.  223 such pins over 163 PolyBench
+		 loops, 0 of them unsatisfiable.
+
+		 I ALSO PINNED THE UNEXPANDED VALUES, reasoning that a value of
+		 degree 1 has no expansion copy and so nothing to rename: it
+		 should keep the register allocation already gave it.  That is
+		 WRONG, and the measurement said so loudly -- 476 pins and 141
+		 of them unsatisfiable across 45 of 163 loops.
+
+		 The reason is the point of §7ter and worth stating here rather
+		 than only in the document: REGISTER ALLOCATION'S ASSIGNMENT IS
+		 NOT VALID FOR THE UNROLLED KERNEL.  Two values that never
+		 interfere in the original loop can interfere once the kernel is
+		 unrolled KUNROLL times with iterations overlapping, because
+		 their occupancies meet modulo the unrolled period.  RA was
+		 solving a different problem.  So the kernel's allocation is a
+		 fresh one and every value is renameable, including those whose
+		 lifetime fits in one stage -- which is also why §7quater.5's
+		 reconciliation moves exist on the exit side, and why the entry
+		 side needs the same treatment rather than a pin.  */
+	      if (v >= (int) vusefirst->length () || !(*vusefirst)[v])
+		continue;
+	      int r = (*vregno)[v];
+	      int nr = nnreg[a];
+	      if (r < 0 || r + nr > 64 || r % nr != 0)
+		{
+		  pinfail++;			/* unalignable, so unpinnable */
+		  continue;
+		}
+	      bool clash = false;
+	      for (int b2 = 0; b2 < nn && !clash; b2++)
+		{
+		  if (b2 == a || reg[b2] < 0)
+		    continue;
+		  bool meet = false;
+		  for (int w = 0; w < words && !meet; w++)
+		    if (occ[a][w] & occ[b2][w])
+		      meet = true;
+		  if (meet && r < reg[b2] + nnreg[b2] && reg[b2] < r + nr)
+		    clash = true;
+		}
+	      if (clash)
+		{
+		  pinfail++;
+		  continue;
+		}
+	      reg[a] = r;
+	      if (r + nr - 1 > maxreg)
+		maxreg = r + nr - 1;
+	      pinned++;
+	    }
+
 	for (int k = (int) order.length () - 1; k >= 0; k--)
 	  {
 	    int a = order[k];
+	    if (reg[a] >= 0)
+	      continue;			/* pinned above */
 	    int nr = nnreg[a];
 	    unsigned HOST_WIDE_INT busy = 0;
 	    for (int b2 = 0; b2 < nn; b2++)
@@ -13312,6 +13429,10 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
   *per_out = per; *kun_out = kun;
   if (maxreg_out)
     *maxreg_out = maxreg;
+  if (pinned_out)
+    *pinned_out = pinned;
+  if (pinfail_out)
+    *pinfail_out = pinfail;
 }
 
 static int lvx_cms_latency (rtx_insn *);
@@ -16003,12 +16124,19 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      The II search's own call (inside SWO acceptance) deliberately still asks
      only for feasibility: it is deciding whether to accept a schedule, and
      the assignment is codegen's to take once one is accepted.  */
-  int igmaxreg = -1, igassigned = 0;
+  int igmaxreg = -1, igassigned = 0, igpinned = 0, igpinfail = 0;
   {
+    /* Re-collect with the original regno and the USE_FIRST flag, which the
+       assignment needs and the feasibility test never did (§7ter.14).  */
+    auto_vec<int> q_def, q_last, q_deg, q_nr, q_ec, q_own, q_regno, q_uf;
+    lvx_cms_collect_values (seq, arcs, sigma, found, q_def, q_last, q_deg,
+			    q_nr, q_ec, &q_own, &q_regno, &q_uf);
     auto_vec<int> av, an, ar;
-    lvx_cms_colour (sp_def, sp_last, sp_deg, sp_nregs, sp_ec, found, lo,
+    lvx_cms_colour (q_def, q_last, q_deg, q_nr, q_ec, found, lo,
 		    &ignodes, &igedges, &igmaxsq, &igspill, &igperiod,
-		    &igkunroll, NULL, &av, &an, &ar, &igmaxreg);
+		    &igkunroll, NULL, &av, &an, &ar, &igmaxreg,
+		    ~(unsigned HOST_WIDE_INT) 0, &q_regno, &q_uf,
+		    &igpinned, &igpinfail);
     for (unsigned q = 0; q < ar.length (); q++)
       if (ar[q] >= 0)
 	igassigned++;
@@ -16236,7 +16364,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d"
 	   " mveregs=%d mveregsx=%d mvepress=%d"
 	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
-	   " igassigned=%d igmaxreg=%d"
+	   " igassigned=%d igmaxreg=%d igpinned=%d igpinfail=%d"
 	   " lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
 	   " cand=%d splitok=%d spillok=%d staged=%d nsplit=%d before=%d after=%d"
 	   " nspill=%d spafter=%d spwhy=%d winempty=%d winmake=%d"
@@ -16254,7 +16382,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
 	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
 	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
-	   igec, igassigned, igmaxreg, nlin, nseq, linnodes, linedges, linsq, linspill,
+	   igec, igassigned, igmaxreg, igpinned, igpinfail, nlin, nseq, linnodes, linedges, linsq, linspill,
 	   cand, splitok, spillok, staged, nsplit, spl_before, spl_after,
 	   nspill, sp_after, sp_why, winempty, winmake,
 	   mcrl, mcrlbad, mcrldep, mcrlmake, mcrlnn, mcrlne,
