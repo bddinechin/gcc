@@ -14378,6 +14378,26 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
      are subtracted below, so a live-in that IS a renamed value -- the
      induction variable, the accumulator -- is still freed.  */
   *reserved = fixed_reg_set;
+
+  /* A CALLEE-SAVED REGISTER THE FUNCTION HAS NOT ALREADY SAVED IS NOT
+     AVAILABLE.  The prologue's save set was decided by
+     pass_thread_prologue_and_epilogue, which runs BEFORE machine reorg, so
+     nothing will go back and save a register this pass decides to use.
+
+     On store.c's `init' the colouring took r17 through r21 -- callee-saved,
+     in a function with no stack frame at all, saving nothing -- and
+     destroyed the caller's values.  The ISS died on
+     writeBlob(0x41efffffffc20700), which is a double's bit pattern used as
+     an address: main's r18 held a pointer, init returned it holding a float.
+
+     So a register is usable only if the function already has it live --
+     df_regs_ever_live_p, which is what drove the prologue -- or if the ABI
+     lets a call clobber it, which makes it free inside a loop that contains
+     no call (and eligibility rejects a loop that holds one).  */
+  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    if (!df_regs_ever_live_p (r) && !crtl->abi->clobbers_full_reg_p (r))
+      SET_HARD_REG_BIT (*reserved, r);
+
   if (livein)
     {
       bitmap_iterator bi;
@@ -18459,6 +18479,19 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int rnsubst = 0, rnfail = 0;
   bool rnok = false;
   int tnclass = 0, tnmerged = 0, tbiggest = 0, torphan = 0;
+  /* The registers live on an edge LEAVING the loop.  A class holding one of
+     them cannot be renamed, because nothing rewrites the reader.  */
+  bitmap liveout = BITMAP_ALLOC (NULL);
+  {
+    edge e;
+    edge_iterator ei;
+    for (unsigned b = 0; b < loop->num_nodes; b++)
+      FOR_EACH_EDGE (e, ei, body[b]->succs)
+	if (!flow_bb_inside_loop_p (loop, e->dest)
+	    && e->dest != EXIT_BLOCK_PTR_FOR_FN (cfun))
+	  bitmap_ior_into (liveout, df_get_live_in (e->dest));
+  }
+
   int cmaxreg = -1, cassigned = 0, cnodes = 0, cedges = 0, ckunroll = 1;
   int cgpasses = 0, cgpinned = 0;
   HARD_REG_SET cgsurv;
@@ -18527,6 +18560,39 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	insn2cls_pre[q_own[v]] = v2c[v];
     for (unsigned c = 0; c < c_def.length (); c++)
       c_deg.safe_push ((c_last[c] - c_def[c] + found - 1) / found);
+
+    /* A CLASS LIVE OUT OF THE LOOP MUST KEEP ITS REGISTER.  The renaming
+       rewrites references INSIDE the loop; the code after it is untouched and
+       still reads the register RA chose.  If the class was renamed, the
+       loop's result is in a different register and the reader gets a stale
+       value.
+
+       Found on a vectorized reduction with two partial accumulators
+       (validation/cms/store.c by way of a six-line reduction): the map read
+       `4@4:r6x2->r2', the kernel accumulated into r2r3, and the code after
+       the loop still did `copyd $r20 = $r6' and `fadddp $r6r7 = ..., $r6r7'.
+       The other accumulator happened to rename to itself, which is why one
+       half of the sum was right and the answer came back 33 instead of 55.
+
+       Spelled as the existing pin -- USE_FIRST with degree 1 -- so every
+       instance writes the original register and the last one leaves the value
+       the following code expects.  It costs the expansion on exactly the
+       values that most often want it, loop-carried accumulators, so the
+       better answer is eventually a copy in the epilogue from the final name
+       back to the original; this is the correct one, which comes first.  */
+    if (liveout)
+      for (unsigned c = 0; c < c_regno.length (); c++)
+	{
+	  if (c_regno[c] < 0)
+	    continue;
+	  for (int w2 = 0; w2 < MAX (c_nr[c], 1); w2++)
+	    if (bitmap_bit_p (liveout, c_regno[c] + w2))
+	      {
+		c_uf[c] = 1;
+		c_deg[c] = 1;
+		break;
+	      }
+	}
 
     /* A CLASS CARRYING A TIE ACROSS ITERATIONS CANNOT EXPAND.  Within one
        class the members share a register by the machine's own requirement, so
