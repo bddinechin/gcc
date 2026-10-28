@@ -10442,6 +10442,35 @@ lvx_option_override (void)
 	   "code generation that does not exist yet, and is for measurement "
 	   "only; it requires %<-mcms-probe%>");
 
+  /* EXACT DEGREES AND CODE GENERATION ARE INCOMPATIBLE, not merely in
+     tension, and the reason is arithmetic.
+
+     The renaming needs every value's name count to DIVIDE the unroll factor,
+     since name J carries the iterations congruent to J modulo that count
+     (§7tricies.2).  Code generation needs the unroll factor to be a POWER OF
+     TWO, because the preheader computes `count / kunroll' trips with
+     `count % kunroll' iterations peeled, and on LVX that count is what LOOPDO
+     is given -- a shift and a mask there, or a magic-multiply divide and
+     remainder on the path into every pipelined loop that no later pass can
+     clean up (§7quinquies.2b, requirement 2).
+
+     No power of two is divisible by three.  So a value of exact degree 3
+     admits no unroll factor satisfying both, and generalising KUNROLL to the
+     lcm -- which is what made the renaming sound under this flag -- silently
+     traded the property codegen depends on for the one the allocator wanted.
+     Nothing caught it because make_insns does not emit the preheader
+     arithmetic yet.
+
+     -mcms-exact-degree stays what §7ter.10 built it for: a measurement lever
+     that separates the cost of the power-of-two rounding from the cost of the
+     schedule.  It is refused on the emission path rather than silently
+     rounded, so the figures it reports keep meaning what they say.  */
+  if (lvx_cms_exact_degree && lvx_cms_codegen)
+    error ("%<-mcms-exact-degree%> can give a value an expansion degree that "
+	   "is not a power of two, and the unroll factor must be one for the "
+	   "preheader to peel with a shift and a mask; it is for measurement "
+	   "only and is incompatible with %<-mcms-codegen%>");
+
   /* Unfolding an inner loop implies renaming through it.  The dependence
      model the unfold is justified by drops the anti- and output dependences
      register allocation introduced, which is sound only because a renaming
@@ -13134,20 +13163,31 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
   int pinned = 0, pinfail = 0;
 
     /* KUNROLL IS THE LCM OF THE PER-VALUE DEGREES, and the unrolled period is
-       KUNROLL * II.  Not the maximum: what the renaming needs is that every
-       value's name count DIVIDES the unroll factor, since name J carries the
-       iterations congruent to J modulo that count and the kernel's J-th copy
-       must always be the same name.  Under the power-of-two rounding the lcm
-       IS the maximum, which is why §7.8 could state it that way and be right.
+       KUNROLL * II.  Written as the lcm because that is the requirement --
+       every value's name count must DIVIDE the unroll factor, since name J
+       carries the iterations congruent to J modulo that count and the
+       kernel's J-th copy must always be the same name.  §7.8 states it as the
+       MAXIMUM power-of-two degree and is right, because the lcm of a set of
+       powers of two is the largest of them; the lcm form says why.
 
-       Under -mcms-exact-degree it is not, and the difference was unsound
-       rather than merely approximate: a value of exact degree 3 against a
-       power-of-two KUNROLL of 4 rotates 0,1,2,0 through one unrolled kernel
-       and then 1,2,0,1 through the next, so the copy that wrote a register is
-       not the copy that reads it.  lvx_cms_verify_rename found it as five
-       register conflicts on one loop of the gate's own test program; the
-       rounding rule being in two places, and only one of them reading the
-       flag, is what made it possible.  One rule, applied once, below.  */
+       It mattered because the rounding rule lived in two places and only one
+       of them read -mcms-exact-degree, so a value could have exact degree 3
+       while KUNROLL was the power-of-two 4.  The names then rotate 0,1,2,0
+       through one unrolled kernel and 1,2,0,1 through the next -- the copy
+       that wrote a register is not the copy that reads it.
+       lvx_cms_verify_rename found it as five register conflicts on one loop
+       of the gate's own test program.
+
+       THE LCM DOES NOT MAKE EXACT DEGREES USABLE FOR CODEGEN, and treating it
+       as if it did was a mistake worth recording.  Code generation needs
+       KUNROLL to be a power of two -- the preheader peels `count % kunroll'
+       with a mask and takes `count / kunroll' trips with a shift, and on LVX
+       that count feeds LOOPDO (§7quinquies.2b, requirement 2).  No power of
+       two is divisible by three, so under exact degrees the two requirements
+       are incompatible rather than merely in tension, and lvx_option_override
+       refuses the combination.  On the codegen path every degree is therefore
+       a power of two and this lcm equals the maximum; it is here to state the
+       invariant, not to widen it.  */
     for (unsigned v = 0; v < deg.length (); v++)
       {
 	int p2 = 1;
