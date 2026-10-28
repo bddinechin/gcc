@@ -14869,6 +14869,200 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
   return true;
 }
 
+/* MAKE_INSNS, phase one: put the body in schedule order.  §7quinquies.9.
+
+   The emission is split from the CFG construction deliberately, and the
+   KVX experience is the reason: there the renaming is what triggered the
+   ICEs, so the machinery that MOVES and REWRITES instructions is worth
+   exercising on a program that runs before it is also asked to build a
+   pipeline around them.  This phase changes no edge and creates no block.
+   It reorders one block's instructions into the schedule's own order and
+   nothing else, so the loop still computes what it computed -- and if the
+   order the scheduler chose is not a legal order for the body, that shows
+   up as a wrong answer from the gate rather than as a wrong pipeline three
+   steps later.
+
+   WHY THE REORDER IS LEGAL.  The CMS graph carries WAR and WAW arcs as well
+   as RAW (§7ter.1), and sigma satisfies every arc at omega = 0, so sigma
+   order respects every intra-iteration dependence the body has.  What it
+   does not respect is anything the graph does not model, which is why this
+   runs behind -mcms-codegen and under the differential gate.
+
+   TWO CONDITIONS, both refusals rather than repairs:
+
+     - A SINGLE-BLOCK BODY.  A chain body would need the insns distributed
+       across its blocks, and moving one across a block boundary changes
+       which branch guards it.
+     - THE JUMP MUST HAVE THE LARGEST DATE.  It is the block's terminator and
+       has to stay last, so a schedule that places anything after it cannot
+       be realised inside one block.  That is not rare -- one loop of the
+       gate's own program schedules the jump at stage 1 of 3 with work at
+       stage 2 -- and it is precisely the case the pipeline exists to
+       exploit, so declining it here is declining the easy half and leaving
+       the pipeline to the phase that can build blocks.  */
+
+static bool
+lvx_cms_make_insns (const struct lvx_cms_site *site,
+		    const auto_vec<rtx_insn *> &seq,
+		    const auto_vec<int> &sigma, const char **why)
+{
+  basic_block bb = site->header;
+
+  *why = "body is not a single block";
+  if (site->header != site->latch)
+    return false;
+
+  *why = "empty schedule";
+  if (seq.is_empty () || seq.length () != sigma.length ())
+    return false;
+
+  /* The schedule order, stable on the body order so equal dates keep the
+     order the dependence graph already accepted.  */
+  auto_vec<int> order;
+  for (unsigned i = 0; i < seq.length (); i++)
+    order.safe_push ((int) i);
+  for (unsigned a = 1; a < order.length (); a++)
+    for (unsigned b = a; b > 0; b--)
+      {
+	int x = order[b - 1], y = order[b];
+	if (sigma[x] > sigma[y] || (sigma[x] == sigma[y] && x > y))
+	  {
+	    order[b - 1] = y;
+	    order[b] = x;
+	  }
+	else
+	  break;
+      }
+
+  *why = "the schedule places work after the loopback branch";
+  for (unsigned a = 0; a < order.length (); a++)
+    if (JUMP_P (seq[order[a]]) && a + 1 != order.length ())
+      return false;
+
+  /* Every insn in SEQ must still be in this block and nothing else in it may
+     be a real instruction, or the move would reorder something the schedule
+     never saw.  */
+  unsigned found = 0;
+  rtx_insn *insn;
+  FOR_BB_INSNS (bb, insn)
+    {
+      if (!NONDEBUG_INSN_P (insn))
+	continue;
+      unsigned i;
+      for (i = 0; i < seq.length (); i++)
+	if (seq[i] == insn)
+	  break;
+      *why = "the block holds an instruction the schedule does not";
+      if (i == seq.length ())
+	return false;
+      found++;
+    }
+  *why = "the schedule does not cover the block";
+  if (found != seq.length ())
+    return false;
+
+  /* MOVE, one insn at a time, each after the one before it.  `reorder_insns'
+     is the maintained entry: it relinks the chain AND fixes BB_HEAD/BB_END,
+     which hand-relinking does not -- the same lesson as `split_edge' in
+     make_nodes, learned there by reading GCC instead of guessing.  */
+  /* ANCHOR AT THE BLOCK NOTE, NOT AT BB_HEAD.  BB_HEAD is a CODE_LABEL
+     whenever the block is a branch target -- which the loop header always is
+     -- and the NOTE_INSN_BASIC_BLOCK follows it.  Anchoring at BB_HEAD put
+     the first moved insn BETWEEN the label and the note, and the verifier
+     said so twice over: "NOTE_INSN_BASIC_BLOCK is missing for block 5", then
+     "flow control insn inside a basic block" once the block's extent was no
+     longer what BB_HEAD/BB_END described.  Found by the gate on the first
+     run, which is what the gate is for.  */
+  rtx_insn *after = BB_HEAD (bb);
+  if (LABEL_P (after))
+    after = NEXT_INSN (after);
+  *why = "no NOTE_INSN_BASIC_BLOCK to anchor on";
+  if (!after || !NOTE_INSN_BASIC_BLOCK_P (after))
+    return false;
+  /* THE TERMINATOR IS NEVER MOVED.  It is last in ORDER and last in the
+     block, so moving everything else to the front in order leaves it last --
+     and moving it is actively harmful, which took a post-condition check to
+     see rather than a chain dump.
+
+     `reorder_insns' resets BB_END to PREV_INSN (from) when the insn being
+     moved IS BB_END, and restores it only `if (BB_END (bb) == after)'.  The
+     block holds non-real insns -- notes and debug insns -- among the real
+     ones, and each DRIFTS RIGHTWARD as the real insns are moved out from
+     around it.  One ends up immediately before the jump, so the jump's
+     PREV_INSN is no longer the insn that should precede it, the jump gets
+     moved, and BB_END becomes that note: "flow control insn inside a basic
+     block" on 13 of 30 PolyBench files, with BB_END reading as an insn the
+     schedule has never heard of (end=94 against wantend=100).
+
+     That same drift is why the move below is unconditional rather than
+     guarded on `PREV_INSN (me) != after': the guard compares against the
+     chain, and the chain contains insns the schedule does not.  */
+  /* Already in schedule order?  Reported rather than silently "reordered",
+     and tested against the block's REAL insns only, since the chain holds
+     notes and debug insns the schedule does not.  */
+  {
+    unsigned a = 0;
+    rtx_insn *x;
+    bool same = true;
+    FOR_BB_INSNS (bb, x)
+      {
+	if (!NONDEBUG_INSN_P (x))
+	  continue;
+	if (a >= order.length () || x != seq[order[a]])
+	  same = false;
+	a++;
+      }
+    if (same && a == order.length ())
+      {
+	*why = "already in schedule order";
+	return true;
+      }
+  }
+
+  bool moved = false;
+  for (unsigned a = 0; a + 1 < order.length (); a++)
+    {
+      rtx_insn *me = seq[order[a]];
+      reorder_insns (me, me, after);
+      after = me;
+      moved = true;
+    }
+
+  /* POST-CONDITION, checked rather than trusted: the block's real insns are
+     exactly ORDER, and BB_END is the jump.  This separates "the reorder was
+     wrong" from "something later was", which reading the chain dump could
+     not.  */
+  if (moved)
+    {
+      unsigned a = 0;
+      rtx_insn *x;
+      bool bad = false;
+      FOR_BB_INSNS (bb, x)
+	{
+	  if (!NONDEBUG_INSN_P (x))
+	    continue;
+	  if (a >= order.length () || x != seq[order[a]])
+	    bad = true;
+	  a++;
+	}
+      if (a != order.length () || BB_END (bb) != seq[order.last ()])
+	bad = true;
+      if (bad)
+	lvx_cms_dump (";; lvx cms:   make_insns POST-CONDITION FAILED bb=%d"
+		      " saw=%u want=%u end=%u wantend=%u\n", bb->index, a,
+		      order.length (), INSN_UID (BB_END (bb)),
+		      INSN_UID (seq[order.last ()]));
+    }
+
+  /* The operands did not change, but their order did, so the liveness and
+     the def-use chains computed before this are stale for this block.  */
+  if (moved)
+    df_set_bb_dirty (bb);
+
+  *why = moved ? NULL : "already in schedule order";
+  return true;
+}
+
 /* Repair an uncolourable kernel by SPILL/RESTORE at the current II.
    §7duovicies.
 
@@ -17419,10 +17613,21 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	     are raw CFG calls and do not consult the flag.  */
 	  const char *nwhy = NULL;
 	  bool built = lvx_cms_make_nodes (&site, loop, &nwhy);
-	  if (dump_file)
-	    lvx_cms_dump (";; lvx cms: fn=%s loop %d make_nodes %s\n",
-			  current_function_name (), loop->num,
-			  built ? "built" : nwhy);
+	  lvx_cms_dump (";; lvx cms: fn=%s loop %d make_nodes %s\n",
+			current_function_name (), loop->num,
+			built ? "built" : nwhy);
+
+	  /* PHASE TWO, as far as it goes: the body in schedule order.  Only
+	     attempted where the blocks were built, since a loop make_nodes
+	     declined is one the pipeline is not being built around.  */
+	  if (built)
+	    {
+	      const char *iwhy = NULL;
+	      bool emitted = lvx_cms_make_insns (&site, seq, sigma, &iwhy);
+	      lvx_cms_dump (";; lvx cms: fn=%s loop %d make_insns %s\n",
+			    current_function_name (), loop->num,
+			    emitted ? (iwhy ? iwhy : "reordered") : iwhy);
+	    }
 	}
       else if (dump_file)
 	lvx_cms_dump (";; lvx cms: fn=%s loop %d codegen declined, %s\n",
