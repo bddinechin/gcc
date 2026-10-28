@@ -16669,6 +16669,132 @@ lvx_cms_eligible_loop_p (class loop *loop, basic_block *body, unsigned insns,
   return true;
 }
 
+/* CAN THE PIPELINE'S NODE STRUCTURE BE BUILT FOR THIS LOOP?  §7quinquies.7.
+
+   This is deliberately NOT part of lvx_cms_eligible_loop_p, and §7.5a says why:
+   the reference interleaves three concerns in one 29-reason gate --
+   transformation legality, analysis feasibility, and PIPELINE CODEGEN
+   feasibility -- and importing the whole thing cost the unfold 1.6 measured
+   points by refusing loops it could have taken.  CMS needs the third column
+   back, but "as its own predicate, because it will be answering a different
+   question (can this loop's node structure be built?) from the one the unfold
+   asks".  So this answers only that, and the analysis gate answers only its
+   own question.
+
+   What the structure requires, from §7quinquies:
+
+     - EXACTLY TWO SUCCESSORS per block.  `unfold_codegen_make_nodes' assigns
+       `node->body_edge' and `node->exit_edge' from the two, and every later
+       phase consumes that quadruple -- make_insns redirects through it and the
+       per-exit epilogues are built from it.  A block with one successor has no
+       exit_edge, so the node model cannot represent it (§7.5a).  This is
+       CODEGEN's requirement, not the analysis's, which is the whole reason the
+       two predicates differ.
+     - BODY_EDGE IS NOT A LOOP EXIT AND EXIT_EDGE IS.  Without the distinction
+       the quadruple is assignable but wrong, and the kernel's back edge would
+       be some other iteration's exit test.
+     - LAYOUT CONTIGUITY.  `schedule_ebbs' walks `bb->next_bb', not the edge
+       (§7quaterdecies.1), and `make_nodes' reuses source blocks in that order,
+       so the body must fall through in next_bb order to one of its successors.
+     - THE HEADER FOLLOWS THE PREHEADER, and the post block is the latch's
+       next_bb.  Both are layout tails the reference checks last.
+
+   Reports WHICH condition failed, because §7septies.7 records that a
+   diagnostic naming only a symptom already cost one misdiagnosis here.  */
+
+static bool
+lvx_cms_codegen_feasible_p (class loop *loop, basic_block *body,
+			    const char **why)
+{
+  *why = "no preheader";
+  if (loop->header->preds == NULL || EDGE_COUNT (loop->header->preds) != 2)
+    return false;
+  {
+    edge pre = NULL;
+    edge e;
+    edge_iterator ei;
+    FOR_EACH_EDGE (e, ei, loop->header->preds)
+      if (e->src != loop->latch)
+	pre = e;
+    if (!pre)
+      return false;
+    *why = "header does not follow the preheader";
+    if (pre->src->next_bb != loop->header)
+      return false;
+  }
+
+  *why = "no post block after the latch";
+  if (loop->latch->next_bb == NULL
+      || loop->latch->next_bb == EXIT_BLOCK_PTR_FOR_FN (cfun))
+    return false;
+
+  int backedges = 0;
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    {
+      basic_block bb = body[i];
+      edge e, body_e = NULL, exit_e = NULL;
+      edge_iterator ei;
+
+      *why = "block does not have exactly two successors";
+      if (EDGE_COUNT (bb->succs) != 2)
+	return false;
+
+      FOR_EACH_EDGE (e, ei, bb->succs)
+	{
+	  if (flow_bb_inside_loop_p (loop, e->dest))
+	    {
+	      if (body_e)
+		{
+		  /* Both successors inside the loop: a diamond, not a chain.
+		     The analysis gate rejects this too, but for its own
+		     reason -- the profitability walk needs a path.  */
+		  *why = "both successors are in the loop";
+		  return false;
+		}
+	      body_e = e;
+	    }
+	  else
+	    exit_e = e;
+	}
+
+      *why = "no in-loop successor";
+      if (!body_e)
+	return false;
+      *why = "no exit successor";
+      if (!exit_e)
+	return false;
+      *why = "the in-loop edge is marked a loop exit";
+      if (body_e->flags & EDGE_LOOP_EXIT)
+	return false;
+
+      /* A BACK EDGE IS ONE WHOSE DESTINATION IS THE HEADER, derived rather
+	 than read off EDGE_DFS_BACK.  That flag is set by
+	 `mark_dfs_back_edges', which NOTHING in the LVX path calls -- this was
+	 its only reader in the file -- so what it holds at machine_reorg is
+	 whatever an earlier pass happened to leave.  Reading it reported 6 of
+	 163 PolyBench loops as having "not exactly one back edge" when the
+	 eligibility gate has already established a single latch, which is what
+	 said the flag was stale rather than the loops unusual.  */
+      if (body_e->dest == loop->header)
+	backedges++;
+
+      *why = "neither successor falls through";
+      if (!(body_e->flags & EDGE_FALLTHRU)
+	  && !(exit_e->flags & EDGE_FALLTHRU))
+	return false;
+      *why = "the fall-through successor is not the next block";
+      if (bb->next_bb != body_e->dest && bb->next_bb != exit_e->dest)
+	return false;
+    }
+
+  *why = "not exactly one back edge";
+  if (backedges != 1)
+    return false;
+
+  *why = NULL;
+  return true;
+}
+
 /* CMS's own walk over the innermost loops, independent of the unfold.
 
    It used to ride lvx_loop_profitable_to_unfold_p, which meant the probe only
@@ -16719,7 +16845,18 @@ lvx_cms_probe_loops (void)
 	fprintf (dump_file, ";; lvx cms: fn=%s loop %d declined, %s\n",
 		 current_function_name (), loop->num, why);
       else
-	lvx_cms_probe_loop (loop, body);
+	{
+	  /* Can code be emitted for this loop, as against analysed?  Reported
+	     rather than gated: the two predicates answer different questions
+	     (§7quinquies.7), and a loop CMS can schedule but not yet emit for
+	     is a codegen limit to size, not an analysis failure to hide.  */
+	  const char *cwhy = NULL;
+	  bool cfeas = lvx_cms_codegen_feasible_p (loop, body, &cwhy);
+	  fprintf (dump_file, ";; lvx cms: fn=%s loop %d codegen %s\n",
+		   current_function_name (), loop->num,
+		   cfeas ? "feasible" : cwhy);
+	  lvx_cms_probe_loop (loop, body);
+	}
 
       free (body);
     }
