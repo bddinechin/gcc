@@ -13891,13 +13891,16 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
    "build the whole CFG, then fill it", because that is what lets the epilogue
    shape be settled before an insn is committed.  This is phase one.
 
-   EVERY EDGE IS BUILT BY HAND, and that is not clumsiness.  `split_edge'
-   cannot operate on a block that is still empty, which the reference's own
-   comment records ("Cannot use split_edge since block from_edge->src is still
-   empty"), so the blocks are created with `create_empty_bb', wired with
-   `make_edge'/`redirect_edge_succ', and placed in layout order with
-   `move_block_after' -- layout being load-bearing because `schedule_ebbs'
-   walks `bb->next_bb' rather than the edges (§7quaterdecies.1).
+   PHASE ONE USES `split_edge', NOT HAND-ROLLED SURGERY, and the reference's
+   reason for avoiding it does not apply here.  §7quinquies.1 quotes that
+   reason -- "Cannot use split_edge since block from_edge->src is still empty"
+   -- and it is about filling blocks that do not exist yet; this inserts an
+   empty block between two blocks that both already have insns, which is
+   exactly what split_edge is for.  It gets the NOTE_INSN_BASIC_BLOCK in the
+   right place, the layout right (load-bearing, since `schedule_ebbs' walks
+   `bb->next_bb' rather than the edges, §7quaterdecies.1), the loop
+   registration right, and the redirect right.  Hand-rolled edge work is what
+   make_insns needs, not make_nodes.
 
    WHAT THIS BUILDS AND WHAT IT DOES NOT.  The prologue stages and the epilogue
    are created EMPTY and the body is left where it is, so the loop still runs
@@ -13928,32 +13931,15 @@ struct lvx_cms_site
   struct lvx_cms_plan plan;
 };
 
-/* Redirect E to TO, whichever kind of edge it is.  Two cycles went on getting
-   this wrong in both directions, so it is one function rather than a judgement
-   at each site:
-
-     - `redirect_edge_and_branch' retargets the JUMP, and REFUSES a fall-through
-       edge outright -- there is no branch to retarget, so it returns false.
-     - `redirect_edge_succ' moves the edge and leaves the jump alone, which is
-       right for a fall-through and silently wrong for a branch.
-
-   And which is which is not what intuition says.  In a bottom-tested loop the
-   latch branches BACK to the header and FALLS THROUGH to the exit, so the back
-   edge is the branch and the loop's exit edge is the fall-through -- the
-   opposite of the way I first wrote it.  A fall-through redirect is only
-   correct when TO is laid out immediately after E's source, which every caller
-   here guarantees through create_basic_block (NULL, NULL, src).  */
-
-static bool
-lvx_cms_redirect_edge (edge e, basic_block to)
-{
-  if (e->flags & EDGE_FALLTHRU)
-    {
-      redirect_edge_succ (e, to);
-      return true;
-    }
-  return redirect_edge_and_branch (e, to) != NULL;
-}
+/* A finding kept although the code that needed it is gone, because make_insns
+   will face it again: `redirect_edge_and_branch' retargets the JUMP and
+   REFUSES a fall-through edge outright, while `redirect_edge_succ' moves the
+   edge and leaves the jump alone -- right for a fall-through, silently wrong
+   for a branch.  And which edge is which is not what intuition says: in a
+   bottom-tested loop the latch branches BACK to the header and FALLS THROUGH
+   to the exit, so the back edge is the branch and the loop's exit is the
+   fall-through.  Two cycles went on getting that backwards in both
+   directions before split_edge made the question moot here.  */
 
 static bool
 lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
@@ -13983,81 +13969,65 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
   if (!exit_e)
     return false;
 
-  /* PROLOGUE: nstages - 1 empty blocks between the preheader and the header,
-     in layout order, each falling through to the next.  Built by redirecting
-     the preheader edge through them rather than by splitting, since the blocks
-     have no insns to split around.  */
-  basic_block prev = pre->src;
-  edge into = pre;
+  /* PROLOGUE and DRAIN, both by `split_edge'.
+
+     THE HAND-ROLLED VERSION WAS WRONG, and reading GCC rather than guessing is
+     what found it.  `create_basic_block (NULL, NULL, after)' does not put the
+     new block's insn where AFTER is: `create_basic_block_structure' does
+
+         head = end = bb_note
+           = emit_note_after (NOTE_INSN_BASIC_BLOCK, get_last_insn ());
+
+     so with a null head the note is appended after the last insn of the WHOLE
+     FUNCTION, and AFTER only positions the block in the block list.  The block
+     order and the insn chain then disagree, and the ICE was a later pass
+     deleting such a block: remove_insn's gcc_assert (seq) fires because the
+     note has no NEXT_INSN and is not the recorded last of any sequence.
+     GCC's own code never passes a null head for this -- see
+     force_nonfallthru_and_redirect, which hands it BB_HEAD (e->dest).
+
+     `split_edge' is the maintained way to put an empty block on an existing
+     edge, and it does every part correctly: the note in the right place, the
+     layout, the loop registration, and the redirect -- which also retires the
+     fall-through-versus-branch question that cost two cycles, since split_edge
+     picks the right mechanism itself.
+
+     §7quinquies.1 quotes the reference's reason for NOT using it -- "cannot use
+     split_edge since block from_edge->src is still empty" -- and that reason
+     does not apply here: it is about filling blocks that do not exist yet,
+     where this is inserting a block between two blocks that both have insns.
+     Hand-rolling is needed for make_insns, not for make_nodes.  */
+  *why = "cannot split the preheader edge";
   for (int st = 0; st < nstages - 1; st++)
     {
-      /* `create_basic_block', NOT `create_empty_bb'.  The latter only
-	 allocates the block: it emits no NOTE_INSN_BASIC_BLOCK, so BB_HEAD and
-	 BB_END are unset, and the first pass to walk the block's insns trips
-	 over it.  It cost an ICE here --
-
-	     internal compiler error: in remove_insn, at emit-rtl.cc:4493
-	     ... cleanup_cfg -> try_optimize_cfg -> delete_basic_block
-	         -> rtl_delete_block -> delete_insn_chain
-
-	 -- cleanup_cfg deciding one of these empty blocks was removable and
-	 then finding nothing to remove.  The cfghooks entry point emits the
-	 note AND places the block after AFTER, which is also the layout
-	 ordering schedule_ebbs walks (§7quaterdecies.1), so it replaces
-	 move_block_after as well.  */
-      basic_block bb = create_basic_block (NULL, NULL, prev);
-      bb->count = site->header->count;
-      bb->flags |= BB_REACHABLE;
-      /* REGISTER IT WITH THE LOOP TREE.  loop_optimizer_init (LOOPS_NORMAL) is
-	 live for codegen, so every block must belong to a loop; one that does
-	 not is what later verification and cleanup trip over.  A prologue stage
-	 sits BEFORE the header, so it belongs to the enclosing loop, not to
-	 this one.  */
-      add_bb_to_loop (bb, loop_outer (loop));
-      /* redirect_edge_succ HERE, and redirect_edge_and_branch on the exit
-	 edge below -- the two edges need different functions, and an earlier
-	 version used the second for both, which is where two cycles went.
-	 `redirect_edge_and_branch' REFUSES a fall-through edge: there is no
-	 branch to retarget, so it returns false rather than moving the edge.
-	 The preheader edge is exactly that, so the redirection silently failed
-	 and make_nodes bailed.
-
-	 It bailed reporting "latch exit edge is gone", which was a SECOND bug
-	 on top of the first: *why was set before the exit-edge test and never
-	 reset, so the prologue's failure printed under the previous label and
-	 sent me reading find_edge for two cycles.  §7.5a praises the
-	 reference's 29 distinct rejection strings for exactly this reason, and
-	 the rule it implies is that every `return false' sets its own.
-
-	 A fall-through needs no branch fixed: correctness comes from the new
-	 block being laid out immediately after the source, which
-	 create_basic_block (NULL, NULL, prev) guarantees.  */
-      *why = "cannot redirect the preheader edge";
-      if (!lvx_cms_redirect_edge (into, bb))
+      edge e = find_edge (site->preheader, site->header);
+      /* After the first split the preheader's successor is the stage just
+	 made, so the edge to split is always the one still reaching the
+	 header -- found fresh each time rather than threaded, since
+	 split_edge invalidates it.  */
+      if (!e)
+	{
+	  basic_block p = site->preheader;
+	  while (single_succ_p (p) && single_succ (p) != site->header)
+	    p = single_succ (p);
+	  e = find_edge (p, site->header);
+	}
+      if (!e)
 	return false;
-      edge out = make_single_succ_edge (bb, site->header, EDGE_FALLTHRU);
-      out->probability = profile_probability::always ();
-      prev = bb;
-      into = out;
+      basic_block bb = split_edge (e);
+      if (!bb)
+	return false;
+      bb->count = site->header->count;
     }
 
-  /* EPILOGUE: one empty block on the exit edge, so the drain has somewhere to
-     go and the single exit point §7quaterdecies.2 wants exists.  Placed after
-     the latch, which §7quinquies.7 has established is where the post block
-     sits.  */
+  /* The drain: one empty block on the latch's exit, giving the single exit
+     point §7quaterdecies.2 wants.  */
+  *why = "cannot split the latch exit edge";
   {
-    basic_block drain = create_basic_block (NULL, NULL, site->latch);
-    drain->count = exit_e->count ();
-    drain->flags |= BB_REACHABLE;
-    basic_block dest = exit_e->dest;
-    /* The exit edge leaves a CONDITIONAL BRANCH, so its label has to move with
-       it -- this is the edge redirect_edge_succ WOULD leave inconsistent, and
-       the one redirect_edge_and_branch is for.  */
-    *why = "cannot redirect the latch exit edge";
-    if (!lvx_cms_redirect_edge (exit_e, drain))
+    basic_block drain = split_edge (exit_e);
+    if (!drain)
       return false;
-    edge out = make_single_succ_edge (drain, dest, EDGE_FALLTHRU);
-    out->probability = profile_probability::always ();
+    drain->count = exit_e->count ();
   }
 
   *why = NULL;
