@@ -13203,8 +13203,28 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	    else
 	      while (p2 < deg[v])
 		p2 <<= 1;
-	    if (l <= 0)
-	      continue;
+	    /* A VALUE WHOSE ADJUSTED LIFE COLLAPSES TO ZERO IS STILL A VALUE.
+	       This used to `continue', dropping it from the graph: it is read
+	       in the cycle after it is written, so the range the model computes
+	       is empty and it looked like it needed no register.  It does -- it
+	       needs its register through the cycle its reader occupies, and in a
+	       pipelined kernel two such values coexist where in the original
+	       loop they were sequential.
+
+	       lvx_cms_verify_rename found it on gemm, where RA had reused r0 for
+	       six values of one body.  Two of them were zero-life in r0, so
+	       neither was renamed, and instance i of one landed in the same
+	       kernel cycle as instance i-1 of the other: two writes to r0 in one
+	       bundle, each with its own reader.  Clamping the range to one cycle
+	       puts them in the graph, where they interfere and are given
+	       separate registers.  The degree stays 1, so this adds a node and a
+	       register but no expansion copy.
+
+	       The MaxLive computation's own `l <= 0' test is a different
+	       quantity -- the raw life, not the adjusted one -- and is left
+	       alone: what MaxLive counts is a separate question from what the
+	       renaming needs.  */
+	    l = MAX (l, 1);
 
 	    /* One node per NAME of this value.  Name J carries the instances
 	       of iterations congruent to J modulo P2, which is every P2-th
@@ -14235,9 +14255,12 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 	  if (reg + nr > FIRST_PSEUDO_REGISTER)
 	    continue;
 
+	  /* MAX (life, 1) and the start at D, exactly as lvx_cms_colour clamps
+	     them: a check that models the schedule differently from the
+	     allocator tests a different program.  */
 	  for (int t = 0; t < MAX (life, 1); t++)
 	    {
-	      int c = ((seen ? d : def_[v] - lo) + k * ii + t) % per;
+	      int c = (d + k * ii + t) % per;
 	      for (int w = 0; w < nr; w++)
 		{
 		  int at = c * FIRST_PSEUDO_REGISTER + reg + w;
@@ -14261,7 +14284,18 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 					  life);
 			}
 		      else
-			unseen++;
+			{
+			  unseen++;
+			  if (unseen <= 4)
+			    lvx_cms_dump (";; lvx cms:   rename unseen"
+					  " cycle=%d reg=r%d v=%u k=%d"
+					  " seen=%d p2=%d life=%d orig=r%d"
+					  " resv=%d\n", c, reg + w, v, k,
+					  (int) seen, p2, life,
+					  v < vregno.length () ? vregno[v] : -1,
+					  (int) TEST_HARD_REG_BIT (reserved,
+								   reg + w));
+			}
 		    }
 		  occ[at]++;
 		  if (!seen)
