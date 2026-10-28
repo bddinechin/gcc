@@ -14590,6 +14590,156 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 	 && misaligned == 0 && nondiv == 0;
 }
 
+/* CAN EVERY SLOT BE RENAMED AND STILL RECOGNISE?  §7tricies.10.
+
+   The rename map says which register each instance's operands become
+   (§7tricies.1) and lvx_cms_verify_rename says the assignment is consistent.
+   Neither asks whether the INSTRUCTION survives the substitution.  Post-RA it
+   need not: an operand's constraint may admit only a subset of the register
+   file, a tuple's alternative may require an aligned base, and a pattern may
+   match on the register class rather than on the mode.  A substitution that
+   fails those does not produce wrong code -- it produces an unrecognisable
+   insn, which is an ICE in the next pass that looks at it, and arrives with
+   no trace of the choice that caused it.
+
+   Asked here as a DRY RUN, before a block exists to emit into, because the
+   answer is a property of the schedule and the assignment alone.  The
+   validate_change / verify_changes / cancel_changes trio is GCC's own way to
+   ask "would this change be legal" -- verify_changes runs insn_invalid_p over
+   every touched insn and cancel_changes puts the insn back exactly as it was,
+   so nothing is modified and no copy has to be built to ask.
+
+   DEFS AND USES ARE REWRITTEN SEPARATELY, from SET_DEST and from the rest of
+   the pattern, because one register can be both: an induction variable
+   updated in place has its own regno on both sides, and its def takes name
+   L while its use takes name L - OMEGA.  Walking the whole pattern with one
+   substitution would pick whichever it met first.  */
+
+static bool
+lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
+		       const auto_vec<lvx_cms_arc> &arcs,
+		       const auto_vec<int> &owner,
+		       const auto_vec<int> &vregno,
+		       const auto_vec<int> &anode_value,
+		       const auto_vec<int> &anode_name,
+		       const auto_vec<int> &anode_regno,
+		       unsigned self, int *nsubst)
+{
+  rtx pat = PATTERN (insn);
+  rtx set = single_set (insn);
+  int base = num_validated_changes ();
+  bool ok = true;
+
+  /* THE DEFINITION.  The value this instruction owns, if it owns one, moves to
+     its iteration's name.  */
+  if (set && REG_P (SET_DEST (set)))
+    for (unsigned v = 0; v < owner.length (); v++)
+      {
+	if (owner[v] != (int) self)
+	  continue;
+	int old = vregno[v];
+	int neu = lvx_cms_rename_regno (anode_value, anode_name, anode_regno,
+					vregno, (int) v, iter);
+	if (old < 0 || neu < 0 || neu == old)
+	  continue;
+	if ((int) REGNO (SET_DEST (set)) != old)
+	  continue;
+	validate_change (insn, &SET_DEST (set),
+			 gen_rtx_REG (GET_MODE (SET_DEST (set)), neu), 1);
+	(*nsubst)++;
+      }
+
+  /* THE USES.  One pass per incoming RAW arc, since each names a different
+     value and a different distance.  */
+  for (unsigned a = 0; a < arcs.length (); a++)
+    {
+      if (arcs[a].kind != LVX_ARC_REG_RAW || arcs[a].dst != self)
+	continue;
+      int pv = -1;
+      for (unsigned v = 0; v < owner.length (); v++)
+	if (owner[v] == (int) arcs[a].src)
+	  pv = (int) v;
+      if (pv < 0)
+	continue;
+      int old = vregno[pv];
+      int pl = iter - (int) arcs[a].omega;
+      if (old < 0)
+	continue;
+      /* An instance reaching back past iteration zero reads what the
+	 preheader left, which is the original register (§7ter.4).  */
+      if (pl < 0)
+	continue;
+      int neu = lvx_cms_rename_regno (anode_value, anode_name, anode_regno,
+				      vregno, pv, pl);
+      if (neu < 0 || neu == old)
+	continue;
+
+      subrtx_ptr_iterator::array_type array;
+      FOR_EACH_SUBRTX_PTR (iter2, array, &pat, NONCONST)
+	{
+	  rtx *loc = *iter2;
+	  if (!*loc || !REG_P (*loc) || (int) REGNO (*loc) != old)
+	    continue;
+	  /* SET_DEST is the definition's business, handled above.  */
+	  if (set && loc == &SET_DEST (set))
+	    continue;
+	  validate_change (insn, loc, gen_rtx_REG (GET_MODE (*loc), neu), 1);
+	  (*nsubst)++;
+	}
+    }
+
+  if (num_validated_changes () > base)
+    ok = verify_changes (base);
+  cancel_changes (base);
+  return ok;
+}
+
+/* Every slot, dry-run.  Reports how many instances needed a substitution and
+   how many of those the target would refuse.  */
+
+static bool
+lvx_cms_rename_dryrun (const auto_vec<rtx_insn *> &seq,
+		       const auto_vec<lvx_cms_arc> &arcs,
+		       const auto_vec<lvx_cms_slot> &slots,
+		       const auto_vec<int> &owner,
+		       const auto_vec<int> &vregno,
+		       const auto_vec<int> &anode_value,
+		       const auto_vec<int> &anode_name,
+		       const auto_vec<int> &anode_regno,
+		       int *subst_out, int *fail_out)
+{
+  int subst = 0, fail = 0;
+
+  for (unsigned q = 0; q < slots.length (); q++)
+    {
+      int n = 0;
+      unsigned i = (unsigned) slots[q].insn;
+      if (i >= seq.length ())
+	continue;
+      if (!lvx_cms_rename_insn_p (seq[i], slots[q].iter, arcs, owner, vregno,
+				  anode_value, anode_name, anode_regno, i, &n))
+	{
+	  fail++;
+	  /* WHICH insn and WHICH instance, bounded.  A refusal count cannot be
+	     acted on: the decision is whether to decline the loop or to fix
+	     the substitution, and that needs the pattern.  */
+	  if (fail <= 3)
+	    {
+	      int code = INSN_CODE (seq[i]);
+	      lvx_cms_dump (";; lvx cms:   rename refused insn=%u iter=%d"
+			    " uid=%u subst=%d pattern=%s\n", i, slots[q].iter,
+			    INSN_UID (seq[i]), n,
+			    code >= 0 ? get_insn_name (code) : "?");
+	    }
+	}
+      subst += n;
+    }
+
+  *subst_out = subst;
+  *fail_out = fail;
+  return fail == 0;
+}
+
 /* VERIFY THE MASTER SCHEDULE'S DATAFLOW, over the recorded slots.
 
    The plan counts slots and the rename map assigns registers, and neither
@@ -14794,6 +14944,13 @@ struct lvx_cms_site
   basic_block preheader, header, latch, exit_src, exit_dest;
   int nstages;
   struct lvx_cms_plan plan;
+  /* Whether every slot's insn survives the rename substitution and still
+     recognises (§7tricies.10).  Recorded rather than gated on here: phase one
+     renames nothing, so declining a loop for it would cost coverage for no
+     reason -- but the phase that emits a second instance must require it,
+     because a tied operand makes the substitution unrealisable rather than
+     merely unwise.  */
+  bool renameable;
 };
 
 /* A finding kept although the code that needed it is gone, because make_insns
@@ -17602,6 +17759,17 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		pl.kernel, pl.epilogue, pl.epilogue_sym, pl.exit_slots,
 		pl.exit_epilogues);
 
+  /* CAN EVERY SLOT BE RENAMED AND STILL RECOGNISE?  A property of the
+     schedule and the assignment alone, so it is asked before a block exists
+     to emit into -- and it is the question that turns a wrong register choice
+     from an ICE in a later pass into a decision here.  §7tricies.10.  */
+  int rnsubst = 0, rnfail = 0;
+  bool rnok = lvx_cms_rename_dryrun (seq, arcs, plslots, q_own, q_regno,
+				     av, an, ar, &rnsubst, &rnfail);
+  lvx_cms_dump (";; lvx cms: fn=%s loop %d renameable %s subst=%d refused=%d"
+		" slots=%u\n", current_function_name (), loop->num,
+		rnok ? "ok" : "BAD", rnsubst, rnfail, plslots.length ());
+
   /* CODEGEN, phase one: the block structure (§7quinquies.9).  Behind
      -mcms-codegen and off by default, because it is incomplete -- the blocks
      are built empty and no instruction moves, so the loop is unchanged and the
@@ -17619,6 +17787,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       site.latch = loop->latch;
       site.nstages = nstages;
       site.plan = pl;
+      site.renameable = rnok;
       edge e;
       edge_iterator ei;
       FOR_EACH_EDGE (e, ei, loop->header->preds)
