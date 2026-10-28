@@ -14968,10 +14968,13 @@ lvx_cms_rename_dryrun (const auto_vec<rtx_insn *> &seq,
 		       const auto_vec<int> &anode_value,
 		       const auto_vec<int> &anode_name,
 		       const auto_vec<int> &anode_regno,
-		       int *subst_out, int *fail_out)
+		       int *subst_out, int *fail_out,
+		       auto_vec<int> *refused = NULL)
 {
   int subst = 0, fail = 0;
 
+  if (refused)
+    refused->truncate (0);
   for (unsigned q = 0; q < slots.length (); q++)
     {
       int n = 0;
@@ -14983,6 +14986,8 @@ lvx_cms_rename_dryrun (const auto_vec<rtx_insn *> &seq,
 				  anode_regno, i, &n, false))
 	{
 	  fail++;
+	  if (refused && !refused->contains ((int) i))
+	    refused->safe_push ((int) i);
 	  /* WHICH insn and WHICH instance, bounded.  A refusal count cannot be
 	     acted on: the decision is whether to decline the loop or to fix
 	     the substitution, and that needs the pattern.  */
@@ -18387,6 +18392,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   bool rnok = false;
   int tnclass = 0, tnmerged = 0, tbiggest = 0, torphan = 0;
   int cmaxreg = -1, cassigned = 0, cnodes = 0, cedges = 0, ckunroll = 1;
+  int cgpasses = 0, cgpinned = 0;
   /* The class assignment outlives the block that computes it: codegen renames
      from it, so it cannot be scoped to the measurement.  */
   auto_vec<int> cgi2c, cgcregno, cgav, cgan, cgar;
@@ -18501,18 +18507,96 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       if (!TEST_HARD_REG_BIT (cresv, r))
 	cavail |= (unsigned HOST_WIDE_INT) 1 << r;
 
+    /* PIN WHAT CANNOT BE RENAMED, BY ASKING RATHER THAN BY REASONING.
+       §7tricies.15.
+
+       Merging a tied pair fixes the fma whose addend is its own destination
+       (§7tricies.11), and it does not fix every refusal: the consumer may own
+       no class at all -- a definition whose only reader is outside the loop
+       is dropped from the value table, so there is nothing to merge the
+       producer with -- and a destination may be tied to an operand that is no
+       RAW producer, where no merge exists either.  Eighteen loops stayed
+       unrenameable on that.
+
+       What every such case needs is the same thing: the class must keep the
+       register RA gave it.  And that is exactly what a USE_FIRST pin already
+       means -- name 0 IS the original register -- so a pinned class is
+       spelled as USE_FIRST with degree 1, which leaves it one name, equal to
+       the original, and therefore never substituted.  No new mechanism.
+
+       WHICH classes to pin is decided by the dry run, not by a model of the
+       constraints.  A refusal names an instruction; its own class and the
+       classes it reads are pinned, the colouring is redone, and the dry run
+       asked again.  Each pass pins at least one class and a fully pinned
+       graph has no substitutions to refuse, so it terminates -- bounded here
+       anyway, since a loop that needs many passes is one whose expansion has
+       mostly gone and is better declined than ground down.
+
+       Pinning the read classes as well as the defining one is deliberately a
+       superset: identifying the single culprit operand would mean probing
+       each substitution separately, and the thing being avoided is a second
+       model of the target's constraints that can disagree with the first.  */
     auto_vec<int> cav, can, car;
     int cmsq = 0, cspill = 0, cperiod = 0;
-    lvx_cms_colour (c_def, c_last, c_deg, c_nr, c_ec, found, lo,
-		    &cnodes, &cedges, &cmsq, &cspill, &cperiod, &ckunroll,
-		    NULL, &cav, &can, &car, &cmaxreg, cavail, &c_regno,
-		    &c_uf, NULL, NULL);
-    for (unsigned q = 0; q < car.length (); q++)
-      if (car[q] >= 0)
-	cassigned++;
+    int cpasses = 0, cpinned = 0;
+    for (cpasses = 1; cpasses <= 6; cpasses++)
+      {
+	auto_vec<int> cref;
 
-    rnok = lvx_cms_rename_dryrun (seq, arcs, plslots, insn2cls_pre, c_regno,
-				  cav, can, car, &rnsubst, &rnfail);
+	cav.truncate (0);
+	can.truncate (0);
+	car.truncate (0);
+	cnodes = cedges = cmsq = cspill = cperiod = 0;
+	ckunroll = 1;
+	cmaxreg = -1;
+	cassigned = 0;
+	lvx_cms_colour (c_def, c_last, c_deg, c_nr, c_ec, found, lo,
+			&cnodes, &cedges, &cmsq, &cspill, &cperiod, &ckunroll,
+			NULL, &cav, &can, &car, &cmaxreg, cavail, &c_regno,
+			&c_uf, NULL, NULL);
+	for (unsigned q = 0; q < car.length (); q++)
+	  if (car[q] >= 0)
+	    cassigned++;
+
+	rnok = lvx_cms_rename_dryrun (seq, arcs, plslots, insn2cls_pre,
+				      c_regno, cav, can, car, &rnsubst,
+				      &rnfail, &cref);
+	if (rnok || cref.is_empty ())
+	  break;
+
+	bool progress = false;
+	for (unsigned k = 0; k < cref.length (); k++)
+	  {
+	    int i = cref[k];
+	    auto_vec<int> want;
+
+	    if (i >= 0 && i < (int) insn2cls_pre.length ()
+		&& insn2cls_pre[i] >= 0)
+	      want.safe_push (insn2cls_pre[i]);
+	    for (unsigned a = 0; a < arcs.length (); a++)
+	      if (arcs[a].kind == LVX_ARC_REG_RAW
+		  && arcs[a].dst == (unsigned) i
+		  && arcs[a].src < insn2cls_pre.length ()
+		  && insn2cls_pre[arcs[a].src] >= 0
+		  && !want.contains (insn2cls_pre[arcs[a].src]))
+		want.safe_push (insn2cls_pre[arcs[a].src]);
+
+	    for (unsigned w = 0; w < want.length (); w++)
+	      {
+		int c = want[w];
+		if (c_uf[c] && c_deg[c] == 1)
+		  continue;		/* already pinned */
+		c_uf[c] = 1;
+		c_deg[c] = 1;
+		cpinned++;
+		progress = true;
+	      }
+	  }
+	if (!progress)
+	  break;
+      }
+    cgpasses = cpasses;
+    cgpinned = cpinned;
     cgi2c.safe_splice (insn2cls_pre);
     cgcregno.safe_splice (c_regno);
     cgav.safe_splice (cav);
@@ -18521,11 +18605,12 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   }
   lvx_cms_dump (";; lvx cms: fn=%s loop %d renameable %s subst=%d refused=%d"
 		" slots=%u values=%u classes=%d merged=%d biggest=%d"
-		" orphan=%d cnodes=%d cassigned=%d cmaxreg=%d ckunroll=%d\n",
+		" orphan=%d cnodes=%d cassigned=%d cmaxreg=%d ckunroll=%d"
+		" pinpasses=%d pinned=%d\n",
 		current_function_name (), loop->num, rnok ? "ok" : "BAD",
 		rnsubst, rnfail, plslots.length (), q_own.length (), tnclass,
 		tnmerged, tbiggest, torphan, cnodes, cassigned, cmaxreg,
-		ckunroll);
+		ckunroll, cgpasses, cgpinned);
 
   /* CODEGEN, phase one: the block structure (§7quinquies.9).  Behind
      -mcms-codegen and off by default, because it is incomplete -- the blocks
