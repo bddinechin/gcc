@@ -13031,16 +13031,43 @@ lvx_cms_collect_values (const auto_vec<rtx_insn *> &seq,
 /* Build the interference graph over the kernel unrolled KUNROLL times and
    colour it with the squeeze, reporting the counts and how many nodes could
    not be removed.  Shared by the II search -- where it is the feasibility test
-   §7.8 asks for -- and by the report.  §7ter.10.  */
+   §7.8 asks for -- and by the report.  §7ter.10.
+
+   AND, WHEN ASKED, PRODUCE THE ASSIGNMENT (§7ter.13).  Until now this answered
+   only `is the kernel colourable', which is what §7.8 needs inside the II
+   search; codegen needs a register per name, because modulo expansion IS the
+   renaming (§7quindecies.5: "a post-RA pipeliner that cannot rename cannot
+   pipeline").  The simplify phase already computes the order; what was missing
+   is that the order was not RECORDED, so there was no stack to pop.
+
+   ANODE_VALUE, ANODE_NAME and ANODE_REGNO, when non-null, come back parallel:
+   one entry per interference node, naming the value it belongs to, which of
+   that value's expansion names it is, and the register it was given -- or -1
+   where the node could not be coloured, which is the same set STUCK reports.
+
+   AVAIL is the allocatable register set as a bitmap over r0..r63, so a caller
+   that knows what the function has left free can say so.  Defaulting it to all
+   ones keeps the feasibility answer exactly as it was and makes MAXREG -- the
+   highest register the assignment needed -- the actionable number: if it
+   exceeds what is free, the II must rise.  §7ter.10 already records that using
+   the architectural class size rather than the allocatable one makes the
+   colouring OPTIMISTIC, so a failure is meaningful and a success is not a
+   guarantee; that is unchanged here and is why AVAIL exists rather than being
+   assumed.  */
 
 static void
 lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		const auto_vec<int> &deg, const auto_vec<int> &nregs_,
 		const auto_vec<int> &ec_, int ii, int lo0,
 		int *nn_out, int *ne_out, int *msq_out, int *spl_out,
-		int *per_out, int *kun_out, auto_vec<int> *stuck = NULL)
+		int *per_out, int *kun_out, auto_vec<int> *stuck = NULL,
+		auto_vec<int> *anode_value = NULL,
+		auto_vec<int> *anode_name = NULL,
+		auto_vec<int> *anode_regno = NULL,
+		int *maxreg_out = NULL,
+		unsigned HOST_WIDE_INT avail = ~(unsigned HOST_WIDE_INT) 0)
 {
-  int nn = 0, ne = 0, msq = 0, spl = 0, per = 0, kun = 1;
+  int nn = 0, ne = 0, msq = 0, spl = 0, per = 0, kun = 1, maxreg = -1;
 
     /* KUNROLL is the max per-value power-of-two degree (§7.8), and the
        unrolled period is KUNROLL * II.  */
@@ -13057,7 +13084,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
     if (per > 0 && per <= LVX_CMS_IG_MAX_PERIOD)
       {
 	auto_vec<unsigned HOST_WIDE_INT *> occ;
-	auto_vec<int> ncls, nval;
+	auto_vec<int> ncls, nval, nname, nnreg;
 	int words = (per + 63) / 64;
 
 	for (unsigned v = 0;
@@ -13103,6 +13130,8 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		occ.safe_push (b);
 		ncls.safe_push ((int) lvx_cms_rclass_of (nr));
 		nval.safe_push ((int) v);
+		nname.safe_push (j);
+		nnreg.safe_push (nr);
 		nn++;
 	      }
 	  }
@@ -13132,6 +13161,9 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	   wants inside the II search.  */
 	auto_vec<bool> gone;
 	gone.safe_grow_cleared (nn);
+	/* The removal order IS the colouring order, reversed.  Recording it is
+	   the whole of what select needs and the whole of what was absent.  */
+	auto_vec<int> order;
 	int removed = 0;
 	bool progress = true;
 	while (progress)
@@ -13150,6 +13182,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		if (sq < lvx_cms_rclass_size[ncls[a]])
 		  {
 		    gone[a] = true;
+		    order.safe_push (a);
 		    removed++;
 		    progress = true;
 		    for (int b2 = 0; b2 < nn; b2++)
@@ -13171,12 +13204,114 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	  for (int a = 0; a < nn; a++)
 	    if (!gone[a])
 	      stuck->safe_push (nval[a]);
+
+	/* SELECT.  Pop the simplify stack and give each node the lowest
+	   register its neighbours leave free.  Three things make this more than
+	   a graph-colouring exercise on LVX:
+
+	   ALIGNMENT IS THE WHOLE DIFFICULTY, and it is why Chaitin's degree was
+	   not enough in the first place (§7ter.9).  A pair must be
+	   even-aligned and a quad 4-aligned -- `lvx_hard_regno_mode_ok'
+	   enforces it and `lvx_pgr_reg_name'/`lvx_qgr_reg_name' assert it --
+	   so a candidate must satisfy `regno % nregs == 0' and have all NREGS
+	   registers free.  A single placed mid-run denying every aligned quad
+	   is exactly the fragmentation `squeeze' predicts and a plain degree
+	   cannot (§7ter.10), and here it is the thing that can actually fail.
+
+	   A NEIGHBOUR BLOCKS ITS WHOLE TUPLE, not one register: the alias
+	   relation is a laminar family because the tuples are aligned
+	   (§7ter.9), so a pair at r4 denies r4 and r5 and nothing else.
+
+	   AND A NODE LEFT IN THE GRAPH GETS -1 rather than a guess.  Those are
+	   the STUCK nodes above; inventing a register for one would turn a
+	   feasibility failure the II search knows how to act on into a
+	   miscompile it does not.  */
+	auto_vec<int> reg;
+	reg.safe_grow_cleared (nn);
+	for (int a = 0; a < nn; a++)
+	  reg[a] = -1;
+	for (int k = (int) order.length () - 1; k >= 0; k--)
+	  {
+	    int a = order[k];
+	    int nr = nnreg[a];
+	    unsigned HOST_WIDE_INT busy = 0;
+	    for (int b2 = 0; b2 < nn; b2++)
+	      {
+		if (b2 == a || reg[b2] < 0)
+		  continue;
+		bool meet = false;
+		for (int w = 0; w < words && !meet; w++)
+		  if (occ[a][w] & occ[b2][w])
+		    meet = true;
+		if (!meet)
+		  continue;
+		for (int t = 0; t < nnreg[b2] && reg[b2] + t < 64; t++)
+		  busy |= (unsigned HOST_WIDE_INT) 1 << (reg[b2] + t);
+	      }
+	    for (int r = 0; r + nr <= 64; r += nr)	/* aligned by construction */
+	      {
+		unsigned HOST_WIDE_INT want = 0;
+		for (int t = 0; t < nr; t++)
+		  want |= (unsigned HOST_WIDE_INT) 1 << (r + t);
+		if ((busy & want) || (~avail & want))
+		  continue;
+		reg[a] = r;
+		if (r + nr - 1 > maxreg)
+		  maxreg = r + nr - 1;
+		break;
+	      }
+	  }
+
+	/* VERIFY, because an assignment is checkable and a feasibility answer
+	   was not.  Two interfering nodes may not share a register, and every
+	   tuple must be aligned.  Reported through SPL -- the same channel a
+	   colouring failure uses -- so a broken assignment cannot be mistaken
+	   for a working one by a caller that only reads the counts.  */
+	if (anode_regno)
+	  {
+	    int bad = 0;
+	    for (int a = 0; a < nn; a++)
+	      {
+		if (reg[a] < 0)
+		  continue;
+		if (reg[a] % nnreg[a] != 0)
+		  bad++;
+		for (int b2 = a + 1; b2 < nn; b2++)
+		  {
+		    if (reg[b2] < 0)
+		      continue;
+		    bool meet = false;
+		    for (int w = 0; w < words && !meet; w++)
+		      if (occ[a][w] & occ[b2][w])
+			meet = true;
+		    if (meet
+			&& reg[a] < reg[b2] + nnreg[b2]
+			&& reg[b2] < reg[a] + nnreg[a])
+		      bad++;
+		  }
+	      }
+	    if (bad)
+	      spl += bad;			/* loud, not silent */
+	  }
+
+	if (anode_value)
+	  for (int a = 0; a < nn; a++)
+	    anode_value->safe_push (nval[a]);
+	if (anode_name)
+	  for (int a = 0; a < nn; a++)
+	    anode_name->safe_push (nname[a]);
+	if (anode_regno)
+	  for (int a = 0; a < nn; a++)
+	    anode_regno->safe_push (reg[a]);
+
 	for (int a = 0; a < nn; a++)
 	  XDELETEVEC (occ[a]);
       }
   
   *nn_out = nn; *ne_out = ne; *msq_out = msq; *spl_out = spl;
   *per_out = per; *kun_out = kun;
+  if (maxreg_out)
+    *maxreg_out = maxreg;
 }
 
 static int lvx_cms_latency (rtx_insn *);
@@ -15861,9 +15996,23 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int igkunroll = 1, igec = 0;
   for (unsigned v = 0; v < sp_ec.length (); v++)
     igec += sp_ec[v];
-  lvx_cms_colour (sp_def, sp_last, sp_deg, sp_nregs, sp_ec, found, lo,
-		  &ignodes, &igedges, &igmaxsq, &igspill, &igperiod,
-		  &igkunroll);
+  /* The report asks for the ASSIGNMENT, not only the feasibility answer
+     (§7ter.13).  IGMAXREG is the highest register it needed and IGASSIGNED how
+     many of the IGNODES names got one -- the two numbers that say whether the
+     kernel can actually be renamed, as against whether a colouring exists.
+     The II search's own call (inside SWO acceptance) deliberately still asks
+     only for feasibility: it is deciding whether to accept a schedule, and
+     the assignment is codegen's to take once one is accepted.  */
+  int igmaxreg = -1, igassigned = 0;
+  {
+    auto_vec<int> av, an, ar;
+    lvx_cms_colour (sp_def, sp_last, sp_deg, sp_nregs, sp_ec, found, lo,
+		    &ignodes, &igedges, &igmaxsq, &igspill, &igperiod,
+		    &igkunroll, NULL, &av, &an, &ar, &igmaxreg);
+    for (unsigned q = 0; q < ar.length (); q++)
+      if (ar[q] >= 0)
+	igassigned++;
+  }
 
   /* LINEAGES over the omega = 0 subgraph, and the interference graph they give
      instead of the one over individual values.  §7octodecies.5.  */
@@ -16087,6 +16236,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d"
 	   " mveregs=%d mveregsx=%d mvepress=%d"
 	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
+	   " igassigned=%d igmaxreg=%d"
 	   " lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
 	   " cand=%d splitok=%d spillok=%d staged=%d nsplit=%d before=%d after=%d"
 	   " nspill=%d spafter=%d spwhy=%d winempty=%d winmake=%d"
@@ -16104,7 +16254,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
 	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
 	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
-	   igec, nlin, nseq, linnodes, linedges, linsq, linspill,
+	   igec, igassigned, igmaxreg, nlin, nseq, linnodes, linedges, linsq, linspill,
 	   cand, splitok, spillok, staged, nsplit, spl_before, spl_after,
 	   nspill, sp_after, sp_why, winempty, winmake,
 	   mcrl, mcrlbad, mcrldep, mcrlmake, mcrlnn, mcrlne,
