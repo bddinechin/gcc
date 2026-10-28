@@ -17400,6 +17400,24 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	      && e->dest != EXIT_BLOCK_PTR_FOR_FN (cfun))
 	    exitbb = e->dest;
 
+      /* (1) REACHES ONLY THE BLOCK THAT IMMEDIATELY FOLLOWS, not every store
+	 in the body.  Because the branches are serialized by (3) at latency
+	 ZERO, a path p -> p' -> q gives sigma (q) >= sigma (p) + 1, which is
+	 exactly what a direct arc p -> q at latency one gives: every arc to a
+	 store beyond the next block is implied and only costs graph size.
+	 For a single-block loop the next block IS the block itself, so the
+	 two formulations coincide -- which is why this changed nothing
+	 measurable on PolyBench, where 117 of 119 bodies are single-block.
+	 Kept because an implied arc that is also pushed is a second statement
+	 of one rule, and those go stale.  */
+      basic_block nextbb = bb;
+      if (bb != NULL)
+	{
+	  FOR_EACH_EDGE (e, ei, bb->succs)
+	    if (bitmap_bit_p (inloop, e->dest->index))
+	      nextbb = e->dest;
+	}
+
       for (unsigned q = 0; q < n; q++)
 	{
 	  HOST_WIDE_INT w = (q > p) ? 0 : 1;
@@ -17409,8 +17427,9 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    continue;
 
 	  /* (1) */
-	  if (lvx_mem_write_insn_p (seq[q])
-	      || volatile_insn_p (PATTERN (seq[q])))
+	  if ((lvx_mem_write_insn_p (seq[q])
+	       || volatile_insn_p (PATTERN (seq[q])))
+	      && BLOCK_FOR_INSN (seq[q]) == nextbb)
 	    lvx_cms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_STORE);
 
 	  /* (2) */
