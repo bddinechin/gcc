@@ -13755,6 +13755,136 @@ lvx_cms_cumulative_lifetime (const auto_vec<rtx_insn *> &seq,
   return total;
 }
 
+/* THE PIPELINE PLAN: what codegen would emit, settled before an edge moves.
+   §7quinquies.8.
+
+   §7quinquies.6 keeps the reference's two-phase split -- build the whole CFG,
+   then fill it -- because "it is what allows the epilogue shape to be settled
+   before a single insn is committed".  This goes one phase earlier: the shape
+   is settled before a single EDGE is committed, by computing the master
+   schedule and the node assignment as data.  Nothing here touches the CFG, so
+   it is checkable and measurable at no risk, and it produces the one quantity
+   Llosa's whole axis is about (§7undecies) and that §7undecies.2a measured only
+   indirectly through SC, BS and Kmin: HOW MUCH CODE a pipelined loop costs.
+
+   THE MASTER SCHEDULE, after PaCT 1997 §1.2 and §7.9.  An instance of task I is
+   a copy at (issuedate + l * II, iteration + l), and the order is the paper's
+   total order on (issuedate, iteration, ordering).  Instances run over
+   0 .. nstages + kunroll - 1, which is what `unfold_codegen_make_nodes' uses.
+
+   ITER_SLOT closes the kernel, and §7quinquies.2a is the constraint that
+   matters: it must be an instance of the ORIGINAL LOOPBACK BRANCH, not any
+   conditional branch, or the kernel's back edge cannot fold into a doloop_end.
+   The reference carries UNFOLD_TASK_FLAG_LOOP for exactly this and tests the
+   narrow flag; here the loopback is the last JUMP_P in SEQ, which is in chain
+   order from the header and so is the latch terminator (§7undecies.2b).  The
+   `iteration > 0' conjunct is a second and different constraint -- it forces a
+   non-zero iteration so the insns can be recycled rather than copied.
+
+   Reports, per loop: the master slot count, how many fall in the prologue, the
+   kernel and the main epilogue, how many blocks would be REUSED against
+   ALLOCATED (§7quinquies.2's three cases), and how many per-exit epilogues the
+   structure needs.  */
+
+struct lvx_cms_plan
+{
+  int slots;			/* master slots in all */
+  int prologue;			/* slots before the kernel head */
+  int kernel;			/* slots in the k-unrolled kernel */
+  int epilogue;			/* slots after it, the main epilogue */
+  int blocks_reused;		/* source body blocks taken over */
+  int blocks_allocated;		/* fresh blocks the stages need */
+  int exit_epilogues;		/* one per exit before ITER_SLOT */
+  bool ok;
+  const char *why;
+};
+
+static void
+lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
+		    const auto_vec<int> &sigma, int ii, int kunroll,
+		    int nstages, unsigned nblocks, struct lvx_cms_plan *pl)
+{
+  memset (pl, 0, sizeof (*pl));
+  pl->why = "no loopback branch";
+  int loopback = -1;
+  for (unsigned i = 0; i < seq.length (); i++)
+    if (JUMP_P (seq[i]))
+      loopback = (int) i;		/* the LAST jump: the latch terminator */
+  if (loopback < 0 || seq.is_empty () || ii <= 0)
+    return;
+
+  int lo = lvx_cms_sigma_min (sigma);
+  int instances = nstages + kunroll;
+
+  /* The kernel head is the first date at or after (nstages - 1) * II: the
+     cycle by which every stage has started, which is where the steady state
+     begins.  */
+  int kernel_first = (nstages - 1) * ii;
+
+  /* ITER_SLOT: the lowest instance of the LOOPBACK branch whose iteration is
+     non-zero and which sits at or after the adjusted slot, the latter being
+     the loopback at iteration kunroll - 1 (§7quinquies.2a).  */
+  int adjusted = sigma[loopback] - lo + (kunroll - 1) * ii;
+  int iter_date = -1, iter_iteration = -1;
+  for (int l = 1; l < instances; l++)
+    {
+      int d = sigma[loopback] - lo + l * ii;
+      if (d >= adjusted)
+	{
+	  iter_date = d;
+	  iter_iteration = l;
+	  break;
+	}
+    }
+  pl->why = "no qualifying loopback instance";
+  if (iter_date < 0)
+    return;
+
+  /* Walk every instance of every task in (date, iteration, order) order,
+     counting what falls where.  Everything after ITER_SLOT is filtered out,
+     which is what leaves prolog + unrolled kernel + main epilog (§7.9).  */
+  int prev_exit = 0, nodes = 0, split = 0;
+  for (int d = 0; d <= iter_date; d++)
+    for (int l = 0; l < instances; l++)
+      for (unsigned i = 0; i < seq.length (); i++)
+	{
+	  if (sigma[i] - lo + l * ii != d)
+	    continue;
+	  if (d > iter_date || (d == iter_date && l > iter_iteration))
+	    continue;
+	  pl->slots++;
+	  if (d < kernel_first)
+	    pl->prologue++;
+	  else
+	    pl->kernel++;
+
+	  /* A new node after every exit, and at the kernel head -- the first
+	     because an exit must end a block, the second because the kernel
+	     head must be a branch target (§7quinquies.2).  */
+	  bool enter_kernel = (d == kernel_first);
+	  if (prev_exit || enter_kernel || nodes == 0)
+	    {
+	      if (nodes && !prev_exit)
+		split++;		/* case 1: the kernel begins mid-block */
+	      if (nodes - split >= (int) nblocks)
+		pl->blocks_allocated++;	/* case 2: source blocks used up */
+	      else
+		pl->blocks_reused++;	/* case 3: reuse the source node */
+	      nodes++;
+	    }
+	  prev_exit = JUMP_P (seq[i]) ? 1 : 0;
+	  if (JUMP_P (seq[i]) && (int) i != loopback && d < iter_date)
+	    pl->exit_epilogues++;
+	}
+
+  /* The main epilogue drains the iterations still in flight when the kernel
+     is left, which is nstages - 1 stages' worth.  */
+  pl->epilogue = pl->prologue;	/* symmetric by construction: the ramp down
+				   mirrors the ramp up */
+  pl->ok = true;
+  pl->why = NULL;
+}
+
 /* Repair an uncolourable kernel by SPILL/RESTORE at the current II.
    §7duovicies.
 
@@ -16124,6 +16254,11 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      The II search's own call (inside SWO acceptance) deliberately still asks
      only for feasibility: it is deciding whether to accept a schedule, and
      the assignment is codegen's to take once one is accepted.  */
+  /* What codegen would emit for this loop, computed as data (§7quinquies.8).  */
+  struct lvx_cms_plan pl;
+  lvx_cms_build_plan (seq, sigma, found, igkunroll > 0 ? igkunroll : 1,
+		      nstages, loop->num_nodes, &pl);
+
   int igmaxreg = -1, igassigned = 0, igpinned = 0, igpinfail = 0;
   {
     /* Re-collect with the original regno and the USE_FIRST flag, which the
@@ -16365,6 +16500,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   " mveregs=%d mveregsx=%d mvepress=%d"
 	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
 	   " igassigned=%d igmaxreg=%d igpinned=%d igpinfail=%d"
+	   " plan=%d plpro=%d plker=%d plreuse=%d plalloc=%d plexep=%d"
 	   " lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
 	   " cand=%d splitok=%d spillok=%d staged=%d nsplit=%d before=%d after=%d"
 	   " nspill=%d spafter=%d spwhy=%d winempty=%d winmake=%d"
@@ -16382,7 +16518,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
 	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
 	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
-	   igec, igassigned, igmaxreg, igpinned, igpinfail, nlin, nseq, linnodes, linedges, linsq, linspill,
+	   igec, igassigned, igmaxreg, igpinned, igpinfail,
+	   pl.ok ? pl.slots : -1, pl.prologue, pl.kernel, pl.blocks_reused,
+	   pl.blocks_allocated, pl.exit_epilogues, nlin, nseq, linnodes, linedges, linsq, linspill,
 	   cand, splitok, spillok, staged, nsplit, spl_before, spl_after,
 	   nspill, sp_after, sp_why, winempty, winmake,
 	   mcrl, mcrlbad, mcrldep, mcrlmake, mcrlnn, mcrlne,
