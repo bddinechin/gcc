@@ -11555,6 +11555,33 @@ lvx_insns_may_alias_p (rtx_insn *insn1, rtx_insn *insn2)
    §7nonies ran CMS on the SMS ddg, whose latencies are dep_cost-derived, and
    the recurrence bound agreed on 336 of 336 loops.  */
 
+/* Dump to DUMP_FILE if there is one.
+
+   The CMS probe was written when `-fdump-rtl-mach' was its only entry, so
+   DUMP_FILE could be assumed non-null after the one early return at the top
+   of lvx_cms_probe_loops.  `-mcms-codegen' broke that assumption: it runs the
+   probe for its side effect -- the schedule -- with no dump requested, and
+   the first unguarded fprintf then takes a null FILE * into vfprintf and
+   segfaults.  The compiler died at pipe.c:10 that way while trmm stayed
+   clean, because trmm was always compiled with a dump.
+
+   One guard in one place, rather than twenty `if (dump_file)' at the call
+   sites: the probe's dumping is unconditional by design and the condition
+   belongs to the sink, not to each caller.  */
+
+static void ATTRIBUTE_PRINTF_1
+lvx_cms_dump (const char *fmt, ...)
+	      {
+	      va_list ap;
+
+  if (!dump_file)
+    return;
+
+  va_start (ap, fmt);
+  vfprintf (dump_file, fmt, ap);
+  va_end (ap);
+}
+
 /* How much longer -mcms-load-latency says this instruction's result takes than
    the machine description does, or 0.
 
@@ -14007,8 +14034,13 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
 	 split_edge invalidates it.  */
       if (!e)
 	{
+	  /* After the first split the preheader reaches the header through the
+	     stages already made, so walk the single-successor chain to find
+	     the block still edged to it.  Bounded by the stage count: an
+	     unbounded walk would spin if the chain ever closed on itself.  */
 	  basic_block p = site->preheader;
-	  while (single_succ_p (p) && single_succ (p) != site->header)
+	  for (int hop = 0; hop < nstages && single_succ_p (p)
+	       && single_succ (p) != site->header; hop++)
 	    p = single_succ (p);
 	  e = find_edge (p, site->header);
 	}
@@ -14024,10 +14056,15 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
      point §7quaterdecies.2 wants.  */
   *why = "cannot split the latch exit edge";
   {
+    /* Read the count BEFORE the split.  `split_edge' redirects the edge and
+       the edge object must not be touched afterwards -- doing so segfaulted
+       the compiler on the gate's own test file while trmm stayed clean, which
+       is why the gate exists: one loop compiling is not evidence.  */
+    profile_count ecount = exit_e->count ();
     basic_block drain = split_edge (exit_e);
     if (!drain)
       return false;
-    drain->count = exit_e->count ();
+    drain->count = ecount;
   }
 
   *why = NULL;
@@ -15176,8 +15213,8 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  /* Not a chain: measuring a prefix would be worse than refusing.
 	     The gate above should have caught this already.  */
 	  if (dump_file)
-	    fprintf (dump_file, ";; lvx unfold: loop %d declined, body is not"
-		     " a chain\n", loop->num);
+	    lvx_cms_dump (";; lvx unfold: loop %d declined, body is not"
+			  " a chain\n", loop->num);
 	  return false;
 	}
       walk = nxt;
@@ -15252,9 +15289,9 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  if (partial_def)
 	    {
 	      if (dump_file)
-		fprintf (dump_file, ";; lvx cms: fn=%s loop %d declined, partial"
-			 " definition of r%u reaches a use\n",
-			 current_function_name (), loop->num, regno);
+		lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, partial"
+			      " definition of r%u reaches a use\n",
+			      current_function_name (), loop->num, regno);
 	      return false;
 	    }
 
@@ -15295,9 +15332,9 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
     }
 
   if (dump_file && lvx_cms_probe)
-    fprintf (dump_file, ";; lvx cms: fn=%s loop %d, %u simple inductions,"
-	     " %u relaxed arcs dropped\n", current_function_name (), loop->num,
-	     bitmap_count_bits (inductions), nrelaxed);
+    lvx_cms_dump (";; lvx cms: fn=%s loop %d, %u simple inductions,"
+		  " %u relaxed arcs dropped\n", current_function_name (), loop->num,
+		  (unsigned) bitmap_count_bits (inductions), nrelaxed);
 
   /* WAR, to the KILLING definition only -- the same correction RAW needs, and
      for the same reason.  A use is anti-dependent on the definition that
@@ -15717,9 +15754,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
   if (!lvx_cms_build_graph (loop, body, seq, arcs, height, &dropped_safelen))
     {
-      fprintf (dump_file, ";; lvx cms: fn=%s loop %d declined, body is not a"
-	       " chain the analysis can walk\n", current_function_name (),
-	       loop->num);
+      lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, body is not a"
+		    " chain the analysis can walk\n", current_function_name (),
+		    loop->num);
       return;
     }
 
@@ -15727,8 +15764,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   auto_vec<int> crit;
   if (!lvx_cms_bounds (loop, body, seq, arcs, height, &m, &r, &k, &crit))
     {
-      fprintf (dump_file, ";; lvx cms: fn=%s loop %d declined, the recurrence"
-	       " bound did not solve\n", current_function_name (), loop->num);
+      lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, the recurrence"
+		    " bound did not solve\n", current_function_name (), loop->num);
       return;
     }
 
@@ -15881,13 +15918,13 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
   if (!found)
     {
-      fprintf (dump_file, ";; lvx cms: fn=%s loop %d NO schedule through II=%d"
-	       " (lower=%d delta=%d M=%d passes=%d, %u nodes %u arcs)%s%s%s\n",
-	       current_function_name (), loop->num, lower + 8, lower, delta, m,
-	       passes,
-	       seq.length (), arcs.length (), hw ? " hwloop" : "",
-	       last_bad ? " -- converged but unverified: " : "",
-	       last_bad ? last_bad : "");
+      lvx_cms_dump (";; lvx cms: fn=%s loop %d NO schedule through II=%d"
+		    " (lower=%d delta=%d M=%d passes=%d, %u nodes %u arcs)%s%s%s\n",
+		    current_function_name (), loop->num, lower + 8, lower, delta, m,
+		    passes,
+		    seq.length (), arcs.length (), hw ? " hwloop" : "",
+		    last_bad ? " -- converged but unverified: " : "",
+		    last_bad ? last_bad : "");
       return;
     }
 
@@ -16412,12 +16449,12 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      and this is where they can be read apart.  */
   if (!seq.is_empty ())
     {
-      fprintf (dump_file, ";; lvx cms: fn=%s loop %d schedule II=%d:",
-	       current_function_name (), loop->num, found);
+      lvx_cms_dump (";; lvx cms: fn=%s loop %d schedule II=%d:",
+		    current_function_name (), loop->num, found);
       for (unsigned i = 0; i < seq.length (); i++)
-	fprintf (dump_file, " %u:%d/%d%s", i, (sigma[i] - lo) % found,
-		 (sigma[i] - lo) / found, JUMP_P (seq[i]) ? "J" : "");
-      fprintf (dump_file, "\n");
+	lvx_cms_dump (" %u:%d/%d%s", i, (sigma[i] - lo) % found,
+		      (sigma[i] - lo) / found, JUMP_P (seq[i]) ? "J" : "");
+      lvx_cms_dump ("\n");
     }
 
   int igmaxreg = -1, igassigned = 0, igpinned = 0, igpinfail = 0;
@@ -16501,14 +16538,14 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	  const char *nwhy = NULL;
 	  bool built = lvx_cms_make_nodes (&site, loop, &nwhy);
 	  if (dump_file)
-	    fprintf (dump_file, ";; lvx cms: fn=%s loop %d make_nodes %s\n",
-		     current_function_name (), loop->num,
-		     built ? "built" : nwhy);
+	    lvx_cms_dump (";; lvx cms: fn=%s loop %d make_nodes %s\n",
+			  current_function_name (), loop->num,
+			  built ? "built" : nwhy);
 	}
       else if (dump_file)
-	fprintf (dump_file, ";; lvx cms: fn=%s loop %d codegen declined, %s\n",
-		 current_function_name (), loop->num,
-		 !site.preheader ? "no preheader" : "latch has no exit edge");
+	lvx_cms_dump (";; lvx cms: fn=%s loop %d codegen declined, %s\n",
+		      current_function_name (), loop->num,
+		      !site.preheader ? "no preheader" : "latch has no exit edge");
     }
 
   /* LINEAGES over the omega = 0 subgraph, and the interference graph they give
@@ -16726,46 +16763,46 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       }
   }
 
-  fprintf (dump_file, ";; lvx cms: fn=%s loop %d II=%d lower=%d excess=%d M=%d"
-	   " ResMII=%d RecMII=%d span=%d spanlat=%d nstages=%d BS=%d preps=%d"
-	   " mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
-	   " mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
-	   " mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d"
-	   " mveregs=%d mveregsx=%d mvepress=%d"
-	   " ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
-	   " igassigned=%d igmaxreg=%d igpinned=%d igpinfail=%d"
-	   " plan=%d plpro=%d plker=%d plreuse=%d plalloc=%d plexep=%d"
-	   " lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
-	   " cand=%d splitok=%d spillok=%d staged=%d nsplit=%d before=%d after=%d"
-	   " nspill=%d spafter=%d spwhy=%d winempty=%d winmake=%d"
-	   " mcrl=%d mcrlbad=%d mcrldep=%d mcrlmake=%d mcrlnn=%u mcrlne=%u"
-	   " mcrllife=" HOST_WIDE_INT_PRINT_DEC " mcrlsigma=" HOST_WIDE_INT_PRINT_DEC
-	   " mcrl2=%d mcrlmake2=%d mcrllife2=" HOST_WIDE_INT_PRINT_DEC
-	   " emptycyc=%d"
-	   " delta=%d safelen=%d"
-	   " passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
-	   " %d loads %s .s%s -- %s\n",
-	   current_function_name (), loop->num, found, lower, found - lower, m,
-	   r, k, span, spanlat,
-	   nstages, bs, preps, mvemax, mvep2,
-	   mvelcm_overflow ? 0 : (int) mvelcm,
-	   mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
-	   mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
-	   mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
-	   igec, igassigned, igmaxreg, igpinned, igpinfail,
-	   pl.ok ? pl.slots : -1, pl.prologue, pl.kernel, pl.blocks_reused,
-	   pl.blocks_allocated, pl.exit_epilogues, nlin, nseq, linnodes, linedges, linsq, linspill,
-	   cand, splitok, spillok, staged, nsplit, spl_before, spl_after,
-	   nspill, sp_after, sp_why, winempty, winmake,
-	   mcrl, mcrlbad, mcrldep, mcrlmake, mcrlnn, mcrlne,
-	   mcrllife, mcrlsigma, mcrl2, mcrlmake2, mcrllife2,
-	   emptycyc,
-	   delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
-	   blamed, blamed_cost, seq.length (), arcs.length (),
-	   spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
-	   hw ? " hwloop" : "",
-	   !drop_ok ? "UNSOUND: dropped safelen below nstages"
-	   : nstages > 1 ? "PIPELINES" : "no gain");
+  lvx_cms_dump (";; lvx cms: fn=%s loop %d II=%d lower=%d excess=%d M=%d"
+		" ResMII=%d RecMII=%d span=%d spanlat=%d nstages=%d BS=%d preps=%d"
+		" mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
+		" mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
+		" mvenospl=%d mvewide=%d mvewidemax=%d mvecatdq=%d"
+		" mveregs=%d mveregsx=%d mvepress=%d"
+		" ig=%d/%d kunroll=%d period=%d sq=%d spill=%d ec=%d"
+		" igassigned=%d igmaxreg=%d igpinned=%d igpinfail=%d"
+		" plan=%d plpro=%d plker=%d plreuse=%d plalloc=%d plexep=%d"
+		" lin=%d seqe=%d linig=%d/%d linsq=%d linspill=%d"
+		" cand=%d splitok=%d spillok=%d staged=%d nsplit=%d before=%d after=%d"
+		" nspill=%d spafter=%d spwhy=%d winempty=%d winmake=%d"
+		" mcrl=%d mcrlbad=%d mcrldep=%d mcrlmake=%d mcrlnn=%u mcrlne=%u"
+		" mcrllife=" HOST_WIDE_INT_PRINT_DEC " mcrlsigma=" HOST_WIDE_INT_PRINT_DEC
+		" mcrl2=%d mcrlmake2=%d mcrllife2=" HOST_WIDE_INT_PRINT_DEC
+		" emptycyc=%d"
+		" delta=%d safelen=%d"
+		" passes=%d tight=%s:%d/%d blamed=%s:%d, %u nodes %u arcs,"
+		" %d loads %s .s%s -- %s\n",
+		current_function_name (), loop->num, found, lower, found - lower, m,
+		r, k, span, spanlat,
+		nstages, bs, preps, mvemax, mvep2,
+		mvelcm_overflow ? 0 : (int) mvelcm,
+		mven, mvetop, mve2nd, mvesplit0, mvesplit, mvesplitr, mvesplitx,
+		mvenospl, mvewide, mvewidemax, mvecatdq, mveregs, mveregsx,
+		mvepress, ignodes, igedges, igkunroll, igperiod, igmaxsq, igspill,
+		igec, igassigned, igmaxreg, igpinned, igpinfail,
+		pl.ok ? pl.slots : -1, pl.prologue, pl.kernel, pl.blocks_reused,
+		pl.blocks_allocated, pl.exit_epilogues, nlin, nseq, linnodes, linedges, linsq, linspill,
+		cand, splitok, spillok, staged, nsplit, spl_before, spl_after,
+		nspill, sp_after, sp_why, winempty, winmake,
+		mcrl, mcrlbad, mcrldep, mcrlmake, mcrlnn, mcrlne,
+		mcrllife, mcrlsigma, mcrl2, mcrlmake2, mcrllife2,
+		emptycyc,
+		delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
+		blamed, blamed_cost, seq.length (), arcs.length (),
+		spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
+		hw ? " hwloop" : "",
+		!drop_ok ? "UNSOUND: dropped safelen below nstages"
+		: nstages > 1 ? "PIPELINES" : "no gain");
 
   /* Name the circuit that set K.  Measuring RecMII says how deep the pipeline
      can be; naming its circuit says what to do about it.  A recurrence through
@@ -16790,20 +16827,20 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	    sw += arcs[crit[i]].omega;
 	    nreal++;
 	  }
-      fprintf (dump_file, ";; lvx cms: fn=%s loop %d RecMII circuit, %u arcs,"
-	       " sum theta=" HOST_WIDE_INT_PRINT_DEC
-	       " sum omega=" HOST_WIDE_INT_PRINT_DEC ":",
-	       current_function_name (), loop->num, nreal, st, sw);
+      lvx_cms_dump (";; lvx cms: fn=%s loop %d RecMII circuit, %u arcs,"
+		    " sum theta=" HOST_WIDE_INT_PRINT_DEC
+		    " sum omega=" HOST_WIDE_INT_PRINT_DEC ":",
+		    current_function_name (), loop->num, nreal, st, sw);
       for (unsigned i = 0; i < crit.length (); i++)
 	if (crit[i] >= 0)
 	  {
 	    const lvx_cms_arc &a = arcs[crit[i]];
-	    fprintf (dump_file, " %s(%d->%d,%d,%d)",
-		     lvx_cms_arc_kind_name[(int) a.kind],
-		     INSN_UID (seq[a.src]), INSN_UID (seq[a.dst]),
-		     (int) a.theta, (int) a.omega);
+	    lvx_cms_dump (" %s(%d->%d,%d,%d)",
+			  lvx_cms_arc_kind_name[(int) a.kind],
+			  INSN_UID (seq[a.src]), INSN_UID (seq[a.dst]),
+			  (int) a.theta, (int) a.omega);
 	  }
-      fprintf (dump_file, "\n");
+      lvx_cms_dump ("\n");
     }
 }
 
@@ -16892,7 +16929,7 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
 		 arcs[i].omega);
   if (plc.solve (1) != LVX_PLC_SOLVED)
     {
-      fprintf (dump_file, ";; lvx cms-on-ddg: recurrence bound did not solve\n");
+      lvx_cms_dump (";; lvx cms-on-ddg: recurrence bound did not solve\n");
       return;
     }
   int k = (int) plc.period ();
@@ -16917,12 +16954,12 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
 
   if (!found)
     {
-      fprintf (dump_file, ";; lvx cms-on-ddg: NO schedule through II=%d"
-	       " lower=%d ResMII=%d RecMII=%d M=%d passes=%d,"
-	       " %u nodes %u arcs%s%s\n", lower + 8, lower, r, k, m, passes,
-	       n, arcs.length (),
-	       last_bad ? " -- converged but unverified: " : "",
-	       last_bad ? last_bad : "");
+      lvx_cms_dump (";; lvx cms-on-ddg: NO schedule through II=%d"
+		    " lower=%d ResMII=%d RecMII=%d M=%d passes=%d,"
+		    " %u nodes %u arcs%s%s\n", lower + 8, lower, r, k, m, passes,
+		    n, arcs.length (),
+		    last_bad ? " -- converged but unverified: " : "",
+		    last_bad ? last_bad : "");
       return;
     }
 
@@ -16939,10 +16976,10 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
   int span = hi - lo + 1;
   int nstages = (span + found - 1) / found;
 
-  fprintf (dump_file, ";; lvx cms-on-ddg: II=%d lower=%d excess=%d ResMII=%d"
-	   " RecMII=%d M=%d span=%d nstages=%d delta=%d passes=%d,"
-	   " %u nodes %u arcs\n", found, lower, found - lower, r, k, m, span,
-	   nstages, delta, passes, n, arcs.length ());
+  lvx_cms_dump (";; lvx cms-on-ddg: II=%d lower=%d excess=%d ResMII=%d"
+		" RecMII=%d M=%d span=%d nstages=%d delta=%d passes=%d,"
+		" %u nodes %u arcs\n", found, lower, found - lower, r, k, m, span,
+		nstages, delta, passes, n, arcs.length ());
 }
 
 /* Whether CMS may consider LOOP at all.  This is NOT lvx_unfoldable_loop_p:
@@ -17180,10 +17217,11 @@ static void
 lvx_cms_probe_loops (void)
 {
   /* The dump is one consumer and codegen is the other, so the walk runs for
-     either.  Every fprintf below is already guarded on DUMP_FILE being
-     non-null by the ordinary rule that dump_file is checked once per
-     caller -- made explicit here because the function used to return early
-     and that was the only guard.  */
+     either.  Reporting below goes through lvx_cms_dump, which is null-safe:
+     on the codegen path there is no dump file at all, and the claim that
+     every fprintf was "already guarded" -- written here, unverified -- was
+     false for fifteen of seventeen of them.  The compiler segfaulted inside
+     vfprintf on the gate's own test file.  */
   if (!dump_file && !lvx_cms_codegen)
     return;
 
@@ -17236,8 +17274,8 @@ lvx_cms_probe_loops (void)
 	}
 
       if (!lvx_cms_eligible_loop_p (loop, body, insns, &why))
-	fprintf (dump_file, ";; lvx cms: fn=%s loop %d declined, %s\n",
-		 current_function_name (), loop->num, why);
+	lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, %s\n",
+		      current_function_name (), loop->num, why);
       else
 	{
 	  /* Can code be emitted for this loop, as against analysed?  Reported
@@ -17246,9 +17284,9 @@ lvx_cms_probe_loops (void)
 	     is a codegen limit to size, not an analysis failure to hide.  */
 	  const char *cwhy = NULL;
 	  bool cfeas = lvx_cms_codegen_feasible_p (loop, body, &cwhy);
-	  fprintf (dump_file, ";; lvx cms: fn=%s loop %d codegen %s\n",
-		   current_function_name (), loop->num,
-		   cfeas ? "feasible" : cwhy);
+	  lvx_cms_dump (";; lvx cms: fn=%s loop %d codegen %s\n",
+			current_function_name (), loop->num,
+			cfeas ? "feasible" : cwhy);
 	  lvx_cms_probe_loop (loop, body);
 	}
 
