@@ -14590,6 +14590,156 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 	 && misaligned == 0 && nondiv == 0;
 }
 
+/* RENAME CLASSES: values a tied operand forces to share a register.
+   §7tricies.11.
+
+   §7tricies.10 found that every refused substitution in the population is an
+   `fma', whose addend is tied to its destination.  A tie is not a preference
+   the allocator expressed; it is the machine saying the two operands ARE one
+   register.  So the producer's value and the consumer's value cannot be given
+   different expansion names, and the unit of renaming is not the value but
+   the class a tie closes over.
+
+   DETECTED BY ASKING THE TARGET, one arc at a time.  The first attempt used
+   the register numbers -- a tie that RA satisfied leaves the consumer's
+   destination holding the same register as the producer it reads -- and that
+   test OVER-MERGES badly: it also fires on every coincidental reuse along a
+   RAW edge, which is common.  Measured, it collapsed 841 values into 548
+   classes across 94 of 124 loops, where only 41 loops have a refusal at all
+   and only 4.7% of substitutions are refused.  Merging on a coincidence is
+   not wrong, but it gives up an expansion copy the machine does not forbid,
+   and at that rate it would give up most of them.
+
+   So each incoming arc's substitution is tried ALONE, with the register the
+   map actually assigns, and the pair is merged only when `insn_invalid_p'
+   refuses it.  That is precise by construction: the classes are exactly the
+   pairs the target will not let be renamed apart.  It costs one
+   verify_changes per arc per slot, which is nothing beside being right.
+
+   The class is a union-find over values; a class's range is the union of its
+   members' ranges, which is what makes the merge cost something: a longer
+   range means a higher degree and possibly more names.  That cost is the
+   point of measuring it before rewiring the colouring onto it.  */
+
+static int
+lvx_cms_tie_find (auto_vec<int> &parent, int v)
+{
+  while (parent[v] != v)
+    {
+      parent[v] = parent[parent[v]];
+      v = parent[v];
+    }
+  return v;
+}
+
+/* Would substituting value PV's register for NEU in INSN's uses be accepted?
+   One arc's worth of change, asked and cancelled.  */
+
+static bool
+lvx_cms_subst_use_ok_p (rtx_insn *insn, int old, int neu)
+{
+  rtx pat = PATTERN (insn);
+  rtx set = single_set (insn);
+  int base = num_validated_changes ();
+  bool ok = true;
+
+  if (old < 0 || neu < 0 || old == neu)
+    return true;
+
+  subrtx_ptr_iterator::array_type array;
+  FOR_EACH_SUBRTX_PTR (it, array, &pat, NONCONST)
+    {
+      rtx *loc = *it;
+      if (!*loc || !REG_P (*loc) || (int) REGNO (*loc) != old)
+	continue;
+      if (set && loc == &SET_DEST (set))
+	continue;
+      validate_change (insn, loc, gen_rtx_REG (GET_MODE (*loc), neu), 1);
+    }
+  if (num_validated_changes () > base)
+    ok = verify_changes (base);
+  cancel_changes (base);
+  return ok;
+}
+
+static void
+lvx_cms_tie_classes (const auto_vec<rtx_insn *> &seq,
+		     const auto_vec<lvx_cms_arc> &arcs,
+		     const auto_vec<int> &owner,
+		     const auto_vec<int> &vregno,
+		     const auto_vec<int> &anode_value,
+		     const auto_vec<int> &anode_name,
+		     const auto_vec<int> &anode_regno,
+		     auto_vec<int> &parent, int *nclass_out,
+		     int *nmerged_out, int *biggest_out, int *orphan_out)
+{
+  unsigned n = owner.length ();
+  int orphan = 0;
+
+  parent.truncate (0);
+  for (unsigned v = 0; v < n; v++)
+    parent.safe_push ((int) v);
+
+  for (unsigned a = 0; a < arcs.length (); a++)
+    {
+      if (arcs[a].kind != LVX_ARC_REG_RAW)
+	continue;
+      int pv = -1, cv = -1;
+      for (unsigned v = 0; v < n; v++)
+	{
+	  if (owner[v] == (int) arcs[a].src)
+	    pv = (int) v;
+	  if (owner[v] == (int) arcs[a].dst)
+	    cv = (int) v;
+	}
+      if (pv < 0 || arcs[a].dst >= seq.length ())
+	continue;
+
+      /* The register this use would become at some iteration where the name
+	 differs from the original.  Name 1 exists whenever the value expands
+	 at all; a value with one name is never renamed and cannot be tied
+	 apart from anything.  */
+      int old = vregno[pv];
+      int neu = lvx_cms_rename_regno (anode_value, anode_name, anode_regno,
+				      vregno, pv, 1);
+      if (old < 0 || neu < 0 || neu == old)
+	continue;
+      if (lvx_cms_subst_use_ok_p (seq[arcs[a].dst], old, neu))
+	continue;
+
+      /* Refused.  The consumer's own value must share this register -- and
+	 when the consumer owns no value there is nothing to merge with, which
+	 is a loop codegen has to decline rather than repair.  */
+      if (cv < 0 || pv == cv)
+	{
+	  orphan++;
+	  continue;
+	}
+      int rp = lvx_cms_tie_find (parent, pv);
+      int rc = lvx_cms_tie_find (parent, cv);
+      if (rp != rc)
+	parent[rc] = rp;
+    }
+
+  int nclass = 0, biggest = 0;
+  auto_vec<int> size;
+  size.safe_grow_cleared (n);
+  for (unsigned v = 0; v < n; v++)
+    size[lvx_cms_tie_find (parent, (int) v)]++;
+  for (unsigned v = 0; v < n; v++)
+    if (lvx_cms_tie_find (parent, (int) v) == (int) v)
+      {
+	nclass++;
+	if (size[v] > biggest)
+	  biggest = size[v];
+      }
+
+  *nclass_out = nclass;
+  *nmerged_out = (int) n - nclass;
+  *biggest_out = biggest;
+  *orphan_out = orphan;
+}
+
 /* CAN EVERY SLOT BE RENAMED AND STILL RECOGNISE?  §7tricies.10.
 
    The rename map says which register each instance's operands become
@@ -14618,8 +14768,8 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 static bool
 lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
 		       const auto_vec<lvx_cms_arc> &arcs,
-		       const auto_vec<int> &owner,
-		       const auto_vec<int> &vregno,
+		       const auto_vec<int> &insn2cls,
+		       const auto_vec<int> &cregno,
 		       const auto_vec<int> &anode_value,
 		       const auto_vec<int> &anode_name,
 		       const auto_vec<int> &anode_regno,
@@ -14630,38 +14780,36 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
   int base = num_validated_changes ();
   bool ok = true;
 
-  /* THE DEFINITION.  The value this instruction owns, if it owns one, moves to
-     its iteration's name.  */
+  /* THE DEFINITION.  The rename unit this instruction defines into, if any,
+     moves to its iteration's name.  Addressed by CLASS rather than by value,
+     because a tied operand makes two values one register (§7tricies.11) and
+     the unit of renaming is therefore the class.  */
   if (set && REG_P (SET_DEST (set)))
-    for (unsigned v = 0; v < owner.length (); v++)
-      {
-	if (owner[v] != (int) self)
-	  continue;
-	int old = vregno[v];
-	int neu = lvx_cms_rename_regno (anode_value, anode_name, anode_regno,
-					vregno, (int) v, iter);
-	if (old < 0 || neu < 0 || neu == old)
-	  continue;
-	if ((int) REGNO (SET_DEST (set)) != old)
-	  continue;
-	validate_change (insn, &SET_DEST (set),
-			 gen_rtx_REG (GET_MODE (SET_DEST (set)), neu), 1);
-	(*nsubst)++;
-      }
+    {
+      int c = self < insn2cls.length () ? insn2cls[self] : -1;
+      int old = c >= 0 ? cregno[c] : -1;
+      int neu = c >= 0 ? lvx_cms_rename_regno (anode_value, anode_name,
+					      anode_regno, cregno, c, iter)
+			: -1;
+      if (old >= 0 && neu >= 0 && neu != old
+	  && (int) REGNO (SET_DEST (set)) == old)
+	{
+	  validate_change (insn, &SET_DEST (set),
+			   gen_rtx_REG (GET_MODE (SET_DEST (set)), neu), 1);
+	  (*nsubst)++;
+	}
+    }
 
   /* THE USES.  One pass per incoming RAW arc, since each names a different
-     value and a different distance.  */
+     class and a different distance.  */
   for (unsigned a = 0; a < arcs.length (); a++)
     {
       if (arcs[a].kind != LVX_ARC_REG_RAW || arcs[a].dst != self)
 	continue;
-      int pv = -1;
-      for (unsigned v = 0; v < owner.length (); v++)
-	if (owner[v] == (int) arcs[a].src)
-	  pv = (int) v;
+      int pv = arcs[a].src < insn2cls.length () ? insn2cls[arcs[a].src] : -1;
       if (pv < 0)
 	continue;
-      int old = vregno[pv];
+      int old = cregno[pv];
       int pl = iter - (int) arcs[a].omega;
       if (old < 0)
 	continue;
@@ -14670,9 +14818,22 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
       if (pl < 0)
 	continue;
       int neu = lvx_cms_rename_regno (anode_value, anode_name, anode_regno,
-				      vregno, pv, pl);
+				      cregno, pv, pl);
       if (neu < 0 || neu == old)
 	continue;
+      /* NO SKIP WHEN THE USE IS IN THE CONSUMER'S OWN CLASS.  The first
+	 version skipped exactly that case, reasoning about double-rewriting,
+	 and it is the one case that must NOT be skipped: a tie puts the use
+	 and the destination in one class on purpose, so rewriting the
+	 destination and leaving the use is how the tie gets broken.  It made
+	 the class colouring score worse than the value colouring it was meant
+	 to fix -- 81 loops against 83 -- which is what said the merge was not
+	 the thing that was wrong.
+
+	 At OMEGA = 0 both sides take name L and land on the same register, so
+	 the tie survives.  At OMEGA >= 1 they take different names and it
+	 cannot: such a class must not expand at all, which is handled where
+	 the class degree is computed rather than here.  */
 
       subrtx_ptr_iterator::array_type array;
       FOR_EACH_SUBRTX_PTR (iter2, array, &pat, NONCONST)
@@ -14701,8 +14862,8 @@ static bool
 lvx_cms_rename_dryrun (const auto_vec<rtx_insn *> &seq,
 		       const auto_vec<lvx_cms_arc> &arcs,
 		       const auto_vec<lvx_cms_slot> &slots,
-		       const auto_vec<int> &owner,
-		       const auto_vec<int> &vregno,
+		       const auto_vec<int> &insn2cls,
+		       const auto_vec<int> &cregno,
 		       const auto_vec<int> &anode_value,
 		       const auto_vec<int> &anode_name,
 		       const auto_vec<int> &anode_regno,
@@ -14716,8 +14877,9 @@ lvx_cms_rename_dryrun (const auto_vec<rtx_insn *> &seq,
       unsigned i = (unsigned) slots[q].insn;
       if (i >= seq.length ())
 	continue;
-      if (!lvx_cms_rename_insn_p (seq[i], slots[q].iter, arcs, owner, vregno,
-				  anode_value, anode_name, anode_regno, i, &n))
+      if (!lvx_cms_rename_insn_p (seq[i], slots[q].iter, arcs, insn2cls,
+				  cregno, anode_value, anode_name,
+				  anode_regno, i, &n))
 	{
 	  fail++;
 	  /* WHICH insn and WHICH instance, bounded.  A refusal count cannot be
@@ -17759,16 +17921,131 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		pl.kernel, pl.epilogue, pl.epilogue_sym, pl.exit_slots,
 		pl.exit_epilogues);
 
-  /* CAN EVERY SLOT BE RENAMED AND STILL RECOGNISE?  A property of the
-     schedule and the assignment alone, so it is asked before a block exists
-     to emit into -- and it is the question that turns a wrong register choice
-     from an ICE in a later pass into a decision here.  §7tricies.10.  */
+  /* THE RENAME UNIT IS THE CLASS, NOT THE VALUE.  §7tricies.11.
+
+     A tied operand makes two values one register, so they cannot be given
+     different expansion names.  The classes are found by asking the target
+     (lvx_cms_tie_classes), then COLOURED AS VALUES IN THEIR OWN RIGHT: one
+     entry per class with the union of its members' ranges, which is the whole
+     cost of the merge -- a longer range means a higher degree and possibly an
+     extra name.
+
+     The value-level colouring above is kept and still reports every figure
+     the study is built on, so none of its numbers move.  This second
+     colouring exists only to be the one codegen renames from.  */
   int rnsubst = 0, rnfail = 0;
-  bool rnok = lvx_cms_rename_dryrun (seq, arcs, plslots, q_own, q_regno,
-				     av, an, ar, &rnsubst, &rnfail);
+  bool rnok = false;
+  int tnclass = 0, tnmerged = 0, tbiggest = 0, torphan = 0;
+  int cmaxreg = -1, cassigned = 0, cnodes = 0, cedges = 0, ckunroll = 1;
+  {
+    auto_vec<int> tparent;
+    lvx_cms_tie_classes (seq, arcs, q_own, q_regno, av, an, ar, tparent,
+			 &tnclass, &tnmerged, &tbiggest, &torphan);
+
+    /* Dense class indices, and the per-class table: the earliest definition,
+       the latest reader, the widest member, and the register they share --
+       which they do share, because the tie is what put them in one class and
+       RA satisfied it.  */
+    auto_vec<int> v2c, c_def, c_last, c_deg, c_nr, c_ec, c_regno, c_uf;
+    v2c.safe_grow_cleared (q_own.length ());
+    for (unsigned v = 0; v < q_own.length (); v++)
+      v2c[v] = -1;
+    for (unsigned v = 0; v < q_own.length (); v++)
+      {
+	int r = lvx_cms_tie_find (tparent, (int) v);
+	if (v2c[r] < 0)
+	  {
+	    v2c[r] = (int) c_def.length ();
+	    c_def.safe_push (q_def[r]);
+	    c_last.safe_push (q_last[r]);
+	    c_nr.safe_push (q_nr[r]);
+	    c_ec.safe_push (q_ec[r]);
+	    c_regno.safe_push (q_regno[r]);
+	    c_uf.safe_push (q_uf[r]);
+	  }
+	int ci = v2c[r];
+	if (q_def[v] < c_def[ci])
+	  {
+	    c_def[ci] = q_def[v];
+	    c_ec[ci] = q_ec[v];
+	    c_regno[ci] = q_regno[v];
+	  }
+	if (q_last[v] > c_last[ci])
+	  c_last[ci] = q_last[v];
+	if (q_nr[v] > c_nr[ci])
+	  c_nr[ci] = q_nr[v];
+	if (q_uf[v])
+	  c_uf[ci] = 1;
+      }
+    for (unsigned v = 0; v < q_own.length (); v++)
+      v2c[v] = v2c[lvx_cms_tie_find (tparent, (int) v)];
+
+    /* Insn -> class, which is all the substitution needs: the defining insn
+       of every member maps to the class, so a use found through an arc and a
+       def found through ownership agree by construction.  Built here, before
+       the degrees are adjusted, because the cross-iteration-tie test below
+       needs it.  */
+    auto_vec<int> insn2cls_pre;
+    insn2cls_pre.safe_grow_cleared (seq.length ());
+    for (unsigned i = 0; i < seq.length (); i++)
+      insn2cls_pre[i] = -1;
+    for (unsigned v = 0; v < q_own.length (); v++)
+      if (q_own[v] >= 0 && q_own[v] < (int) seq.length ())
+	insn2cls_pre[q_own[v]] = v2c[v];
+    for (unsigned c = 0; c < c_def.length (); c++)
+      c_deg.safe_push ((c_last[c] - c_def[c] + found - 1) / found);
+
+    /* A CLASS CARRYING A TIE ACROSS ITERATIONS CANNOT EXPAND.  Within one
+       class the members share a register by the machine's own requirement, so
+       at OMEGA = 0 a def and a use both take name L and the tie survives any
+       number of names.  At OMEGA >= 1 the use takes name L - OMEGA and the
+       def name L: two different registers for operands the instruction
+       requires to be one.  Degree 1 is the only expansion such a class
+       admits, and forcing it here is what keeps the substitution realisable
+       instead of discovering it insn by insn.  */
+    for (unsigned a = 0; a < arcs.length (); a++)
+      {
+	if (arcs[a].kind != LVX_ARC_REG_RAW || arcs[a].omega == 0)
+	  continue;
+	int pc = arcs[a].src < insn2cls_pre.length ()
+		 ? insn2cls_pre[arcs[a].src] : -1;
+	int cc = arcs[a].dst < insn2cls_pre.length ()
+		 ? insn2cls_pre[arcs[a].dst] : -1;
+	if (pc >= 0 && pc == cc)
+	  c_deg[pc] = 1;
+      }
+
+    /* AVAIL for the class colouring, from the same reserved set -- which is
+       computed over values and stays correct, since a class's register is a
+       member's register and the freeable rule counts definitions.  */
+    HARD_REG_SET cresv;
+    lvx_cms_reserved_regs (seq, q_def, q_last, q_nr, q_ec, q_regno, q_uf,
+			   &cresv);
+    unsigned HOST_WIDE_INT cavail = 0;
+    for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
+      if (!TEST_HARD_REG_BIT (cresv, r))
+	cavail |= (unsigned HOST_WIDE_INT) 1 << r;
+
+    auto_vec<int> cav, can, car;
+    int cmsq = 0, cspill = 0, cperiod = 0;
+    lvx_cms_colour (c_def, c_last, c_deg, c_nr, c_ec, found, lo,
+		    &cnodes, &cedges, &cmsq, &cspill, &cperiod, &ckunroll,
+		    NULL, &cav, &can, &car, &cmaxreg, cavail, &c_regno,
+		    &c_uf, NULL, NULL);
+    for (unsigned q = 0; q < car.length (); q++)
+      if (car[q] >= 0)
+	cassigned++;
+
+    rnok = lvx_cms_rename_dryrun (seq, arcs, plslots, insn2cls_pre, c_regno,
+				  cav, can, car, &rnsubst, &rnfail);
+  }
   lvx_cms_dump (";; lvx cms: fn=%s loop %d renameable %s subst=%d refused=%d"
-		" slots=%u\n", current_function_name (), loop->num,
-		rnok ? "ok" : "BAD", rnsubst, rnfail, plslots.length ());
+		" slots=%u values=%u classes=%d merged=%d biggest=%d"
+		" orphan=%d cnodes=%d cassigned=%d cmaxreg=%d ckunroll=%d\n",
+		current_function_name (), loop->num, rnok ? "ok" : "BAD",
+		rnsubst, rnfail, plslots.length (), q_own.length (), tnclass,
+		tnmerged, tbiggest, torphan, cnodes, cassigned, cmaxreg,
+		ckunroll);
 
   /* CODEGEN, phase one: the block structure (§7quinquies.9).  Behind
      -mcms-codegen and off by default, because it is incomplete -- the blocks
