@@ -22038,13 +22038,27 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     int lrmaxp2 = 0, lruf = 0, lrxl = 0;
     int lrtie = 0, lrunit = 0, lrheld = 0;
 
-    int nwar = 0, nwaw = 0;
+    int nwar = 0, nwaw = 0, nlo = 0, nlotight = 0;
     for (unsigned a = 0; a < arcs.length (); a++)
       {
 	if (arcs[a].kind == LVX_ARC_REG_WAR)
 	  nwar++;
 	if (arcs[a].kind == LVX_ARC_REG_WAW)
 	  nwaw++;
+	/* IS A CTRL_LIVEOUT ARC EVER BINDING?  §7tricies.68.  The arc keeps a
+	   definition of a live-out register out of its branch's cycle, and
+	   narrowing it was proposed as an II win -- on no evidence that any
+	   of them constrains the schedule at all.  A SLACK arc provably costs
+	   nothing; only a tight one can be on a critical path.  Counted, not
+	   argued.  */
+	if (arcs[a].kind == LVX_ARC_CTRL_LIVEOUT
+	    && arcs[a].src < sigma.length () && arcs[a].dst < sigma.length ())
+	  {
+	    nlo++;
+	    if (sigma[arcs[a].dst] - sigma[arcs[a].src]
+		== arcs[a].theta - arcs[a].omega * found)
+	      nlotight++;
+	  }
       }
     /* The same function the graph builder called, on the same body: the
        partition the anti-dependence decisions were made from.  */
@@ -22066,11 +22080,13 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     lvx_cms_dump (";; lvx cms: fn=%s loop %d lranges %s n=%d orphan=%d"
 		  " dup=%d noloc=%d overlap=%d maxp2=%d usefirst=%d"
 		  " exitlive=%d tie=%d units=%d held=%d nwar=%d nwaw=%d"
+		  " nlo=%d/%d"
 		  " adropped=%d akunres=%d akone=%d akkeep=%d narcs=%u\n",
 		  current_function_name (), loop->num,
 		  lrok && lrovl == 0 ? "ok" : "BAD",
 		  nrange, lrorph, lrdup, lrnoloc, lrovl, lrmaxp2, lruf, lrxl,
-		  lrtie, lrunit, lrheld, nwar, nwaw, lrdropped[0],
+		  lrtie, lrunit, lrheld, nwar, nwaw, nlotight, nlo,
+		  lrdropped[0],
 		  lrdropped[1], lrdropped[2], lrdropped[3], arcs.length ());
     if (lvx_cms_probe && dump_file)
       lvx_cms_dump_lranges (seq, lr, "probe");
