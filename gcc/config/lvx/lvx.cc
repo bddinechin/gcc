@@ -15287,6 +15287,68 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
       lr[root]->exit_live |= lr[k]->exit_live;
     }
 
+  /* ONE LIVE-OUT LINEAGE PER LIVE-OUT REGISTER.  §7tricies.66.
+
+     EXIT_LIVE above is `this lineage's register is live out of the loop',
+     which is not the same question as `this lineage's value is what is live
+     out'.  A body may hold SEVERAL ranges on one register -- that is the
+     whole point of keying a reference to its range by the effects list rather
+     than by the register -- and only the LAST of them produces the value the
+     code after the loop reads.  store.c has exactly that:
+
+       lr3 r1 uf=0 [9,11]  eff=1/0D,5/2U      intra-iteration, carried nowhere
+       lr8 r1 uf=1 [11,12] eff=5/0D,1/1U~     loop-carried, reaches the exit
+
+     and both came out EXIT_LIVE.  Emitting the epilogue copy for lr3 then
+     wrote its name over the r1 that held lr8's value, which is how the first
+     attempt at §7tricies.63's copy broke three gate programs.
+
+     No reaching-definition analysis is needed to tell them apart, and
+     reaching for one was the wrong diagnosis: the answer is local and already
+     in the structure.  The range that reaches the loop end is the one with
+     the greatest LAST_DATE among those on the register, which for a modulo
+     schedule is exactly `whose live interval extends furthest'.  A tie means
+     two ranges end at the same cycle on one register, which the occupancy
+     check should already have refused; EXIT_LIVE is cleared on both so that
+     nothing is copied on a guess.  */
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      int best = -1;
+      bool tie = false;
+
+      if (lr[k]->effects.is_empty () || !lr[k]->exit_live
+	  || lvx_cms_lrange_root (lr, (int) k) != (int) k)
+	continue;
+      /* The candidates: every root claiming this same register.  */
+      for (unsigned q = 0; q < lr.length (); q++)
+	{
+	  if (lr[q]->effects.is_empty () || !lr[q]->exit_live
+	      || lvx_cms_lrange_root (lr, (int) q) != (int) q
+	      || lr[q]->regno != lr[k]->regno)
+	    continue;
+	  if (best < 0 || lr[q]->last_date > lr[best]->last_date)
+	    {
+	      best = (int) q;
+	      tie = false;
+	    }
+	  else if (lr[q]->last_date == lr[best]->last_date
+		   && (int) q != best)
+	    tie = true;
+	}
+      if (best < 0)
+	continue;
+      if (tie)
+	{
+	  for (unsigned q = 0; q < lr.length (); q++)
+	    if (!lr[q]->effects.is_empty ()
+		&& lr[q]->regno == lr[k]->regno
+		&& lvx_cms_lrange_root (lr, (int) q) == (int) q)
+	      lr[q]->exit_live = false;
+	}
+      else if ((int) k != best)
+	lr[k]->exit_live = false;
+    }
+
   /* Each lineage's unroll factor: the instances its life spans, rounded up to
      a power of two so the index is a mask (§7tricies.2's third place the
      power of two pays).  A lineage that is not renamed is not expanded --
@@ -17664,6 +17726,115 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
    that is still a live loop's header while the loop structures exist, which
    is the shape of the ICE §7quinquies.10 already paid for once.  */
 
+/* SEQUENTIALISE A PARALLEL COPY.  Boissinot, Darte, Rastello, Dupont de
+   Dinechin and Guillon, "Revisiting Out-of-SSA Translation for Correctness,
+   Code Quality, and Efficiency", CGO 2009, Algorithm 1 -- transcribed rather
+   than reinvented, and the reference says a similar algorithm is C. May's.
+
+   The epilogue copies are PARALLEL: each live-out lineage moves its last
+   name back to the register the code after the loop reads, and one lineage's
+   source may be another's destination.  Emitted in an arbitrary sequential
+   order they clobber a source before it is read -- and for a cyclic
+   permutation no order works at all, which is what the one fresh register is
+   for.  The algorithm emits the minimum number of copies: one extra per
+   cycle, none otherwise.
+
+   PSRC/PDST/PMODE are the parallel copies (PDST[k] := PSRC[k]), whose
+   destinations must be distinct -- which §7tricies.66's disambiguation
+   guarantees, one live-out lineage per register, and which is also the
+   algorithm's "(unique) predecessor" requirement.  SCRATCH is the fresh
+   register, or -1 when none was free: then a cycle is refused rather than
+   broken wrongly.  LOC and PRED are indexed by register number, which is
+   what lets the whole thing be two arrays and two stacks.  */
+
+static bool
+lvx_cms_seq_pcopy (const auto_vec<int> &psrc, const auto_vec<int> &pdst,
+		   const auto_vec<machine_mode> &pmode, int scratch,
+		   auto_vec<int> *osrc, auto_vec<int> *odst,
+		   auto_vec<machine_mode> *omode)
+{
+  int loc[FIRST_PSEUDO_REGISTER], pred[FIRST_PSEUDO_REGISTER];
+  machine_mode vmode[FIRST_PSEUDO_REGISTER];
+  auto_vec<int> ready, todo;
+  unsigned k;
+
+  if (psrc.length () != pdst.length () || psrc.length () != pmode.length ())
+    return false;
+  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    {
+      loc[r] = pred[r] = -1;
+      vmode[r] = VOIDmode;
+    }
+  for (k = 0; k < pdst.length (); k++)
+    if (psrc[k] < 0 || pdst[k] >= FIRST_PSEUDO_REGISTER
+	|| pdst[k] < 0 || psrc[k] >= FIRST_PSEUDO_REGISTER)
+      return false;
+
+  /* Lines 2-3: clear the destinations' locations and the sources'
+     predecessors, before line 4 fills them in -- the order matters for a
+     register that is both.  */
+  for (k = 0; k < pdst.length (); k++)
+    {
+      loc[pdst[k]] = -1;
+      pred[psrc[k]] = -1;
+    }
+  /* Lines 4-7.  */
+  for (k = 0; k < pdst.length (); k++)
+    {
+      loc[psrc[k]] = psrc[k];
+      vmode[psrc[k]] = pmode[k];
+      pred[pdst[k]] = psrc[k];
+      todo.safe_push (pdst[k]);
+    }
+  /* Lines 8-9: a destination nothing needs can be overwritten at once.  */
+  for (k = 0; k < pdst.length (); k++)
+    if (loc[pdst[k]] < 0)
+      ready.safe_push (pdst[k]);
+
+  while (!todo.is_empty ())
+    {
+      int b;
+
+      while (!ready.is_empty ())
+	{
+	  int a, c;
+
+	  b = ready.pop ();
+	  a = pred[b];
+	  if (a < 0)
+	    continue;
+	  c = loc[a];
+	  if (c < 0)
+	    continue;
+	  if (c != b)			/* a copy to itself is not one */
+	    {
+	      osrc->safe_push (c);
+	      odst->safe_push (b);
+	      omode->safe_push (vmode[c] != VOIDmode ? vmode[c] : DImode);
+	    }
+	  vmode[b] = vmode[c];
+	  loc[a] = b;			/* now available in b */
+	  if (a == c && pred[a] >= 0)
+	    ready.safe_push (a);	/* just copied, can be overwritten */
+	}
+
+      b = todo.pop ();
+      if (pred[b] >= 0 && b != loc[pred[b]])
+	{
+	  /* A circuit: break it through the fresh register.  */
+	  if (scratch < 0 || scratch >= FIRST_PSEUDO_REGISTER)
+	    return false;
+	  osrc->safe_push (b);
+	  odst->safe_push (scratch);
+	  omode->safe_push (vmode[b] != VOIDmode ? vmode[b] : DImode);
+	  vmode[scratch] = vmode[b];
+	  loc[b] = scratch;
+	  ready.safe_push (b);
+	}
+    }
+  return true;
+}
+
 static bool
 lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		       const auto_vec<rtx_insn *> &seq,
@@ -18313,6 +18484,153 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	}
       tail[nd] = c;
       nemit++;
+    }
+
+  /* THE EPILOGUE COPIES FOR THE LIVE-OUT LINEAGES.  §7tricies.63 and .66.
+
+     A modulo-expanded lineage ends its last instance in one of its rotating
+     names, while the code after the loop reads the register it was
+     originally allocated to.  So each drain ends by moving the value back:
+     one copy per live-out lineage, from the name that lineage's LAST
+     executed instance on THAT path wrote.
+
+     Which name is known exactly and needs no analysis -- it is
+     reg[(L + use_first - delayed) & (p2unroll - 1)] with L the greatest
+     iteration whose heading definition appears on the path into this
+     epilogue, taken with the same path filter lvx_cms_verify_slots uses so
+     the two agree about what a path is.  If no definition appears at all the
+     live-out value is the preheader's, which a USE_FIRST lineage's pinned
+     name 0 already holds, and nothing is copied.
+
+     THE COPIES ARE PARALLEL.  One lineage's source name can be another's
+     destination register, so emitting them in an arbitrary order clobbers a
+     source before it is read, and a cyclic permutation has no valid order at
+     all.  They are therefore sequentialised properly -- Boissinot et al.,
+     CGO 2009, Algorithm 1 -- which costs one extra copy per cycle through a
+     fresh register and nothing otherwise.  */
+  for (unsigned k = 0; k < nnode; k++)
+    {
+      auto_vec<int> psrc, pdst, osrc, odst;
+      auto_vec<machine_mode> pmode, omode;
+      unsigned HOST_WIDE_INT free_regs = avail;
+      int scratch = -1;
+      rtx_insn *after;
+
+      if (nodes[k].kind != LVX_CMS_NODE_EPILOGUE)
+	continue;
+
+      for (unsigned g = 0; g < lr.length (); g++)
+	{
+	  lvx_cms_lrange *q = lr[g];
+	  unsigned dins;
+	  int dslot, best = -1, nm;
+	  rtx *dloc;
+
+	  if (q->effects.is_empty () || !q->exit_live
+	      || lvx_cms_lrange_root (lr, (int) g) != (int) g
+	      || !q->effects[0].is_def)
+	    continue;
+	  dins = q->effects[0].insn;
+	  dslot = q->effects[0].slot;
+	  if (dins >= seq.length ())
+	    continue;
+
+	  /* The last instance of the heading definition on this path.  */
+	  for (unsigned z = 0; z < slots.length (); z++)
+	    {
+	      int nd = slots[z].node;
+	      bool is_ep;
+
+	      if (nd < 0 || nd >= (int) nnode
+		  || (unsigned) slots[z].insn != dins)
+		continue;
+	      is_ep = (nodes[nd].kind == LVX_CMS_NODE_EPILOGUE);
+	      if (is_ep && nd != (int) k)
+		continue;
+	      if (!is_ep
+		  && (slots[z].date > nodes[k].exit_date
+		      || (slots[z].date == nodes[k].exit_date
+			  && (slots[z].iter > nodes[k].exit_iter
+			      || (slots[z].iter == nodes[k].exit_iter
+				  && slots[z].insn > nodes[k].exit_insn)))))
+		continue;
+	      if (slots[z].iter > best)
+		best = slots[z].iter;
+	    }
+	  if (best < 0)
+	    continue;		/* no definition on this path: live-in wins */
+	  nm = lvx_cms_lrange_reg (q, best, q->effects[0].delayed);
+	  if (nm < 0 || nm == (int) q->regno)
+	    continue;		/* already in the architectural register */
+	  *why = "a live-out lineage is a register tuple";
+	  if (MAX (q->nregs, 1) != 1)
+	    return false;
+
+	  dloc = lvx_cms_reg_at (&PATTERN (seq[dins]), dslot);
+	  *why = "a live-out lineage's definition has no operand";
+	  if (!dloc || !*dloc || !REG_P (*dloc))
+	    return false;
+	  psrc.safe_push (nm);
+	  pdst.safe_push ((int) q->regno);
+	  pmode.safe_push (GET_MODE (*dloc));
+	}
+
+      if (psrc.is_empty ())
+	continue;
+
+      /* The fresh register a cycle would need: one the colouring did not
+	 take, and not itself a source or a destination here.  */
+      for (unsigned g = 0; g < lr.length (); g++)
+	for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
+	  if (lr[g]->reg[x] >= 0 && lr[g]->reg[x] < 64)
+	    free_regs &= ~((unsigned HOST_WIDE_INT) 1 << lr[g]->reg[x]);
+      for (unsigned z = 0; z < psrc.length (); z++)
+	{
+	  free_regs &= ~((unsigned HOST_WIDE_INT) 1 << psrc[z]);
+	  free_regs &= ~((unsigned HOST_WIDE_INT) 1 << pdst[z]);
+	}
+      for (int r = 0; r < 64; r++)
+	if ((free_regs >> r) & 1)
+	  {
+	    scratch = r;
+	    break;
+	  }
+
+      *why = "a live-out parallel copy cannot be sequentialised";
+      if (!lvx_cms_seq_pcopy (psrc, pdst, pmode, scratch, &osrc, &odst,
+			      &omode))
+	return false;
+
+      /* At the END of the drain, after every instance of every definition it
+	 holds -- and still before the block's terminator, which
+	 emit_insn_after from TAIL gives.  */
+      after = tail[k];
+      if (!after)
+	{
+	  after = BB_HEAD (blocks[k]);
+	  if (LABEL_P (after))
+	    after = NEXT_INSN (after);
+	  *why = "no NOTE_INSN_BASIC_BLOCK for a live-out copy";
+	  if (!after || !NOTE_INSN_BASIC_BLOCK_P (after))
+	    return false;
+	}
+      for (unsigned z = 0; z < osrc.length (); z++)
+	{
+	  rtx_insn *mv
+	    = emit_insn_after (gen_rtx_SET (gen_rtx_REG (omode[z], odst[z]),
+					    gen_rtx_REG (omode[z], osrc[z])),
+			       after);
+
+	  *why = "a live-out copy does not recognise";
+	  if (recog_memoized (mv) < 0)
+	    return false;
+	  after = mv;
+	  tail[k] = mv;
+	  nemit++;
+	}
+      lvx_cms_dump (";; lvx cms:   live-out node%u bb%d: %u parallel copies"
+		    " -> %u sequential, scratch r%d\n", k, blocks[k]->index,
+		    psrc.length (), osrc.length (), scratch);
     }
 
   /* THE HARDWARE LOOP ITSELF: the exit-free copy of the kernel, and the two
