@@ -13636,6 +13636,47 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	      }
 	  }
 
+	/* SELECT CAN FAIL WHERE SIMPLIFY SUCCEEDED, and that was invisible.
+	   §7tricies.39.
+
+	   The loop above leaves REG[A] at -1 when no aligned register in AVAIL
+	   is free, and recorded nothing: STUCK is filled from the SIMPLIFY
+	   phase only -- the nodes it could not remove -- and SPL is `nn -
+	   removed', so a node removed cleanly and then left uncoloured
+	   appeared in neither.  The verify block below made it worse by
+	   skipping `reg[a] < 0', so the one check advertised as "loud, not
+	   silent" was silent about exactly this.
+
+	   It is not a corner case.  The II search's feasibility test reads
+	   SPL and passes ANODE_REGNO as null, so the verify block does not
+	   even run there: an II was accepted whenever SIMPLIFY succeeded,
+	   while SELECT could still run out of registers at that II.  On
+	   heat-3d's loop 7 (44 nodes, maxreg 63) all four names of two
+	   lineages came back unassigned, and because lvx_cms_colour_lranges
+	   seeds REG[] with the original regno -- which is right for a held
+	   lineage -- they read back as r10,r10,r10,r10: a p2 = 4 lineage with
+	   no expansion at all, whose 15-cycle span then self-overlaps at
+	   II = 7.  The occupancy check reported it as a conflict with another
+	   lineage's name 3, which looked like a dropped anti-dependence and is
+	   not one.
+
+	   Reported through STUCK as well as SPL: STUCK's documented meaning is
+	   the set of nodes that could not be coloured, the simplify phase is
+	   only one way to get there, and the search's blame loop needs the
+	   unit to attribute pressure to.  */
+	{
+	  int unassigned = 0;
+
+	  for (int a = 0; a < nn; a++)
+	    if (reg[a] < 0 && gone[a])
+	      {
+		unassigned++;
+		if (stuck)
+		  stuck->safe_push (nval[a]);
+	      }
+	  spl += unassigned;
+	}
+
 	/* VERIFY, because an assignment is checkable and a feasibility answer
 	   was not.  Two interfering nodes may not share a register, and every
 	   tuple must be aligned.  Reported through SPL -- the same channel a
@@ -15246,6 +15287,135 @@ lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange *> &lr)
   return bad;
 }
 
+/* THE ANTI-DEPENDENCES THE GRAPH DROPPED, CHECKED AGAINST THE ASSIGNMENT.
+   §7tricies.38.
+
+   lvx_cms_antidep_real_p drops a register WAR or WAW arc whenever the two
+   references belong to different lineages and at least one of them is renamed,
+   on the assumption that modulo expansion separates them.  That assumption is
+   about the FINAL assignment -- which register each lineage's each name got --
+   and nothing on the lineage path was checking it: lvx_cms_verify_antidep
+   still runs, but over the class arrays, and site.antidep_ok stopped gating
+   anything when the class gates went.  This is the check that belongs there.
+
+   IT IS AN OCCUPANCY QUESTION, not a pairwise arc question.  If no register is
+   held by two different lineages in the same cycle of the unrolled kernel,
+   then no WAR or WAW between two lineages can exist to be violated -- the
+   second reference simply is not using the first's storage.  So this rebuilds
+   the occupancy from SIGMA and the assigned stacks and counts occupants per
+   (cycle, register), the same shape as lvx_cms_verify_rename and for the same
+   reason: the colouring decided interference from a model it built itself, so
+   a bug in that model cannot be caught by the colouring.
+
+   WHAT IT MUST COVER THAT THE COLOURING DOES NOT.  A HELD lineage is not in
+   the interference graph at all -- lvx_cms_colour_lranges skips every root
+   that is not renamed -- so its register is invisible there and is kept out of
+   AVAIL instead.  Here it is given an occupancy of the WHOLE PERIOD, which is
+   what holding a register means, so a renamed name landing on it is caught
+   rather than assumed away.
+
+   A VIOLATING PAIR IS REPORTED, not just counted, because fixRelaxed needs to
+   know which two lineages to reinstate an arc between.  */
+
+static bool
+lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
+			   const auto_vec<lvx_cms_lrange *> &lr,
+			   int ii, int lo, int kunroll, int *nconf_out,
+			   int *first_a, int *first_b, int *first_reg,
+			   int *first_cycle)
+{
+  int per = kunroll * ii;
+  int nconf = 0;
+
+  *nconf_out = 0;
+  *first_a = *first_b = *first_reg = *first_cycle = -1;
+  if (ii <= 0 || kunroll <= 0 || per > LVX_CMS_IG_MAX_PERIOD)
+    return true;		/* not modelled: the caller's other gates */
+
+  /* OCC[cycle][reg] is the lineage root holding that register then, or -1.  */
+  auto_vec<int> occ;
+  occ.safe_grow_cleared (per * 64);
+  for (int x = 0; x < per * 64; x++)
+    occ[x] = -1;
+
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      lvx_cms_lrange *g = lr[k];
+      int root, ec, d, life, nr;
+
+      if (g->effects.is_empty ())
+	continue;
+      root = lvx_cms_lrange_root (lr, (int) k);
+      if (root != (int) k)
+	continue;		/* one lineage, one occupancy */
+      nr = MAX (g->nregs, 1);
+
+      if (!g->renamed)
+	{
+	  /* Held: its register is claimed for the whole period.  */
+	  for (int c = 0; c < per; c++)
+	    for (int w = 0; w < nr; w++)
+	      {
+		int r = (int) g->regno + w;
+
+		if (r < 0 || r >= 64)
+		  continue;
+		if (occ[c * 64 + r] >= 0 && occ[c * 64 + r] != root)
+		  {
+		    if (nconf == 0)
+		      {
+			*first_a = occ[c * 64 + r];
+			*first_b = root;
+			*first_reg = r;
+			*first_cycle = c;
+		      }
+		    nconf++;
+		  }
+		else
+		  occ[c * 64 + r] = root;
+	      }
+	  continue;
+	}
+
+      ec = lvx_insn_dest_earlyclobber_p (seq[g->effects[0].insn]) ? 1 : 0;
+      d = g->first_date - lo + (ec ? 0 : 1);
+      life = MAX (g->last_date - g->first_date + (ec ? 1 : 0), 1);
+
+      /* Name J carries the copies congruent to J modulo P2UNROLL, which is
+	 exact because P2UNROLL divides KUNROLL.  */
+      for (int j = 0; j < g->p2unroll && j < LVX_CMS_MAX_KUNROLL; j++)
+	for (int cp = j; cp < kunroll; cp += g->p2unroll)
+	  for (int t = 0; t < life; t++)
+	    {
+	      int c = ((d + cp * ii + t) % per + per) % per;
+
+	      for (int w = 0; w < nr; w++)
+		{
+		  int r = g->reg[j] + w;
+
+		  if (r < 0 || r >= 64)
+		    continue;
+		  if (occ[c * 64 + r] >= 0 && occ[c * 64 + r] != root)
+		    {
+		      if (nconf == 0)
+			{
+			  *first_a = occ[c * 64 + r];
+			  *first_b = root;
+			  *first_reg = r;
+			  *first_cycle = c;
+			}
+		      nconf++;
+		    }
+		  else
+		    occ[c * 64 + r] = root;
+		}
+	    }
+    }
+
+  *nconf_out = nconf;
+  return nconf == 0;
+}
+
 /* IS A REGISTER ANTI-DEPENDENCE WORTH KEEPING?  §7tricies.29.
 
    The arc is real when the two references END IN THE SAME REGISTER, and the
@@ -15348,7 +15518,8 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange *> &lr,
 static void
 lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
 			 const auto_vec<lvx_cms_lrange *> &lr,
-			 bitmap livein, HARD_REG_SET *reserved)
+			 bitmap livein, HARD_REG_SET *reserved,
+			 int *pool_out = NULL)
 {
   /* Per register: how many ranges live on it, and how many of those the
      colouring will rewrite.  */
@@ -15410,6 +15581,29 @@ lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
       CLEAR_HARD_REG_BIT (*reserved, r);
 
   *reserved |= hard;
+
+  /* THE POOL A SAVE AND A RESTORE WOULD RECOVER.  §7tricies.41.
+
+     A register reserved because it is LIVE-IN but never referenced by the
+     body is held for one reason only: something outside the loop is using it.
+     Saving it in the preheader and restoring it in the epilogue would hand it
+     to the pipeline at the cost of two instructions outside the loop, which a
+     loop pays back on its first trip.  Not implemented; measured here so the
+     future work is sized rather than asserted, and because it is exactly the
+     lever the loops whose II had to rise were short of.  */
+  if (pool_out)
+    {
+      int pool = 0;
+
+      for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
+	if (TEST_HARD_REG_BIT (*reserved, r)
+	    && !TEST_HARD_REG_BIT (fixed_reg_set, r)
+	    && nrange[r] == 0
+	    && (df_regs_ever_live_p (r) || crtl->abi->clobbers_full_reg_p (r))
+	    && livein && bitmap_bit_p (livein, r))
+	  pool++;
+      *pool_out = pool;
+    }
 }
 
 /* COLOUR THE RANGES AND FILL THEIR REG[] STACKS.  §7tricies.26.
@@ -15447,12 +15641,13 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 			unsigned HOST_WIDE_INT avail, int *nn_out,
 			int *stuck_out, int *maxreg_out, int *kun_out,
 			int *pin_out, int *pinfail_out, int *wide_out,
-			bool claim_def_cycle = false)
+			bool claim_def_cycle = false,
+			auto_vec<int> *stuck_lr = NULL)
 {
   auto_vec<int> idx, def_, last_, deg, nregs_, ec_, vregno, vuf;
   auto_vec<int> av, an, ar, stuck;
   int nn = 0, ne = 0, msq = 0, spl = 0, per = 0, kun = 1, maxreg = -1;
-  int pinned = 0, pinfail = 0, wide = 0;
+  int pinned = 0, pinfail = 0, wide = 0, unres = 0;
 
   for (unsigned k = 0; k < lr.length (); k++)
     {
@@ -15511,6 +15706,12 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	  int q = lvx_cms_anode_of (av, an, (int) u, j);
 	  if (q >= 0 && ar[q] >= 0)
 	    g->reg[j] = ar[q];
+	  else
+	    /* COUNTED, NOT DUMPED.  The feasibility test calls this per
+	       candidate schedule, so a per-name line here is hundreds of
+	       lines of noise per loop; the count is what the caller acts
+	       on.  */
+	    unres++;
 	}
     }
 
@@ -15537,8 +15738,24 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
   *kun_out = kun;
   *pin_out = pinned;
   *pinfail_out = pinfail;
-  *wide_out = wide;
-  return nn > 0 && stuck.is_empty () && pinfail == 0 && wide == 0;
+  /* A NAME WITH NO COLOURED ANODE IS NOT A FALLBACK TO THE ORIGINAL REGISTER.
+     REG[] is seeded with the original regno so that a held lineage reads
+     correctly, but for a RENAMED lineage an unresolved name leaves two of its
+     names sharing one register -- no expansion where the span needs it -- and
+     the occupancy check then finds the lineage conflicting with whatever else
+     holds that register.  Counted and refused rather than emitted.  */
+  *wide_out = wide + unres;
+  if (stuck_lr)
+    {
+      /* STUCK holds UNIT indices; the caller wants lineages.  */
+      stuck_lr->truncate (0);
+      for (unsigned q = 0; q < stuck.length (); q++)
+	if (stuck[q] >= 0 && stuck[q] < (int) idx.length ()
+	    && !stuck_lr->contains (idx[stuck[q]]))
+	  stuck_lr->safe_push (idx[stuck[q]]);
+    }
+  return nn > 0 && stuck.is_empty () && pinfail == 0 && wide == 0
+	 && unres == 0;
 }
 
 /* THE RANGE A REFERENCE BELONGS TO.  Mirrors
@@ -18217,7 +18434,8 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		   const auto_vec<int> &height,
 		   int ii, int delta, auto_vec<int> &sigma,
 		   int budget, int *passes, const char **last_bad,
-		   int *resblame_out, int pin, int mcrl_release = -1)
+		   int *resblame_out, int pin, int mcrl_release = -1,
+		   bitmap livein = NULL)
 {
   /* -1 means `whatever the option says'; the gate below passes an explicit
      setting so it can try a II both ways.  */
@@ -18418,33 +18636,67 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	      bool allocates = true;
 	      if (lvx_cms_regalloc_feasible)
 		{
-		  auto_vec<int> cdef, clast, cdeg, cnr, cec, cown, stuck;
-		  lvx_cms_collect_values (seq, arcs, sigma, ii, cdef, clast,
-					  cdeg, cnr, cec, &cown);
-		  int nn, ne, msq, spl, per, kun;
-		  lvx_cms_colour (cdef, clast, cdeg, cnr, cec, ii,
-				  lvx_cms_sigma_min (sigma), &nn, &ne, &msq,
-				  &spl, &per, &kun, &stuck);
-		  if (spl > 0)
+		  /* ONE MODEL FOR THE SEARCH AND FOR CODEGEN.  §7tricies.40.
+
+		     This asked the VALUE colouring, with AVAIL defaulting to
+		     all 64 registers, while codegen asks the LINEAGE colouring
+		     against the registers actually free.  Two models and two
+		     register files: the search accepted an II whose kernel
+		     codegen then could not colour, and since select failure
+		     was silent (§7tricies.39) the loop was emitted with two of
+		     its names sharing a register.  heat-3d's loop 7 is the
+		     case -- 44 nodes, maxreg 63, and the search believed the
+		     whole file was free.
+
+		     So the test is the same build, the same colouring and the
+		     same AVAIL the emission will use.  It is more expensive
+		     per candidate II, and it raises II where the registers are
+		     genuinely not there, which is the honest answer: the lower
+		     II was not achievable, it was only unmeasured.  */
+		  auto_vec<lvx_cms_lrange *> flr;
+		  auto_vec<int> fstuck;
+		  HARD_REG_SET fresv;
+		  unsigned HOST_WIDE_INT favail = 0;
+		  int fnn = 0, fst = 0, fmx = -1, fkun = 1;
+		  int fpin = 0, fpinf = 0, fwide = 0;
+
+		  lvx_cms_build_lranges (seq, flr, NULL, NULL, NULL);
+		  lvx_cms_set_lrange_dates (seq, flr, sigma, ii, NULL);
+		  lvx_cms_lrange_reserved (seq, flr, livein, &fresv);
+		  for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
+		    if (!TEST_HARD_REG_BIT (fresv, r))
+		      favail |= (unsigned HOST_WIDE_INT) 1 << r;
+
+		  if (!lvx_cms_colour_lranges (seq, flr, ii,
+					       lvx_cms_sigma_min (sigma),
+					       favail, &fnn, &fst, &fmx,
+					       &fkun, &fpin, &fpinf, &fwide,
+					       false, &fstuck))
 		    {
 		      allocates = false;
 		      *last_bad = "kernel not colourable";
-		      /* Blame the DEFINING instruction of every value left in
-			 the graph.  Its range is what interferes, and the
+		      /* Blame the DEFINING instruction of every lineage left
+			 uncoloured.  Its range is what interferes, and the
 			 release lever below moves a task later -- which
-			 shortens a value's live range from its definition
-			 end, lowering interference without touching II.  */
-		      for (unsigned q = 0; q < stuck.length (); q++)
+			 shortens a live range from its definition end,
+			 lowering interference without touching II.  */
+		      for (unsigned q = 0; q < fstuck.length (); q++)
 			{
-			  int v = stuck[q];
-			  if (v >= 0 && v < (int) cown.length ())
-			    {
-			      int i = cown[v];
-			      if (i >= 0 && i < (int) n)
-				blame[i]++, culprit[i]++;
-			    }
+			  int k = fstuck[q];
+
+			  if (k < 0 || k >= (int) flr.length ()
+			      || flr[k]->effects.is_empty ())
+			    continue;
+			  {
+			    unsigned i = flr[k]->effects[0].insn;
+
+			    if (i < n)
+			      blame[i]++, culprit[i]++;
+			  }
 			}
 		    }
+		  for (unsigned k = 0; k < flr.length (); k++)
+		    delete flr[k];
 		}
 
 	      if (allocates)
@@ -19434,12 +19686,14 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	 column (§7octovicies.4).  */
       if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
 			     budget, &passes, &last_bad, resblame,
-			     pin == 3 ? 1 : pin, lvx_cms_mcrl_release))
+			     pin == 3 ? 1 : pin, lvx_cms_mcrl_release,
+			     df_get_live_in (loop->header)))
 	found = try_ii;
       else if (pin == 3
 	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
 				     budget, &passes, &last_bad, resblame, 0,
-				     lvx_cms_mcrl_release))
+				     lvx_cms_mcrl_release,
+				     df_get_live_in (loop->header)))
 	found = try_ii;
       /* Arm A: this II refused an un-seeded construction.  Before raising it,
 	 ask MCRL where the tasks want to go.
@@ -19457,7 +19711,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       else if (lvx_cms_mcrl_gate
 	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
 				     budget, &passes, &last_bad, resblame,
-				     pin == 3 ? 1 : pin, 2))
+				     pin == 3 ? 1 : pin, 2,
+				     df_get_live_in (loop->header)))
 	found = try_ii, mcrl_used = 1, mcrl_arm = 1;
     }
 
@@ -19480,7 +19735,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	  int p2 = 0;
 	  const char *b2 = NULL;
 	  if (lvx_cms_swo_at_ii (seq, arcs, height, found, delta, alt, budget,
-				 &p2, &b2, NULL, pin == 3 ? 1 : pin, 2)
+				 &p2, &b2, NULL, pin == 3 ? 1 : pin, 2,
+				 df_get_live_in (loop->header))
 	      && lvx_cms_sigma_span (alt) < have)
 	    {
 	      sigma.truncate (0);
@@ -20759,7 +21015,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		int wide = 0, nr = 0, orph = 0, dupl = 0, nol = 0;
 		int subst = 0, refused = 0;
 		int cgloopback = -1;
-		bool cok, vok, rok2, lok = true, claimed = false;
+		int nconf = 0, ca = -1, cb = -1, creg = -1, ccyc = -1;
+		int pool = 0;
+		bool cok, vok, rok2, aok = true, lok = true, claimed = false;
 
 		for (unsigned z = 0; z < seq.length (); z++)
 		  if (JUMP_P (seq[z]))
@@ -20771,7 +21029,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 					      &nol);
 		lvx_cms_lrange_reserved (seq, cglr,
 					 df_get_live_in (loop->header),
-					 &cgresv);
+					 &cgresv, &pool);
 		for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
 		  if (!TEST_HARD_REG_BIT (cgresv, r))
 		    cgavail |= (unsigned HOST_WIDE_INT) 1 << r;
@@ -20803,6 +21061,45 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		}
 		rok2 = lvx_cms_rename_lr_dryrun (seq, plslots, cglr, &subst,
 						 &refused);
+		aok = lvx_cms_verify_lr_antidep (seq, cglr, found, lo,
+						 kun > 0 ? kun : 1, &nconf,
+						 &ca, &cb, &creg, &ccyc);
+		if (!aok && lvx_cms_probe && dump_file)
+		  {
+		    /* The two lineages as the CODEGEN assignment left them,
+		       which is not what the probe's dump shows.  */
+		    lvx_cms_dump (";; lvx cms:   conflict at r%d cycle %d"
+				  " between:\n", creg, ccyc);
+		    for (int z = 0; z < 2; z++)
+		      {
+			int kk = z ? cb : ca;
+			lvx_cms_lrange *g;
+
+			if (kk < 0 || kk >= (int) cglr.length ())
+			  continue;
+			g = cglr[kk];
+			lvx_cms_dump (";; lvx cms:     lr%d r%u+%d p2=%d"
+				      " uf=%d ren=%d ec=%d [%d,%d] regs=",
+				      kk, g->regno, g->nregs, g->p2unroll,
+				      g->use_first ? 1 : 0,
+				      g->renamed ? 1 : 0,
+				      g->effects.is_empty () ? -1
+				      : (lvx_insn_dest_earlyclobber_p
+					   (seq[g->effects[0].insn]) ? 1 : 0),
+				      g->first_date, g->last_date);
+			for (int j = 0; j < g->p2unroll
+					&& j < LVX_CMS_MAX_KUNROLL; j++)
+			  lvx_cms_dump ("%sr%d", j ? "," : "", g->reg[j]);
+			lvx_cms_dump (" eff=");
+			for (unsigned e = 0; e < g->effects.length (); e++)
+			  lvx_cms_dump ("%s%u/%d%s%s", e ? "," : "",
+					g->effects[e].insn,
+					g->effects[e].slot,
+					g->effects[e].is_def ? "D" : "U",
+					g->effects[e].delayed ? "~" : "");
+			lvx_cms_dump ("\n");
+		      }
+		  }
 
 		if (pl.steady_bad)
 		  /* The kernel is not a steady state: see the long note at
@@ -20815,6 +21112,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		  iwhy = "the lineages do not colour";
 		else if (!lok)
 		  iwhy = "a cycle's reads and writes cannot be linearised";
+		else if (!aok)
+		  iwhy = "a dropped anti-dependence is not separated";
 		else if (!rok2)
 		  iwhy = "a slot's insn refuses the rename substitution";
 		else
@@ -20823,10 +21122,13 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 						   &nemit, &iwhy);
 		lvx_cms_dump (";; lvx cms: fn=%s loop %d cgcolour %s nodes=%d"
 			      " maxreg=%d kunroll=%d subst=%d refused=%d"
-			      " linear=%d claimed=%d\n",
+			      " linear=%d claimed=%d lrantidep=%s conf=%d"
+			      " pair=%d/%d/r%d@%d avail=%d savepool=%d\n",
 			      current_function_name (), loop->num,
 			      cok ? "ok" : "no", nn, mx, kun, subst, refused,
-			      lok ? 1 : 0, claimed ? 1 : 0);
+			      lok ? 1 : 0, claimed ? 1 : 0,
+			      aok ? "ok" : "BAD", nconf, ca, cb, creg, ccyc,
+			      (int) popcount_hwi (cgavail), pool);
 		for (unsigned k = 0; k < cglr.length (); k++)
 		  delete cglr[k];
 	      }
