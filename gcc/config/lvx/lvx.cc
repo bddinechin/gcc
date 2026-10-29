@@ -14369,18 +14369,33 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
      the loop advanced its pointer twice per accumulate -- and it is NOT a
      correctness criterion, which took the executable gate to establish.
 
-     A kernel closed at ITER_SLOT is asymmetric whenever the loopback is not
-     the last slot of the window: the instances after the branch belong to the
-     epilogue by construction, so an instruction scheduled after it appears
-     kunroll - 1 times.  That is a legitimate rotated kernel, and the deficit
-     is absorbed across trips by the prologue and the epilogue.  `main' loop 1
-     of the gate's own program reports STEADYBAD = 2 and computes the right
-     answer at every trip count from 0 to 20.
+     IT IS A CORRECTNESS CRITERION AFTER ALL, and the argument that said
+     otherwise is worth keeping because it is wrong in an instructive way.  It
+     ran: a kernel closed at ITER_SLOT is asymmetric whenever the loopback is
+     not the last slot of the window, the instances after the branch belong to
+     the epilogue by construction, and "the deficit is absorbed across trips by
+     the prologue and the epilogue".
 
-     So it is a diagnostic, not a gate: a sudden jump in it means the window
-     moved, which is worth seeing, and a nonzero value by itself means only
-     that the branch is not scheduled last.  The gate is the executable
-     differential.  */
+     THE PROLOGUE AND THE EPILOGUE COVER THE BOUNDARY, NOT THE MIDDLE.  A
+     kernel block short of one instance of one instruction is short of it on
+     EVERY trip: the steady state executes kunroll iterations' work minus that
+     instance, and nothing ever supplies it.  The entry and the drain fix up
+     the first and last trips, which is why a short trip count still agrees
+     and why `main' loop 1 at STEADYBAD = 2 looked like a counterexample.
+
+     Found by the executable gate on `A[i] = (i % 7) + 1', the signed-modulo
+     fixup: PLKER = 61 where the body is 16 instructions and KUNROLL is 4, so
+     three instances missing, and the emitted kernel has
+     `sraw $rX = $rIV, 31' in three of its four copies.  Every fourth
+     iteration computed its remainder without the negative-value correction.
+     B[i] = 64 - i, which needs no fixup, passes -- which is why the fault
+     looked like it was about stores for as long as it did.
+
+     So PLKER must be KUNROLL * |body| exactly, and this counts the shortfall.
+     The construction that produces it -- walking the master schedule and
+     cutting at ITER_SLOT, rather than folding each instruction's KUNROLL
+     instances into the block by sigma mod (KUNROLL * II) -- is the thing to
+     fix; until then the emission refuses a loop with STEADYBAD != 0.  */
   {
     auto_vec<int> per;
     per.safe_grow_cleared (seq.length ());
@@ -15064,6 +15079,80 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
       for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
 	lr[k]->reg[x] = (int) lr[k]->regno;
     }
+}
+
+/* THE LINEAGES, PRINTED.  A refusal count says what was rejected; this says
+   what the structure IS, which is what a wrong answer needs.  */
+
+static void
+lvx_cms_dump_lranges (const auto_vec<rtx_insn *> &seq,
+		      const auto_vec<lvx_cms_lrange *> &lr, const char *tag)
+{
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      lvx_cms_lrange *g = lr[k];
+
+      if (g->effects.is_empty ())
+	continue;
+      lvx_cms_dump (";; lvx cms:   %s lr%u r%u+%d root=%d p2=%d uf=%d"
+		    " ren=%d xl=%d [%d,%d] regs=", tag, k, g->regno,
+		    g->nregs, lvx_cms_lrange_root (lr, (int) k), g->p2unroll,
+		    g->use_first ? 1 : 0, g->renamed ? 1 : 0,
+		    g->exit_live ? 1 : 0, g->first_date, g->last_date);
+      for (int j = 0; j < g->p2unroll && j < LVX_CMS_MAX_KUNROLL; j++)
+	lvx_cms_dump ("%sr%d", j ? "," : "", g->reg[j]);
+      lvx_cms_dump (" eff=");
+      for (unsigned e = 0; e < g->effects.length (); e++)
+	lvx_cms_dump ("%s%u/%d%s%s", e ? "," : "", g->effects[e].insn,
+		      g->effects[e].slot, g->effects[e].is_def ? "D" : "U",
+		      g->effects[e].delayed ? "~" : "");
+      lvx_cms_dump ("\n");
+    }
+  (void) seq;
+}
+
+/* OVERLAPPING SPANS MUST BE ONE LINEAGE.  §7tricies.33.
+
+   A reference to a register TUPLE covers [regno, regno + nregs), and DF
+   reports it as one reference at the first register.  Another instruction may
+   reference one of the other registers on its own -- a widening multiply
+   writes a pair and the shift that follows reads only its high half -- and
+   that opens a SECOND lineage inside the first one's span.  Renamed
+   independently, the pair moves to a fresh aligned pair while the half moves
+   somewhere else, and the two no longer name the same storage.
+
+   So this is an invariant of the structure, checked rather than assumed: two
+   lineages may not overlap in registers.  The reference carries the same
+   constraint as UNFOLD_EFFECT_FLAG_ALIASED and a PARENT link per
+   sub-register, which lvx_cms_build_lranges did not have.  */
+
+static int
+lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange *> &lr)
+{
+  int bad = 0;
+
+  for (unsigned a = 0; a < lr.length (); a++)
+    {
+      if (lr[a]->effects.is_empty ())
+	continue;
+      for (unsigned b = a + 1; b < lr.length (); b++)
+	{
+	  unsigned alo, ahi, blo, bhi;
+
+	  if (lr[b]->effects.is_empty ())
+	    continue;
+	  if (lvx_cms_lrange_root (lr, (int) a)
+	      == lvx_cms_lrange_root (lr, (int) b))
+	    continue;		/* one lineage, one stack: consistent */
+	  alo = lr[a]->regno;
+	  ahi = alo + MAX (lr[a]->nregs, 1);
+	  blo = lr[b]->regno;
+	  bhi = blo + MAX (lr[b]->nregs, 1);
+	  if (alo < bhi && blo < ahi && !(alo == blo && ahi == bhi))
+	    bad++;		/* a PARTIAL overlap: the defect */
+	}
+    }
+  return bad;
 }
 
 /* IS A REGISTER ANTI-DEPENDENCE WORTH KEEPING?  §7tricies.29.
@@ -16953,14 +17042,10 @@ lvx_cms_verify_antidep (const auto_vec<rtx_insn *> &seq,
 static bool
 lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		       const auto_vec<rtx_insn *> &seq,
-		       const auto_vec<lvx_cms_arc> &arcs,
 		       const auto_vec<lvx_cms_slot> &slots,
 		       const auto_vec<lvx_cms_node> &nodes,
 		       const auto_vec<basic_block> &blocks,
-		       const auto_vec<int> &insn2cls,
-		       const auto_vec<int> &cregno,
-		       const auto_vec<int> &cav, const auto_vec<int> &can,
-		       const auto_vec<int> &car,
+		       const auto_vec<lvx_cms_lrange *> &lr,
 		       int *nemit_out, const char **why)
 {
   unsigned nnode = nodes.length ();
@@ -17168,8 +17253,8 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	     substitution walks only REGs.  */
 	  {
 	    int n = 0;
-	    if (!lvx_cms_rename_insn_p (j, slots[q].iter, arcs, insn2cls,
-					cregno, cav, can, car, i, &n, true))
+	    if (!lvx_cms_rename_lr_insn_p (seq[i], j, i, slots[q].iter, lr,
+					   &n, true))
 	      {
 		*why = "the renamed branch does not recognise";
 		return false;
@@ -17198,8 +17283,11 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       /* An ordinary instruction: a copy, renamed for this iteration.  */
       rtx_insn *c = emit_insn_after (copy_insn (PATTERN (seq[i])), after);
       int n = 0;
-      if (!lvx_cms_rename_insn_p (c, slots[q].iter, arcs, insn2cls, cregno,
-				  cav, can, car, i, &n, true))
+      /* RESOLVED ON THE ORIGINAL, APPLIED TO THE COPY.  copy_insn produces an
+	 insn DF has never seen, so the references are looked up on SEQ[I] and
+	 written to C by operand position (§7tricies.27).  */
+      if (!lvx_cms_rename_lr_insn_p (seq[i], c, i, slots[q].iter, lr, &n,
+				     true))
 	{
 	  *why = "the renamed copy does not recognise";
 	  return false;
@@ -20229,6 +20317,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     lvx_cms_set_lrange_dates (seq, lr, sigma, found, liveout);
     bool lrok = lvx_cms_verify_lranges (seq, lr, &nrange, &lrorph, &lrdup,
 					&lrnoloc);
+    int lrovl = lvx_cms_lrange_overlaps (lr);
     for (unsigned k = 0; k < lr.length (); k++)
       if (!lr[k]->effects.is_empty ())
 	{
@@ -20240,13 +20329,16 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	    lrxl++;
 	}
     lvx_cms_dump (";; lvx cms: fn=%s loop %d lranges %s n=%d orphan=%d"
-		  " dup=%d noloc=%d maxp2=%d usefirst=%d exitlive=%d"
-		  " tie=%d units=%d held=%d nwar=%d nwaw=%d adropped=%d"
-		  " akunres=%d akone=%d akkeep=%d narcs=%u\n",
-		  current_function_name (), loop->num, lrok ? "ok" : "BAD",
-		  nrange, lrorph, lrdup, lrnoloc, lrmaxp2, lruf, lrxl,
+		  " dup=%d noloc=%d overlap=%d maxp2=%d usefirst=%d"
+		  " exitlive=%d tie=%d units=%d held=%d nwar=%d nwaw=%d"
+		  " adropped=%d akunres=%d akone=%d akkeep=%d narcs=%u\n",
+		  current_function_name (), loop->num,
+		  lrok && lrovl == 0 ? "ok" : "BAD",
+		  nrange, lrorph, lrdup, lrnoloc, lrovl, lrmaxp2, lruf, lrxl,
 		  lrtie, lrunit, lrheld, nwar, nwaw, lrdropped[0],
 		  lrdropped[1], lrdropped[2], lrdropped[3], arcs.length ());
+    if (lvx_cms_probe && dump_file)
+      lvx_cms_dump_lranges (seq, lr, "probe");
 
     /* STAGE TWO (a): COLOUR THE RANGES, and report the assignment beside the
        class one.  Nothing is renamed from it yet -- the comparison is the
@@ -20388,35 +20480,71 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	      const char *iwhy = NULL;
 	      int nemit = 0;
 	      bool emitted = false;
-	      if (!site.renameable)
-		iwhy = "a slot's insn refuses the rename substitution";
-	      else if (!site.antidep_ok)
-		iwhy = "an unrenamed register's order is not preserved";
 
-	      else if (cgambig_classes)
-		/* STILL GATED, THOUGH THE REWRITE IS NOW BY LOCATION.
-		   §7tricies.24 removes the reason the gate existed -- the
-		   rewrite can no longer put one class's register where
-		   another's belongs -- and removing the gate took the emitted
-		   population from 13 to 47 of 119 while leaving t8 (`init's
-		   loop, nine classes in r0 and three in r3) returning a wrong
-		   VALUE rather than a wrong address: 2^32 - 27, which looks
-		   like a lost sign extension.  The address corruption the
-		   gate was protecting against is gone; something else in that
-		   loop is not, and it is not yet localised.  So the gate
-		   stays and the location rewrite is the foundation for
-		   removing it, not the removal.  */
-		iwhy = "two classes share an original register";
-	      else if (cgliveout_renamed)
-		iwhy = "a class live out of the loop would be renamed";
-	      else if (!site.classocc_ok)
-		iwhy = "the class assignment puts two live names in one"
-		       " register";
-	      else
-		emitted = lvx_cms_emit_pipeline (&site, seq, arcs, plslots,
-						 plnodes, cgblocks, cgi2c,
-						 cgcregno, cgav, cgan, cgar,
-						 &nemit, &iwhy);
+	      /* THE LINEAGE PATH IS WHAT EMITS.  §7tricies.32.  Four of the
+		 five gates that stood here were properties of the CLASS
+		 model and are gone with it:
+
+		   - `two classes share an original register' (72 of 119
+		     loops): an operand belongs to one lineage, so there is
+		     nothing to disambiguate,
+		   - `a class live out of the loop would be renamed' (25):
+		     EXIT_LIVE is a field on the lineage,
+		   - `the class assignment puts two live names in one
+		     register': the occupancy is checked over lineages,
+		   - the anti-dependence pin (27), which forced degree 1 and
+		     was §7tricies.19's unsoundness.
+
+		 What remains is the substitution actually recognising, which
+		 is asked of the lineage assignment itself and now refuses
+		 nothing on any of the 124 loops measured.  */
+	      {
+		auto_vec<lvx_cms_lrange *> cglr;
+		HARD_REG_SET cgresv;
+		unsigned HOST_WIDE_INT cgavail = 0;
+		int nn = 0, nst = 0, mx = -1, kun = 1, pin = 0, pinf = 0;
+		int wide = 0, nr = 0, orph = 0, dupl = 0, nol = 0;
+		int subst = 0, refused = 0;
+		bool cok, vok, rok2;
+
+		lvx_cms_build_lranges (seq, cglr, NULL, NULL, NULL);
+		lvx_cms_set_lrange_dates (seq, cglr, sigma, found, liveout);
+		vok = lvx_cms_verify_lranges (seq, cglr, &nr, &orph, &dupl,
+					      &nol);
+		lvx_cms_lrange_reserved (seq, cglr,
+					 df_get_live_in (loop->header),
+					 &cgresv);
+		for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
+		  if (!TEST_HARD_REG_BIT (cgresv, r))
+		    cgavail |= (unsigned HOST_WIDE_INT) 1 << r;
+		cok = lvx_cms_colour_lranges (seq, cglr, found, lo, cgavail,
+					      &nn, &nst, &mx, &kun, &pin,
+					      &pinf, &wide);
+		rok2 = lvx_cms_rename_lr_dryrun (seq, plslots, cglr, &subst,
+						 &refused);
+
+		if (pl.steady_bad)
+		  /* The kernel is not a steady state: see the long note at
+		     STEADYBAD's computation.  A block missing one instance of
+		     one instruction is missing it on every trip.  */
+		  iwhy = "the kernel is not a steady state";
+		else if (!vok)
+		  iwhy = "an operand belongs to no lineage";
+		else if (!cok)
+		  iwhy = "the lineages do not colour";
+		else if (!rok2)
+		  iwhy = "a slot's insn refuses the rename substitution";
+		else
+		  emitted = lvx_cms_emit_pipeline (&site, seq, plslots,
+						   plnodes, cgblocks, cglr,
+						   &nemit, &iwhy);
+		lvx_cms_dump (";; lvx cms: fn=%s loop %d cgcolour %s nodes=%d"
+			      " maxreg=%d kunroll=%d subst=%d refused=%d\n",
+			      current_function_name (), loop->num,
+			      cok ? "ok" : "no", nn, mx, kun, subst, refused);
+		for (unsigned k = 0; k < cglr.length (); k++)
+		  delete cglr[k];
+	      }
 	      lvx_cms_dump (";; lvx cms: fn=%s loop %d pipeline %s emitted=%d"
 			    " slots=%u\n", current_function_name (),
 			    loop->num, emitted ? "built" : iwhy, nemit,
