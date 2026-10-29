@@ -17051,6 +17051,20 @@ struct lvx_cms_site
      passes the occupancy check.  The value-level one was always verified;
      this one never was, and it was wrong.  */
   bool classocc_ok;
+  /* DOES ENTERING THE LOOP GUARANTEE THAT ITERATION 0 COMPLETES?
+     §7tricies.43.  The prologue's iteration-0 side effects are sound only if
+     it does, and that is a property of the loop's SHAPE: with a single jump
+     in the body and every exit leaving from that jump's block, the path from
+     the header to it is unconditional, so entering runs the whole body once
+     -- a bottom-tested loop, where the zero-trip case was decided before the
+     preheader.  A TOP-tested loop has its single jump at the head and can be
+     entered with nothing to do, and there an iteration-0 store in the
+     prologue is a real speculation.
+
+     Checked rather than assumed: replacing the blanket refusal with "entering
+     admits iteration 0" is only an improvement if that sentence is known to
+     be true of the loop in hand.  */
+  bool entry_admits;
 };
 
 /* A finding kept although the code that needed it is gone, because make_insns
@@ -17548,47 +17562,137 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   if (kfirst < 0 || mainep < 0)
     return false;
 
-  /* NOTHING WITH A SIDE EFFECT MAY BE SPECULATED.
+  /* A SIDE EFFECT IN THE PROLOGUE IS NOT THE SAME AS A SPECULATED ONE.
+     §7tricies.42.
 
-     The prologue executes the early stages of iterations 0 .. nstages - 2
-     BEFORE any exit test has run, so every instruction it holds is
-     speculated.  For a load that is sound once it is dismissible -- which is
-     what -mcms-force-speculative-loads delivers and what the dependence
-     graph's branch constraint already assumed (§7.0).  For a STORE it is not
-     sound at all: there is no dismissible store, and an iteration that does
-     not exist must not write.
+     This refused any store, call or volatile reference landing in a prologue
+     node, on the reading that "the prologue executes the early stages of
+     iterations 0 .. nstages - 2 BEFORE any exit test has run, so every
+     instruction it holds is speculated".  The premise is false in both
+     directions, and the CONTROL DEPENDENCE is what makes it false.
 
-     Measured on the gate's own program, where main's initialisation loop
-     writes A[i] and B[i]: the prologue stored past the end of both arrays.
-     The answer came back wrong rather than faulting, because what follows an
-     array in .bss is another array.
+     WHAT ADMITS AN ITERATION.  Iteration 0 is admitted by ENTERING THE LOOP:
+     the pipeline replaces the original loop and is reached only on the same
+     condition, so iteration 0 always runs and nothing of it is speculated.
+     Iteration l >= 1 is admitted by the loopback branch of iteration l - 1.
 
-     So a loop whose prologue holds a store, a call, or anything volatile is
-     declined.  This is a restriction on the EMISSION, not on the analysis:
-     the schedule is still valid, and lifting it needs either LVX's GUARD
-     predication on the speculated stages or a trip-count guard that makes
-     the prologue unconditional -- both of which are real work and neither of
-     which is a reason to emit a wrong store today.  */
-  *why = "the prologue would speculate a store or other side effect";
+     AND THE GRAPH ALREADY ORDERS THAT.  LVX_ARC_CTRL_STORE is pushed from
+     every branch to every store in the block that follows it, at theta = 1
+     and -- for a store that precedes the branch in body order, which is the
+     shape of every bottom-tested loop -- at omega = 1.  So
+
+         sigma (store) - sigma (branch) >= 1 - II,
+
+     and therefore, instance by instance,
+
+         date (store, l) - date (branch, l - 1)
+           = sigma (store) - sigma (branch) + II >= 1,
+
+     STRICTLY after the branch that admits it.  The intra-cycle order
+     (§7tricies.35) forces the terminator last in its cycle, so `strictly'
+     is what is needed: a store sharing the branch's cycle would be emitted
+     before it.  Every jump instance before ITER_SLOT is emitted as an early
+     exit, so when that branch is taken the loop leaves for an epilogue and
+     the store is never reached.
+
+     So no prologue side effect is speculated, and the refusal was refusing
+     the thing the arc exists to make safe.  The measurement that motivated
+     it -- main's initialisation loop storing past the end of both arrays --
+     was taken while two other defects were live: the kernel window dropped
+     branch instances (§7tricies.34) and the early-exit count was short, so
+     the admitting branches were not all being emitted.  Both are fixed.
+
+     WHAT REPLACES IT IS THE CHECK, not the assumption.  Each prologue side
+     effect is asked whether its admitting instance precedes it, which is
+     cheap, is decided on the plan, and refuses the loop if the arc is ever
+     absent or the dates disagree -- rather than trusting that it is there.  */
+  *why = "a prologue side effect precedes the branch that admits it";
+  int nse0 = 0, nsel = 0;
   for (unsigned q = 0; q < slots.length (); q++)
     {
       int nd = slots[q].node;
       unsigned i = (unsigned) slots[q].insn;
+      bool sideeff = false;
+
       if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
 	continue;
       if (nodes[nd].kind != LVX_CMS_NODE_PROLOGUE)
 	continue;
-      if (CALL_P (seq[i]) || volatile_insn_p (PATTERN (seq[i])))
-	return false;
+
+      /* A CALL IS STILL REFUSED OUTRIGHT.  Loop eligibility declines a body
+	 holding one, so this is unreachable; it is kept because `admitted by
+	 its branch' says nothing about a call's other effects.  */
+      if (CALL_P (seq[i]))
+	{
+	  *why = "the prologue would speculate a call";
+	  return false;
+	}
+
+      /* THE SAME DETECTION THE ARC BUILDER USED, so that what is checked here
+	 is what was constrained there.  A MEM in a pattern with no single_set
+	 is the case neither can read precisely, and stays a side effect.  */
+      if (lvx_mem_write_insn_p (seq[i]) || volatile_insn_p (PATTERN (seq[i])))
+	sideeff = true;
+      else
+	{
+	  subrtx_iterator::array_type array;
+	  rtx pat = PATTERN (seq[i]);
+	  rtx set = single_set (seq[i]);
+
+	  FOR_EACH_SUBRTX (it, array, pat, NONCONST)
+	    if (MEM_P (*it) && (!set || *it == SET_DEST (set)))
+	      {
+		sideeff = true;
+		break;
+	      }
+	}
+      if (!sideeff)
+	continue;
+
+      /* Iteration 0 is admitted by ENTERING the loop -- but only where
+	 entering means the body runs once, which site.entry_admits records
+	 and §7tricies.43 explains.  Where it does not, this is the
+	 speculation the blanket refusal was named for, and it is refused.  */
+      if (slots[q].iter <= 0)
+	{
+	  if (!site->entry_admits)
+	    {
+	      *why = "the prologue would speculate iteration 0's side effect";
+	      lvx_cms_dump (";; lvx cms:   prologue iter0 side effect insn=%u"
+			    " date=%d, entry does not admit it\n", i,
+			    slots[q].date);
+	      return false;
+	    }
+	  nse0++;
+	  continue;
+	}
+      nsel++;
+
+      /* Otherwise the loopback instance of the previous iteration must be
+	 emitted strictly earlier.  */
       {
-	subrtx_iterator::array_type array;
-	rtx pat = PATTERN (seq[i]);
-	rtx set = single_set (seq[i]);
-	FOR_EACH_SUBRTX (it, array, pat, NONCONST)
-	  if (MEM_P (*it) && (!set || *it == SET_DEST (set)))
+	int admit = -1;
+
+	for (unsigned r = 0; r < slots.length (); r++)
+	  if (slots[r].insn == loopback
+	      && slots[r].iter == slots[q].iter - 1
+	      && (admit < 0 || slots[r].date < admit))
+	    admit = slots[r].date;
+	if (admit < 0 || admit >= slots[q].date)
+	  {
+	    lvx_cms_dump (";; lvx cms:   prologue side effect insn=%u iter=%d"
+			  " date=%d admit=%d\n", i, slots[q].iter,
+			  slots[q].date, admit);
 	    return false;
+	  }
       }
     }
+
+  /* How many prologue side effects each kind of admission covered.  A zero
+     NSEL would mean the iteration >= 1 case is unexercised by the corpus,
+     which is worth knowing about a path that is trusted to the arc.  */
+  lvx_cms_dump (";; lvx cms:   prologue sideeffects iter0=%d iterN=%d\n",
+		nse0, nsel);
 
   /* THE EPILOGUES LEAVE THE CHAIN FIRST, before any insn is emitted: once
      they are redirected the chain no longer reaches the header, so nothing
@@ -20939,6 +21043,49 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       site.renameable = rnok;
       site.antidep_ok = adok;
       site.classocc_ok = cgocc;
+      /* §7tricies.43: all exits from the loopback's own block, so the body
+	 runs to completion once per entry.  */
+      {
+	int lb = -1;
+	int nexit = 0, nelse = 0;
+
+	for (unsigned z = 0; z < seq.length (); z++)
+	  if (JUMP_P (seq[z]))
+	    lb = (int) z;
+	if (lb >= 0 && BLOCK_FOR_INSN (seq[lb]))
+	  {
+	    basic_block lbb = BLOCK_FOR_INSN (seq[lb]);
+
+	    for (unsigned b = 0; b < loop->num_nodes; b++)
+	      {
+		edge e;
+		edge_iterator ei;
+
+		FOR_EACH_EDGE (e, ei, body[b]->succs)
+		  if (!flow_bb_inside_loop_p (loop, e->dest))
+		    {
+		      nexit++;
+		      if (body[b] != lbb)
+			nelse++;
+		    }
+	      }
+	  }
+	/* AND THE JUMP MUST BE THE LATCH'S TERMINATOR.  `all exits leave from
+	   the jump's block' is not enough on its own: a single jump in the
+	   MIDDLE of the body -- exit or fall through to further body blocks --
+	   also satisfies it, and then those later blocks, iteration 0's side
+	   effect among them, are conditional on that very test.  Requiring the
+	   jump to close the latch puts it at the bottom, so everything before
+	   it is unconditional and entering runs all of it.  */
+	site.entry_admits = (lb >= 0 && nexit > 0 && nelse == 0
+			     && BLOCK_FOR_INSN (seq[lb]) == loop->latch);
+	lvx_cms_dump (";; lvx cms: fn=%s loop %d entryadmits=%d exits=%d"
+		      " notlatch=%d jumpislatch=%d\n",
+		      current_function_name (), loop->num,
+		      site.entry_admits ? 1 : 0, nexit, nelse,
+		      (lb >= 0 && BLOCK_FOR_INSN (seq[lb]) == loop->latch)
+		      ? 1 : 0);
+      }
       edge e;
       edge_iterator ei;
       FOR_EACH_EDGE (e, ei, loop->header->preds)
