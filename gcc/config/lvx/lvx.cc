@@ -14195,13 +14195,38 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
     slots->truncate (0);
   if (nodes_out)
     nodes_out->truncate (0);
+  /* TWO PASSES OVER THE FINAL DATE, so the closing branch is emitted LAST
+     without the instances beside it being thrown away.  §7tricies.34.
+
+     The filter used to be `d == iter_date && l > iter_iteration', described
+     as "everything after ITER_SLOT is filtered out".  At the final date the
+     walk visits instances in ascending iteration, so the chosen loopback
+     instance -- the lowest iteration reaching that date -- came first and
+     every instance of a LATER iteration at the same cycle was dropped.  Those
+     instances are the pipelined work of later iterations and belong to the
+     kernel: dropping them leaves it short of a steady state, which is a wrong
+     answer on every trip (see STEADYBAD below).
+
+     They sit in the SAME CYCLE as the branch, so there is nothing to order
+     between them -- the bundler decides that -- and the only requirement is
+     that the branch be the block's terminator.  Hence the two passes: pass 0
+     emits every instance at this date except the chosen loopback, pass 1
+     emits the chosen loopback.  For every other date pass 1 emits nothing.
+
+     On `A[i] = (i % 7) + 1' the window is [10, 25] and the instructions at
+     phases 1, 5 and 9 each had their instance at date 25 dropped: 61 kernel
+     slots where 16 * 4 = 64 were needed.  */
   for (int d = 0; d <= iter_date; d++)
+    for (int pass = 0; pass < 2; pass++)
     for (int l = 0; l < instances; l++)
       for (unsigned i = 0; i < seq.length (); i++)
 	{
+	  bool chosen = (d == iter_date && l == iter_iteration
+			 && (int) i == loopback);
+
 	  if (sigma[i] - lo + l * ii != d)
 	    continue;
-	  if (d > iter_date || (d == iter_date && l > iter_iteration))
+	  if (pass == 0 ? chosen : !chosen)
 	    continue;
 	  pl->slots++;
 	  if (d < kernel_first)
@@ -17162,8 +17187,138 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   for (unsigned k = 0; k < nnode; k++)
     tail.safe_push (NULL);
 
+  /* READS BEFORE WRITES WITHIN A CYCLE.  §7tricies.35.
+
+   A VLIW bundle reads its operands before it writes them, and the modulo
+   schedule uses that: a value's live interval is [def + !earlyclobber, last],
+   so another lineage may be DEFINED in the very cycle this one is last READ,
+   and the colouring will hand both the same register.  Emitted RTL is not a
+   bundle -- it is a sequential stream that the bundler groups afterwards --
+   so a reader placed after the writer reads the new value.
+
+   The plan walks (date, iteration, body index), so within a cycle the order
+   is body order, which has nothing to do with it.  On `A[i] = (i % 7) + 1'
+   lineages lr9 ([2,3], the zero-extended index) and lr5 ([4,4]) both got r17,
+   disjoint by one cycle; at date 3 insn 12 reads lr9's r17 while insn 3
+   writes lr5's r17.  Body order put insn 3 first, so the shift took
+   `i + (i * magic >> 32)' as its index, the zero-extend became dead and was
+   deleted, and the emitted function had no `zxwd' at all.  That is why the
+   missing instruction looked like the defect when it was a symptom.
+
+   The constraint is on the RENAMED registers, not the original ones: two
+   slots touching one original register in one cycle are unconstrained if
+   their lineages were given different registers, which after modulo expansion
+   is the common case.  So the registers are resolved from the lineages first,
+   then each cycle's slots are ordered by `every reader of a register written
+   here comes before its writer'.
+
+   A CYCLE IN THAT ORDER CANNOT BE EMITTED.  Two slots exchanging registers in
+   one bundle -- A reads r writes s, B reads s writes r -- is legal in a VLIW
+   and inexpressible as a sequential stream, so the loop is declined.  The
+   closing branch is forced last, because it is the block's terminator, and a
+   slot in its cycle that writes what it reads would need to precede it; that
+   is declined too rather than emitted reading the wrong condition.  */
+  auto_vec<unsigned HOST_WIDE_INT> srd, swr;
+  auto_vec<int> order;
+
   for (unsigned q = 0; q < slots.length (); q++)
     {
+      unsigned HOST_WIDE_INT rd = 0, wr = 0;
+      unsigned i = (unsigned) slots[q].insn;
+
+      if (i < seq.length ())
+	{
+	  df_ref ref;
+
+	  FOR_EACH_INSN_USE (ref, seq[i])
+	    {
+	      unsigned r = DF_REF_REGNO (ref);
+	      int slot = lvx_cms_reg_index (PATTERN (seq[i]),
+					    DF_REF_LOC (ref));
+	      bool dly = false;
+	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, &dly);
+	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, dly)
+			  : (int) r;
+
+	      for (int w = 0; w < (g ? MAX (g->nregs, 1) : 1); w++)
+		if (neu + w >= 0 && neu + w < 64)
+		  rd |= (unsigned HOST_WIDE_INT) 1 << (neu + w);
+	    }
+	  FOR_EACH_INSN_DEF (ref, seq[i])
+	    {
+	      unsigned r = DF_REF_REGNO (ref);
+	      int slot = lvx_cms_reg_index (PATTERN (seq[i]),
+					    DF_REF_LOC (ref));
+	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, NULL);
+	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, false)
+			  : (int) r;
+
+	      for (int w = 0; w < (g ? MAX (g->nregs, 1) : 1); w++)
+		if (neu + w >= 0 && neu + w < 64)
+		  wr |= (unsigned HOST_WIDE_INT) 1 << (neu + w);
+	    }
+	}
+      srd.safe_push (rd);
+      swr.safe_push (wr);
+    }
+
+  /* Each run of slots sharing (node, date), topologically sorted.  */
+  for (unsigned a = 0; a < slots.length (); )
+    {
+      unsigned b = a;
+      while (b < slots.length () && slots[b].node == slots[a].node
+	     && slots[b].date == slots[a].date)
+	b++;
+      {
+	unsigned n = b - a;
+	auto_vec<int> deg, pick;
+	auto_vec<bool> done;
+
+	for (unsigned x = 0; x < n; x++)
+	  {
+	    deg.safe_push (0);
+	    done.safe_push (false);
+	  }
+	/* Edge reader -> writer, and the terminator last of all.  */
+	for (unsigned x = 0; x < n; x++)
+	  for (unsigned y = 0; y < n; y++)
+	    if (x != y && (srd[a + x] & swr[a + y]) != 0)
+	      deg[y]++;
+	for (unsigned x = 0; x < n; x++)
+	  if ((int) slots[a + x].insn == loopback)
+	    for (unsigned y = 0; y < n; y++)
+	      if (y != x)
+		deg[x]++;		/* the branch waits for everything */
+
+	for (unsigned step = 0; step < n; step++)
+	  {
+	    int take = -1;
+
+	    for (unsigned x = 0; x < n && take < 0; x++)
+	      if (!done[x] && deg[x] == 0)
+		take = (int) x;
+	    if (take < 0)
+	      {
+		*why = "a cycle's reads and writes cannot be linearised";
+		return false;
+	      }
+	    done[take] = true;
+	    pick.safe_push (a + take);
+	    for (unsigned y = 0; y < n; y++)
+	      if (!done[y]
+		  && ((srd[a + take] & swr[a + y]) != 0
+		      || (int) slots[a + y].insn == loopback))
+		deg[y]--;
+	  }
+	for (unsigned x = 0; x < n; x++)
+	  order.safe_push (pick[x]);
+      }
+      a = b;
+    }
+
+  for (unsigned oq = 0; oq < order.length (); oq++)
+    {
+      unsigned q = (unsigned) order[oq];
       int nd = slots[q].node;
       unsigned i = (unsigned) slots[q].insn;
       if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
