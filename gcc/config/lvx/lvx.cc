@@ -17972,7 +17972,43 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 	      if (!done[x] && deg[x] == 0)
 		take = (int) x;
 	    if (take < 0)
-	      return false;
+	      {
+		/* THE OFFENDING PAIR, PRINTED.  §7tricies.74.  The slots
+		   still undone with a nonzero in-degree are the circuit;
+		   every edge among them is a register that one of them reads
+		   and another writes in this same cycle, which is a swap --
+		   legal in a bundle, inexpressible as a sequential stream.
+		   Reporting only "cannot be linearised" left no way to tell
+		   an unlucky colouring from a forced one.  */
+		if (lvx_cms_probe)
+		  {
+		    lvx_cms_dump (";; lvx cms:   LINEAR node%d date%d: circuit",
+				  slots[a].node, slots[a].date);
+		    for (unsigned x = 0; x < n; x++)
+		      if (!done[x])
+			lvx_cms_dump (" %d/%d", slots[a + x].insn,
+				      slots[a + x].iter);
+		    lvx_cms_dump ("\n");
+		    for (unsigned x = 0; x < n; x++)
+		      if (!done[x])
+			for (unsigned y = 0; y < n; y++)
+			  if (!done[y] && x != y)
+			    {
+			      unsigned HOST_WIDE_INT m
+				= srd[a + x] & swr[a + y];
+
+			      for (int rr = 0; rr < 64; rr++)
+				if ((m >> rr) & 1)
+				  lvx_cms_dump (";; lvx cms:     %d/%d reads"
+						" r%d that %d/%d writes\n",
+						slots[a + x].insn,
+						slots[a + x].iter, rr,
+						slots[a + y].insn,
+						slots[a + y].iter);
+			    }
+		  }
+		return false;
+	      }
 	    done[take] = true;
 	    pick.safe_push (a + take);
 	    for (unsigned y = 0; y < n; y++)
