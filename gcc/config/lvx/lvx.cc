@@ -15145,6 +15145,51 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	}
     }
 
+  /* THE DOLOOP COUNTER IS HELD, NOT RENAMED.  §7tricies.64.
+
+     doloop_end_<mode> holds its counter FOUR times -- the `ne' comparison's
+     match_operand, and three match_dups across the decrement and the
+     unspec -- while the lineage records the one effect DF reports.  The
+     substitution rewrites a REG by its position in a sub-rtx walk, so a
+     renamed copy has the new register in one place and the old one in the
+     others, the match_dups no longer match, and recog rejects it.  That is
+     the dry-run's "a slot's insn refuses the rename substitution", and before
+     -mcms-hwloop it was unreachable because a doloop latch was declined
+     outright; with the latch kept it cost seven PolyBench loops that the
+     -fno-hwloop arm pipelines.
+
+     Holding the counter costs nothing.  It is a self-recurrence at distance
+     one whose successive definitions are a true dependence, so the copies
+     read what the previous copy wrote whether or not the name rotates, and
+     RecMII is unchanged.  And the emission wants it held for its own reason:
+     the explicit counter tests it builds for the non-closing instances, and
+     the SETUP arithmetic for an unrolled kernel, resolve the counter through
+     this lineage and need it to name one register.
+
+     Asked of the DOLOOP pattern specifically rather than of any pattern that
+     mentions a register more often than the lineage has effects on it.  The
+     general rule is the right one eventually -- and the retry it wants is to
+     hold the lineage and re-colour, not to decline -- but a tied operand's
+     read and write are also two occurrences of one register, so the general
+     form would hold every accumulator of every fused multiply-add on the
+     strength of a guess about how those effects are recorded.  */
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      if (!JUMP_P (seq[i]) || !lvx_doloop_end_p (seq[i]))
+	continue;
+      for (unsigned k = 0; k < lr.length (); k++)
+	{
+	  if (lr[k]->effects.is_empty ())
+	    continue;
+	  for (unsigned e = 0; e < lr[k]->effects.length (); e++)
+	    if (lr[k]->effects[e].insn == i)
+	      {
+		lr[lvx_cms_lrange_root (lr, (int) k)]->renamed = false;
+		break;
+	      }
+	}
+    }
+
   if (ntie_out)
     *ntie_out = ntie;
   if (nunit_out || nheld_out)
