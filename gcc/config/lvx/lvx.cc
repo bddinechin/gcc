@@ -14653,6 +14653,7 @@ struct lvx_cms_effect
 {
   unsigned insn;		/* index into SEQ */
   int slot;			/* the operand: ordinal in the REG walk */
+  int nregs;			/* THIS reference's width in registers */
   bool is_def;			/* a write (it may also head the range) */
   bool delayed;			/* reads the previous instance */
 };
@@ -14743,8 +14744,10 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       FOR_EACH_INSN_USE (ref, seq[i])
 	{
 	  unsigned r = DF_REF_REGNO (ref);
+	  rtx ureg = DF_REF_REG (ref);
 	  lvx_cms_effect e = { i, lvx_cms_reg_index (PATTERN (seq[i]),
 						    DF_REF_LOC (ref)),
+			       ureg && REG_P (ureg) ? REG_NREGS (ureg) : 1,
 			       false, false };
 
 	  if (r >= FIRST_PSEUDO_REGISTER)
@@ -14775,10 +14778,11 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       FOR_EACH_INSN_DEF (ref, seq[i])
 	{
 	  unsigned r = DF_REF_REGNO (ref);
+	  rtx reg = DF_REF_REG (ref);
 	  lvx_cms_effect e = { i, lvx_cms_reg_index (PATTERN (seq[i]),
 						    DF_REF_LOC (ref)),
+			       reg && REG_P (reg) ? REG_NREGS (reg) : 1,
 			       true, false };
-	  rtx reg = DF_REF_REG (ref);
 
 	  /* A READ-MODIFY-WRITE REFERENCE IS ONE OPERAND, and DF reports it
 	     twice -- as a use and as a definition at the SAME location.  The
@@ -14980,6 +14984,68 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
   for (unsigned k = 0; k < lr.length (); k++)
     if (!lr[k]->effects.is_empty () && !lr[k]->effects[0].is_def)
       lr[lvx_cms_lrange_root (lr, (int) k)]->renamed = false;
+
+  /* MULTI-REGISTER OPERANDS: THE FALLBACK.  §7tricies.33.
+
+     A reference to a register TUPLE covers [regno, regno + nregs) and DF
+     reports it as one reference at the first register.  Another instruction
+     may reference part of that span on its own -- a widening multiply writes
+     a pair and the shift after it reads only the high half -- and then one
+     lineage's span lies inside another's.  Renamed independently the pair
+     moves to a fresh aligned pair while the half moves elsewhere, and the two
+     stop naming the same storage.
+
+     Two better answers exist and neither is this one: keep lineages at
+     single-register granularity and associate those that share an operand, or
+     keep wide lineages and treat each narrower reference as a partial write,
+     tracking per effect WHICH registers of the span it touches.  Both need
+     the renaming to carry a sub-register offset, which it does not.
+
+     So the fallback, which is immediate and sound: a lineage whose effects
+     are not all the same width, or whose span PARTIALLY overlaps another
+     lineage's, is not renamed -- it keeps the register RA gave it, like any
+     held lineage.  An exact overlap is fine: that is the ordinary case of two
+     references to one tuple.  */
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      int root;
+
+      if (lr[k]->effects.is_empty ())
+	continue;
+      root = lvx_cms_lrange_root (lr, (int) k);
+      for (unsigned e = 0; e < lr[k]->effects.length (); e++)
+	if (lr[k]->effects[e].nregs != MAX (lr[root]->nregs, 1))
+	  {
+	    lr[root]->renamed = false;
+	    break;
+	  }
+    }
+  for (unsigned a = 0; a < lr.length (); a++)
+    {
+      if (lr[a]->effects.is_empty ())
+	continue;
+      for (unsigned b = a + 1; b < lr.length (); b++)
+	{
+	  unsigned alo, ahi, blo, bhi;
+	  int ra, rb;
+
+	  if (lr[b]->effects.is_empty ())
+	    continue;
+	  ra = lvx_cms_lrange_root (lr, (int) a);
+	  rb = lvx_cms_lrange_root (lr, (int) b);
+	  if (ra == rb)
+	    continue;
+	  alo = lr[a]->regno;
+	  ahi = alo + MAX (lr[a]->nregs, 1);
+	  blo = lr[b]->regno;
+	  bhi = blo + MAX (lr[b]->nregs, 1);
+	  if (alo < bhi && blo < ahi && !(alo == blo && ahi == bhi))
+	    {
+	      lr[ra]->renamed = false;
+	      lr[rb]->renamed = false;
+	    }
+	}
+    }
 
   if (ntie_out)
     *ntie_out = ntie;
@@ -15380,7 +15446,8 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 			auto_vec<lvx_cms_lrange *> &lr, int ii, int lo,
 			unsigned HOST_WIDE_INT avail, int *nn_out,
 			int *stuck_out, int *maxreg_out, int *kun_out,
-			int *pin_out, int *pinfail_out, int *wide_out)
+			int *pin_out, int *pinfail_out, int *wide_out,
+			bool claim_def_cycle = false)
 {
   auto_vec<int> idx, def_, last_, deg, nregs_, ec_, vregno, vuf;
   auto_vec<int> av, an, ar, stuck;
@@ -15398,7 +15465,15 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
       if (g->effects.is_empty () || !g->renamed
 	  || lvx_cms_lrange_root (lr, (int) k) != (int) k)
 	continue;
-      ec = lvx_insn_dest_earlyclobber_p (seq[g->effects[0].insn]) ? 1 : 0;
+      /* CLAIM_DEF_CYCLE makes every interval [def, last] instead of
+	 [def + !earlyclobber, last].  That is not the true interval -- a VLIW
+	 reads before it writes -- but it is the one that stops two lineages
+	 being packed into one register across a cycle boundary, which is what
+	 makes a cycle's reads and writes unlinearisable (§7tricies.35).  Used
+	 only as a retry, so the pressure it costs is paid only where the exact
+	 interval cannot be emitted.  */
+      ec = (claim_def_cycle
+	    || lvx_insn_dest_earlyclobber_p (seq[g->effects[0].insn])) ? 1 : 0;
       life = g->last_date - g->first_date + (ec ? 1 : 0);
       idx.safe_push ((int) k);
       def_.safe_push (g->first_date);
@@ -17031,6 +17106,148 @@ lvx_cms_verify_antidep (const auto_vec<rtx_insn *> &seq,
   return nshort == 0 && npair == 0;
 }
 
+/* READS BEFORE WRITES WITHIN A CYCLE.  §7tricies.35.
+
+   A VLIW bundle reads its operands before it writes them, and the modulo
+   schedule uses that: a value's live interval is [def + !earlyclobber, last],
+   so another lineage may be DEFINED in the very cycle this one is last READ,
+   and the colouring will hand both the same register.  Emitted RTL is not a
+   bundle -- it is a sequential stream that the bundler groups afterwards --
+   so a reader placed after the writer reads the new value.
+
+   The plan walks (date, iteration, body index), so within a cycle the order
+   is body order, which has nothing to do with it.  On `A[i] = (i % 7) + 1'
+   lineages lr9 ([2,3], the zero-extended index) and lr5 ([4,4]) both got r17,
+   disjoint by one cycle; at date 3 insn 12 reads lr9's r17 while insn 3
+   writes lr5's r17.  Body order put insn 3 first, so the shift took
+   `i + (i * magic >> 32)' as its index, the zero-extend became dead and was
+   deleted, and the emitted function had no `zxwd' at all.  That is why the
+   missing instruction looked like the defect when it was a symptom.
+
+   The constraint is on the RENAMED registers, not the original ones: two
+   slots touching one original register in one cycle are unconstrained if
+   their lineages were given different registers, which after modulo expansion
+   is the common case.  So the registers are resolved from the lineages first,
+   then each cycle's slots are ordered by `every reader of a register written
+   here comes before its writer'.
+
+   A CYCLE IN THAT ORDER CANNOT BE EMITTED.  Two slots exchanging registers in
+   one bundle -- A reads r writes s, B reads s writes r -- is legal in a VLIW
+   and inexpressible as a sequential stream.  It arises when the colouring
+   packs two lineages into one register with touching intervals in both
+   directions, so the caller's answer is to recolour with the definition cycle
+   CLAIMED, which makes touching intervals interfere and removes every
+   intra-cycle edge; only if that fails too is the loop declined.
+
+   ASKED BEFORE ANYTHING IS EMITTED, which is why this is a function and not
+   part of the emission: the emission mutates RTL, so a failure discovered
+   half way through cannot be retried.  */
+
+static bool
+lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
+		    const auto_vec<lvx_cms_slot> &slots,
+		    const auto_vec<lvx_cms_lrange *> &lr, int loopback,
+		    auto_vec<int> &order)
+{
+  auto_vec<unsigned HOST_WIDE_INT> srd, swr;
+
+  order.truncate (0);
+
+  for (unsigned q = 0; q < slots.length (); q++)
+    {
+      unsigned HOST_WIDE_INT rd = 0, wr = 0;
+      unsigned i = (unsigned) slots[q].insn;
+
+      if (i < seq.length ())
+	{
+	  df_ref ref;
+
+	  FOR_EACH_INSN_USE (ref, seq[i])
+	    {
+	      unsigned r = DF_REF_REGNO (ref);
+	      int slot = lvx_cms_reg_index (PATTERN (seq[i]),
+					    DF_REF_LOC (ref));
+	      bool dly = false;
+	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, &dly);
+	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, dly)
+			  : (int) r;
+
+	      for (int w = 0; w < (g ? MAX (g->nregs, 1) : 1); w++)
+		if (neu + w >= 0 && neu + w < 64)
+		  rd |= (unsigned HOST_WIDE_INT) 1 << (neu + w);
+	    }
+	  FOR_EACH_INSN_DEF (ref, seq[i])
+	    {
+	      unsigned r = DF_REF_REGNO (ref);
+	      int slot = lvx_cms_reg_index (PATTERN (seq[i]),
+					    DF_REF_LOC (ref));
+	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, NULL);
+	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, false)
+			  : (int) r;
+
+	      for (int w = 0; w < (g ? MAX (g->nregs, 1) : 1); w++)
+		if (neu + w >= 0 && neu + w < 64)
+		  wr |= (unsigned HOST_WIDE_INT) 1 << (neu + w);
+	    }
+	}
+      srd.safe_push (rd);
+      swr.safe_push (wr);
+    }
+
+  /* Each run of slots sharing (node, date), topologically sorted.  */
+  for (unsigned a = 0; a < slots.length (); )
+    {
+      unsigned b = a;
+      while (b < slots.length () && slots[b].node == slots[a].node
+	     && slots[b].date == slots[a].date)
+	b++;
+      {
+	unsigned n = b - a;
+	auto_vec<int> deg, pick;
+	auto_vec<bool> done;
+
+	for (unsigned x = 0; x < n; x++)
+	  {
+	    deg.safe_push (0);
+	    done.safe_push (false);
+	  }
+	/* Edge reader -> writer, and the terminator last of all.  */
+	for (unsigned x = 0; x < n; x++)
+	  for (unsigned y = 0; y < n; y++)
+	    if (x != y && (srd[a + x] & swr[a + y]) != 0)
+	      deg[y]++;
+	for (unsigned x = 0; x < n; x++)
+	  if ((int) slots[a + x].insn == loopback)
+	    for (unsigned y = 0; y < n; y++)
+	      if (y != x)
+		deg[x]++;		/* the branch waits for everything */
+
+	for (unsigned step = 0; step < n; step++)
+	  {
+	    int take = -1;
+
+	    for (unsigned x = 0; x < n && take < 0; x++)
+	      if (!done[x] && deg[x] == 0)
+		take = (int) x;
+	    if (take < 0)
+	      return false;
+	    done[take] = true;
+	    pick.safe_push (a + take);
+	    for (unsigned y = 0; y < n; y++)
+	      if (!done[y]
+		  && ((srd[a + take] & swr[a + y]) != 0
+		      || (int) slots[a + y].insn == loopback))
+		deg[y]--;
+	  }
+	for (unsigned x = 0; x < n; x++)
+	  order.safe_push (pick[x]);
+      }
+      a = b;
+    }
+
+  return true;
+}
+
 /* MAKE_INSNS, PHASE TWO: emit the pipeline.  §7tricies.13.
 
    Phase one put one block's instructions into schedule order and changed no
@@ -17187,134 +17404,15 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   for (unsigned k = 0; k < nnode; k++)
     tail.safe_push (NULL);
 
-  /* READS BEFORE WRITES WITHIN A CYCLE.  §7tricies.35.
-
-   A VLIW bundle reads its operands before it writes them, and the modulo
-   schedule uses that: a value's live interval is [def + !earlyclobber, last],
-   so another lineage may be DEFINED in the very cycle this one is last READ,
-   and the colouring will hand both the same register.  Emitted RTL is not a
-   bundle -- it is a sequential stream that the bundler groups afterwards --
-   so a reader placed after the writer reads the new value.
-
-   The plan walks (date, iteration, body index), so within a cycle the order
-   is body order, which has nothing to do with it.  On `A[i] = (i % 7) + 1'
-   lineages lr9 ([2,3], the zero-extended index) and lr5 ([4,4]) both got r17,
-   disjoint by one cycle; at date 3 insn 12 reads lr9's r17 while insn 3
-   writes lr5's r17.  Body order put insn 3 first, so the shift took
-   `i + (i * magic >> 32)' as its index, the zero-extend became dead and was
-   deleted, and the emitted function had no `zxwd' at all.  That is why the
-   missing instruction looked like the defect when it was a symptom.
-
-   The constraint is on the RENAMED registers, not the original ones: two
-   slots touching one original register in one cycle are unconstrained if
-   their lineages were given different registers, which after modulo expansion
-   is the common case.  So the registers are resolved from the lineages first,
-   then each cycle's slots are ordered by `every reader of a register written
-   here comes before its writer'.
-
-   A CYCLE IN THAT ORDER CANNOT BE EMITTED.  Two slots exchanging registers in
-   one bundle -- A reads r writes s, B reads s writes r -- is legal in a VLIW
-   and inexpressible as a sequential stream, so the loop is declined.  The
-   closing branch is forced last, because it is the block's terminator, and a
-   slot in its cycle that writes what it reads would need to precede it; that
-   is declined too rather than emitted reading the wrong condition.  */
-  auto_vec<unsigned HOST_WIDE_INT> srd, swr;
+  /* The order the slots are emitted in: reads before writes within a cycle,
+     the terminator last (§7tricies.35).  Asked again here rather than passed
+     in, so the emission cannot be handed an order computed from a different
+     assignment.  */
   auto_vec<int> order;
 
-  for (unsigned q = 0; q < slots.length (); q++)
-    {
-      unsigned HOST_WIDE_INT rd = 0, wr = 0;
-      unsigned i = (unsigned) slots[q].insn;
-
-      if (i < seq.length ())
-	{
-	  df_ref ref;
-
-	  FOR_EACH_INSN_USE (ref, seq[i])
-	    {
-	      unsigned r = DF_REF_REGNO (ref);
-	      int slot = lvx_cms_reg_index (PATTERN (seq[i]),
-					    DF_REF_LOC (ref));
-	      bool dly = false;
-	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, &dly);
-	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, dly)
-			  : (int) r;
-
-	      for (int w = 0; w < (g ? MAX (g->nregs, 1) : 1); w++)
-		if (neu + w >= 0 && neu + w < 64)
-		  rd |= (unsigned HOST_WIDE_INT) 1 << (neu + w);
-	    }
-	  FOR_EACH_INSN_DEF (ref, seq[i])
-	    {
-	      unsigned r = DF_REF_REGNO (ref);
-	      int slot = lvx_cms_reg_index (PATTERN (seq[i]),
-					    DF_REF_LOC (ref));
-	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, NULL);
-	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, false)
-			  : (int) r;
-
-	      for (int w = 0; w < (g ? MAX (g->nregs, 1) : 1); w++)
-		if (neu + w >= 0 && neu + w < 64)
-		  wr |= (unsigned HOST_WIDE_INT) 1 << (neu + w);
-	    }
-	}
-      srd.safe_push (rd);
-      swr.safe_push (wr);
-    }
-
-  /* Each run of slots sharing (node, date), topologically sorted.  */
-  for (unsigned a = 0; a < slots.length (); )
-    {
-      unsigned b = a;
-      while (b < slots.length () && slots[b].node == slots[a].node
-	     && slots[b].date == slots[a].date)
-	b++;
-      {
-	unsigned n = b - a;
-	auto_vec<int> deg, pick;
-	auto_vec<bool> done;
-
-	for (unsigned x = 0; x < n; x++)
-	  {
-	    deg.safe_push (0);
-	    done.safe_push (false);
-	  }
-	/* Edge reader -> writer, and the terminator last of all.  */
-	for (unsigned x = 0; x < n; x++)
-	  for (unsigned y = 0; y < n; y++)
-	    if (x != y && (srd[a + x] & swr[a + y]) != 0)
-	      deg[y]++;
-	for (unsigned x = 0; x < n; x++)
-	  if ((int) slots[a + x].insn == loopback)
-	    for (unsigned y = 0; y < n; y++)
-	      if (y != x)
-		deg[x]++;		/* the branch waits for everything */
-
-	for (unsigned step = 0; step < n; step++)
-	  {
-	    int take = -1;
-
-	    for (unsigned x = 0; x < n && take < 0; x++)
-	      if (!done[x] && deg[x] == 0)
-		take = (int) x;
-	    if (take < 0)
-	      {
-		*why = "a cycle's reads and writes cannot be linearised";
-		return false;
-	      }
-	    done[take] = true;
-	    pick.safe_push (a + take);
-	    for (unsigned y = 0; y < n; y++)
-	      if (!done[y]
-		  && ((srd[a + take] & swr[a + y]) != 0
-		      || (int) slots[a + y].insn == loopback))
-		deg[y]--;
-	  }
-	for (unsigned x = 0; x < n; x++)
-	  order.safe_push (pick[x]);
-      }
-      a = b;
-    }
+  *why = "a cycle's reads and writes cannot be linearised";
+  if (!lvx_cms_slot_order (seq, slots, lr, loopback, order))
+    return false;
 
   for (unsigned oq = 0; oq < order.length (); oq++)
     {
@@ -20660,7 +20758,12 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		int nn = 0, nst = 0, mx = -1, kun = 1, pin = 0, pinf = 0;
 		int wide = 0, nr = 0, orph = 0, dupl = 0, nol = 0;
 		int subst = 0, refused = 0;
-		bool cok, vok, rok2;
+		int cgloopback = -1;
+		bool cok, vok, rok2, lok = true, claimed = false;
+
+		for (unsigned z = 0; z < seq.length (); z++)
+		  if (JUMP_P (seq[z]))
+		    cgloopback = (int) z;
 
 		lvx_cms_build_lranges (seq, cglr, NULL, NULL, NULL);
 		lvx_cms_set_lrange_dates (seq, cglr, sigma, found, liveout);
@@ -20675,6 +20778,29 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		cok = lvx_cms_colour_lranges (seq, cglr, found, lo, cgavail,
 					      &nn, &nst, &mx, &kun, &pin,
 					      &pinf, &wide);
+
+		/* CAN THE SLOTS BE LINEARISED?  Asked here, before anything is
+		   emitted, because the answer depends on the ASSIGNMENT and a
+		   failure is retried with a different one: claiming the
+		   definition cycle makes touching intervals interfere, so no
+		   two lineages share a register across a cycle boundary and
+		   no intra-cycle edge exists to form a loop (§7tricies.35).  */
+		{
+		  auto_vec<int> probe_order;
+
+		  lok = lvx_cms_slot_order (seq, plslots, cglr, cgloopback,
+					    probe_order);
+		  if (!lok && cok)
+		    {
+		      claimed = true;
+		      cok = lvx_cms_colour_lranges (seq, cglr, found, lo,
+						    cgavail, &nn, &nst, &mx,
+						    &kun, &pin, &pinf, &wide,
+						    true);
+		      lok = lvx_cms_slot_order (seq, plslots, cglr,
+						cgloopback, probe_order);
+		    }
+		}
 		rok2 = lvx_cms_rename_lr_dryrun (seq, plslots, cglr, &subst,
 						 &refused);
 
@@ -20687,6 +20813,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		  iwhy = "an operand belongs to no lineage";
 		else if (!cok)
 		  iwhy = "the lineages do not colour";
+		else if (!lok)
+		  iwhy = "a cycle's reads and writes cannot be linearised";
 		else if (!rok2)
 		  iwhy = "a slot's insn refuses the rename substitution";
 		else
@@ -20694,9 +20822,11 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 						   plnodes, cgblocks, cglr,
 						   &nemit, &iwhy);
 		lvx_cms_dump (";; lvx cms: fn=%s loop %d cgcolour %s nodes=%d"
-			      " maxreg=%d kunroll=%d subst=%d refused=%d\n",
+			      " maxreg=%d kunroll=%d subst=%d refused=%d"
+			      " linear=%d claimed=%d\n",
 			      current_function_name (), loop->num,
-			      cok ? "ok" : "no", nn, mx, kun, subst, refused);
+			      cok ? "ok" : "no", nn, mx, kun, subst, refused,
+			      lok ? 1 : 0, claimed ? 1 : 0);
 		for (unsigned k = 0; k < cglr.length (); k++)
 		  delete cglr[k];
 	      }
