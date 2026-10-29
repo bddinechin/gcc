@@ -20696,12 +20696,40 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      plan.  The codegen block below colours again from the same inputs and
      checks the two agree, so a future divergence is refused rather than
      emitted.  */
+  /* AND THE RETRY IS SETTLED HERE TOO, not in the codegen block.
+     §7tricies.51.
+
+     The claim_def_cycle recolour (§7tricies.35) exists because a cycle's
+     reads and writes may not be linearisable, and it changes the interval
+     model -- so it can change KUNROLL.  Deciding it after the plan was built
+     left the two disagreeing on two loops, which the check below then had to
+     refuse.
+
+     The decision needs LVX_CMS_SLOT_ORDER, which needs slots, which need a
+     plan: so the negotiation builds a THROWAWAY plan at each candidate
+     kunroll and asks the order of it.  A plan is a walk over the schedule and
+     costs nothing to discard, which is what makes trying rather than
+     predicting affordable.  What comes out is the kunroll AND the claim flag
+     the emission will use, so the codegen block no longer decides the retry
+     -- it is told.  */
   int plkun = 1;
+  bool plclaimed = false;
   {
     auto_vec<lvx_cms_lrange *> klr;
     HARD_REG_SET kresv;
     unsigned HOST_WIDE_INT kavail = 0;
-    int knn = 0, kst = 0, kmx = -1, kkun = 1, kpin = 0, kpinf = 0, kwide = 0;
+    int klb = -1;
+
+    for (unsigned z = 0; z < seq.length (); z++)
+      if (JUMP_P (seq[z]) && BLOCK_FOR_INSN (seq[z]) == loop->latch)
+	{
+	  edge e;
+	  edge_iterator ei;
+
+	  FOR_EACH_EDGE (e, ei, BLOCK_FOR_INSN (seq[z])->succs)
+	    if (e->dest == loop->header)
+	      klb = (int) z;
+	}
 
     lvx_cms_build_lranges (seq, klr, NULL, NULL, NULL);
     /* No LIVEOUT here: it sets EXIT_LIVE only, which the epilogue copy wants
@@ -20711,11 +20739,39 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
       if (!TEST_HARD_REG_BIT (kresv, r))
 	kavail |= (unsigned HOST_WIDE_INT) 1 << r;
-    if (lvx_cms_colour_lranges (seq, klr, found, lo, kavail, &knn, &kst, &kmx,
-				&kkun, &kpin, &kpinf, &kwide))
-      plkun = kkun > 0 ? kkun : 1;
-    else
-      plkun = igkunroll > 0 ? igkunroll : 1;
+
+    plkun = igkunroll > 0 ? igkunroll : 1;
+    for (int attempt = 0; attempt < 2; attempt++)
+      {
+	bool claim = attempt == 1;
+	int knn = 0, kst = 0, kmx = -1, kkun = 1;
+	int kpin = 0, kpinf = 0, kwide = 0;
+
+	if (!lvx_cms_colour_lranges (seq, klr, found, lo, kavail, &knn, &kst,
+				     &kmx, &kkun, &kpin, &kpinf, &kwide,
+				     claim))
+	  continue;
+	{
+	  struct lvx_cms_plan tp;
+	  auto_vec<lvx_cms_slot> tslots;
+	  auto_vec<lvx_cms_node> tnodes;
+	  auto_vec<int> torder;
+
+	  lvx_cms_build_plan (seq, sigma, found, kkun > 0 ? kkun : 1, nstages,
+			      loop->num_nodes, &tp, &tslots, &tnodes);
+	  if (lvx_cms_slot_order (seq, tslots, klr, klb, torder))
+	    {
+	      plkun = kkun > 0 ? kkun : 1;
+	      plclaimed = claim;
+	      break;
+	    }
+	  /* Not linearisable at this kunroll: fall through to the claimed
+	     model, and if that fails too keep the last kunroll so the plan is
+	     still built from the assignment the emission will check.  */
+	  plkun = kkun > 0 ? kkun : 1;
+	  plclaimed = claim;
+	}
+      }
     for (unsigned z = 0; z < klr.length (); z++)
       delete klr[z];
   }
@@ -21436,27 +21492,26 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 					      &nn, &nst, &mx, &kun, &pin,
 					      &pinf, &wide);
 
-		/* CAN THE SLOTS BE LINEARISED?  Asked here, before anything is
-		   emitted, because the answer depends on the ASSIGNMENT and a
-		   failure is retried with a different one: claiming the
-		   definition cycle makes touching intervals interfere, so no
-		   two lineages share a register across a cycle boundary and
-		   no intra-cycle edge exists to form a loop (§7tricies.35).  */
+		/* THE CLAIM IS DECIDED, NOT RE-DECIDED.  §7tricies.51.  The
+		   negotiation before the plan already settled whether the
+		   claimed interval model is needed, and the plan was built
+		   from that kunroll; retrying here would change the kunroll
+		   under a plan that cannot follow.  So the colouring above is
+		   redone with the flag it chose, and the order is asked only
+		   to confirm.  */
+		if (plclaimed)
+		  {
+		    claimed = true;
+		    cok = lvx_cms_colour_lranges (seq, cglr, found, lo,
+						  cgavail, &nn, &nst, &mx,
+						  &kun, &pin, &pinf, &wide,
+						  true);
+		  }
 		{
 		  auto_vec<int> probe_order;
 
 		  lok = lvx_cms_slot_order (seq, plslots, cglr, cgloopback,
 					    probe_order);
-		  if (!lok && cok)
-		    {
-		      claimed = true;
-		      cok = lvx_cms_colour_lranges (seq, cglr, found, lo,
-						    cgavail, &nn, &nst, &mx,
-						    &kun, &pin, &pinf, &wide,
-						    true);
-		      lok = lvx_cms_slot_order (seq, plslots, cglr,
-						cgloopback, probe_order);
-		    }
 		}
 		rok2 = lvx_cms_rename_lr_dryrun (seq, plslots, cglr, &subst,
 						 &refused);
