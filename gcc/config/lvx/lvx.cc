@@ -14799,6 +14799,27 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
    and so never visits an effect that has none.  */
 #define LVX_CMS_SLOT_INDIRECT (-2)
 
+/* AN EFFECT IS ON A SUB-OPERAND, so it carries its OFFSET within the
+   lineage's span as well as its width.  §7tricies.71.
+
+   A lineage is the renaming unit for a whole tuple, and references to it need
+   not all be the same width: on PolyBench a quad is loaded whole and read as
+   two pairs,
+
+       insn 1 slot 0  defines  r32 r33 r34 r35
+       insn 8 slot 1  reads    r32 r33            offset 0, nregs 2
+       insn 9 slot 1  reads    r34 r35            offset 2, nregs 2
+
+   which is the out-tree of effects on sub-operands: the root is the widest
+   span and every reference hangs on the node it covers.  For LVX that tree is
+   at most quad -> two pairs -> four singles, because the ISA has only ALIGNED
+   sub-tuples -- singleReg, pairedReg, quadReg, the parity classes having been
+   retired -- so the spans nest perfectly and every reference lands on exactly
+   one node.  The offset is what the renaming adds to the lineage's name:
+   reg[index] + offset, at the reference's own width, which is the
+   "sub-register offset the renaming does not carry" that the old mixed-width
+   fallback named as its reason for giving up.  */
+
 struct lvx_cms_effect
 {
   unsigned insn;		/* index into SEQ */
@@ -14806,6 +14827,7 @@ struct lvx_cms_effect
   int nregs;			/* THIS reference's width in registers */
   bool is_def;			/* a write (it may also head the range) */
   bool delayed;			/* reads the previous instance */
+  int offset;			/* registers from the lineage's REGNO */
 };
 
 #define LVX_CMS_MAX_KUNROLL 32
@@ -14864,7 +14886,8 @@ lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange *> &lr,
    build's unification passes need and which read the structure the build has
    just produced.  */
 static lvx_cms_lrange *lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &,
-					  unsigned, int, bool *);
+					  unsigned, int, bool *,
+					  int * = NULL);
 static lvx_cms_lrange *
 lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange *> &, unsigned, unsigned);
 static lvx_cms_lrange *
@@ -14873,9 +14896,13 @@ lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange *> &, unsigned, unsigned);
 static void
 lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		       auto_vec<lvx_cms_lrange *> &lr, int *ntie_out,
-		       int *nunit_out, int *nheld_out)
+		       int *nunit_out, int *nheld_out, int *nwiden_out = NULL)
 {
   int ntie = 0;
+  /* References that CONTAIN an already-open range rather than sitting inside
+     it -- the one sub-operand shape §7tricies.71 holds instead of renaming.
+     Counted so that "cannot arise on LVX" is a measurement.  */
+  int nwiden_local = 0, *nwiden = &nwiden_local;
 
   /* The range currently open for each hard register, as an index into LR, or
      -1.  A use with no open range is a reference to the previous iteration's
@@ -14961,6 +14988,33 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		continue;		/* another word of one operand */
 	      seenuse.safe_push (e.slot);
 	    }
+	  /* A SUB-OPERAND OF AN OPEN RANGE JOINS IT.  §7tricies.71.  OPEN is
+	     filled across a range's whole span, so a narrower reference finds
+	     the range covering it and hangs on it at its own offset instead
+	     of opening a second range that would PARTIALLY overlap the first
+	     -- which is what left 334 overlaps and refused the loop.
+
+	     Containment is the test, and for LVX it is the only case that can
+	     arise: the sub-tuples are aligned, so two spans are either
+	     disjoint, equal, or one inside the other.  A reference that
+	     instead CONTAINS the open range is counted and the lineage held,
+	     since widening a range mid-walk would move every offset already
+	     recorded against it.  */
+	  if (open[r] >= 0)
+	    {
+	      unsigned blo = lr[open[r]]->regno;
+	      unsigned bhi = blo + MAX (lr[open[r]]->nregs, 1);
+
+	      if (r >= blo && r + nr <= bhi)
+		e.offset = (int) (r - blo);		/* contained */
+	      else
+		{
+		  if (nwiden)
+		    (*nwiden)++;
+		  lr[lvx_cms_lrange_root (lr, open[r])]->renamed = false;
+		  e.offset = 0;
+		}
+	    }
 	  if (open[r] < 0)
 	    {
 	      lvx_cms_lrange *n = new lvx_cms_lrange ();
@@ -14979,8 +15033,9 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	      n->first_date = n->last_date = 0;
 	      open[r] = (int) lr.length ();
 	      lr.safe_push (n);
+	      for (int w = 1; w < nr && r + w < FIRST_PSEUDO_REGISTER; w++)
+		open[r + w] = open[r];
 	    }
-	  lr[open[r]]->nregs = MAX (lr[open[r]]->nregs, nr);
 	  lr[open[r]]->effects.safe_push (e);
 	}
 
@@ -15065,6 +15120,26 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		  open[r] = (int) lr.length ();
 		  lr.safe_push (n);
 		}
+	      /* ONE INDIRECT USE PER RANGE, not one per register.  Since
+		 §7tricies.71 fills OPEN across a range's whole span, every
+		 register of a tuple finds the same range here and the
+		 per-register loop would push the same effect once per word --
+		 four copies at (insn, SLOT_INDIRECT) for a quad, which is the
+		 same "one operand in several places" mistake in the other
+		 direction.  */
+	      {
+		bool had = false;
+
+		for (unsigned q = 0; q < lr[open[r]]->effects.length (); q++)
+		  if (lr[open[r]]->effects[q].insn == i
+		      && lr[open[r]]->effects[q].slot == LVX_CMS_SLOT_INDIRECT)
+		    {
+		      had = true;
+		      break;
+		    }
+		if (had)
+		  continue;
+	      }
 	      e2.insn = i;
 	      e2.slot = LVX_CMS_SLOT_INDIRECT;
 	      e2.nregs = MAX (lr[open[r]]->nregs, 1);
@@ -15130,6 +15205,8 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		  break;
 		}
 	  open[r] = (int) lr.length () - 1;
+	  for (int w = 1; w < nr && r + w < FIRST_PSEUDO_REGISTER; w++)
+	    open[r + w] = open[r];
 	}
     }
 
@@ -15283,6 +15360,15 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       root = lvx_cms_lrange_root (lr, (int) k);
       if ((int) k == root)
 	continue;
+      /* A UNION ACROSS DIFFERENT BASES IS NOT RENAMEABLE.  §7tricies.71.
+	 Each member's effect offsets are relative to ITS OWN regno, so
+	 taking the widest span here would leave the narrower member's
+	 offsets measured from the wrong base and the substitution would
+	 write the wrong register.  Rebasing them is what the out-tree proper
+	 would do; until the case is shown to occur it is held, which is
+	 sound, and NWIDEN-style counting is what would show it.  */
+      if (lr[k]->regno != lr[root]->regno)
+	lr[root]->renamed = false;
       lr[root]->nregs = MAX (lr[root]->nregs, lr[k]->nregs);
       lr[root]->use_first |= lr[k]->use_first;
     }
@@ -15325,12 +15411,26 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       if (lr[k]->effects.is_empty ())
 	continue;
       root = lvx_cms_lrange_root (lr, (int) k);
+      /* NOT "all the same width" ANY MORE, but "an aligned sub-range of the
+	 root's span".  §7tricies.71: an effect carries its offset, so a
+	 narrower reference is renameable -- reg[index] + offset at its own
+	 width -- and only a reference that leaves the span, or sits at an
+	 offset its own width does not divide, cannot be.  On LVX the latter
+	 cannot arise from the register classes; it is tested rather than
+	 assumed because nothing in this file should rely on that.  */
       for (unsigned e = 0; e < lr[k]->effects.length (); e++)
-	if (lr[k]->effects[e].nregs != MAX (lr[root]->nregs, 1))
-	  {
-	    lr[root]->renamed = false;
-	    break;
-	  }
+	{
+	  int off = lr[k]->effects[e].offset;
+	  int w = MAX (lr[k]->effects[e].nregs, 1);
+
+	  if (lr[k]->effects[e].slot == LVX_CMS_SLOT_INDIRECT)
+	    continue;		/* no operand, nothing to substitute */
+	  if (off < 0 || off + w > MAX (lr[root]->nregs, 1) || off % w != 0)
+	    {
+	      lr[root]->renamed = false;
+	      break;
+	    }
+	}
     }
   for (unsigned a = 0; a < lr.length (); a++)
     {
@@ -15404,6 +15504,8 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	}
     }
 
+  if (nwiden_out)
+    *nwiden_out = nwiden_local;
   if (ntie_out)
     *ntie_out = ntie;
   if (nunit_out || nheld_out)
@@ -16104,7 +16206,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 
 static lvx_cms_lrange *
 lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
-		   int slot, bool *delayed_out)
+		   int slot, bool *delayed_out, int *offset_out)
 {
   if (slot < 0)
     return NULL;
@@ -16117,6 +16219,10 @@ lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
 	  {
 	    if (delayed_out)
 	      *delayed_out = g->effects[e].delayed;
+	    /* THE SUB-OPERAND'S OFFSET, which the renaming adds to the
+	       lineage's name (§7tricies.71).  */
+	    if (offset_out)
+	      *offset_out = g->effects[e].offset;
 	    return g;
 	  }
     }
@@ -16954,20 +17060,31 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 
   FOR_EACH_INSN_DEF (ref, orig)
     {
-      unsigned r = DF_REF_REGNO (ref);
+      /* THE OPERAND'S BASE, not the reference's word: DF reports a tuple
+	 once per register, and the comparison below is against the register
+	 the substitution would replace -- the whole operand's.  */
+      rtx *rloc = DF_REF_LOC (ref);
+      rtx rreg = (rloc && *rloc && REG_P (*rloc)) ? *rloc
+						  : DF_REF_REG (ref);
+      unsigned r = (rreg && REG_P (rreg)) ? REGNO (rreg)
+					  : DF_REF_REGNO (ref);
       lvx_cms_lrange *g;
-      int idx, neu;
+      int idx, neu, off = 0;
 
       if (r >= FIRST_PSEUDO_REGISTER)
 	continue;
       idx = lvx_cms_reg_index (PATTERN (orig), DF_REF_LOC (ref));
-      g = lvx_cms_lrange_of (lr, self, idx, NULL);
+      g = lvx_cms_lrange_of (lr, self, idx, NULL, &off);
       if (!g)
 	{
 	  ok = false;
 	  break;
 	}
       neu = lvx_cms_lrange_reg (g, iter, false);
+      /* The lineage names its whole span; this reference is at OFF within
+	 it, and keeps its own mode -- so its width -- below.  */
+      if (neu >= 0)
+	neu += off;
       if (neu < 0 || neu == (int) r)
 	continue;
       if (trace)
@@ -16985,15 +17102,19 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
   if (ok)
     FOR_EACH_INSN_USE (ref, orig)
       {
-	unsigned r = DF_REF_REGNO (ref);
+	rtx *rloc = DF_REF_LOC (ref);
+	rtx rreg = (rloc && *rloc && REG_P (*rloc)) ? *rloc
+						    : DF_REF_REG (ref);
+	unsigned r = (rreg && REG_P (rreg)) ? REGNO (rreg)
+					    : DF_REF_REGNO (ref);
 	lvx_cms_lrange *g;
 	bool dly = false;
-	int idx, neu;
+	int idx, neu, off = 0;
 
 	if (r >= FIRST_PSEUDO_REGISTER)
 	  continue;
 	idx = lvx_cms_reg_index (PATTERN (orig), DF_REF_LOC (ref));
-	g = lvx_cms_lrange_of (lr, self, idx, &dly);
+	g = lvx_cms_lrange_of (lr, self, idx, &dly, &off);
 	if (!g)
 	  {
 	    /* An operand no lineage claims.  With the read-modify-write
@@ -17003,6 +17124,8 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	    break;
 	  }
 	neu = lvx_cms_lrange_reg (g, iter, dly);
+	if (neu >= 0)
+	  neu += off;
 	if (neu < 0 || neu == (int) r)
 	  continue;
 	if (trace)
@@ -18340,6 +18463,52 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      fall-through block has not got -- `redirect_edge_and_branch' refuses a
      fall-through outright, which is the distinction make_nodes' long note
      records.  */
+  /* THE LIVE-OUT COPIES' STRUCTURAL REFUSALS, DECIDED BEFORE ANYTHING IS
+     ANYTHING IS MUTATED.  §7tricies.72.
+
+     The copies themselves are emitted after the slot loop, which is where
+     they belong -- they go at the end of each drain.  Their REFUSALS do not:
+     a `return false' from there happens with the pipeline already written
+     into the blocks, which is §7tricies.56's defect exactly, "a refusal that
+     has already mutated the CFG", and this reintroduced it.
+
+     AND "BEFORE EMISSION" IS NOT EARLY ENOUGH EITHER.  The first mutation is
+     the epilogue redirection below, not the slot loop: a refusal placed
+     between the two still leaves every drain redirected to a loop exit it
+     will now never reach, which on a 256-bit reduction lost the vector
+     loop's entire sum rather than one iteration of it.  So this sits ahead
+     of the redirection, and anything else that refuses on a property of the
+     LINEAGES belongs here with it.
+
+     It was invisible until §7tricies.71 let these loops reach emission at
+     all: before that they were refused earlier, by the anti-dependence check.
+     The symptom was a 256-bit reduction losing its last vector iteration --
+     for n = 13, a sum low by B[8] + B[9] + B[10] + B[11], one group of four
+     -- because the half-emitted loop ran a kernel whose drain never
+     materialised.
+
+     So every refusal that is a property of the LINEAGES rather than of the
+     emission is taken here.  What remains late is the parallel copy's own
+     sequentialisation and the recognition of a hard-register move, and those
+     are noted at their site.  */
+  for (unsigned g = 0; g < lr.length (); g++)
+    {
+      lvx_cms_lrange *q = lr[g];
+
+      if (q->effects.is_empty () || !q->exit_live
+	  || lvx_cms_lrange_root (lr, (int) g) != (int) g
+	  || !q->effects[0].is_def)
+	continue;
+      *why = "a live-out lineage is a register tuple";
+      if (MAX (q->nregs, 1) != 1)
+	return false;
+      *why = "a live-out lineage's definition has no operand";
+      if (q->effects[0].insn >= seq.length ()
+	  || !lvx_cms_reg_at (&PATTERN (seq[q->effects[0].insn]),
+			      q->effects[0].slot))
+	return false;
+    }
+
   *why = "cannot redirect an epilogue to the loop exit";
   for (unsigned k = 0; k < nnode; k++)
     {
@@ -18387,7 +18556,6 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   *why = "a cycle's reads and writes cannot be linearised";
   if (!lvx_cms_slot_order (seq, slots, lr, loopback, order))
     return false;
-
   for (unsigned oq = 0; oq < order.length (); oq++)
     {
       unsigned q = (unsigned) order[oq];
@@ -18723,14 +18891,15 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  nm = lvx_cms_lrange_reg (q, best, q->effects[0].delayed);
 	  if (nm < 0 || nm == (int) q->regno)
 	    continue;		/* already in the architectural register */
-	  *why = "a live-out lineage is a register tuple";
-	  if (MAX (q->nregs, 1) != 1)
-	    return false;
-
+	  /* Both structural refusals were taken before emission began
+	     (§7tricies.72); these are the same conditions, asserted rather
+	     than decided, so that a change on one side cannot silently
+	     reintroduce a late refusal.  */
 	  dloc = lvx_cms_reg_at (&PATTERN (seq[dins]), dslot);
-	  *why = "a live-out lineage's definition has no operand";
+	  gcc_checking_assert (MAX (q->nregs, 1) == 1
+			       && dloc && *dloc && REG_P (*dloc));
 	  if (!dloc || !*dloc || !REG_P (*dloc))
-	    return false;
+	    continue;
 	  psrc.safe_push (nm);
 	  pdst.safe_push ((int) q->regno);
 	  pmode.safe_push (GET_MODE (*dloc));
@@ -22637,6 +22806,12 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 			      lok ? 1 : 0, claimed ? 1 : 0,
 			      aok ? "ok" : "BAD", nconf, ca, cb, creg, ccyc,
 			      (int) popcount_hwi (cgavail), pool);
+		/* THE CODEGEN SET, TAGGED.  Only the probe set was dumped,
+		   and the two are built at different stages from different
+		   schedules -- reading the probe set as if it were this one
+		   produced two wrong diagnoses (§7tricies.71).  */
+		if (lvx_cms_probe && dump_file)
+		  lvx_cms_dump_lranges (seq, cglr, "cg");
 		for (unsigned k = 0; k < cglr.length (); k++)
 		  delete cglr[k];
 	      }
