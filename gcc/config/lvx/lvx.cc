@@ -17626,6 +17626,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		       const auto_vec<lvx_cms_node> &nodes,
 		       const auto_vec<basic_block> &blocks,
 		       const auto_vec<lvx_cms_lrange *> &lr,
+		       unsigned HOST_WIDE_INT avail,
 		       int *nemit_out, const char **why)
 {
   unsigned nnode = nodes.length ();
@@ -17715,18 +17716,59 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      reloads LS/LE/LC.  So the final partial trip needs no peeling -- the
      kernel's own early exits end it.
 
-     KUNROLL > 1 still needs the trip count divided, which is preheader
-     arithmetic this does not yet emit, so it is refused for now.  At
-     KUNROLL == 1 the count is the loop's own and nothing has to be computed:
-     the hardware loop is exactly the one the loop already had.  */
+     At KUNROLL == 1 the count is the loop's own and nothing has to be
+     computed: the hardware loop is exactly the one the loop already had.
+     KUNROLL > 1 needs the count divided, and the division is not the whole
+     story -- see ROUNDING DOWN below.  */
   bool doloop = lvx_doloop_end_p (seq[loopback]);
 
   *why = "the loopback is a doloop_end, which the emission cannot retarget";
   if (doloop && !lvx_cms_hwloop)
     return false;
-  *why = "a doloop kernel with kunroll > 1 needs its trip count divided";
-  if (doloop && site->kunroll != 1)
+  *why = "a doloop kernel's unroll factor is not a power of two";
+  if (doloop && (site->kunroll < 1
+		 || (site->kunroll & (site->kunroll - 1)) != 0))
     return false;
+  /* ROUNDING DOWN, AND WHY THERE IS NO CHOICE ABOUT IT.  §7tricies.62.
+
+     An unrolled kernel holds KUNROLL instances of the loopback, one per copy,
+     and all but the closing one are early exits.  The obvious way to keep the
+     hardware loop would be to divide the count UP -- ceil (M / KUNROLL)
+     trips, the exits ending the final partial trip, which the ISS permits.
+     It does not work, and the reason is in hw-doloop.cc rather than in the
+     architecture: `scan_loop' sets ITER_REG_USED for any insn in the loop
+     other than the doloop_end that so much as MENTIONS the counter, and
+     (lvx_hwloop_optimize) refuses on it.  A counted early exit mentions the
+     counter by construction.  So the exits cannot stay inside the body.
+
+     They therefore leave it, which is what rounding the count DOWN buys: the
+     hardware loop runs the complete trips and a SECOND copy of the kernel,
+     executed at most once after it, carries the leftover iterations and the
+     exits that end them.  The leftover is never zero, so that copy needs no
+     guard:
+
+       M        iterations still to start when the kernel is reached, which is
+		what the counter holds -- every remaining loopback instance
+		decrements it and the one that sees 1 exits,
+       T        = (M - 1) / KUNROLL, the complete trips: a trip is complete
+		when all KUNROLL of its instances see a count above 1, so the
+		exit always falls in the trip after the last complete one,
+       R        = M - T * KUNROLL = ((M - 1) mod KUNROLL) + 1, in [1, KUNROLL].
+
+     T may be zero, and LOOPDO with a count of zero skips the body entirely
+     ("as in Tensilica's LOOPNEZ", Instruction.yml) rather than looping
+     forever, so there is nothing to guard there either.
+
+     The remainder copy is the kernel the plan already built: its KUNROLL - 1
+     early exits are the explicit counter tests above, and its CLOSING
+     instance -- reached exactly when R == KUNROLL -- is dropped so the block
+     falls into the main epilogue, which is the drain that instance's exit
+     would have gone to.
+
+     Two registers are in play and they must be different ones: the hardware
+     loop's own counter, which nothing but its doloop_end may mention, and the
+     pipeline's counter lineage, which the remainder copy's tests read.  */
+  bool hwkern = (doloop && site->kunroll > 1);
   /* Every jump must have a destination outside the loop to drain to, or it is
      an intra-loop branch this emission does not model.  */
   *why = "a jump has no exit out of the loop";
@@ -17751,6 +17793,35 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       mainep = (int) k;
   *why = "no kernel node or no main epilogue";
   if (kfirst < 0 || mainep < 0)
+    return false;
+
+  /* THE EXIT-FREE COPY IS ONE BLOCK, so the remainder scheme is declined on a
+     kernel holding a jump that is NOT the loopback -- a data-dependent exit,
+     which the copy would have to carry as well and which would therefore
+     split it.  Nothing about the scheme needs that; it is left out of the
+     first version so that what is emitted is one block whose only terminator
+     is the doloop_end.
+
+     The plan splits the kernel at every exit, and the loopback's own KUNROLL
+     - 1 non-closing instances ARE exits, so a kernel node count of one is NOT
+     the condition: at KUNROLL = K the chain is K nodes by construction, which
+     is why asking for one declined every loop.  What is asked is the absence
+     of another jump.  */
+  *why = "a doloop kernel with kunroll > 1 holds another exit";
+  if (hwkern)
+    for (unsigned q = 0; q < slots.length (); q++)
+      {
+	int nd = slots[q].node;
+	unsigned i = (unsigned) slots[q].insn;
+
+	if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
+	  continue;
+	if (nodes[nd].kind == LVX_CMS_NODE_KERNEL && JUMP_P (seq[i])
+	    && (int) i != loopback)
+	  return false;
+      }
+  *why = "a doloop kernel with kunroll > 1 has no prologue to set up from";
+  if (hwkern && kfirst == 0)
     return false;
 
   /* A SIDE EFFECT IN THE PROLOGUE IS NOT THE SAME AS A SPECULATED ONE.
@@ -17994,7 +18065,22 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  rtx_jump_insn *jj = as_a <rtx_jump_insn *> (j);
 	  basic_block target;
 
-	  if (is_iter)
+	  if (is_iter && hwkern)
+	    {
+	      /* THE REMAINDER COPY DOES NOT LOOP BACK.  Its closing instance
+		 is reached only when R == KUNROLL, and then it always exits,
+		 so it is not a branch at all: drop it and let the block fall
+		 into the main epilogue, which is where its exit went.  The
+		 counter it would have decremented is dead from here on.
+
+		 JUMP_LABEL is left as it was set above: delete_insn reads it
+		 to drop the LABEL_NUSES this emission had just claimed.  */
+	      delete_insn (j);
+	      lvx_cms_dump (";; lvx cms:   closing branch dropped, the"
+			    " remainder copy falls into the drain\n");
+	      continue;
+	    }
+	  else if (is_iter)
 	    {
 	      target = blocks[kfirst];
 	      if (!redirect_jump (jj, block_label (target), 0))
@@ -18182,6 +18268,179 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	}
       tail[nd] = c;
       nemit++;
+    }
+
+  /* THE HARDWARE LOOP ITSELF: the exit-free copy of the kernel, and the two
+     blocks around it.  §7tricies.62, continued from ROUNDING DOWN above.
+
+     Laid out between the last prologue node and the kernel the plan built,
+     which becomes the REMAINDER copy:
+
+       ... prologue ...          the counter holds M on leaving it
+       SETUP                     hw = M - 1; cnt = (hw & (K-1)) + 1;
+				 hw >>= log2 K
+       KERNEL (exit-free)        the kernel's slots with no loopback instance
+				 at all, closed by a doloop_end on HW, which
+				 (reorg_loops) consumes into LOOPDO -- so the
+				 repetition costs no instruction
+       remainder copy            the plan's kernel, its K-1 counter tests and
+       ... epilogues ...         its drains unchanged
+
+     Both new blocks come from SPLIT_EDGE on the fall-through into the kernel,
+     which is the one entry a hardware loop may have (process_incoming_edges:
+     INCOMING_DEST must be the head) and which also gives (lvx_hwloop_optimize)
+     the dedicated preheader it looks for the counter's SET in.  */
+  if (hwkern)
+    {
+      rtx cpat = PATTERN (seq[loopback]);
+      rtx cnt = SET_DEST (XVECEXP (cpat, 0, 1));
+      int cslot = lvx_cms_reg_index (cpat, &SET_DEST (XVECEXP (cpat, 0, 1)));
+      bool cdly = false;
+      lvx_cms_lrange *cg = lvx_cms_lrange_of (lr, loopback, cslot, &cdly);
+      machine_mode cm = GET_MODE (cnt);
+      int creg = cg ? lvx_cms_lrange_reg (cg, 0, cdly)
+		    : (REG_P (cnt) ? (int) REGNO (cnt) : -1);
+      unsigned HOST_WIDE_INT free_regs = avail;
+      int hwreg = -1, k2 = site->kunroll, logk = 0;
+      rtx cnt_rtx, hw_rtx;
+      basic_block sbb, kbb;
+      edge e;
+
+      *why = "the doloop counter has no single register";
+      if (creg < 0 || !REG_P (cnt) || (cg && cg->p2unroll != 1))
+	return false;
+
+      /* A REGISTER NO LINEAGE HOLDS.  The hardware loop's counter may be
+	 mentioned by nothing but its own doloop_end, so it cannot be the
+	 pipeline's counter lineage -- which the remainder copy reads -- nor
+	 any other lineage's name.  AVAIL is what the colouring was allowed to
+	 use; what it did not take is free across the whole pipeline.  */
+      for (unsigned g = 0; g < lr.length (); g++)
+	{
+	  lvx_cms_lrange *q = lr[g];
+	  for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
+	    if (q->reg[x] >= 0 && q->reg[x] < 64)
+	      free_regs &= ~((unsigned HOST_WIDE_INT) 1 << q->reg[x]);
+	}
+      for (int r = 0; r < 64; r++)
+	if ((free_regs >> r) & 1)
+	  {
+	    hwreg = r;
+	    break;
+	  }
+      *why = "no free register for the hardware loop's own counter";
+      if (hwreg < 0)
+	return false;
+
+      while ((1 << (logk + 1)) <= k2)
+	logk++;
+      cnt_rtx = gen_rtx_REG (cm, creg);
+      hw_rtx = gen_rtx_REG (cm, hwreg);
+
+      e = find_edge (blocks[kfirst - 1], blocks[kfirst]);
+      *why = "the kernel is not entered by a fall-through";
+      if (!e || !(e->flags & EDGE_FALLTHRU))
+	return false;
+      sbb = split_edge (e);
+      e = find_edge (sbb, blocks[kfirst]);
+      if (!e)
+	return false;
+      kbb = split_edge (e);
+
+      /* SETUP.  The order matters: HW carries M - 1 until the shift, so the
+	 remainder is taken from it before it is divided.  */
+      {
+	rtx_insn *at = BB_END (sbb);
+	rtx seq4[4];
+	seq4[0] = (cm == SImode ? gen_addsi3 (hw_rtx, cnt_rtx, constm1_rtx)
+		   : gen_adddi3 (hw_rtx, cnt_rtx, constm1_rtx));
+	seq4[1] = (cm == SImode
+		   ? gen_andsi3 (cnt_rtx, hw_rtx, GEN_INT (k2 - 1))
+		   : gen_anddi3 (cnt_rtx, hw_rtx, GEN_INT (k2 - 1)));
+	seq4[2] = (cm == SImode ? gen_addsi3 (cnt_rtx, cnt_rtx, const1_rtx)
+		   : gen_adddi3 (cnt_rtx, cnt_rtx, const1_rtx));
+	seq4[3] = (cm == SImode
+		   ? gen_lshrsi3 (hw_rtx, hw_rtx, GEN_INT (logk))
+		   : gen_lshrdi3 (hw_rtx, hw_rtx, GEN_INT (logk)));
+	if (!at || !NOTE_INSN_BASIC_BLOCK_P (at))
+	  {
+	    at = BB_HEAD (sbb);
+	    if (LABEL_P (at))
+	      at = NEXT_INSN (at);
+	  }
+	*why = "no NOTE_INSN_BASIC_BLOCK in the hardware loop's preheader";
+	if (!at)
+	  return false;
+	for (int x = 0; x < 4; x++)
+	  at = emit_insn_after (seq4[x], at), nemit++;
+      }
+
+      /* THE EXIT-FREE KERNEL.  The same slots, in the same linearised order
+	 and renamed for the same iterations as the remainder copy -- the
+	 names are a function of the lineage and the iteration, so the two
+	 copies agree by construction and the trips chain through the same
+	 rotation.  */
+      {
+	rtx_insn *at = BB_HEAD (kbb);
+	rtx_insn *de;
+	int nk = 0;
+
+	if (LABEL_P (at))
+	  at = NEXT_INSN (at);
+	*why = "no NOTE_INSN_BASIC_BLOCK in the exit-free kernel";
+	if (!at || !NOTE_INSN_BASIC_BLOCK_P (at))
+	  return false;
+	for (unsigned oq = 0; oq < order.length (); oq++)
+	  {
+	    unsigned q = (unsigned) order[oq];
+	    int nd = slots[q].node;
+	    unsigned i = (unsigned) slots[q].insn;
+	    rtx_insn *c;
+	    int n = 0;
+
+	    if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
+	      continue;
+	    if (nodes[nd].kind != LVX_CMS_NODE_KERNEL)
+	      continue;
+	    if (JUMP_P (seq[i]))
+	      continue;			/* no loopback instance at all */
+	    c = emit_insn_after (copy_insn (PATTERN (seq[i])), at);
+	    *why = "the renamed copy does not recognise";
+	    if (!lvx_cms_rename_lr_insn_p (seq[i], c, i, slots[q].iter, lr,
+					   &n, true))
+	      return false;
+	    at = c;
+	    nemit++;
+	    nk++;
+	  }
+	*why = "the exit-free kernel came out empty";
+	if (nk == 0)
+	  return false;
+
+	de = emit_jump_insn_after ((cm == SImode
+				    ? gen_doloop_end_si (hw_rtx,
+							 block_label (kbb))
+				    : gen_doloop_end_di (hw_rtx,
+							 block_label (kbb))),
+				   at);
+	JUMP_LABEL (de) = block_label (kbb);
+	LABEL_NUSES (JUMP_LABEL (de))++;
+	nemit++;
+	if (!find_edge (kbb, kbb))
+	  {
+	    edge be = make_edge (kbb, kbb, 0);
+	    edge fe;
+
+	    be->probability = profile_probability::even ();
+	    fe = find_fallthru_edge (kbb->succs);
+	    if (fe)
+	      fe->probability = profile_probability::even ();
+	  }
+	lvx_cms_dump (";; lvx cms:   hwloop kernel bb%d: %d insns, counter"
+		      " r%d, trips (M-1)>>%d, remainder in r%d bb%d\n",
+		      kbb->index, nk, hwreg, logk, creg,
+		      blocks[kfirst]->index);
+      }
     }
 
   /* THE CFG AS BUILT, printed rather than inferred from the assembly.  Four
@@ -21724,7 +21983,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		else
 		  emitted = lvx_cms_emit_pipeline (&site, seq, plslots,
 						   plnodes, cgblocks, cglr,
-						   &nemit, &iwhy);
+						   cgavail, &nemit, &iwhy);
 		lvx_cms_dump (";; lvx cms: fn=%s loop %d cgcolour %s nodes=%d"
 			      " maxreg=%d kunroll=%d subst=%d refused=%d"
 			      " linear=%d claimed=%d lrantidep=%s conf=%d"
