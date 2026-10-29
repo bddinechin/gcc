@@ -18499,9 +18499,9 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  || lvx_cms_lrange_root (lr, (int) g) != (int) g
 	  || !q->effects[0].is_def)
 	continue;
-      *why = "a live-out lineage is a register tuple";
-      if (MAX (q->nregs, 1) != 1)
-	return false;
+      /* A TUPLE IS NOT REFUSED.  §7tricies.73: a tuple copy IS the parallel
+	 copy of its component registers, so it is decomposed into them and
+	 the register-level sequentialisation does the rest.  */
       *why = "a live-out lineage's definition has no operand";
       if (q->effects[0].insn >= seq.length ()
 	  || !lvx_cms_reg_at (&PATTERN (seq[q->effects[0].insn]),
@@ -18852,7 +18852,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	{
 	  lvx_cms_lrange *q = lr[g];
 	  unsigned dins;
-	  int dslot, best = -1, nm;
+	  int dslot, best = -1, nm, nr;
 	  rtx *dloc;
 
 	  if (q->effects.is_empty () || !q->exit_live
@@ -18891,18 +18891,42 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  nm = lvx_cms_lrange_reg (q, best, q->effects[0].delayed);
 	  if (nm < 0 || nm == (int) q->regno)
 	    continue;		/* already in the architectural register */
+	  nr = MAX (q->nregs, 1);
 	  /* Both structural refusals were taken before emission began
 	     (§7tricies.72); these are the same conditions, asserted rather
 	     than decided, so that a change on one side cannot silently
 	     reintroduce a late refusal.  */
 	  dloc = lvx_cms_reg_at (&PATTERN (seq[dins]), dslot);
-	  gcc_checking_assert (MAX (q->nregs, 1) == 1
-			       && dloc && *dloc && REG_P (*dloc));
+	  gcc_checking_assert (dloc && *dloc && REG_P (*dloc));
 	  if (!dloc || !*dloc || !REG_P (*dloc))
 	    continue;
-	  psrc.safe_push (nm);
-	  pdst.safe_push ((int) q->regno);
-	  pmode.safe_push (GET_MODE (*dloc));
+
+	  /* A TUPLE COPY IS THE PARALLEL COPY OF ITS COMPONENTS.
+	     §7tricies.73.
+
+	     `[regno, regno+n) <- [nm, nm+n)' is componentwise by definition,
+	     so it is pushed as n single-register copies and the existing
+	     register-level sequentialisation handles the rest.  That is
+	     strictly better than teaching the algorithm about spans: PRED
+	     stays unique per register because the destination spans are
+	     already disjoint (§7tricies.66 leaves one live-out lineage per
+	     register), a cycle needs ONE scratch register rather than n
+	     consecutive aligned ones, and a copy whose source and
+	     destination spans OVERLAP -- r32r33 <- r33r34 -- decomposes into
+	     a chain the algorithm already sequentialises, which is what it
+	     exists for.  It costs n moves instead of one in drain code that
+	     runs once per loop exit.
+
+	     The component mode is DImode and not the tuple's: the register
+	     file is 64 bits, so every component of every tuple is one word,
+	     whatever the value's own mode is.  A width-one lineage keeps its
+	     operand's mode, so an SImode value still moves as one.  */
+	  for (int k = 0; k < nr; k++)
+	    {
+	      psrc.safe_push (nm + k);
+	      pdst.safe_push ((int) q->regno + k);
+	      pmode.safe_push (nr == 1 ? GET_MODE (*dloc) : DImode);
+	    }
 	}
 
       if (psrc.is_empty ())
