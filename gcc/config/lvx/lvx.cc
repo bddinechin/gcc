@@ -14231,6 +14231,7 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
      counting what falls where.  Everything after ITER_SLOT is filtered out,
      which is what leaves prolog + unrolled kernel + main epilog (§7.9).  */
   int prev_exit = 0, nodes = 0, split = 0;
+  bool kernel_seen = false;
   auto_vec<int> exit_date, exit_iter, exit_insn;
   if (slots)
     slots->truncate (0);
@@ -14278,9 +14279,28 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 	  /* A new node after every exit, and at the kernel head -- the first
 	     because an exit must end a block, the second because the kernel
 	     head must be a branch target (§7quinquies.2).  */
-	  bool enter_kernel = (d == kernel_first);
+	  /* THE KERNEL BEGINS AT THE FIRST SLOT AT OR AFTER KERNEL_FIRST, not
+	     at a slot whose date EQUALS it.  §7tricies.49.
+
+	     KERNEL_FIRST is iter_date - kunroll * II + 1, an arithmetic cycle
+	     number that no instance need occupy: seidel-2d's loop 2 has phases
+	     0, 1, 5, 9 and 12 at II = 5, so its instances fall on 9, 10, 11,
+	     12, ... and KERNEL_FIRST is 8.  With an equality test the kernel
+	     node was never created at the boundary and every slot from 9
+	     onwards was appended to the last PROLOGUE node -- so PL->KERNEL
+	     counted 40 slots by date while only 30 of them sat in a node of
+	     kernel kind, and each of the ten instructions appeared three times
+	     instead of four.
+
+	     STEADYBAD is what caught it, counting per instruction in nodes of
+	     kernel kind rather than trusting the by-date total.  Emitted, the
+	     kernel block would have been missing a quarter of its work with
+	     the rest marooned in the prologue.  */
+	  bool enter_kernel = (d >= kernel_first && !kernel_seen);
 	  if (prev_exit || enter_kernel || nodes == 0)
 	    {
+	      if (d >= kernel_first)
+		kernel_seen = true;
 	      if (nodes && !prev_exit)
 		split++;		/* case 1: the kernel begins mid-block */
 	      if (nodes - split >= (int) nblocks)
@@ -14507,6 +14527,14 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
     for (unsigned i = 0; i < seq.length (); i++)
       if (slots && per[i] != kunroll)
 	pl->steady_bad++;
+    if (slots && pl->steady_bad && lvx_cms_probe && dump_file)
+      {
+	lvx_cms_dump (";; lvx cms:   steadybad kunroll=%d per-insn:", kunroll);
+	for (unsigned i = 0; i < seq.length (); i++)
+	  lvx_cms_dump (" %u:%d%s", i, per[i],
+			per[i] != kunroll ? "*" : "");
+	lvx_cms_dump ("\n");
+      }
   }
 
   pl->ok = true;
