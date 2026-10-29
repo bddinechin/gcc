@@ -11910,15 +11910,35 @@ lvx_insn_dest_earlyclobber_p (rtx_insn *insn)
 static bool
 lvx_insn_has_tied_operand_p (rtx_insn *insn)
 {
+  const operand_alternative *alt;
+
   if (recog_memoized (insn) < 0)
     return false;
-  extract_insn (insn);
-  preprocess_constraints (insn);
-  if (which_alternative < 0)
-    return false;
+  /* EXTRACT_CONSTRAIN_INSN, NOT EXTRACT_INSN.  WHICH_ALTERNATIVE is set by
+     constraint matching, which extract_insn does not do: after it the global
+     holds whatever the previous constrain left, or -1.  Reading it there made
+     this predicate answer FALSE for every instruction, and it is what decides
+     whether a register WAR or WAW arc is KEPT -- so the graph dropped every
+     register anti-dependence, including those modulo expansion cannot remove.
+     Measured as nwar = nwaw = 0 on all 124 PolyBench loops, which is not a
+     plausible property of 124 loops.
 
-  const operand_alternative *alt
-    = &recog_op_alt[which_alternative * recog_data.n_operands];
+     WHICH_OP_ALT () is the accessor for the constrained alternative's operand
+     table, and is what kvx-unfold.cc's unfold_igraph_store_effects uses for
+     the same question.  */
+  /* CONSTRAIN_OPERANDS RATHER THAN EXTRACT_CONSTRAIN_INSN, which calls
+     fatal_insn_not_found when matching fails.  This predicate is asked of
+     every body instruction while a graph is being built, where the answer
+     "cannot tell" has to be available: aborting the compiler is not a
+     conservative answer.  WHICH_OP_ALT asserts the alternative is in range,
+     so the range is tested here and not left to it.  */
+  extract_insn (insn);
+  if (!constrain_operands (1, get_enabled_alternatives (insn)))
+    return false;
+  preprocess_constraints (insn);
+  if (!IN_RANGE (which_alternative, 0, recog_data.n_alternatives - 1))
+    return false;
+  alt = which_op_alt ();
   for (int i = 0; i < recog_data.n_operands; i++)
     if (alt[i].matches >= 0 || alt[i].matched >= 0)
       return true;
@@ -14572,10 +14592,28 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
 
    This stage BUILDS and CHECKS the structure and renames nothing.  */
 
+/* AN EFFECT IS ONE READ OR WRITE OF ONE OPERAND, not an instruction.
+
+   It was (insn, is_def), which identifies a reference only up to the
+   instruction, and that is not enough in two places.  `x * x' reads one
+   register through two operands, which the structural check had to count
+   separately as TWICE because the lookup could not tell them apart; and
+   `fixedd.rz r0 = r0' reads two different lineages that RA put in one
+   register, where answering with either is wrong half the time.
+
+   SLOT is the operand: the ordinal of the reference's location in a
+   deterministic sub-rtx walk of the pattern, which is exactly what
+   lvx_cms_reg_index computes from DF_REF_LOC.  It is an index rather than the
+   location because the rewrite runs on a COPY, where a pointer into the
+   original addresses nothing and the traversal order is identical.  Keyed on
+   (insn, slot) the lookup needs no is_def argument and cannot be ambiguous --
+   one operand belongs to one lineage.  */
+
 struct lvx_cms_effect
 {
   unsigned insn;		/* index into SEQ */
-  bool is_def;			/* the reference that heads the range */
+  int slot;			/* the operand: ordinal in the REG walk */
+  bool is_def;			/* a write (it may also head the range) */
   bool delayed;			/* reads the previous instance */
 };
 
@@ -14587,21 +14625,70 @@ struct lvx_cms_lrange
   int nregs;
   bool use_first;
   bool exit_live;
+  bool renamed;			/* its union gets a stack of names */
   int first_date, last_date;
   int p2unroll;
+  int self;			/* own index into LR */
+  int parent;			/* union-find over LR: the lineage */
   int reg[LVX_CMS_MAX_KUNROLL];
   auto_vec<lvx_cms_effect> effects;
 };
+
+/* The representative of a range's tie union, with path compression.  */
+
+static int
+lvx_cms_lrange_root (const auto_vec<lvx_cms_lrange *> &lr, int k)
+{
+  while (lr[k]->parent != k)
+    {
+      lr[k]->parent = lr[lr[k]->parent]->parent;
+      k = lr[k]->parent;
+    }
+  return k;
+}
+
+/* Put two ranges in one lineage.  Returns true if they were not already.  */
+
+static bool
+lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange *> &lr,
+		      lvx_cms_lrange *ga, lvx_cms_lrange *gb)
+{
+  int a, b;
+
+  if (!ga || !gb || ga == gb)
+    return false;
+  a = lvx_cms_lrange_root (lr, ga->self);
+  b = lvx_cms_lrange_root (lr, gb->self);
+  if (a == b)
+    return false;
+  lr[b]->parent = a;
+  return true;
+}
 
 /* Build the live ranges of SEQ.  One per definition of a hard register, in
    body order, with every reference to that register attached to the range
    the reaching definition opened.  */
 
+/* Declared ahead of their definitions: the three operand lookups, which the
+   build's unification passes need and which read the structure the build has
+   just produced.  */
+static lvx_cms_lrange *lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &,
+					  unsigned, int, bool *);
+static lvx_cms_lrange *
+lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange *> &, unsigned, unsigned);
+static lvx_cms_lrange *
+lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange *> &, unsigned, unsigned);
+
 static void
 lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
+		       const auto_vec<lvx_cms_arc> &arcs,
 		       const auto_vec<int> &sigma, int ii, bitmap liveout,
-		       auto_vec<lvx_cms_lrange *> &lr)
+		       auto_vec<lvx_cms_lrange *> &lr, int *ntie_out,
+		       int *narc_out /* [3] */, int *nunit_out,
+		       int *nheld_out)
 {
+  int ntie = 0, narc = 0, nseen = 0, nunres = 0;
+
   /* The range currently open for each hard register, as an index into LR, or
      -1.  A use with no open range is a reference to the previous iteration's
      value and opens one of its own, which the normalisation below folds into
@@ -14619,7 +14706,9 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       FOR_EACH_INSN_USE (ref, seq[i])
 	{
 	  unsigned r = DF_REF_REGNO (ref);
-	  lvx_cms_effect e = { i, false, false };
+	  lvx_cms_effect e = { i, lvx_cms_reg_index (PATTERN (seq[i]),
+						    DF_REF_LOC (ref)),
+			       false, false };
 
 	  if (r >= FIRST_PSEUDO_REGISTER)
 	    continue;
@@ -14635,7 +14724,9 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		 is 1 and the index is 0 whatever it holds.  */
 	      n->use_first = false;
 	      n->exit_live = false;
+	      n->renamed = false;
 	      n->p2unroll = 1;
+	      n->self = n->parent = (int) lr.length ();
 	      n->first_date = n->last_date = sigma[i];
 	      open[r] = (int) lr.length ();
 	      lr.safe_push (n);
@@ -14649,8 +14740,18 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       FOR_EACH_INSN_DEF (ref, seq[i])
 	{
 	  unsigned r = DF_REF_REGNO (ref);
-	  lvx_cms_effect e = { i, true, false };
+	  lvx_cms_effect e = { i, lvx_cms_reg_index (PATTERN (seq[i]),
+						    DF_REF_LOC (ref)),
+			       true, false };
 	  rtx reg = DF_REF_REG (ref);
+
+	  /* A READ-MODIFY-WRITE REFERENCE IS ONE OPERAND, and DF reports it
+	     twice -- as a use and as a definition at the SAME location.  The
+	     use already entered it; entering it again as a definition would
+	     put one operand in two lineages, which is the ambiguity this
+	     structure exists to not have.  The write is what opens a range,
+	     so the range opens and the operand stays the effect it already
+	     is, now marked as the definition that heads it.  */
 
 	  if (r >= FIRST_PSEUDO_REGISTER)
 	    continue;
@@ -14659,11 +14760,25 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  n->nregs = reg && REG_P (reg) ? REG_NREGS (reg) : 1;
 	  n->use_first = false;
 	  n->exit_live = liveout && bitmap_bit_p (liveout, r);
+	  n->renamed = false;
 	  n->p2unroll = 1;
+	  n->self = n->parent = (int) lr.length ();
 	  n->first_date = n->last_date = sigma[i];
 	  n->effects.safe_push (e);
-	  open[r] = (int) lr.length ();
 	  lr.safe_push (n);
+	  if (e.slot >= 0 && open[r] >= 0)
+	    for (unsigned q = 0; q < lr[open[r]]->effects.length (); q++)
+	      if (lr[open[r]]->effects[q].insn == i
+		  && lr[open[r]]->effects[q].slot == e.slot)
+		{
+		  /* The same operand: drop the use's copy, and put the two
+		     ranges in one lineage -- the operand is read and written
+		     in place, so one register has to serve both.  */
+		  lr[open[r]]->effects.ordered_remove (q);
+		  lvx_cms_lrange_union (lr, n, lr[open[r]]);
+		  break;
+		}
+	  open[r] = (int) lr.length () - 1;
 	}
     }
 
@@ -14715,30 +14830,243 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       lr[first]->effects.truncate (0);
     }
 
+  /* THE TIE UNIFICATION.  §7tricies.28.
+
+     A TIED OPERAND MUST IMPLY ONE RENAMING UNIT, and it does not imply one
+     range: an insn's uses are entered before its definitions, so the read of
+     a tied accumulator attaches to the range the REACHING definition opened
+     while the write opens a new one.  Those coincide only when the register
+     has a single definition in the body -- then the cyclic normalisation
+     merges the pre-def read into it -- and gemm's body defines r1 three times
+     because RA reused it.  There the fma's read landed on the load's range
+     (four names) and its write on its own (one name), and `fma r1 = a, r41'
+     does not recognise: 8 refused instances on that loop alone.
+
+     The reference marks the tied DEFINITION non-renameable instead (type 'R'
+     in unfold_igraph_store_effects, from op_alt[def].matched) and leaves the
+     tied READ in the preceding range, where it is still renamed -- which
+     emits exactly `fma r1 = a, r41'.  That is not followed here.
+
+     The fix is a UNION over ranges rather than a merge of them: the two
+     ranges share one stack of names, and every reference still belongs to
+     exactly one range, so the lookup stays exact.  That is what the tie
+     CLASSES were reaching for and could not have, because a class had merged
+     away the information needed to find the operand again.
+
+     Soundness of sharing a stack between two definitions: when the tie makes
+     the second read what the first wrote, the RAW arc between them already
+     serialises them within the iteration, and across iterations the names
+     differ whenever the union expands.  Where it does not expand the
+     anti-dependence is the one lvx_cms_verify_antidep checks.  */
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      rtx set = single_set (seq[i]);
+      const operand_alternative *op_alt;
+      int nop, d = -1, m;
+
+      if (!set || !REG_P (SET_DEST (set))
+	  || REGNO (SET_DEST (set)) >= FIRST_PSEUDO_REGISTER)
+	continue;
+      if (!INSN_P (seq[i]) || INSN_CODE (seq[i]) < 0)
+	continue;
+      /* Same care as lvx_insn_has_tied_operand_p: the non-aborting form, and
+	 the alternative's range tested before which_op_alt asserts it.  */
+      extract_insn (seq[i]);
+      if (!constrain_operands (1, get_enabled_alternatives (seq[i])))
+	continue;
+      preprocess_constraints (seq[i]);
+      if (!IN_RANGE (which_alternative, 0, recog_data.n_alternatives - 1))
+	continue;
+      nop = recog_data.n_operands;
+      op_alt = which_op_alt ();
+      for (int o = 0; o < nop; o++)
+	if (recog_data.operand[o] == SET_DEST (set))
+	  {
+	    d = o;
+	    break;
+	  }
+      if (d < 0 || (m = op_alt[d].matched) < 0 || m >= nop)
+	continue;
+      /* The matched operand is the input this destination must equal.  */
+      {
+	rtx u = recog_data.operand[m];
+	lvx_cms_lrange *gd, *gu;
+
+	if (!u || !REG_P (u) || REGNO (u) >= FIRST_PSEUDO_REGISTER)
+	  continue;
+	gd = lvx_cms_lrange_def_of (lr, i, REGNO (SET_DEST (set)));
+	gu = lvx_cms_lrange_use_of (lr, i, REGNO (u));
+	if (lvx_cms_lrange_union (lr, gd, gu))
+	  ntie++;
+      }
+    }
+
+  /* THE KEPT ANTI-DEPENDENCES ARE LINEAGE CONSTRAINTS.  §7tricies.29.
+
+     The graph drops a register WAR or WAW arc when modulo expansion is
+     expected to rename the conflict away, and keeps it when it is not.  A
+     KEPT arc is therefore an assertion that the two references end up in ONE
+     REGISTER -- and if they are two lineages with two stacks of names, the
+     renaming has separated exactly what the arc says cannot be separated.
+     Either the arc is redundant or the lineages must be one; reading the arcs
+     and unioning is the side that cannot be wrong.
+
+     Doing it from the arcs rather than from the predicate they were built
+     with (lvx_insn_def_reads_dest_p, plus DF_REF_PARTIAL) is deliberate: the
+     two cannot then disagree, and the WAW condition is an OR over the two
+     instructions, so a kept arc does not always mean the predicate holds at
+     the end the tie pass would look at.
+
+     This subsumes the tie pass on the loops measured -- an in-place write has
+     its own destination as a source, which is what keeps the arc -- but not
+     in general: a register defined once by a tied instruction has no arc
+     partner at all, and is handled by the cyclic normalisation or by the tie
+     pass.  Both run.  */
+  for (unsigned a = 0; a < arcs.length (); a++)
+    {
+      unsigned src = arcs[a].src, dst = arcs[a].dst;
+      df_ref r1;
+
+      if (arcs[a].kind != LVX_ARC_REG_WAR && arcs[a].kind != LVX_ARC_REG_WAW)
+	continue;
+      if (src >= seq.length () || dst >= seq.length ())
+	continue;
+
+      if (arcs[a].kind == LVX_ARC_REG_WAR)
+	{
+	  /* SRC reads what DST destroys: the read's lineage and the killing
+	     definition's are one register.  */
+	  FOR_EACH_INSN_USE (r1, seq[src])
+	    {
+	      unsigned rn = DF_REF_REGNO (r1);
+
+	      if (rn >= FIRST_PSEUDO_REGISTER
+		  || !lvx_insn_defs_regno_p (seq[dst], rn))
+		continue;
+	      lvx_cms_lrange *gu
+		= lvx_cms_lrange_of (lr, src,
+				     lvx_cms_reg_index (PATTERN (seq[src]),
+							DF_REF_LOC (r1)),
+				     NULL);
+	      lvx_cms_lrange *gd = lvx_cms_lrange_def_of (lr, dst, rn);
+
+	      if (!gu || !gd)
+		nunres++;
+	      else
+		{
+		  nseen++;
+		  if (lvx_cms_lrange_union (lr, gu, gd))
+		    narc++;
+		}
+	    }
+	}
+      else
+	FOR_EACH_INSN_DEF (r1, seq[src])
+	  {
+	    unsigned rn = DF_REF_REGNO (r1);
+
+	    if (rn >= FIRST_PSEUDO_REGISTER
+		|| !lvx_insn_defs_regno_p (seq[dst], rn))
+	      continue;
+	    lvx_cms_lrange *ga = lvx_cms_lrange_def_of (lr, src, rn);
+	    lvx_cms_lrange *gb = lvx_cms_lrange_def_of (lr, dst, rn);
+
+	    if (!ga || !gb)
+	      nunres++;
+	    else
+	      {
+		nseen++;
+		if (lvx_cms_lrange_union (lr, ga, gb))
+		  narc++;
+	      }
+	  }
+    }
+
+  /* THE UNION IS THE RENAMING UNIT, so its span and its flags are the union
+     of its members'.  A union holding a range that is not def-headed is not
+     renamed at all: that range's value comes from outside the body, and the
+     reference says the same of an unexpanded USE_FIRST range -- it keeps the
+     original REGNO.  Here the tie would force the incoming register on every
+     name, which is a stack of one.  */
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      int root;
+
+      if (lr[k]->effects.is_empty ())
+	continue;
+      root = lvx_cms_lrange_root (lr, (int) k);
+      if ((int) k == root)
+	continue;
+      lr[root]->first_date = MIN (lr[root]->first_date, lr[k]->first_date);
+      lr[root]->last_date = MAX (lr[root]->last_date, lr[k]->last_date);
+      lr[root]->nregs = MAX (lr[root]->nregs, lr[k]->nregs);
+      lr[root]->use_first |= lr[k]->use_first;
+      lr[root]->exit_live |= lr[k]->exit_live;
+    }
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      int root = lr[k]->effects.is_empty () ? (int) k
+		 : lvx_cms_lrange_root (lr, (int) k);
+
+      lr[root]->renamed = true;
+    }
+  for (unsigned k = 0; k < lr.length (); k++)
+    if (!lr[k]->effects.is_empty () && !lr[k]->effects[0].is_def)
+      lr[lvx_cms_lrange_root (lr, (int) k)]->renamed = false;
+
   /* Each range's unroll factor: the instances its life spans, rounded up to
      a power of two so the index is a mask (§7tricies.2's third place the
      power of two pays).  */
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      int life = lr[k]->last_date - lr[k]->first_date;
+      int root = lr[k]->effects.is_empty () ? (int) k
+		 : lvx_cms_lrange_root (lr, (int) k);
+      int life = lr[root]->last_date - lr[root]->first_date;
       int need = ii > 0 ? (life + ii - 1) / ii : 1;
       int p2 = 1;
 
-      /* A RANGE WITH NO DEFINITION IN THE BODY IS NOT EXPANDED.  After the
-	 normalisation a use-headed range survives only for a register the
-	 body never writes -- an address base, a loop invariant, a value live
+      /* A RANGE WHOSE UNION IS NOT RENAMED IS NOT EXPANDED.  That covers the
+	 use-headed range the normalisation leaves behind -- a register the
+	 body never writes: an address base, a loop invariant, a value live
 	 across the loop.  Every iteration reads the same value, so there are
 	 no instances to expand and its span says nothing about pressure; the
 	 reference says the same in one line, "In case of USE_FIRST and not
 	 EXPANDED, allocate the original REGNO".  Rounding its span up would
 	 hand it a stack of names nothing ever writes.  */
-      if (lr[k]->effects.is_empty () || !lr[k]->effects[0].is_def)
+      if (!lr[root]->renamed)
 	need = 1;
       while (p2 < need && p2 < LVX_CMS_MAX_KUNROLL)
 	p2 <<= 1;
       lr[k]->p2unroll = MAX (p2, 1);
+      lr[k]->use_first = lr[root]->use_first;
       for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
 	lr[k]->reg[x] = (int) lr[k]->regno;
+    }
+
+  if (ntie_out)
+    *ntie_out = ntie;
+  if (narc_out)
+    /* Packed: the unions this pass had to MAKE, and -- so that a zero can be
+       told from a pass that resolves nothing -- how many kept arcs it
+       examined and how many it could not resolve at all.  A nonzero
+       unresolved count would mean the lookup, not the invariant.  */
+    narc_out[0] = narc, narc_out[1] = nseen, narc_out[2] = nunres;
+  if (nunit_out || nheld_out)
+    {
+      int nunit = 0, nheld = 0;
+
+      for (unsigned k = 0; k < lr.length (); k++)
+	if (!lr[k]->effects.is_empty ()
+	    && lvx_cms_lrange_root (lr, (int) k) == (int) k)
+	  {
+	    nunit++;
+	    if (!lr[k]->renamed)
+	      nheld++;
+	  }
+      if (nunit_out)
+	*nunit_out = nunit;
+      if (nheld_out)
+	*nheld_out = nheld;
     }
 }
 
@@ -14808,7 +15136,12 @@ lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
 
       if (g->effects.is_empty ())
 	continue;
-      rewritten = g->effects[0].is_def && !g->use_first;
+      /* A register is freeable only if the LINEAGE that holds it is renamed:
+	 a range whose union is held keeps its register, and so does a
+	 USE_FIRST lineage, whose name 0 is pinned to this very register
+	 because the preheader wrote it.  */
+      rewritten = lr[lvx_cms_lrange_root (lr, (int) k)]->renamed
+		  && !lr[lvx_cms_lrange_root (lr, (int) k)]->use_first;
       for (int w = 0; w < MAX (g->nregs, 1); w++)
 	if (g->regno + w < FIRST_PSEUDO_REGISTER)
 	  {
@@ -14871,8 +15204,12 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
       lvx_cms_lrange *g = lr[k];
       int ec, life;
 
-      if (g->effects.is_empty () || !g->effects[0].is_def)
-	continue;			/* holds its register */
+      /* ONE UNIT PER LINEAGE.  A member that is not the root shares the
+	 root's stack and is filled in from it below; a lineage that is not
+	 renamed holds its register and is not a unit at all.  */
+      if (g->effects.is_empty () || !g->renamed
+	  || lvx_cms_lrange_root (lr, (int) k) != (int) k)
+	continue;
       ec = lvx_insn_dest_earlyclobber_p (seq[g->effects[0].insn]) ? 1 : 0;
       life = g->last_date - g->first_date + (ec ? 1 : 0);
       idx.safe_push ((int) k);
@@ -14914,6 +15251,23 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	}
     }
 
+  /* THE LINEAGE'S STACK IS EVERY MEMBER'S STACK.  Copied rather than followed
+     through the parent at lookup time: the index arithmetic then reads one
+     range and one range only, which is what keeps lvx_cms_lrange_reg the
+     single place a register is decided.  */
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      int root = lvx_cms_lrange_root (lr, (int) k);
+
+      if (root == (int) k)
+	continue;
+      lr[k]->p2unroll = lr[root]->p2unroll;
+      lr[k]->use_first = lr[root]->use_first;
+      lr[k]->renamed = lr[root]->renamed;
+      for (int j = 0; j < LVX_CMS_MAX_KUNROLL; j++)
+	lr[k]->reg[j] = lr[root]->reg[j];
+    }
+
   *nn_out = nn;
   *stuck_out = (int) stuck.length ();
   *maxreg_out = maxreg;
@@ -14932,27 +15286,16 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 
 static lvx_cms_lrange *
 lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
-		   unsigned regno, bool is_def, bool *delayed_out)
+		   int slot, bool *delayed_out)
 {
+  if (slot < 0)
+    return NULL;
   for (unsigned k = 0; k < lr.length (); k++)
     {
       lvx_cms_lrange *g = lr[k];
 
-      if (g->regno != regno || g->effects.is_empty ())
-	continue;
-      if (is_def)
-	{
-	  if (g->effects[0].is_def && g->effects[0].insn == insn)
-	    {
-	      if (delayed_out)
-		*delayed_out = false;
-	      return g;
-	    }
-	  continue;
-	}
-      for (unsigned e = g->effects[0].is_def ? 1 : 0;
-	   e < g->effects.length (); e++)
-	if (g->effects[e].insn == insn && !g->effects[e].is_def)
+      for (unsigned e = 0; e < g->effects.length (); e++)
+	if (g->effects[e].insn == insn && g->effects[e].slot == slot)
 	  {
 	    if (delayed_out)
 	      *delayed_out = g->effects[e].delayed;
@@ -14960,6 +15303,49 @@ lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
 	  }
     }
   return NULL;
+}
+
+/* The same, by register and side, for the places that have an operand only as
+   `the destination of this insn' -- the tie pass reading recog_data.  Keyed on
+   the heading definition, which is unique per range.  */
+
+static lvx_cms_lrange *
+lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
+		       unsigned regno)
+{
+  for (unsigned k = 0; k < lr.length (); k++)
+    if (lr[k]->regno == regno && !lr[k]->effects.is_empty ()
+	&& lr[k]->effects[0].is_def && lr[k]->effects[0].insn == insn)
+      return lr[k];
+  return NULL;
+}
+
+/* And by register for a READ, where the caller knows the register but not the
+   operand: the range holding a non-definition effect on INSN.  Several reads
+   of one register in one insn are several operands and may be several
+   lineages, so this answers only where there is exactly one; it returns null
+   rather than a guess otherwise.  */
+
+static lvx_cms_lrange *
+lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
+		       unsigned regno)
+{
+  lvx_cms_lrange *found = NULL;
+
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      if (lr[k]->regno != regno)
+	continue;
+      for (unsigned e = 0; e < lr[k]->effects.length (); e++)
+	if (lr[k]->effects[e].insn == insn && !lr[k]->effects[e].is_def)
+	  {
+	    if (found && found != lr[k])
+	      return NULL;
+	    found = lr[k];
+	    break;
+	  }
+    }
+  return found;
 }
 
 /* The register a range's copy for ITERATION lives in.  The one index
@@ -14981,66 +15367,93 @@ static bool
 lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
 			const auto_vec<lvx_cms_lrange *> &lr,
 			int *nrange_out, int *orphan_out, int *dup_out,
-			int *twice_out)
+			int *noloc_out)
 {
-  int orphan = 0, dup = 0, twice = 0;
+  int orphan = 0, dup = 0, noloc = 0;
 
+  /* EVERY OPERAND ON EXACTLY ONE LINEAGE.  Asked of DF rather than of the
+     builder: for each reference of each body instruction, resolve the operand
+     it sits at and count the LINEAGES that claim it.  Two ranges of one
+     lineage answering is not a defect -- they share a stack, so they give the
+     same register -- which is why the count is over roots and not ranges.
+
+     An operand DF gives no location for is counted apart.  It is not an
+     orphan (nothing is wrong with the structure) and not renameable either,
+     so the rewrite has to refuse it; conflating the two hid the question.  */
   for (unsigned i = 0; i < seq.length (); i++)
-    for (int pass = 0; pass < 2; pass++)
-      {
-	df_ref ref;
-	bool is_def = pass == 0;
+    {
+      df_ref ref;
 
-	if (is_def)
-	  {
-	    FOR_EACH_INSN_DEF (ref, seq[i])
-	      {
-		unsigned r = DF_REF_REGNO (ref);
-		int nr = 0;
-		if (r >= FIRST_PSEUDO_REGISTER)
-		  continue;
-		for (unsigned k = 0; k < lr.length (); k++)
-		  if (lr[k]->regno == r && !lr[k]->effects.is_empty ()
-		      && lr[k]->effects[0].is_def
-		      && lr[k]->effects[0].insn == i)
-		    nr++;
-		if (nr == 0)
-		  orphan++;
-		else if (nr > 1)
-		  dup++;
-	      }
-	  }
-	else
-	  FOR_EACH_INSN_USE (ref, seq[i])
+      FOR_EACH_INSN_DEF (ref, seq[i])
+	{
+	  unsigned r = DF_REF_REGNO (ref);
+	  int slot, nroot = 0, root = -1;
+
+	  if (r >= FIRST_PSEUDO_REGISTER)
+	    continue;
+	  slot = lvx_cms_reg_index (PATTERN (seq[i]), DF_REF_LOC (ref));
+	  if (slot < 0)
 	    {
-	      unsigned r = DF_REF_REGNO (ref);
-	      int nr = 0, nocc = 0;
-	      if (r >= FIRST_PSEUDO_REGISTER)
-		continue;
-	      for (unsigned k = 0; k < lr.length (); k++)
-		{
-		  lvx_cms_lrange *g = lr[k];
-		  int here = 0;
-		  if (g->regno != r || g->effects.is_empty ())
-		    continue;
-		  for (unsigned e = g->effects[0].is_def ? 1 : 0;
-		       e < g->effects.length (); e++)
-		    if (g->effects[e].insn == i && !g->effects[e].is_def)
-		      here++;
-		  if (here)
-		    {
-		      nr++;
-		      nocc += here;
-		    }
-		}
-	      if (nr == 0)
-		orphan++;
-	      else if (nr > 1)
-		dup++;
-	      else if (nocc > 1)
-		twice++;
+	      noloc++;
+	      continue;
 	    }
-      }
+	  for (unsigned k = 0; k < lr.length (); k++)
+	    for (unsigned e = 0; e < lr[k]->effects.length (); e++)
+	      if (lr[k]->effects[e].insn == i
+		  && lr[k]->effects[e].slot == slot)
+		{
+		  int rt = lvx_cms_lrange_root (lr, (int) k);
+
+		  if (root < 0)
+		    {
+		      root = rt;
+		      nroot = 1;
+		    }
+		  else if (rt != root)
+		    nroot++;
+		  break;
+		}
+	  if (nroot == 0)
+	    orphan++;
+	  else if (nroot > 1)
+	    dup++;
+	}
+
+      FOR_EACH_INSN_USE (ref, seq[i])
+	{
+	  unsigned r = DF_REF_REGNO (ref);
+	  int slot, nroot = 0, root = -1;
+
+	  if (r >= FIRST_PSEUDO_REGISTER)
+	    continue;
+	  slot = lvx_cms_reg_index (PATTERN (seq[i]), DF_REF_LOC (ref));
+	  if (slot < 0)
+	    {
+	      noloc++;
+	      continue;
+	    }
+	  for (unsigned k = 0; k < lr.length (); k++)
+	    for (unsigned e = 0; e < lr[k]->effects.length (); e++)
+	      if (lr[k]->effects[e].insn == i
+		  && lr[k]->effects[e].slot == slot)
+		{
+		  int rt = lvx_cms_lrange_root (lr, (int) k);
+
+		  if (root < 0)
+		    {
+		      root = rt;
+		      nroot = 1;
+		    }
+		  else if (rt != root)
+		    nroot++;
+		  break;
+		}
+	  if (nroot == 0)
+	    orphan++;
+	  else if (nroot > 1)
+	    dup++;
+	}
+    }
 
   int live = 0;
   for (unsigned k = 0; k < lr.length (); k++)
@@ -15050,7 +15463,7 @@ lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
   *nrange_out = live;
   *orphan_out = orphan;
   *dup_out = dup;
-  *twice_out = twice;
+  *noloc_out = noloc;
   return orphan == 0 && dup == 0;
 }
 
@@ -15680,6 +16093,210 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
     }
   cancel_changes (base);
   return ok;
+}
+
+/* REWRITE ONE INSTANCE'S REGISTERS FROM THE RANGES.  §7tricies.27.
+
+   ORIG is the body instruction DF knows about; TARGET is the instruction to
+   change -- the same insn for the dry run, the emitted copy for the real
+   thing.  They have to be separate arguments because copy_insn produces an
+   insn DF has never seen: the references are resolved on the original and
+   applied to the copy BY POSITION, lvx_cms_reg_index giving a reference's
+   ordinal in the pattern's REG walk and lvx_cms_reg_at recovering that slot.
+
+   EVERY REFERENCE IS REWRITTEN, AND EACH FROM ITS OWN RANGE.  The arc-driven
+   version could only rewrite what an arc named -- one pass per incoming RAW
+   arc -- so a read the value model had no arc for was left alone, and the
+   definition had to be addressed by tie class because a value did not know
+   which operand was its own.  DF enumerates the references and the range owns
+   them, so there is nothing left to match up and no gate standing in for the
+   match.
+
+   THE INDEX IS THE WHOLE DECISION:
+
+       (iteration + use_first - delayed) & (p2unroll - 1)
+
+   and two special cases the arc version carried fall out of it.  A delayed
+   reference at iteration 0 lands on index 0, which for a USE_FIRST range is
+   the register the colouring pinned -- the one the preheader wrote -- so
+   `an instance reaching back past iteration zero reads the original register'
+   needs no test.  And an in-place update's read and write are one range
+   differing only by `delayed', so at p2unroll 1 they agree and the tie
+   survives with nothing said about ties.  */
+
+static bool
+lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
+			  int iter, const auto_vec<lvx_cms_lrange *> &lr,
+			  int *nsubst, bool apply, bool trace = false)
+{
+  int base = num_validated_changes ();
+  auto_vec<int> at, to;
+  bool ok = true;
+  df_ref ref;
+
+  FOR_EACH_INSN_DEF (ref, orig)
+    {
+      unsigned r = DF_REF_REGNO (ref);
+      lvx_cms_lrange *g;
+      int idx, neu;
+
+      if (r >= FIRST_PSEUDO_REGISTER)
+	continue;
+      idx = lvx_cms_reg_index (PATTERN (orig), DF_REF_LOC (ref));
+      g = lvx_cms_lrange_of (lr, self, idx, NULL);
+      if (!g)
+	{
+	  ok = false;
+	  break;
+	}
+      neu = lvx_cms_lrange_reg (g, iter, false);
+      if (neu < 0 || neu == (int) r)
+	continue;
+      if (trace)
+	lvx_cms_dump (";; lvx cms:     def r%u slot=%d p2=%d uf=%d -> r%d\n",
+		      r, idx, g->p2unroll, g->use_first ? 1 : 0, neu);
+      if (idx < 0)
+	{
+	  ok = false;
+	  break;
+	}
+      at.safe_push (idx);
+      to.safe_push (neu);
+    }
+
+  if (ok)
+    FOR_EACH_INSN_USE (ref, orig)
+      {
+	unsigned r = DF_REF_REGNO (ref);
+	lvx_cms_lrange *g;
+	bool dly = false;
+	int idx, neu;
+
+	if (r >= FIRST_PSEUDO_REGISTER)
+	  continue;
+	idx = lvx_cms_reg_index (PATTERN (orig), DF_REF_LOC (ref));
+	g = lvx_cms_lrange_of (lr, self, idx, &dly);
+	if (!g)
+	  {
+	    /* An operand no lineage claims.  With the read-modify-write
+	       operand entered once, the only way here is a reference DF gave
+	       no location for, which cannot be rewritten precisely.  */
+	    ok = false;
+	    break;
+	  }
+	neu = lvx_cms_lrange_reg (g, iter, dly);
+	if (neu < 0 || neu == (int) r)
+	  continue;
+	if (trace)
+	  lvx_cms_dump (";; lvx cms:     use r%u slot=%d p2=%d uf=%d dly=%d"
+			" -> r%d\n", r, idx, g->p2unroll,
+			g->use_first ? 1 : 0, dly ? 1 : 0, neu);
+	if (idx < 0)
+	  {
+	    ok = false;
+	    break;
+	  }
+	at.safe_push (idx);
+	to.safe_push (neu);
+      }
+
+  /* ONE SLOT, ONE REGISTER.  DF reports a read-modify-write reference as both
+     a definition and a use AT THE SAME LOCATION; it cannot take two names,
+     and applying both would silently keep whichever came second.  Refusing is
+     the honest answer and it is countable.  It should also be rare, because
+     the normalisation puts an in-place update's read and write in one range
+     where they agree unless that range expands.  */
+  for (unsigned a = 0; a < at.length () && ok; a++)
+    for (unsigned b = a + 1; b < at.length (); b++)
+      if (at[a] == at[b] && to[a] != to[b])
+	{
+	  ok = false;
+	  break;
+	}
+
+  if (ok)
+    {
+      rtx pat = PATTERN (target);
+
+      for (unsigned a = 0; a < at.length (); a++)
+	{
+	  rtx *loc = lvx_cms_reg_at (&pat, at[a]);
+
+	  if (!loc || !REG_P (*loc))
+	    {
+	      ok = false;
+	      break;
+	    }
+	  validate_change (target, loc,
+			   gen_rtx_REG (GET_MODE (*loc), to[a]), 1);
+	  (*nsubst)++;
+	}
+    }
+
+  /* Apply or cancel, the same trio as the value path: one piece of code for
+     the dry run and the emission, so they cannot disagree.  */
+  if (ok && num_validated_changes () > base)
+    {
+      ok = verify_changes (base);
+      if (ok && apply)
+	{
+	  confirm_change_group ();
+	  return true;
+	}
+    }
+  cancel_changes (base);
+  return ok;
+}
+
+/* Every slot, dry-run, over the ranges.  */
+
+static bool
+lvx_cms_rename_lr_dryrun (const auto_vec<rtx_insn *> &seq,
+			  const auto_vec<lvx_cms_slot> &slots,
+			  const auto_vec<lvx_cms_lrange *> &lr,
+			  int *subst_out, int *fail_out,
+			  auto_vec<int> *refused = NULL)
+{
+  int subst = 0, fail = 0;
+
+  if (refused)
+    refused->truncate (0);
+  for (unsigned q = 0; q < slots.length (); q++)
+    {
+      int n = 0;
+      unsigned i = (unsigned) slots[q].insn;
+
+      if (i >= seq.length ())
+	continue;
+      if (!lvx_cms_rename_lr_insn_p (seq[i], seq[i], i, slots[q].iter, lr,
+				     &n, false))
+	{
+	  fail++;
+	  if (refused && !refused->contains ((int) i))
+	    refused->safe_push ((int) i);
+	  if (fail <= 2)
+	    {
+	      int code = INSN_CODE (seq[i]);
+	      int n2 = 0;
+
+	      lvx_cms_dump (";; lvx cms:   lrrename refused insn=%u iter=%d"
+			    " uid=%u subst=%d pattern=%s\n", i, slots[q].iter,
+			    INSN_UID (seq[i]), n,
+			    code >= 0 ? get_insn_name (code) : "?");
+	      /* Again, tracing every reference.  A refusal count says only
+		 that something was rejected; which reference took which name
+		 is what says WHY, and guessing at that cost four wrong
+		 diagnoses earlier in this work.  */
+	      lvx_cms_rename_lr_insn_p (seq[i], seq[i], i, slots[q].iter, lr,
+					&n2, false, true);
+	    }
+	}
+      subst += n;
+    }
+
+  *subst_out = subst;
+  *fail_out = fail;
+  return fail == 0;
 }
 
 /* Every slot, dry-run.  Reports how many instances needed a substitution and
@@ -19471,12 +20088,22 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      before anything is renamed from it.  */
   {
     auto_vec<lvx_cms_lrange *> lr;
-    int nrange = 0, lrorph = 0, lrdup = 0, lrtw = 0;
+    int nrange = 0, lrorph = 0, lrdup = 0, lrnoloc = 0;
     int lrmaxp2 = 0, lruf = 0, lrxl = 0;
+    int lrtie = 0, lrarc[3] = { 0, 0, 0 }, lrunit = 0, lrheld = 0;
 
-    lvx_cms_build_lranges (seq, sigma, found, liveout, lr);
+    int nwar = 0, nwaw = 0;
+    for (unsigned a = 0; a < arcs.length (); a++)
+      {
+	if (arcs[a].kind == LVX_ARC_REG_WAR)
+	  nwar++;
+	if (arcs[a].kind == LVX_ARC_REG_WAW)
+	  nwaw++;
+      }
+    lvx_cms_build_lranges (seq, arcs, sigma, found, liveout, lr, &lrtie,
+			   lrarc, &lrunit, &lrheld);
     bool lrok = lvx_cms_verify_lranges (seq, lr, &nrange, &lrorph, &lrdup,
-					&lrtw);
+					&lrnoloc);
     for (unsigned k = 0; k < lr.length (); k++)
       if (!lr[k]->effects.is_empty ())
 	{
@@ -19488,9 +20115,13 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	    lrxl++;
 	}
     lvx_cms_dump (";; lvx cms: fn=%s loop %d lranges %s n=%d orphan=%d"
-		  " dup=%d twice=%d maxp2=%d usefirst=%d exitlive=%d\n",
+		  " dup=%d noloc=%d maxp2=%d usefirst=%d exitlive=%d"
+		  " tie=%d arc=%d arcseen=%d arcunres=%d units=%d held=%d"
+		  " nwar=%d nwaw=%d narcs=%u\n",
 		  current_function_name (), loop->num, lrok ? "ok" : "BAD",
-		  nrange, lrorph, lrdup, lrtw, lrmaxp2, lruf, lrxl);
+		  nrange, lrorph, lrdup, lrnoloc, lrmaxp2, lruf, lrxl,
+		  lrtie, lrarc[0], lrarc[1], lrarc[2], lrunit, lrheld,
+		  nwar, nwaw, arcs.length ());
 
     /* STAGE TWO (a): COLOUR THE RANGES, and report the assignment beside the
        class one.  Nothing is renamed from it yet -- the comparison is the
@@ -19520,6 +20151,22 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		      lrcok ? "ok" : "no", lrnn, lrstuck, lrmax, lrkun,
 		      lrpin, lrpinf, lrwide,
 		      (int) popcount_hwi (lravail), cmaxreg, ckunroll);
+
+	/* STAGE TWO (b): DRY-RUN THE RANGE REWRITE over the same slots the
+	   class rewrite is measured on, so the two refusal counts stand side
+	   by side.  §7tricies.27.  */
+	if (lrcok)
+	  {
+	    int lrsub = 0, lrfail = 0;
+	    bool lrrok = lvx_cms_rename_lr_dryrun (seq, plslots, lr, &lrsub,
+						   &lrfail);
+
+	    lvx_cms_dump (";; lvx cms: fn=%s loop %d lrrename %s subst=%d"
+			  " refused=%d slots=%u csubst=%d crefused=%d\n",
+			  current_function_name (), loop->num,
+			  lrrok ? "ok" : "BAD", lrsub, lrfail,
+			  plslots.length (), rnsubst, rnfail);
+	  }
       }
     for (unsigned k = 0; k < lr.length (); k++)
       delete lr[k];
