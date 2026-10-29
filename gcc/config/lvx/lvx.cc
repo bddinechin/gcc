@@ -17111,6 +17111,9 @@ struct lvx_cms_site
      passes the occupancy check.  The value-level one was always verified;
      this one never was, and it was wrong.  */
   bool classocc_ok;
+  /* The unroll factor the plan and the renaming agreed on (§7tricies.47),
+     which the hardware loop's trip count has to be divided by.  */
+  int kunroll;
   /* DOES ENTERING THE LOOP GUARANTEE THAT ITERATION 0 COMPLETES?
      §7tricies.43.  The prologue's iteration-0 side effects are sound only if
      it does, and that is a property of the loop's SHAPE: with a single jump
@@ -17694,8 +17697,35 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      DOLOOP -- the kernel repeating under LOOPDO with the count divided by
      KUNROLL -- which is the next piece of work and is not something to
      approximate by retargeting the pattern.  */
+  /* RE-FORMING THE HARDWARE LOOP.  §7tricies.61.
+
+     Under -mcms-hwloop the doloop latch is kept rather than declined: the
+     kernel's own closing instance stays a doloop_end, which reorg_loops --
+     running after this pass -- consumes into a LOOPDO over the kernel, and
+     every OTHER loopback instance becomes an explicit `counter -= 1; if zero
+     goto drain' on the loop counter.  That is what keeps the counter's updates
+     alive for the early exits while the kernel's repetition costs no
+     instruction at all.
+
+     Leaving the loop early is legal: the ISS's loop-back is the fetch
+     engine's, taken when the SEQUENTIAL next bundle reaches LE, and
+     "a branch taken in this bundle wins over the loop-back (and jumps out of
+     the loop)" (lvx-gem5 static_inst.cc).  LC is decremented only on the
+     fall-through, so an early exit simply leaves it, and the next LOOPDO
+     reloads LS/LE/LC.  So the final partial trip needs no peeling -- the
+     kernel's own early exits end it.
+
+     KUNROLL > 1 still needs the trip count divided, which is preheader
+     arithmetic this does not yet emit, so it is refused for now.  At
+     KUNROLL == 1 the count is the loop's own and nothing has to be computed:
+     the hardware loop is exactly the one the loop already had.  */
+  bool doloop = lvx_doloop_end_p (seq[loopback]);
+
   *why = "the loopback is a doloop_end, which the emission cannot retarget";
-  if (lvx_doloop_end_p (seq[loopback]))
+  if (doloop && !lvx_cms_hwloop)
+    return false;
+  *why = "a doloop kernel with kunroll > 1 needs its trip count divided";
+  if (doloop && site->kunroll != 1)
     return false;
   /* Every jump must have a destination outside the loop to drain to, or it is
      an intra-loop branch this emission does not model.  */
@@ -17972,6 +18002,90 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		  *why = "cannot retarget the kernel's closing branch";
 		  return false;
 		}
+	    }
+	  else if (lvx_doloop_end_p (seq[i]))
+	    {
+	      /* AN EARLY EXIT OF A DOLOOP IS NOT A COPY OF IT.  Only one
+		 doloop_end may exist per loop -- it is what marks LE -- so
+		 every instance that is not the kernel's closing one is
+		 emitted as the explicit form reorg_loops itself falls back to
+		 (lvx_hwloop_fail): decrement the counter, and branch out when
+		 it reaches zero.  The sense is inverted against that fallback
+		 because this is an EXIT, not a loop-back.
+
+		 The counter is read and written at one operand, so its
+		 lineage gives one register for both halves of the
+		 decrement -- which is sound only if that lineage does not
+		 rotate, since a rotating one would put the next iteration's
+		 counter in a different name than the decrement wrote.
+
+		 Asked per INSTANCE, not per loop: a multi-exit body's other
+		 jump is an ordinary cbranch whose pattern is not a PARALLEL,
+		 so the loop-level flag sent it in here to read an operand it
+		 has not got (validation/cms/twoexit.c).  */
+	      int ep = -1;
+	      rtx cnt = SET_DEST (XVECEXP (PATTERN (seq[i]), 0, 1));
+	      int cslot = lvx_cms_reg_index (PATTERN (seq[i]),
+					     &SET_DEST (XVECEXP (PATTERN
+								   (seq[i]),
+								 0, 1)));
+	      bool cdly = false;
+	      lvx_cms_lrange *cg = lvx_cms_lrange_of (lr, i, cslot, &cdly);
+	      int creg = cg ? lvx_cms_lrange_reg (cg, slots[q].iter, cdly)
+			    : (REG_P (cnt) ? (int) REGNO (cnt) : -1);
+	      machine_mode cm = GET_MODE (cnt);
+	      rtx creg_rtx;
+
+	      for (unsigned e = 0; e < nnode; e++)
+		if (nodes[e].kind == LVX_CMS_NODE_EPILOGUE
+		    && !nodes[e].main_epilogue
+		    && nodes[e].exit_date == slots[q].date
+		    && nodes[e].exit_iter == slots[q].iter
+		    && nodes[e].exit_insn == (int) i)
+		  ep = (int) e;
+	      *why = "a doloop early exit has no epilogue";
+	      if (ep < 0 || creg < 0 || !REG_P (cnt))
+		return false;
+	      *why = "the doloop counter's lineage rotates";
+	      if (cg && cg->p2unroll != 1)
+		return false;
+	      creg_rtx = gen_rtx_REG (cm, creg);
+
+	      /* The copied jump is not wanted: delete it and put the two
+		 instructions in its place.  */
+	      delete_insn (j);
+	      {
+		rtx decr = (cm == SImode
+			    ? gen_addsi3 (creg_rtx, creg_rtx, constm1_rtx)
+			    : gen_adddi3 (creg_rtx, creg_rtx, constm1_rtx));
+		rtx_insn *di = emit_insn_after (decr, after);
+		rtx test = gen_rtx_EQ (VOIDmode, NULL_RTX, NULL_RTX);
+		rtx cb = (cm == SImode
+			  ? gen_cbranchsi4 (test, creg_rtx, const0_rtx,
+					    block_label (blocks[ep]))
+			  : gen_cbranchdi4 (test, creg_rtx, const0_rtx,
+					    block_label (blocks[ep])));
+		rtx_insn *cj = emit_jump_insn_after (cb, di);
+
+		JUMP_LABEL (cj) = block_label (blocks[ep]);
+		LABEL_NUSES (JUMP_LABEL (cj))++;
+		if (!find_edge (bb, blocks[ep]))
+		  {
+		    edge ne = make_edge (bb, blocks[ep], 0);
+		    edge fe;
+
+		    ne->probability = profile_probability::even ();
+		    fe = find_fallthru_edge (bb->succs);
+		    if (fe)
+		      fe->probability = profile_probability::even ();
+		  }
+		tail[nd] = cj;
+		nemit++;
+		lvx_cms_dump (";; lvx cms:   doloop early exit insn=%u iter=%d"
+			      " counter=r%d -> node %d\n", i, slots[q].iter,
+			      creg, ep);
+		continue;
+	      }
 	    }
 	  else
 	    {
@@ -21344,6 +21458,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       site.antidep_ok = adok;
       site.classocc_ok = cgocc;
       site.loop = loop;
+      site.kunroll = plkun;
       /* §7tricies.43: all exits from the loopback's own block, so the body
 	 runs to completion once per entry.  */
       {

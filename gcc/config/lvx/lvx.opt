@@ -121,6 +121,10 @@ mcms-load-latency=
 Target RejectNegative Joined UInteger Var(lvx_cms_load_latency) Init(15) Optimization
 -mcms-load-latency=N	Charge every load N cycles of latency instead of what the machine description gives, 0 uses the description, and the default of 15 is the uncached .us variant, which is the regime to design for.
 
+mcms-hwloop
+Target Var(lvx_cms_hwloop) Init(0) Optimization
+Re-form the hardware loop on a counted loop the pipeliner transformed: the kernel repeats under LOOPDO with the trip count divided by the unroll factor, and the loopback instances that are not the kernel's become explicit tests on the loop counter.  Off by default while incomplete.
+
 mcms-regalloc-feasible
 Target Var(lvx_cms_regalloc_feasible) Init(1) Optimization
 Reject an initiation interval whose modulo kernel cannot be register allocated, making colourability a feasibility test inside the II search rather than a property discovered afterwards.
