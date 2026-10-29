@@ -14425,7 +14425,41 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 	    {
 	      if (sigma[i] - lo + l * ii != d)
 		continue;
-	      if (d < de || (d == de && (int) i <= ie))
+	      /* ALREADY RUN IS A POSITION IN THE WALK, NOT A BODY INDEX.
+		 §7tricies.69.
+
+		 At the exit's own date every slot the walk reached BEFORE the
+		 exit has executed -- the walk order there is (iteration,
+		 insn), and the intra-cycle order moves jumps last within
+		 their group, so no non-jump at that date in that node follows
+		 the branch.  Comparing `i <= ie' alone keeps an instance of
+		 an EARLIER iteration whose insn index happens to be higher,
+		 and the drain then re-runs it.
+
+		 Re-running is harmless only if the instance is idempotent,
+		 and it need not be: its INPUTS may have been destroyed by the
+		 branch's own bundle.  On
+		 `if (A[i] == stop) break; s += A[i] * 3 + B[i];' the kernel
+		 emits
+
+		     addd $r2 = $r9, $r8      <- the term, iteration 0
+		     muld $r9 = $r10, 3       <- iteration 1, clobbers r9
+		     ccb.deq $r10, $r1? .L11
+
+		 all in one bundle, which is correct because a VLIW reads
+		 every operand before any write lands.  The drain then re-ran
+		 the first of those with r9 already holding iteration 1's
+		 product, so the term came out A[1]*3 + B[0] instead of
+		 A[0]*3 + B[0] and the sum was high by one term -- 780 of
+		 1722 points of validation/cms/dataexit.c's sweep, every one
+		 of them a data-exit path that had accumulated at least one
+		 iteration.
+
+		 So the test is lexicographic on (iteration, insn) against the
+		 exit's, which is the walk's own order.  */
+	      if (d < de
+		  || (d == de
+		      && (l < le || (l == le && (int) i <= ie))))
 		continue;
 	      /* THE EXITING ITERATION STOPS AT ITS EXIT.  §7tricies.46.
 
@@ -18097,31 +18131,18 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   if (kfirst < 0 || mainep < 0)
     return false;
 
-  /* THE EXIT-FREE COPY IS ONE BLOCK, so the remainder scheme is declined on a
-     kernel holding a jump that is NOT the loopback -- a data-dependent exit,
-     which the copy would have to carry as well and which would therefore
-     split it.  Nothing about the scheme needs that; it is left out of the
-     first version so that what is emitted is one block whose only terminator
-     is the doloop_end.
+  /* A NOTE ON WHAT IS *NOT* A PRECONDITION.  The plan splits the kernel at
+     every exit and the loopback's own KUNROLL - 1 non-closing instances ARE
+     exits, so a kernel node count of one is not the condition.  Nor is the
+     absence of a data-dependent exit: the exit-free copy carries those too, as
+     a chain of blocks, each branching to the SAME drain the leftover copy's
+     instance branches to.  "Exit-free" means free of the COUNTED exits, which
+     is the whole of what hw-doloop.cc's ITER_REG_USED forbids.
 
-     The plan splits the kernel at every exit, and the loopback's own KUNROLL
-     - 1 non-closing instances ARE exits, so a kernel node count of one is NOT
-     the condition: at KUNROLL = K the chain is K nodes by construction, which
-     is why asking for one declined every loop.  What is asked is the absence
-     of another jump.  */
-  *why = "a doloop kernel with kunroll > 1 holds another exit";
-  if (hwkern)
-    for (unsigned q = 0; q < slots.length (); q++)
-      {
-	int nd = slots[q].node;
-	unsigned i = (unsigned) slots[q].insn;
-
-	if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
-	  continue;
-	if (nodes[nd].kind == LVX_CMS_NODE_KERNEL && JUMP_P (seq[i])
-	    && (int) i != loopback)
-	  return false;
-      }
+     REACHABLE ONLY FOR TRACING at the moment: §7tricies.65 showed the loops
+     this admits are miscompiled, by something that is neither the drain nor
+     bundle speculation, so the chain is here to let the executing instance
+     set be traced against the plan.  */
   *why = "a doloop kernel with kunroll > 1 has no prologue to set up from";
   if (hwkern && kfirst == 0)
     return false;
@@ -18824,21 +18845,24 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  at = emit_insn_after (seq4[x], at), nemit++;
       }
 
-      /* THE EXIT-FREE KERNEL.  The same slots, in the same linearised order
-	 and renamed for the same iterations as the remainder copy -- the
-	 names are a function of the lineage and the iteration, so the two
-	 copies agree by construction and the trips chain through the same
-	 rotation.  */
+      /* THE EXIT-FREE KERNEL, as a chain of blocks.  The same slots, in the
+	 same linearised order and renamed for the same iterations as the
+	 leftover copy, and carrying the same DATA-dependent exits -- each
+	 ends its block and branches to the same drain the leftover copy's
+	 instance does.  Only the COUNTED instances are absent, which is the
+	 whole of what ITER_REG_USED forbids.  */
       {
-	rtx_insn *at = BB_HEAD (kbb);
+	basic_block cur = kbb;
+	rtx_insn *at = BB_HEAD (cur);
 	rtx_insn *de;
-	int nk = 0;
+	int nk = 0, nx = 0;
 
 	if (LABEL_P (at))
 	  at = NEXT_INSN (at);
 	*why = "no NOTE_INSN_BASIC_BLOCK in the exit-free kernel";
 	if (!at || !NOTE_INSN_BASIC_BLOCK_P (at))
 	  return false;
+	lvx_cms_dump (";; lvx cms:   K0 trace (exit-free copy):");
 	for (unsigned oq = 0; oq < order.length (); oq++)
 	  {
 	    unsigned q = (unsigned) order[oq];
@@ -18851,17 +18875,90 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	      continue;
 	    if (nodes[nd].kind != LVX_CMS_NODE_KERNEL)
 	      continue;
+
 	    if (JUMP_P (seq[i]))
-	      continue;			/* no loopback instance at all */
+	      {
+		int ep = -1;
+		rtx_insn *j;
+		rtx_jump_insn *jj;
+		basic_block target;
+
+		if ((int) i == loopback)
+		  continue;		/* no counted instance at all */
+		for (unsigned z = 0; z < nnode; z++)
+		  if (nodes[z].kind == LVX_CMS_NODE_EPILOGUE
+		      && !nodes[z].main_epilogue
+		      && nodes[z].exit_date == slots[q].date
+		      && nodes[z].exit_iter == slots[q].iter
+		      && nodes[z].exit_insn == (int) i)
+		    ep = (int) z;
+		*why = "an exit of the exit-free kernel has no drain";
+		if (ep < 0)
+		  return false;
+		target = blocks[ep];
+
+		j = emit_jump_insn_after (copy_insn (PATTERN (seq[i])), at);
+		JUMP_LABEL (j) = JUMP_LABEL (seq[i]);
+		if (JUMP_LABEL (j) && LABEL_P (JUMP_LABEL (j)))
+		  LABEL_NUSES (JUMP_LABEL (j))++;
+		jj = as_a <rtx_jump_insn *> (j);
+		if (lvx_cms_jump_taken_stays_p (site, seq[i]))
+		  {
+		    *why = "cannot invert an exit of the exit-free kernel";
+		    if (!invert_jump (jj, block_label (target), 0))
+		      return false;
+		  }
+		else
+		  {
+		    *why = "cannot retarget an exit of the exit-free kernel";
+		    if (!redirect_jump (jj, block_label (target), 0))
+		      return false;
+		  }
+		*why = "the renamed branch does not recognise";
+		if (!lvx_cms_rename_lr_insn_p (seq[i], j, i, slots[q].iter,
+					       lr, &n, true))
+		  return false;
+		if (!find_edge (cur, target))
+		  {
+		    edge ne = make_edge (cur, target, 0);
+		    edge fe;
+
+		    ne->probability = profile_probability::even ();
+		    fe = find_fallthru_edge (cur->succs);
+		    if (fe)
+		      fe->probability = profile_probability::even ();
+		  }
+		lvx_cms_dump (" bb%d:%u/%d@%dX->bb%d", cur->index, i,
+			      slots[q].iter, slots[q].date, target->index);
+		nemit++;
+		nx++;
+
+		e = find_edge (cur, blocks[kfirst]);
+		*why = "the exit-free kernel's chain has no fall-through";
+		if (!e || !(e->flags & EDGE_FALLTHRU))
+		  return false;
+		cur = split_edge (e);
+		at = BB_HEAD (cur);
+		if (LABEL_P (at))
+		  at = NEXT_INSN (at);
+		*why = "no NOTE_INSN_BASIC_BLOCK in an exit-free chain block";
+		if (!at || !NOTE_INSN_BASIC_BLOCK_P (at))
+		  return false;
+		continue;
+	      }
+
 	    c = emit_insn_after (copy_insn (PATTERN (seq[i])), at);
 	    *why = "the renamed copy does not recognise";
 	    if (!lvx_cms_rename_lr_insn_p (seq[i], c, i, slots[q].iter, lr,
 					   &n, true))
 	      return false;
+	    lvx_cms_dump (" bb%d:%u/%d@%d", cur->index, i, slots[q].iter,
+			  slots[q].date);
 	    at = c;
 	    nemit++;
 	    nk++;
 	  }
+	lvx_cms_dump ("\n");
 	*why = "the exit-free kernel came out empty";
 	if (nk == 0)
 	  return false;
@@ -18875,22 +18972,50 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	JUMP_LABEL (de) = block_label (kbb);
 	LABEL_NUSES (JUMP_LABEL (de))++;
 	nemit++;
-	if (!find_edge (kbb, kbb))
+	if (!find_edge (cur, kbb))
 	  {
-	    edge be = make_edge (kbb, kbb, 0);
+	    edge be = make_edge (cur, kbb, 0);
 	    edge fe;
 
 	    be->probability = profile_probability::even ();
-	    fe = find_fallthru_edge (kbb->succs);
+	    fe = find_fallthru_edge (cur->succs);
 	    if (fe)
 	      fe->probability = profile_probability::even ();
 	  }
-	lvx_cms_dump (";; lvx cms:   hwloop kernel bb%d: %d insns, counter"
-		      " r%d, trips (M-1)>>%d, remainder in r%d bb%d\n",
-		      kbb->index, nk, hwreg, logk, creg,
-		      blocks[kfirst]->index);
+	lvx_cms_dump (";; lvx cms:   hwloop kernel bb%d..bb%d: %d insns,"
+		      " %d data exits, counter r%d, trips (M-1)>>%d,"
+		      " leftover in r%d bb%d\n", kbb->index, cur->index, nk,
+		      nx, hwreg, logk, creg, blocks[kfirst]->index);
       }
     }
+
+  /* THE INSTANCE SET EACH BLOCK RECEIVED, printed so that what EXECUTES can
+     be traced against the plan rather than reasoned about.  §7tricies.69.
+     One line per node: its kind, its block, and every (insn/iteration@date)
+     it holds in emission order, with X marking a jump.  */
+  if (lvx_cms_probe)
+    for (unsigned k = 0; k < nnode; k++)
+      {
+	const char *kind = (nodes[k].kind == LVX_CMS_NODE_PROLOGUE ? "pro"
+			    : nodes[k].kind == LVX_CMS_NODE_KERNEL ? "ker"
+			    : nodes[k].main_epilogue ? "mainep" : "exitep");
+
+	lvx_cms_dump (";; lvx cms:   trace node%u %s bb%d:", k, kind,
+		      blocks[k]->index);
+	for (unsigned oq = 0; oq < order.length (); oq++)
+	  {
+	    unsigned q = (unsigned) order[oq];
+
+	    if (slots[q].node != (int) k)
+	      continue;
+	    lvx_cms_dump (" %d/%d@%d%s", slots[q].insn, slots[q].iter,
+			  slots[q].date,
+			  (slots[q].insn >= 0
+			   && (unsigned) slots[q].insn < seq.length ()
+			   && JUMP_P (seq[slots[q].insn])) ? "X" : "");
+	  }
+	lvx_cms_dump ("\n");
+      }
 
   /* THE CFG AS BUILT, printed rather than inferred from the assembly.  Four
      diagnoses of the remaining fault were made by reading emitted code and
