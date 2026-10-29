@@ -17665,6 +17665,38 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   *why = "no jump in the latch returns to the header";
   if (loopback < 0)
     return false;
+
+  /* A DOLOOP LATCH IS NOT A BRANCH TO RETARGET.  §7tricies.59.
+
+     reorg_loops turns a counted loop's latch into `doloop_end', a PARALLEL of
+     (set (pc) (if_then_else (ne counter 1) (label_ref top) (pc))), the
+     counter's own decrement, and an UNSPEC_ENDLOOP marker -- which it later
+     consumes into a LOOPDO in the preheader and a `# loopdo end' comment,
+     the hardware repeating the body with no branch at all.
+
+     The emission treated it as an ordinary conditional branch and tried
+     invert-and-retarget on it.  The inversion succeeds and the REDIRECT does
+     not, and the refusal was raised in the middle of the emission -- after
+     the epilogue edges were redirected -- so the CFG was left half-built and
+     verify_flow_info reported `wrong amount of branch edges after conditional
+     jump'.  Two lines reproduce it:
+
+         double A[1024], B[1024], Cc[1024];
+         void g (int n)
+         { for (int i = 0; i < n; i++) A[i] = B[i] * 1.25 + Cc[i]; }
+
+     at -O2 -ffast-math -mcms-pipeline, where the base compiles to a LOOPDO.
+     That is why every CMS study passes -fno-hwloop, and it is the whole of
+     what TSVC2's s312 was: an ordinary hardware loop.
+
+     Declined HERE, before anything is touched, so the loop keeps the hardware
+     loop it already had.  Pipelining it properly means re-forming the
+     DOLOOP -- the kernel repeating under LOOPDO with the count divided by
+     KUNROLL -- which is the next piece of work and is not something to
+     approximate by retargeting the pattern.  */
+  *why = "the loopback is a doloop_end, which the emission cannot retarget";
+  if (lvx_doloop_end_p (seq[loopback]))
+    return false;
   /* Every jump must have a destination outside the loop to drain to, or it is
      an intra-loop branch this emission does not model.  */
   *why = "a jump has no exit out of the loop";
