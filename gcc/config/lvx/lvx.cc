@@ -14681,13 +14681,10 @@ lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange *> &, unsigned, unsigned);
 
 static void
 lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
-		       const auto_vec<lvx_cms_arc> &arcs,
-		       const auto_vec<int> &sigma, int ii, bitmap liveout,
 		       auto_vec<lvx_cms_lrange *> &lr, int *ntie_out,
-		       int *narc_out /* [3] */, int *nunit_out,
-		       int *nheld_out)
+		       int *nunit_out, int *nheld_out)
 {
-  int ntie = 0, narc = 0, nseen = 0, nunres = 0;
+  int ntie = 0;
 
   /* The range currently open for each hard register, as an index into LR, or
      -1.  A use with no open range is a reference to the previous iteration's
@@ -14727,13 +14724,11 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	      n->renamed = false;
 	      n->p2unroll = 1;
 	      n->self = n->parent = (int) lr.length ();
-	      n->first_date = n->last_date = sigma[i];
+	      n->first_date = n->last_date = 0;
 	      open[r] = (int) lr.length ();
 	      lr.safe_push (n);
 	    }
 	  lr[open[r]]->effects.safe_push (e);
-	  if (sigma[i] > lr[open[r]]->last_date)
-	    lr[open[r]]->last_date = sigma[i];
 	}
 
       /* Then the definitions: each opens a new range.  */
@@ -14759,11 +14754,11 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  n->regno = r;
 	  n->nregs = reg && REG_P (reg) ? REG_NREGS (reg) : 1;
 	  n->use_first = false;
-	  n->exit_live = liveout && bitmap_bit_p (liveout, r);
+	  n->exit_live = false;
 	  n->renamed = false;
 	  n->p2unroll = 1;
 	  n->self = n->parent = (int) lr.length ();
-	  n->first_date = n->last_date = sigma[i];
+	  n->first_date = n->last_date = 0;
 	  n->effects.safe_push (e);
 	  lr.safe_push (n);
 	  if (e.slot >= 0 && open[r] >= 0)
@@ -14823,8 +14818,6 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  lvx_cms_effect d = lr[first]->effects[e];
 	  d.delayed = true;
 	  lr[last]->effects.safe_push (d);
-	  if (sigma[d.insn] + ii > lr[last]->last_date)
-	    lr[last]->last_date = sigma[d.insn] + ii;
 	}
       lr[last]->use_first = true;
       lr[first]->effects.truncate (0);
@@ -14901,86 +14894,23 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       }
     }
 
-  /* THE KEPT ANTI-DEPENDENCES ARE LINEAGE CONSTRAINTS.  §7tricies.29.
+  /* THE KEPT ANTI-DEPENDENCES ARE LINEAGE CONSTRAINTS, and that is now a
+     property of the GRAPH, not a repair applied after it.  §7tricies.29.
 
-     The graph drops a register WAR or WAW arc when modulo expansion is
-     expected to rename the conflict away, and keeps it when it is not.  A
-     KEPT arc is therefore an assertion that the two references end up in ONE
-     REGISTER -- and if they are two lineages with two stacks of names, the
-     renaming has separated exactly what the arc says cannot be separated.
-     Either the arc is redundant or the lineages must be one; reading the arcs
-     and unioning is the side that cannot be wrong.
+     A kept register WAR or WAW arc asserts that two references end in one
+     register.  If they are two lineages with two stacks of names, the
+     renaming has separated exactly what the arc says cannot be separated --
+     so either the arc is redundant or the lineages must be one.
 
-     Doing it from the arcs rather than from the predicate they were built
-     with (lvx_insn_def_reads_dest_p, plus DF_REF_PARTIAL) is deliberate: the
-     two cannot then disagree, and the WAW condition is an OR over the two
-     instructions, so a kept arc does not always mean the predicate holds at
-     the end the tie pass would look at.
-
-     This subsumes the tie pass on the loops measured -- an in-place write has
-     its own destination as a source, which is what keeps the arc -- but not
-     in general: a register defined once by a tied instruction has no arc
-     partner at all, and is handled by the cyclic normalisation or by the tie
-     pass.  Both run.  */
-  for (unsigned a = 0; a < arcs.length (); a++)
-    {
-      unsigned src = arcs[a].src, dst = arcs[a].dst;
-      df_ref r1;
-
-      if (arcs[a].kind != LVX_ARC_REG_WAR && arcs[a].kind != LVX_ARC_REG_WAW)
-	continue;
-      if (src >= seq.length () || dst >= seq.length ())
-	continue;
-
-      if (arcs[a].kind == LVX_ARC_REG_WAR)
-	{
-	  /* SRC reads what DST destroys: the read's lineage and the killing
-	     definition's are one register.  */
-	  FOR_EACH_INSN_USE (r1, seq[src])
-	    {
-	      unsigned rn = DF_REF_REGNO (r1);
-
-	      if (rn >= FIRST_PSEUDO_REGISTER
-		  || !lvx_insn_defs_regno_p (seq[dst], rn))
-		continue;
-	      lvx_cms_lrange *gu
-		= lvx_cms_lrange_of (lr, src,
-				     lvx_cms_reg_index (PATTERN (seq[src]),
-							DF_REF_LOC (r1)),
-				     NULL);
-	      lvx_cms_lrange *gd = lvx_cms_lrange_def_of (lr, dst, rn);
-
-	      if (!gu || !gd)
-		nunres++;
-	      else
-		{
-		  nseen++;
-		  if (lvx_cms_lrange_union (lr, gu, gd))
-		    narc++;
-		}
-	    }
-	}
-      else
-	FOR_EACH_INSN_DEF (r1, seq[src])
-	  {
-	    unsigned rn = DF_REF_REGNO (r1);
-
-	    if (rn >= FIRST_PSEUDO_REGISTER
-		|| !lvx_insn_defs_regno_p (seq[dst], rn))
-	      continue;
-	    lvx_cms_lrange *ga = lvx_cms_lrange_def_of (lr, src, rn);
-	    lvx_cms_lrange *gb = lvx_cms_lrange_def_of (lr, dst, rn);
-
-	    if (!ga || !gb)
-	      nunres++;
-	    else
-	      {
-		nseen++;
-		if (lvx_cms_lrange_union (lr, ga, gb))
-		  narc++;
-	      }
-	  }
-    }
+     The first version read the arcs and unioned: 20 of 113 kept arcs joined
+     distinct lineages, and repairing them that way is the wrong direction,
+     because those 20 are precisely the arcs that did not need to be kept.
+     The partition here is built from the body alone -- the walk, the
+     read-modify-write operands and the tie pass, none of which need a
+     schedule -- so lvx_cms_build_graph can consult it while it decides which
+     anti-dependences to keep, and the invariant holds by construction.  That
+     ordering is the reference's too: unfold_igraph_make_ranges runs before
+     scheduling and unfold_igraph_set_range_dates after it.  */
 
   /* THE UNION IS THE RENAMING UNIT, so its span and its flags are the union
      of its members'.  A union holding a range that is not def-headed is not
@@ -14997,11 +14927,8 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       root = lvx_cms_lrange_root (lr, (int) k);
       if ((int) k == root)
 	continue;
-      lr[root]->first_date = MIN (lr[root]->first_date, lr[k]->first_date);
-      lr[root]->last_date = MAX (lr[root]->last_date, lr[k]->last_date);
       lr[root]->nregs = MAX (lr[root]->nregs, lr[k]->nregs);
       lr[root]->use_first |= lr[k]->use_first;
-      lr[root]->exit_live |= lr[k]->exit_live;
     }
   for (unsigned k = 0; k < lr.length (); k++)
     {
@@ -15014,43 +14941,8 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
     if (!lr[k]->effects.is_empty () && !lr[k]->effects[0].is_def)
       lr[lvx_cms_lrange_root (lr, (int) k)]->renamed = false;
 
-  /* Each range's unroll factor: the instances its life spans, rounded up to
-     a power of two so the index is a mask (§7tricies.2's third place the
-     power of two pays).  */
-  for (unsigned k = 0; k < lr.length (); k++)
-    {
-      int root = lr[k]->effects.is_empty () ? (int) k
-		 : lvx_cms_lrange_root (lr, (int) k);
-      int life = lr[root]->last_date - lr[root]->first_date;
-      int need = ii > 0 ? (life + ii - 1) / ii : 1;
-      int p2 = 1;
-
-      /* A RANGE WHOSE UNION IS NOT RENAMED IS NOT EXPANDED.  That covers the
-	 use-headed range the normalisation leaves behind -- a register the
-	 body never writes: an address base, a loop invariant, a value live
-	 across the loop.  Every iteration reads the same value, so there are
-	 no instances to expand and its span says nothing about pressure; the
-	 reference says the same in one line, "In case of USE_FIRST and not
-	 EXPANDED, allocate the original REGNO".  Rounding its span up would
-	 hand it a stack of names nothing ever writes.  */
-      if (!lr[root]->renamed)
-	need = 1;
-      while (p2 < need && p2 < LVX_CMS_MAX_KUNROLL)
-	p2 <<= 1;
-      lr[k]->p2unroll = MAX (p2, 1);
-      lr[k]->use_first = lr[root]->use_first;
-      for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
-	lr[k]->reg[x] = (int) lr[k]->regno;
-    }
-
   if (ntie_out)
     *ntie_out = ntie;
-  if (narc_out)
-    /* Packed: the unions this pass had to MAKE, and -- so that a zero can be
-       told from a pass that resolves nothing -- how many kept arcs it
-       examined and how many it could not resolve at all.  A nonzero
-       unresolved count would mean the lookup, not the invariant.  */
-    narc_out[0] = narc, narc_out[1] = nseen, narc_out[2] = nunres;
   if (nunit_out || nheld_out)
     {
       int nunit = 0, nheld = 0;
@@ -15068,6 +14960,188 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       if (nheld_out)
 	*nheld_out = nheld;
     }
+}
+
+/* THE DATES, WHICH NEED A SCHEDULE.  §7tricies.30.
+
+   Split from the structural build because the structure must exist BEFORE the
+   graph is finished -- lvx_cms_build_graph consults the lineage partition to
+   decide which anti-dependences to keep -- while the dates cannot exist until
+   SIGMA does.  The reference splits it the same way, and at the same seam:
+   unfold_igraph_make_ranges then unfold_igraph_set_range_dates.
+
+   A DELAYED effect is dated one period later than its instruction, because it
+   belongs to the previous instance: that is the whole of what the cyclic wrap
+   costs in span, and it is why the accumulator of a loop-carried recurrence
+   comes out with a life of exactly II.
+
+   The span, the flags and the stack all belong to the LINEAGE, so they are
+   aggregated onto the root and then copied back, and P2UNROLL is computed
+   once from the root's span.  */
+
+static void
+lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
+			  auto_vec<lvx_cms_lrange *> &lr,
+			  const auto_vec<int> &sigma, int ii, bitmap liveout)
+{
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      lvx_cms_lrange *g = lr[k];
+      bool first = true;
+
+      g->first_date = g->last_date = 0;
+      if (g->effects.is_empty ())
+	continue;
+      for (unsigned e = 0; e < g->effects.length (); e++)
+	{
+	  unsigned i = g->effects[e].insn;
+	  int d;
+
+	  if (i >= sigma.length ())
+	    continue;
+	  d = sigma[i] + (g->effects[e].delayed ? ii : 0);
+	  if (first)
+	    {
+	      g->first_date = g->last_date = d;
+	      first = false;
+	    }
+	  else
+	    {
+	      g->first_date = MIN (g->first_date, d);
+	      g->last_date = MAX (g->last_date, d);
+	    }
+	}
+      /* The heading definition is the start of the span whatever the effect
+	 order says: a delayed read dated a period later must not become the
+	 first date, and the definition is effects[0].  */
+      if (g->effects[0].is_def && g->effects[0].insn < sigma.length ())
+	g->first_date = sigma[g->effects[0].insn];
+      /* Live out, and therefore needing the epilogue copy, only where the
+	 lineage is renamed: a held one still holds the register the code
+	 after the loop reads, so there is nothing to copy back.  */
+      if (liveout && bitmap_bit_p (liveout, g->regno) && g->renamed)
+	g->exit_live = true;
+    }
+
+  /* Onto the lineage.  */
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      int root;
+
+      if (lr[k]->effects.is_empty ())
+	continue;
+      root = lvx_cms_lrange_root (lr, (int) k);
+      if (root == (int) k)
+	continue;
+      lr[root]->first_date = MIN (lr[root]->first_date, lr[k]->first_date);
+      lr[root]->last_date = MAX (lr[root]->last_date, lr[k]->last_date);
+      lr[root]->exit_live |= lr[k]->exit_live;
+    }
+
+  /* Each lineage's unroll factor: the instances its life spans, rounded up to
+     a power of two so the index is a mask (§7tricies.2's third place the
+     power of two pays).  A lineage that is not renamed is not expanded --
+     after the normalisation that is a register the body never writes, where
+     every iteration reads the same value and the span says nothing about
+     pressure.  The reference says the same in one line, "In case of USE_FIRST
+     and not EXPANDED, allocate the original REGNO".  */
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      int root = lr[k]->effects.is_empty () ? (int) k
+		 : lvx_cms_lrange_root (lr, (int) k);
+      int life = lr[root]->last_date - lr[root]->first_date;
+      int need = ii > 0 ? (life + ii - 1) / ii : 1;
+      int p2 = 1;
+
+      if (!lr[root]->renamed)
+	need = 1;
+      while (p2 < need && p2 < LVX_CMS_MAX_KUNROLL)
+	p2 <<= 1;
+      lr[k]->p2unroll = MAX (p2, 1);
+      lr[k]->use_first = lr[root]->use_first;
+      lr[k]->first_date = lr[root]->first_date;
+      lr[k]->last_date = lr[root]->last_date;
+      for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
+	lr[k]->reg[x] = (int) lr[k]->regno;
+    }
+}
+
+/* IS A REGISTER ANTI-DEPENDENCE WORTH KEEPING?  §7tricies.29.
+
+   The arc is real when the two references END IN THE SAME REGISTER, and the
+   partition decides that -- but NOT simply by whether the lineage is one.
+
+   ONE LINEAGE IS NOT ONE REGISTER.  A lineage is a stack of P2UNROLL names,
+   and within it a delayed read of iteration L takes index L + use_first - 1
+   while the heading definition takes L + use_first: different names as soon
+   as the lineage expands.  So `one lineage' means `one register' only where
+   the lineage is NOT expanded.
+
+   That is where the circularity sits, and it is why the original code tested
+   the instruction's shape instead: expansion is P2UNROLL = ceil (life / II),
+   life comes from the schedule and the schedule comes from these arcs.  The
+   split that breaks it is the one §7tricies.19 already relies on -- assume
+   the expansion while scheduling, then CHECK the result -- and the sound,
+   non-circular part of the assumption is exactly this:
+
+     - one lineage that is HELD: never expanded, so one register.  Real.
+     - two lineages that both keep the original register: two lineages on one
+       regno, so they still collide.  Real.  (`Keeps the original register' is
+       not `not renamed': a renamed USE_FIRST lineage's name 0 is PINNED to
+       it, because the preheader wrote it, and name 0 comes round every
+       P2UNROLL iterations.)
+     - one lineage that is renamed: dropped here, and whether the expansion
+       really separated it is what lvx_cms_verify_antidep asks of the chosen
+       SIGMA and the chosen P2 -- the condition being life < p2 * II, which
+       p2 = ceil (life / II) gives, so only a lineage that came out at p2 = 1
+       can fail it.
+     - otherwise one of them has moved to a register of its own.  Redundant.
+
+   Two wrong versions of this, both measured rather than reasoned, and the
+   measurements are kept because each says something.  As `either side keeps
+   its register' (OR instead of AND) it was wrong in the one-held-one-renamed
+   case.  As `one lineage is real' it kept the anti-dependence of every
+   loop-carried register in the body -- the normalisation puts every pre-def
+   read into its definition's lineage, so every induction variable and every
+   accumulator qualified -- which is `assume no expansion at all': nwar 12 ->
+   687, 534 further arcs kept, sum II 699 -> 1664 over 124 loops.
+
+   An unresolvable reference keeps the arc.  */
+
+static bool
+lvx_cms_lrange_keeps_regno_p (const auto_vec<lvx_cms_lrange *> &lr, int root)
+{
+  return !lr[root]->renamed || lr[root]->use_first;
+}
+
+static bool
+lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange *> &lr,
+			lvx_cms_lrange *ga, lvx_cms_lrange *gb,
+			int *why /* [3]: unresolved, one lineage, both keep */)
+{
+  int ra, rb;
+
+  if (!ga || !gb)
+    {
+      why[0]++;
+      return true;
+    }
+  ra = lvx_cms_lrange_root (lr, ga->self);
+  rb = lvx_cms_lrange_root (lr, gb->self);
+  if (ra == rb)
+    {
+      if (lr[ra]->renamed)
+	return false;		/* the expansion separates them, verified */
+      why[1]++;
+      return true;
+    }
+  if (lvx_cms_lrange_keeps_regno_p (lr, ra)
+      && lvx_cms_lrange_keeps_regno_p (lr, rb))
+    {
+      why[2]++;
+      return true;
+    }
+  return false;
 }
 
 /* THE REGISTERS THE RANGE MODEL HOLDS.  §7tricies.26.
@@ -18266,7 +18340,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		     auto_vec<rtx_insn *> &seq,
 		     auto_vec<lvx_cms_arc> &arcs,
 		     auto_vec<int> &height,
-		     int *dropped_safelen)
+		     int *dropped_safelen, int *lrdrop_out /* [4] */ = NULL)
 {
   /* The weakest safelen of any memory arc dropped below, or 0 if none was.
      The caller must check it against the converged NSTAGES: dropping is sound
@@ -18426,6 +18500,16 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		  " %u relaxed arcs dropped\n", current_function_name (), loop->num,
 		  (unsigned) bitmap_count_bits (inductions), nrelaxed);
 
+  /* THE LINEAGE PARTITION, built here because the anti-dependence decisions
+     below are made from it (§7tricies.29).  It needs the body and nothing
+     else -- no schedule, no arcs -- which is exactly why it can come first.
+     Dates and the expansion degree are set later, by
+     lvx_cms_set_lrange_dates, once SIGMA exists.  */
+  auto_vec<lvx_cms_lrange *> lrange;
+  int ndrop = 0, awhy[3] = { 0, 0, 0 };
+
+  lvx_cms_build_lranges (seq, lrange, NULL, NULL, NULL);
+
   /* WAR, to the KILLING definition only -- the same correction RAW needs, and
      for the same reason.  A use is anti-dependent on the definition that
      destroys the value it read, which is the FIRST one after it, not on every
@@ -18462,10 +18546,23 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  if (p < 0)
 	    continue;
 
-	  /* Only where renaming cannot remove it: the killing definition has
-	     to be one that names its own destination as a source.  */
-	  if (!lvx_insn_def_reads_dest_p (seq[p]))
-	    continue;
+	  /* Only where renaming cannot remove it, which is a question about
+	     the LINEAGES the two references belong to (§7tricies.29) and not
+	     about the killing instruction's shape.  It was
+	     `lvx_insn_def_reads_dest_p (seq[p])', an approximation of
+	     `one lineage' -- and that predicate was answering FALSE for every
+	     instruction, so no register anti-dependence was kept at all.  */
+	  if (!lvx_cms_antidep_real_p
+		 (lrange,
+		  lvx_cms_lrange_of (lrange, q,
+				     lvx_cms_reg_index (PATTERN (seq[q]),
+							DF_REF_LOC (use)),
+				     NULL),
+		  lvx_cms_lrange_def_of (lrange, (unsigned) p, regno), awhy))
+	    {
+	      ndrop++;
+	      continue;
+	    }
 
 	  lvx_cms_push_arc (arcs, q, (unsigned) p,
 			    lvx_arc_latency (seq[q], seq[p], REG_DEP_ANTI),
@@ -18506,11 +18603,25 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  /* Only where renaming cannot remove it.  Two full, unconditional
 	     writes to one register with no read between them are independent
 	     once each has its own register; it is only when a write reads its
-	     own destination that the later result depends on the earlier.  */
+	     own destination that the later result depends on the earlier --
+	     and `reads its own destination' is what puts the two references in
+	     ONE LINEAGE, which is the question actually asked (§7tricies.29).
+
+	     The shape test was also an OR over the two instructions, so one
+	     in-place write kept the arc to a plain full write that the
+	     expansion does separate: 20 of 113 kept arcs on the PolyBench
+	     loops were of that kind.  A partial write still keeps its arc
+	     unconditionally -- it leaves part of the old value in place,
+	     which no lineage question captures.  */
 	  if (!partial
-	      && !lvx_insn_def_reads_dest_p (seq[p])
-	      && !lvx_insn_def_reads_dest_p (seq[(unsigned) q]))
-	    continue;
+	      && !lvx_cms_antidep_real_p
+		    (lrange, lvx_cms_lrange_def_of (lrange, p, regno),
+		     lvx_cms_lrange_def_of (lrange, (unsigned) q, regno),
+		     awhy))
+	    {
+	      ndrop++;
+	      continue;
+	    }
 
 	  lvx_cms_push_arc (arcs, p, (unsigned) q,
 			    lvx_arc_latency (seq[p], seq[q], REG_DEP_OUTPUT),
@@ -18780,6 +18891,16 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
     lvx_cms_push_arc (arcs, prev_branch, first_branch, 0, 1,
 		      LVX_ARC_CTRL_BACKEDGE);
 
+  for (unsigned k = 0; k < lrange.length (); k++)
+    delete lrange[k];
+  /* How many anti-dependences the lineage test dropped that the shape test
+     would have kept.  The partition itself is not handed out: the caller
+     calls the same function on the same body, which is one rule called twice
+     rather than two copies of a rule.  */
+  if (lrdrop_out)
+    lrdrop_out[0] = ndrop, lrdrop_out[1] = awhy[0], lrdrop_out[2] = awhy[1],
+    lrdrop_out[3] = awhy[2];
+
   return true;
 }
 
@@ -18883,7 +19004,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   auto_vec<int> height;
   int dropped_safelen = 0;
 
-  if (!lvx_cms_build_graph (loop, body, seq, arcs, height, &dropped_safelen))
+  int lrdropped[4] = { 0, 0, 0, 0 };
+  if (!lvx_cms_build_graph (loop, body, seq, arcs, height, &dropped_safelen,
+			    lrdropped))
     {
       lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, body is not a"
 		    " chain the analysis can walk\n", current_function_name (),
@@ -20090,7 +20213,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     auto_vec<lvx_cms_lrange *> lr;
     int nrange = 0, lrorph = 0, lrdup = 0, lrnoloc = 0;
     int lrmaxp2 = 0, lruf = 0, lrxl = 0;
-    int lrtie = 0, lrarc[3] = { 0, 0, 0 }, lrunit = 0, lrheld = 0;
+    int lrtie = 0, lrunit = 0, lrheld = 0;
 
     int nwar = 0, nwaw = 0;
     for (unsigned a = 0; a < arcs.length (); a++)
@@ -20100,8 +20223,10 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	if (arcs[a].kind == LVX_ARC_REG_WAW)
 	  nwaw++;
       }
-    lvx_cms_build_lranges (seq, arcs, sigma, found, liveout, lr, &lrtie,
-			   lrarc, &lrunit, &lrheld);
+    /* The same function the graph builder called, on the same body: the
+       partition the anti-dependence decisions were made from.  */
+    lvx_cms_build_lranges (seq, lr, &lrtie, &lrunit, &lrheld);
+    lvx_cms_set_lrange_dates (seq, lr, sigma, found, liveout);
     bool lrok = lvx_cms_verify_lranges (seq, lr, &nrange, &lrorph, &lrdup,
 					&lrnoloc);
     for (unsigned k = 0; k < lr.length (); k++)
@@ -20116,12 +20241,12 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	}
     lvx_cms_dump (";; lvx cms: fn=%s loop %d lranges %s n=%d orphan=%d"
 		  " dup=%d noloc=%d maxp2=%d usefirst=%d exitlive=%d"
-		  " tie=%d arc=%d arcseen=%d arcunres=%d units=%d held=%d"
-		  " nwar=%d nwaw=%d narcs=%u\n",
+		  " tie=%d units=%d held=%d nwar=%d nwaw=%d adropped=%d"
+		  " akunres=%d akone=%d akkeep=%d narcs=%u\n",
 		  current_function_name (), loop->num, lrok ? "ok" : "BAD",
 		  nrange, lrorph, lrdup, lrnoloc, lrmaxp2, lruf, lrxl,
-		  lrtie, lrarc[0], lrarc[1], lrarc[2], lrunit, lrheld,
-		  nwar, nwaw, arcs.length ());
+		  lrtie, lrunit, lrheld, nwar, nwaw, lrdropped[0],
+		  lrdropped[1], lrdropped[2], lrdropped[3], arcs.length ());
 
     /* STAGE TWO (a): COLOUR THE RANGES, and report the assignment beside the
        class one.  Nothing is renamed from it yet -- the comparison is the
