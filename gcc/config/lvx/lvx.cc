@@ -14535,6 +14535,313 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
   *reserved |= hard;
 }
 
+/* LIVE RANGES WITH EFFECTS, the rename unit.  §7tricies.25.
+
+   The renaming was built over VALUES -- one per instruction defining a
+   register something reads -- then over tie CLASSES, merging only what the
+   target forbids separating.  That is a strictly smaller merge than a live
+   range, and every gate §7tricies.20-24 had to add is a consequence:
+   two classes could share a hard register (72 loops declined), a class could
+   be live out with its reader unrewritten (25), a pin forced degree 1 (27),
+   and a tied operand had no class to merge with (4).
+
+   kvx-unfold.cc does not have those problems because its unit is the live
+   range and each range enumerates its own references:
+
+       struct unfold_range_ { ... unfold_effect_ *effects; ... };
+       int index = (iteration + use_first - delayed) & (p2unroll - 1);
+       return rename->ranges[index];
+
+   A RANGE IS ONE DEFINITION OF ONE HARD REGISTER plus every reference to it.
+   Two values in one register are two ranges, and they are told apart not by
+   the register -- which is what my version tried and could not -- but by
+   WHICH REFERENCE is being rewritten: the def lookup matches a range whose
+   first effect is this instruction, a use lookup searches past the first
+   effect.  An instruction cannot read one register for two ranges, because
+   two reads of one register in one instruction read the same value.
+
+   THE CYCLIC WRAP IS A NORMALISATION, not a special case.  If a register's
+   first range begins with a definition and its last begins with uses -- uses
+   that precede the first def in body order, so they read the previous
+   iteration -- the last range's effects move into the first, flagged DELAYED,
+   and the range is marked USE_FIRST.  The index arithmetic then carries both:
+   `+ use_first' shifts the stack so the incoming value sits at index 0 and
+   the first definition at index 1, and `- delayed' sends a wrapped reference
+   back one instance.  No pinned name 0, so no forced degree 1, so none of
+   §7tricies.19's unsoundness.
+
+   This stage BUILDS and CHECKS the structure and renames nothing.  */
+
+struct lvx_cms_effect
+{
+  unsigned insn;		/* index into SEQ */
+  bool is_def;			/* the reference that heads the range */
+  bool delayed;			/* reads the previous instance */
+};
+
+#define LVX_CMS_MAX_KUNROLL 32
+
+struct lvx_cms_lrange
+{
+  unsigned regno;
+  int nregs;
+  bool use_first;
+  bool exit_live;
+  int first_date, last_date;
+  int p2unroll;
+  int reg[LVX_CMS_MAX_KUNROLL];
+  auto_vec<lvx_cms_effect> effects;
+};
+
+/* Build the live ranges of SEQ.  One per definition of a hard register, in
+   body order, with every reference to that register attached to the range
+   the reaching definition opened.  */
+
+static void
+lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
+		       const auto_vec<int> &sigma, int ii, bitmap liveout,
+		       auto_vec<lvx_cms_lrange *> &lr)
+{
+  /* The range currently open for each hard register, as an index into LR, or
+     -1.  A use with no open range is a reference to the previous iteration's
+     value and opens one of its own, which the normalisation below folds into
+     the register's first range.  */
+  int open[FIRST_PSEUDO_REGISTER];
+
+  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    open[r] = -1;
+
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      df_ref ref;
+
+      /* Uses first: they read what the open range holds.  */
+      FOR_EACH_INSN_USE (ref, seq[i])
+	{
+	  unsigned r = DF_REF_REGNO (ref);
+	  lvx_cms_effect e = { i, false, false };
+
+	  if (r >= FIRST_PSEUDO_REGISTER)
+	    continue;
+	  if (open[r] < 0)
+	    {
+	      lvx_cms_lrange *n = new lvx_cms_lrange ();
+	      n->regno = r;
+	      n->nregs = 1;
+	      n->use_first = true;
+	      n->exit_live = false;
+	      n->p2unroll = 1;
+	      n->first_date = n->last_date = sigma[i];
+	      open[r] = (int) lr.length ();
+	      lr.safe_push (n);
+	    }
+	  lr[open[r]]->effects.safe_push (e);
+	  if (sigma[i] > lr[open[r]]->last_date)
+	    lr[open[r]]->last_date = sigma[i];
+	}
+
+      /* Then the definitions: each opens a new range.  */
+      FOR_EACH_INSN_DEF (ref, seq[i])
+	{
+	  unsigned r = DF_REF_REGNO (ref);
+	  lvx_cms_effect e = { i, true, false };
+	  rtx reg = DF_REF_REG (ref);
+
+	  if (r >= FIRST_PSEUDO_REGISTER)
+	    continue;
+	  lvx_cms_lrange *n = new lvx_cms_lrange ();
+	  n->regno = r;
+	  n->nregs = reg && REG_P (reg) ? REG_NREGS (reg) : 1;
+	  n->use_first = false;
+	  n->exit_live = liveout && bitmap_bit_p (liveout, r);
+	  n->p2unroll = 1;
+	  n->first_date = n->last_date = sigma[i];
+	  n->effects.safe_push (e);
+	  open[r] = (int) lr.length ();
+	  lr.safe_push (n);
+	}
+    }
+
+  /* THE CYCLIC NORMALISATION.  For each register whose FIRST range is headed
+     by a definition and whose LAST range is headed by a use, the last range's
+     references precede that definition in body order and therefore read the
+     previous iteration: move them into the first range, flag them DELAYED,
+     and mark the range USE_FIRST.  Exactly unfold_igraph_make_ranges.  */
+  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    {
+      int first = -1, last = -1;
+
+      for (unsigned k = 0; k < lr.length (); k++)
+	if ((int) lr[k]->regno == r)
+	  {
+	    if (first < 0)
+	      first = (int) k;
+	    last = (int) k;
+	  }
+      if (first < 0 || first == last)
+	continue;
+      if (lr[first]->use_first || !lr[last]->use_first)
+	continue;
+
+      for (unsigned e = 0; e < lr[last]->effects.length (); e++)
+	{
+	  lvx_cms_effect d = lr[last]->effects[e];
+	  d.delayed = true;
+	  lr[first]->effects.safe_push (d);
+	  if (sigma[d.insn] + ii > lr[first]->last_date)
+	    lr[first]->last_date = sigma[d.insn] + ii;
+	}
+      lr[first]->use_first = true;
+      lr[last]->effects.truncate (0);
+    }
+
+  /* Each range's unroll factor: the instances its life spans, rounded up to
+     a power of two so the index is a mask (§7tricies.2's third place the
+     power of two pays).  */
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      int life = lr[k]->last_date - lr[k]->first_date;
+      int need = ii > 0 ? (life + ii - 1) / ii : 1;
+      int p2 = 1;
+
+      while (p2 < need && p2 < LVX_CMS_MAX_KUNROLL)
+	p2 <<= 1;
+      lr[k]->p2unroll = MAX (p2, 1);
+      for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
+	lr[k]->reg[x] = (int) lr[k]->regno;
+    }
+}
+
+/* THE RANGE A REFERENCE BELONGS TO.  Mirrors
+   unfold_kernel_find_rename_range: a definition matches a range whose FIRST
+   effect is this instruction, a use matches one with a later effect on it.
+   That is what tells two ranges in one register apart, and it is the whole of
+   what §7tricies.22's gate was standing in for.  */
+
+static lvx_cms_lrange *
+lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
+		   unsigned regno, bool is_def, bool *delayed_out)
+{
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      lvx_cms_lrange *g = lr[k];
+
+      if (g->regno != regno || g->effects.is_empty ())
+	continue;
+      if (is_def)
+	{
+	  if (g->effects[0].is_def && g->effects[0].insn == insn)
+	    {
+	      if (delayed_out)
+		*delayed_out = false;
+	      return g;
+	    }
+	  continue;
+	}
+      for (unsigned e = g->effects[0].is_def ? 1 : 0;
+	   e < g->effects.length (); e++)
+	if (g->effects[e].insn == insn && !g->effects[e].is_def)
+	  {
+	    if (delayed_out)
+	      *delayed_out = g->effects[e].delayed;
+	    return g;
+	  }
+    }
+  return NULL;
+}
+
+/* The register a range's copy for ITERATION lives in.  The one index
+   computation, and the only place the renaming decides anything.  */
+
+static int
+lvx_cms_lrange_reg (lvx_cms_lrange *g, int iteration, bool delayed)
+{
+  int index = (iteration + (g->use_first ? 1 : 0) - (delayed ? 1 : 0))
+	      & (g->p2unroll - 1);
+  return g->reg[index];
+}
+
+/* CHECK THE STRUCTURE: every reference of every body instruction must land on
+   exactly one range.  A reference on none would be renamed by nothing; one on
+   two would be the ambiguity this is meant to retire.  */
+
+static bool
+lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
+			const auto_vec<lvx_cms_lrange *> &lr,
+			int *nrange_out, int *orphan_out, int *dup_out,
+			int *twice_out)
+{
+  int orphan = 0, dup = 0, twice = 0;
+
+  for (unsigned i = 0; i < seq.length (); i++)
+    for (int pass = 0; pass < 2; pass++)
+      {
+	df_ref ref;
+	bool is_def = pass == 0;
+
+	if (is_def)
+	  {
+	    FOR_EACH_INSN_DEF (ref, seq[i])
+	      {
+		unsigned r = DF_REF_REGNO (ref);
+		int nr = 0;
+		if (r >= FIRST_PSEUDO_REGISTER)
+		  continue;
+		for (unsigned k = 0; k < lr.length (); k++)
+		  if (lr[k]->regno == r && !lr[k]->effects.is_empty ()
+		      && lr[k]->effects[0].is_def
+		      && lr[k]->effects[0].insn == i)
+		    nr++;
+		if (nr == 0)
+		  orphan++;
+		else if (nr > 1)
+		  dup++;
+	      }
+	  }
+	else
+	  FOR_EACH_INSN_USE (ref, seq[i])
+	    {
+	      unsigned r = DF_REF_REGNO (ref);
+	      int nr = 0, nocc = 0;
+	      if (r >= FIRST_PSEUDO_REGISTER)
+		continue;
+	      for (unsigned k = 0; k < lr.length (); k++)
+		{
+		  lvx_cms_lrange *g = lr[k];
+		  int here = 0;
+		  if (g->regno != r || g->effects.is_empty ())
+		    continue;
+		  for (unsigned e = g->effects[0].is_def ? 1 : 0;
+		       e < g->effects.length (); e++)
+		    if (g->effects[e].insn == i && !g->effects[e].is_def)
+		      here++;
+		  if (here)
+		    {
+		      nr++;
+		      nocc += here;
+		    }
+		}
+	      if (nr == 0)
+		orphan++;
+	      else if (nr > 1)
+		dup++;
+	      else if (nocc > 1)
+		twice++;
+	    }
+      }
+
+  int live = 0;
+  for (unsigned k = 0; k < lr.length (); k++)
+    if (!lr[k]->effects.is_empty ())
+      live++;
+
+  *nrange_out = live;
+  *orphan_out = orphan;
+  *dup_out = dup;
+  *twice_out = twice;
+  return orphan == 0 && dup == 0;
+}
+
 /* THE RENAME MAP.  §7ter.14, and the first half of make_insns.
 
    Modulo expansion IS the renaming, so this is the part of codegen that
@@ -18946,6 +19253,35 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		rnsubst, rnfail, plslots.length (), q_own.length (), tnclass,
 		tnmerged, tbiggest, torphan, cnodes, cassigned, cmaxreg,
 		ckunroll, cgpasses, cgpinned);
+
+  /* LIVE RANGES WITH EFFECTS, built and checked.  §7tricies.25.  Stage one:
+     the structure the renaming is being moved onto, verified against DF
+     before anything is renamed from it.  */
+  {
+    auto_vec<lvx_cms_lrange *> lr;
+    int nrange = 0, lrorph = 0, lrdup = 0, lrtw = 0;
+    int lrmaxp2 = 0, lruf = 0, lrxl = 0;
+
+    lvx_cms_build_lranges (seq, sigma, found, liveout, lr);
+    bool lrok = lvx_cms_verify_lranges (seq, lr, &nrange, &lrorph, &lrdup,
+					&lrtw);
+    for (unsigned k = 0; k < lr.length (); k++)
+      if (!lr[k]->effects.is_empty ())
+	{
+	  if (lr[k]->p2unroll > lrmaxp2)
+	    lrmaxp2 = lr[k]->p2unroll;
+	  if (lr[k]->use_first)
+	    lruf++;
+	  if (lr[k]->exit_live)
+	    lrxl++;
+	}
+    lvx_cms_dump (";; lvx cms: fn=%s loop %d lranges %s n=%d orphan=%d"
+		  " dup=%d twice=%d maxp2=%d usefirst=%d exitlive=%d\n",
+		  current_function_name (), loop->num, lrok ? "ok" : "BAD",
+		  nrange, lrorph, lrdup, lrtw, lrmaxp2, lruf, lrxl);
+    for (unsigned k = 0; k < lr.length (); k++)
+      delete lr[k];
+  }
 
   /* THE ANTI-DEPENDENCES RENAMING DOES NOT REMOVE.  §7tricies.17.  Asked of
      the schedule and the surviving-register set, with no slot enumeration:
