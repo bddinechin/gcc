@@ -15181,6 +15181,70 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		continue;		/* another word of one operand */
 	      seendef.safe_push (e.slot);
 	    }
+
+	  /* A DEFINITION OF A SUB-SPAN IS A PARTIAL DEFINITION OF THE RANGE,
+	     not a range of its own.  §7tricies.75.
+
+	     Opening one made two live ranges PARTIALLY overlap -- [4,8) from
+	     a quad write and [6,8) from a pair write inside it -- which made
+	     the partial-overlap rule hold BOTH, which put them on the same
+	     architectural registers, which left an intra-cycle circuit that
+	     cannot be linearised.  That chain accounted for every remaining
+	     refusal on PolyBench and for the 141 partial overlaps, and a
+	     probe confirmed it: suppressing only the hold made all nine
+	     circuits disappear.
+
+	     Attaching costs almost nothing, because a partial definition is
+	     just an effect with an offset:
+
+	       - the HEAD is unchanged.  EFFECTS[0], USE_FIRST, the cyclic
+		 normalisation and the live-out copy identify where the value
+		 ENTERS the range, and a definition in the middle does not
+		 change that;
+	       - ONE INTERVAL is still right.  The range owns its whole span
+		 continuously from first effect to last, which is what
+		 interference needs; a per-sub-span interval would only let
+		 another value pack into part of the span, an optimisation and
+		 not a requirement;
+	       - ONE P2UNROLL is still right.  Every effect addresses
+		 reg[index] + offset, so iteration i's partial definition
+		 writes a different name from iteration i+1's;
+	       - DUP is untouched, precisely because nothing is split: one
+		 operand stays in one root, and the colouring still sees one
+		 unit per tuple so the aligned allocation stays free.
+
+	     And the range then spanning two GENERATIONS of the sub-span
+	     within one iteration needs no renaming to tell them apart: in a
+	     sequential stream the register holds whatever was written last,
+	     and the order between an earlier reader and the partial
+	     definition is an ordinary anti-dependence the schedule already
+	     carries.  */
+	  if (open[r] >= 0 && e.slot >= 0)
+	    {
+	      unsigned blo = lr[open[r]]->regno;
+	      unsigned bhi = blo + MAX (lr[open[r]]->nregs, 1);
+
+	      if (r >= blo && r + nr <= bhi && !(r == blo && r + nr == bhi))
+		{
+		  unsigned q;
+
+		  e.offset = (int) (r - blo);
+		  /* A read-modify-write of the sub-span is one operand: the
+		     use already entered it, so mark that effect as the
+		     definition rather than adding a second.  */
+		  for (q = 0; q < lr[open[r]]->effects.length (); q++)
+		    if (lr[open[r]]->effects[q].insn == i
+			&& lr[open[r]]->effects[q].slot == e.slot)
+		      {
+			lr[open[r]]->effects[q].is_def = true;
+			break;
+		      }
+		  if (q == lr[open[r]]->effects.length ())
+		    lr[open[r]]->effects.safe_push (e);
+		  continue;		/* OPEN still owns the whole span */
+		}
+	    }
+
 	  lvx_cms_lrange *n = new lvx_cms_lrange ();
 	  n->regno = r;
 	  n->nregs = nr;
@@ -15907,7 +15971,8 @@ lvx_cms_lrange_keeps_regno_p (const auto_vec<lvx_cms_lrange *> &lr, int root)
 static bool
 lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange *> &lr,
 			lvx_cms_lrange *ga, lvx_cms_lrange *gb,
-			int *why /* [3]: unresolved, one lineage, both keep */)
+			int *why /* [3]: unresolved, one lineage, both keep */,
+			HOST_WIDE_INT omega)
 {
   int ra, rb;
 
@@ -15920,6 +15985,24 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange *> &lr,
   rb = lvx_cms_lrange_root (lr, gb->self);
   if (ra == rb)
     {
+      /* THE EXPANSION SEPARATES ITERATIONS, NOT A SINGLE ITERATION'S OWN
+	 REFERENCES.  §7tricies.76.
+
+	 "Renamed, so the expansion separates them" is sound for a
+	 LOOP-CARRIED dependence, where the two ends are consecutive
+	 instances and the rotation gives them different names.  At OMEGA
+	 zero both ends are the SAME instance, so both use reg[index] for
+	 the same index and nothing is separated at all.
+
+	 It was unreachable until a sub-span definition became a partial
+	 definition of its range (§7tricies.75): before that, two writes
+	 within one iteration opened two ranges and took the cross-lineage
+	 path.  Now they are one lineage, and dropping their output
+	 dependence let two writers of one register share a cycle -- an
+	 intra-cycle circuit, which is the symptom that went from nine loops
+	 to thirteen.  */
+      if (omega == 0)
+	return true;
       if (lr[ra]->renamed)
 	return false;		/* the expansion separates them, verified */
       why[1]++;
@@ -20685,7 +20768,8 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 				     lvx_cms_reg_index (PATTERN (seq[q]),
 							DF_REF_LOC (use)),
 				     NULL),
-		  lvx_cms_lrange_def_of (lrange, (unsigned) p, regno), awhy))
+		  lvx_cms_lrange_def_of (lrange, (unsigned) p, regno), awhy,
+		  w))
 	    {
 	      ndrop++;
 	      continue;
@@ -20744,7 +20828,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	      && !lvx_cms_antidep_real_p
 		    (lrange, lvx_cms_lrange_def_of (lrange, p, regno),
 		     lvx_cms_lrange_def_of (lrange, (unsigned) q, regno),
-		     awhy))
+		     awhy, w))
 	    {
 	      ndrop++;
 	      continue;
