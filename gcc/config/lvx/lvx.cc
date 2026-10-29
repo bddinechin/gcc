@@ -14747,6 +14747,24 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
    (insn, slot) the lookup needs no is_def argument and cannot be ambiguous --
    one operand belongs to one lineage.  */
 
+/* AN INDIRECT USE HAS NO OPERAND, so it has no slot.  A branch reads, by
+   transferring control to a block where the register is live, every register
+   live-in on its exit edge -- a use that is entirely real while the OPERAND is
+   not there to be found, which is why it cannot be keyed like the others.
+
+   The term is the KVX work's: `indirect' says the use is mediated by the CFG
+   edge rather than by the instruction's operands.  Not `pseudo', which in a
+   GCC back end means a pseudo-REGISTER -- FIRST_PSEUDO_REGISTER is all over
+   this file -- and these are hard registers after allocation, so the word
+   would say the opposite of what is meant.
+
+   The value is -2 and not -1 so that it cannot be confused with
+   lvx_cms_reg_index's "not in this pattern", and it is negative so that every
+   lookup keyed on a real operand position passes it by: lvx_cms_lrange_of
+   returns null for a negative slot, and the renaming walks the pattern's REGs
+   and so never visits an effect that has none.  */
+#define LVX_CMS_SLOT_INDIRECT (-2)
+
 struct lvx_cms_effect
 {
   unsigned insn;		/* index into SEQ */
@@ -14830,9 +14848,24 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
      value and opens one of its own, which the normalisation below folds into
      the register's first range.  */
   int open[FIRST_PSEUDO_REGISTER];
+  /* The hard registers the body references at all, which is what an indirect
+     use is allowed to open a range on -- see the long note at the indirect
+     uses below.  */
+  auto_bitmap touched;
 
   for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
     open[r] = -1;
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      df_ref ref;
+
+      FOR_EACH_INSN_USE (ref, seq[i])
+	if (DF_REF_REGNO (ref) < FIRST_PSEUDO_REGISTER)
+	  bitmap_set_bit (touched, DF_REF_REGNO (ref));
+      FOR_EACH_INSN_DEF (ref, seq[i])
+	if (DF_REF_REGNO (ref) < FIRST_PSEUDO_REGISTER)
+	  bitmap_set_bit (touched, DF_REF_REGNO (ref));
+    }
 
   for (unsigned i = 0; i < seq.length (); i++)
     {
@@ -14870,6 +14903,99 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	      lr.safe_push (n);
 	    }
 	  lr[open[r]]->effects.safe_push (e);
+	}
+
+      /* THE BRANCH'S INDIRECT USES, between its operands' reads and any
+	 write it makes, because that is where they happen: a branch reads
+	 every register live-in on its exit edge by transferring control to a
+	 block that reads it.  Entered as USES, so each attaches to the range
+	 the register has open at this point -- which is the whole answer to
+	 "which of the several ranges on this register is the one live out",
+	 by the same rule that keys any other reference to its range.
+
+	 WHERE NO RANGE IS OPEN YET, one is opened, exactly as an ordinary use
+	 does -- and that case is the IMPORTANT one, not an edge.  In a
+	 top-tested loop the exit branch precedes the definition it is
+	 indirectly reading: `for (i...) { if (A[i] == stop) break; s += ...; }'
+	 puts the branch at body index 2 and the accumulate at 6, so at the
+	 branch there is no open range for the accumulator and the value live
+	 on the exit edge is the PREVIOUS iteration's.  That is precisely a
+	 cyclic use, and opening a use-headed range lets the normalisation
+	 below fold it into the def-headed range at the bottom -- which is
+	 what puts the branch's indirect use and the later definition in ONE
+	 lineage, and is why nothing has to union them by hand.
+
+	 Requiring an already-open range instead, which the first version did,
+	 dropped the indirect use in exactly that shape and so dropped the
+	 only case where the dependence is not already implied.
+
+	 TOUCHED is what keeps the tuple case out.  DF reports a tuple at its
+	 first register, so the constituents above it are the regno of no
+	 reference in the body; a range invented for one of them would be a
+	 range on a register nothing names.  A live-out register the body
+	 never references at all is excluded by the same test, and correctly:
+	 it still holds the register the code after the loop reads, so there
+	 is nothing to move.  NREGS comes from the open range where there is
+	 one, because an effect of a different width makes the whole lineage
+	 non-renameable and would silently switch renaming off for every
+	 live-out tuple.
+
+	 Every out-of-loop successor counts, EXIT_BLOCK included.  The arc
+	 builder's own version of this picks ONE such successor per branch
+	 block and skips the branch entirely when that search finds none,
+	 which leaves a branch exiting straight to the function's exit
+	 unguarded; here the set is the union over the edges, so there is no
+	 such hole.  */
+      if (JUMP_P (seq[i]) && BLOCK_FOR_INSN (seq[i]) != NULL)
+	{
+	  basic_block jbb = BLOCK_FOR_INSN (seq[i]);
+	  auto_bitmap xlive;
+	  edge e;
+	  edge_iterator ei;
+
+	  FOR_EACH_EDGE (e, ei, jbb->succs)
+	    {
+	      bool inbody = false;
+
+	      for (unsigned z = 0; z < seq.length (); z++)
+		if (BLOCK_FOR_INSN (seq[z]) == e->dest)
+		  {
+		    inbody = true;
+		    break;
+		  }
+	      if (!inbody)
+		bitmap_ior_into (xlive, df_get_live_in (e->dest));
+	    }
+	  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+	    {
+	      lvx_cms_effect e2;
+
+	      if (!bitmap_bit_p (xlive, r) || !bitmap_bit_p (touched, r))
+		continue;
+	      if (open[r] < 0)
+		{
+		  lvx_cms_lrange *n = new lvx_cms_lrange ();
+		  n->regno = r;
+		  n->nregs = 1;
+		  n->use_first = false;
+		  n->exit_live = false;
+		  n->renamed = false;
+		  n->p2unroll = 1;
+		  n->self = n->parent = (int) lr.length ();
+		  n->first_date = n->last_date = 0;
+		  open[r] = (int) lr.length ();
+		  lr.safe_push (n);
+		}
+	      e2.insn = i;
+	      e2.slot = LVX_CMS_SLOT_INDIRECT;
+	      e2.nregs = MAX (lr[open[r]]->nregs, 1);
+	      e2.is_def = false;
+	      e2.delayed = false;
+	      lr[open[r]]->effects.safe_push (e2);
+	      /* And this is what EXIT_LIVE now means: a range with an
+		 indirect use is one whose value leaves the loop.  */
+	      lr[open[r]]->exit_live = true;
+	    }
 	}
 
       /* Then the definitions: each opens a new range.  */
@@ -15265,11 +15391,26 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
 	 first date, and the definition is effects[0].  */
       if (g->effects[0].is_def && g->effects[0].insn < sigma.length ())
 	g->first_date = sigma[g->effects[0].insn];
-      /* Live out, and therefore needing the epilogue copy, only where the
-	 lineage is renamed: a held one still holds the register the code
-	 after the loop reads, so there is nothing to copy back.  */
-      if (liveout && bitmap_bit_p (liveout, g->regno) && g->renamed)
-	g->exit_live = true;
+      /* EXIT_LIVE IS NOT SET HERE ANY MORE.  §7tricies.67.
+
+	 It used to be `bitmap_bit_p (liveout, g->regno) && g->renamed',
+	 which asks about a REGISTER: after allocation a live-out register may
+	 hold an unrelated value, and a body may hold several ranges on one
+	 register -- the very thing this structure exists to tell apart.  Both
+	 went wrong on store.c, where an intra-iteration range and the
+	 loop-carried one share r1 and the register test flagged both.
+
+	 lvx_cms_build_lranges sets it instead, from the branch's INDIRECT
+	 USES: the range that has one is the range live on the exit edge, by
+	 the same rule that keys every other reference to its range.  That is
+	 a structural answer, not a predicate over the side, and it needs no
+	 dataflow of its own.
+
+	 LIVEOUT stays in the signature because the callers hold it and
+	 because a cross-check belongs here if the two are ever suspected of
+	 disagreeing; it is deliberately not a second way to compute the
+	 answer, since a rule stated twice goes stale.  */
+      (void) liveout;
     }
 
   /* Onto the lineage.  */
@@ -15287,67 +15428,12 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
       lr[root]->exit_live |= lr[k]->exit_live;
     }
 
-  /* ONE LIVE-OUT LINEAGE PER LIVE-OUT REGISTER.  §7tricies.66.
-
-     EXIT_LIVE above is `this lineage's register is live out of the loop',
-     which is not the same question as `this lineage's value is what is live
-     out'.  A body may hold SEVERAL ranges on one register -- that is the
-     whole point of keying a reference to its range by the effects list rather
-     than by the register -- and only the LAST of them produces the value the
-     code after the loop reads.  store.c has exactly that:
-
-       lr3 r1 uf=0 [9,11]  eff=1/0D,5/2U      intra-iteration, carried nowhere
-       lr8 r1 uf=1 [11,12] eff=5/0D,1/1U~     loop-carried, reaches the exit
-
-     and both came out EXIT_LIVE.  Emitting the epilogue copy for lr3 then
-     wrote its name over the r1 that held lr8's value, which is how the first
-     attempt at §7tricies.63's copy broke three gate programs.
-
-     No reaching-definition analysis is needed to tell them apart, and
-     reaching for one was the wrong diagnosis: the answer is local and already
-     in the structure.  The range that reaches the loop end is the one with
-     the greatest LAST_DATE among those on the register, which for a modulo
-     schedule is exactly `whose live interval extends furthest'.  A tie means
-     two ranges end at the same cycle on one register, which the occupancy
-     check should already have refused; EXIT_LIVE is cleared on both so that
-     nothing is copied on a guess.  */
-  for (unsigned k = 0; k < lr.length (); k++)
-    {
-      int best = -1;
-      bool tie = false;
-
-      if (lr[k]->effects.is_empty () || !lr[k]->exit_live
-	  || lvx_cms_lrange_root (lr, (int) k) != (int) k)
-	continue;
-      /* The candidates: every root claiming this same register.  */
-      for (unsigned q = 0; q < lr.length (); q++)
-	{
-	  if (lr[q]->effects.is_empty () || !lr[q]->exit_live
-	      || lvx_cms_lrange_root (lr, (int) q) != (int) q
-	      || lr[q]->regno != lr[k]->regno)
-	    continue;
-	  if (best < 0 || lr[q]->last_date > lr[best]->last_date)
-	    {
-	      best = (int) q;
-	      tie = false;
-	    }
-	  else if (lr[q]->last_date == lr[best]->last_date
-		   && (int) q != best)
-	    tie = true;
-	}
-      if (best < 0)
-	continue;
-      if (tie)
-	{
-	  for (unsigned q = 0; q < lr.length (); q++)
-	    if (!lr[q]->effects.is_empty ()
-		&& lr[q]->regno == lr[k]->regno
-		&& lvx_cms_lrange_root (lr, (int) q) == (int) q)
-	      lr[q]->exit_live = false;
-	}
-      else if ((int) k != best)
-	lr[k]->exit_live = false;
-    }
+  /* §7tricies.66's disambiguation -- keeping, among the ranges on one
+     register, the one with the greatest LAST_DATE -- is gone with the
+     predicate that needed it.  An indirect use attaches to exactly one range
+     per register by construction, so there is nothing left to disambiguate
+     and the heuristic that approximated it would only be a second answer to
+     the same question.  */
 
   /* Each lineage's unroll factor: the instances its life spans, rounded up to
      a power of two so the index is a mask (§7tricies.2's third place the
