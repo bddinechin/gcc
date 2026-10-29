@@ -14887,7 +14887,7 @@ lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange *> &lr,
    just produced.  */
 static lvx_cms_lrange *lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &,
 					  unsigned, int, bool *,
-					  int * = NULL);
+					  int * = NULL, int * = NULL);
 static lvx_cms_lrange *
 lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange *> &, unsigned, unsigned);
 static lvx_cms_lrange *
@@ -16289,7 +16289,8 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 
 static lvx_cms_lrange *
 lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
-		   int slot, bool *delayed_out, int *offset_out)
+		   int slot, bool *delayed_out, int *offset_out,
+		   int *nregs_out)
 {
   if (slot < 0)
     return NULL;
@@ -16306,6 +16307,8 @@ lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
 	       lineage's name (§7tricies.71).  */
 	    if (offset_out)
 	      *offset_out = g->effects[e].offset;
+	    if (nregs_out)
+	      *nregs_out = MAX (g->effects[e].nregs, 1);
 	    return g;
 	  }
     }
@@ -17993,11 +17996,20 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 	      int slot = lvx_cms_reg_index (PATTERN (seq[i]),
 					    DF_REF_LOC (ref));
 	      bool dly = false;
-	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, &dly);
-	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, dly)
+	      int off = 0, wid = 1;
+	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, &dly, &off,
+						     &wid);
+	      /* THE EFFECT'S SPAN, NOT THE RANGE'S.  §7tricies.77.  Taking
+		 the range's name and width recorded a partial reference as
+		 touching the WHOLE span, which manufactured intra-cycle
+		 edges in both directions between a wide reference and a
+		 narrow one inside it -- the symmetric all-four-registers
+		 circuit that looked like two writers of one register.  */
+	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, dly) + off
 			  : (int) r;
+	      int nw = g ? wid : 1;
 
-	      for (int w = 0; w < (g ? MAX (g->nregs, 1) : 1); w++)
+	      for (int w = 0; w < nw; w++)
 		if (neu + w >= 0 && neu + w < 64)
 		  rd |= (unsigned HOST_WIDE_INT) 1 << (neu + w);
 	    }
@@ -18006,11 +18018,14 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 	      unsigned r = DF_REF_REGNO (ref);
 	      int slot = lvx_cms_reg_index (PATTERN (seq[i]),
 					    DF_REF_LOC (ref));
-	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, NULL);
-	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, false)
+	      int off = 0, wid = 1;
+	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, NULL, &off,
+						     &wid);
+	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, false) + off
 			  : (int) r;
+	      int nw = g ? wid : 1;
 
-	      for (int w = 0; w < (g ? MAX (g->nregs, 1) : 1); w++)
+	      for (int w = 0; w < nw; w++)
 		if (neu + w >= 0 && neu + w < 64)
 		  wr |= (unsigned HOST_WIDE_INT) 1 << (neu + w);
 	    }
