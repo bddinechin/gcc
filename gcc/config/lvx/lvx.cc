@@ -12020,6 +12020,28 @@ struct lvx_cms_arc
   HOST_WIDE_INT theta;
   HOST_WIDE_INT omega;
   enum lvx_cms_arc_kind kind;
+  /* For a REG_RAW arc: WHICH operand of the consumer reads the value, as an
+     index into a deterministic sub-rtx walk of its pattern.  -1 otherwise.
+
+     The rename rewrite used to find the operand by REGISTER NUMBER, and that
+     is not a key: register allocation maps many values onto one hard
+     register, so one instruction can mention the same regno for two
+     different classes -- `fixedd.rz r0 = r0', an instruction reading two
+     classes both originally in r0, or `sd $r3[$r6] = ...' where r3 is both a
+     renamed value's original and an index belonging to something else.  The
+     rewrite then put the wrong register in, and §7tricies.22 declined 72 of
+     119 loops rather than risk it.
+
+     DF knows exactly which reference is which -- DF_REF_LOC points at the
+     rtx inside the pattern -- and the arc builder is already walking those
+     refs when it decides the producer.  Recording the position there turns
+     "every REG with this number" into "this operand", and the ambiguity
+     cannot arise.
+
+     An INDEX rather than the pointer, because the rewrite runs on a COPY of
+     the instruction: a pointer into the original addresses nothing in the
+     copy, while the traversal order is structural and identical in both.  */
+  int useidx;
 };
 
 /* A memory reference's address as an affine function of the iteration number:
@@ -12437,8 +12459,55 @@ lvx_cms_push_arc (auto_vec<lvx_cms_arc> &arcs, unsigned src, unsigned dst,
 		  HOST_WIDE_INT theta, HOST_WIDE_INT omega,
 		  enum lvx_cms_arc_kind kind)
 {
-  lvx_cms_arc a = { src, dst, theta, omega, kind };
+  lvx_cms_arc a = { src, dst, theta, omega, kind, -1 };
   arcs.safe_push (a);
+}
+
+/* The position of LOC in a sub-rtx walk of PAT, counting only REGs, or -1 if
+   it is not there.  The same walk at rewrite time finds the same position in
+   a copy of PAT, which is what makes the index portable where the pointer is
+   not.  */
+
+static int
+lvx_cms_reg_index (rtx pat, rtx *loc)
+{
+  subrtx_ptr_iterator::array_type array;
+  int i = 0;
+
+  if (!loc)
+    return -1;
+  FOR_EACH_SUBRTX_PTR (it, array, &pat, NONCONST)
+    {
+      rtx *here = *it;
+      if (!here || !*here || !REG_P (*here))
+	continue;
+      if (here == loc)
+	return i;
+      i++;
+    }
+  return -1;
+}
+
+/* The REG at index IDX of that walk, or null.  */
+
+static rtx *
+lvx_cms_reg_at (rtx *pat, int idx)
+{
+  subrtx_ptr_iterator::array_type array;
+  int i = 0;
+
+  if (idx < 0)
+    return NULL;
+  FOR_EACH_SUBRTX_PTR (it, array, pat, NONCONST)
+    {
+      rtx *here = *it;
+      if (!here || !*here || !REG_P (*here))
+	continue;
+      if (i == idx)
+	return here;
+      i++;
+    }
+  return NULL;
 }
 
 /* True if INSN loads through an address that varies across iterations, i.e. one
@@ -15055,18 +15124,25 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
 	 cannot: such a class must not expand at all, which is handled where
 	 the class degree is computed rather than here.  */
 
-      subrtx_ptr_iterator::array_type array;
-      FOR_EACH_SUBRTX_PTR (iter2, array, &pat, NONCONST)
-	{
-	  rtx *loc = *iter2;
-	  if (!*loc || !REG_P (*loc) || (int) REGNO (*loc) != old)
-	    continue;
-	  /* SET_DEST is the definition's business, handled above.  */
-	  if (set && loc == &SET_DEST (set))
-	    continue;
-	  validate_change (insn, loc, gen_rtx_REG (GET_MODE (*loc), neu), 1);
-	  (*nsubst)++;
-	}
+      /* THE OPERAND THE ARC NAMES, not every REG with that number.  The arc
+	 recorded which reference reads this class when the graph was built
+	 (§7tricies.24), so there is nothing to disambiguate: one arc, one
+	 operand.  An arc without a locator -- DF gave no DF_REF_LOC -- cannot
+	 be rewritten precisely, and the loop is refused rather than guessed
+	 at.  */
+      {
+	rtx *loc = lvx_cms_reg_at (&pat, arcs[a].useidx);
+
+	if (!loc)
+	  {
+	    ok = false;
+	    break;
+	  }
+	if ((int) REGNO (*loc) != old)
+	  continue;
+	validate_change (insn, loc, gen_rtx_REG (GET_MODE (*loc), neu), 1);
+	(*nsubst)++;
+      }
     }
 
   /* APPLY OR CANCEL, one function and not two.  The dry run and the real
@@ -17202,6 +17278,8 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 
 	  int lat = lvx_arc_latency (seq[p], seq[q], REG_DEP_TRUE);
 	  lvx_cms_push_arc (arcs, (unsigned) p, q, lat, w, LVX_ARC_REG_RAW);
+	  arcs.last ().useidx
+	    = lvx_cms_reg_index (PATTERN (seq[q]), DF_REF_LOC (use));
 	  if (w == 0 && height[q] < height[p] + lat)
 	    height[q] = height[p] + lat;
 	}
@@ -18964,7 +19042,20 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		iwhy = "a slot's insn refuses the rename substitution";
 	      else if (!site.antidep_ok)
 		iwhy = "an unrenamed register's order is not preserved";
+
 	      else if (cgambig_classes)
+		/* STILL GATED, THOUGH THE REWRITE IS NOW BY LOCATION.
+		   §7tricies.24 removes the reason the gate existed -- the
+		   rewrite can no longer put one class's register where
+		   another's belongs -- and removing the gate took the emitted
+		   population from 13 to 47 of 119 while leaving t8 (`init's
+		   loop, nine classes in r0 and three in r3) returning a wrong
+		   VALUE rather than a wrong address: 2^32 - 27, which looks
+		   like a lost sign extension.  The address corruption the
+		   gate was protecting against is gone; something else in that
+		   loop is not, and it is not yet localised.  So the gate
+		   stays and the location rewrite is the foundation for
+		   removing it, not the removal.  */
 		iwhy = "two classes share an original register";
 	      else if (cgliveout_renamed)
 		iwhy = "a class live out of the loop would be renamed";
