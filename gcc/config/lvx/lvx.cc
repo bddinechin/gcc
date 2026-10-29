@@ -14628,7 +14628,12 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	      lvx_cms_lrange *n = new lvx_cms_lrange ();
 	      n->regno = r;
 	      n->nregs = 1;
-	      n->use_first = true;
+	      /* USE_FIRST means the CYCLIC WRAP and nothing else, so the
+		 normalisation below is the only place that sets it.  A range
+		 that is still use-headed afterwards belongs to a register the
+		 body never writes, where the flag would say nothing: p2unroll
+		 is 1 and the index is 0 whatever it holds.  */
+	      n->use_first = false;
 	      n->exit_live = false;
 	      n->p2unroll = 1;
 	      n->first_date = n->last_date = sigma[i];
@@ -14662,17 +14667,31 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	}
     }
 
-  /* THE CYCLIC NORMALISATION.  For each register whose FIRST range is headed
-     by a definition and whose LAST range is headed by a use, the last range's
-     references precede that definition in body order and therefore read the
-     previous iteration: move them into the first range, flag them DELAYED,
-     and mark the range USE_FIRST.  Exactly unfold_igraph_make_ranges.  */
+  /* THE CYCLIC NORMALISATION.  A register read before it is written in the
+     body is reading the value the LAST definition of that register produced
+     in the PREVIOUS iteration.  Those references -- the ones that opened a
+     use-headed range because no definition had been seen yet -- move into the
+     range the last definition opened, flagged DELAYED, and that range is
+     marked USE_FIRST.  The index arithmetic then carries the wrap:
+     `+ use_first' puts the incoming value at index 0 and the first definition
+     at index 1, `- delayed' sends a wrapped reference back one instance.
+
+     This is unfold_igraph_make_ranges, and the direction is worth stating
+     because the reference reads the other way round: unfold_igraph_map_range
+     PREPENDS, so its `first_range' is the newest range and its `last_range'
+     the oldest.  Its test -- first is 'D', last is neither 'D' nor 'C' -- is
+     therefore `the latest range is def-headed and the earliest is use-headed',
+     which is the test below.  Transcribed with my own ordering it read
+     `lr[first]->use_first || !lr[last]->use_first' and could never fire:
+     OPEN[r] is never cleared, so once any definition of R is seen no later
+     use can open a range, and the latest range is use-headed only when R has
+     no definition at all -- the case FIRST == LAST already excludes.  */
   for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
     {
       int first = -1, last = -1;
 
       for (unsigned k = 0; k < lr.length (); k++)
-	if ((int) lr[k]->regno == r)
+	if ((int) lr[k]->regno == r && !lr[k]->effects.is_empty ())
 	  {
 	    if (first < 0)
 	      first = (int) k;
@@ -14680,19 +14699,20 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  }
       if (first < 0 || first == last)
 	continue;
-      if (lr[first]->use_first || !lr[last]->use_first)
+      /* The earliest range must be use-headed and the latest def-headed.  */
+      if (lr[first]->effects[0].is_def || !lr[last]->effects[0].is_def)
 	continue;
 
-      for (unsigned e = 0; e < lr[last]->effects.length (); e++)
+      for (unsigned e = 0; e < lr[first]->effects.length (); e++)
 	{
-	  lvx_cms_effect d = lr[last]->effects[e];
+	  lvx_cms_effect d = lr[first]->effects[e];
 	  d.delayed = true;
-	  lr[first]->effects.safe_push (d);
-	  if (sigma[d.insn] + ii > lr[first]->last_date)
-	    lr[first]->last_date = sigma[d.insn] + ii;
+	  lr[last]->effects.safe_push (d);
+	  if (sigma[d.insn] + ii > lr[last]->last_date)
+	    lr[last]->last_date = sigma[d.insn] + ii;
 	}
-      lr[first]->use_first = true;
-      lr[last]->effects.truncate (0);
+      lr[last]->use_first = true;
+      lr[first]->effects.truncate (0);
     }
 
   /* Each range's unroll factor: the instances its life spans, rounded up to
@@ -14704,12 +14724,204 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       int need = ii > 0 ? (life + ii - 1) / ii : 1;
       int p2 = 1;
 
+      /* A RANGE WITH NO DEFINITION IN THE BODY IS NOT EXPANDED.  After the
+	 normalisation a use-headed range survives only for a register the
+	 body never writes -- an address base, a loop invariant, a value live
+	 across the loop.  Every iteration reads the same value, so there are
+	 no instances to expand and its span says nothing about pressure; the
+	 reference says the same in one line, "In case of USE_FIRST and not
+	 EXPANDED, allocate the original REGNO".  Rounding its span up would
+	 hand it a stack of names nothing ever writes.  */
+      if (lr[k]->effects.is_empty () || !lr[k]->effects[0].is_def)
+	need = 1;
       while (p2 < need && p2 < LVX_CMS_MAX_KUNROLL)
 	p2 <<= 1;
       lr[k]->p2unroll = MAX (p2, 1);
       for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
 	lr[k]->reg[x] = (int) lr[k]->regno;
     }
+}
+
+/* THE REGISTERS THE RANGE MODEL HOLDS.  §7tricies.26.
+
+   lvx_cms_reserved_regs had to count definitions per register and compare the
+   total against how many of them belonged to a renamed value, because a value
+   did not know its own references: a register was freeable when `every
+   definition of it belongs to a value the renaming rewrites', and reads were
+   covered only by the separate promise that AMBIG was zero.
+
+   A range enumerates its references, so the rule is the statement itself: a
+   register is freeable exactly when EVERY range on it is one the colouring
+   rewrites -- def-headed, so it has a stack of names, and not USE_FIRST, whose
+   name 0 is pinned to this very register because the preheader wrote it.
+
+   That is not a simplification of the old rule, it is a repair of it.
+   store.c's `init' freed r3, which held a renamed value AND was the base of a
+   store; the base was defined in the preheader, so it was not in the value
+   table at all and the definition count knew nothing about it.  In the range
+   model that read opens a def-less range on r3, so r3 has a range the
+   colouring does not rewrite and is not freeable.  The case that needed a
+   hard-set override and three wrong diagnoses is now the ordinary answer.  */
+
+static void
+lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
+			 const auto_vec<lvx_cms_lrange *> &lr,
+			 bitmap livein, HARD_REG_SET *reserved)
+{
+  /* Per register: how many ranges live on it, and how many of those the
+     colouring will rewrite.  */
+  int nrange[FIRST_PSEUDO_REGISTER], nren[FIRST_PSEUDO_REGISTER];
+  HARD_REG_SET hard;
+
+  memset (nrange, 0, sizeof (nrange));
+  memset (nren, 0, sizeof (nren));
+
+  *reserved = fixed_reg_set;
+  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    if (!df_regs_ever_live_p (r) && !crtl->abi->clobbers_full_reg_p (r))
+      SET_HARD_REG_BIT (*reserved, r);
+  if (livein)
+    {
+      bitmap_iterator bi;
+      unsigned r;
+      EXECUTE_IF_SET_IN_BITMAP (livein, 0, r, bi)
+	if (r < FIRST_PSEUDO_REGISTER)
+	  SET_HARD_REG_BIT (*reserved, r);
+    }
+  hard = *reserved;
+
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      df_ref r;
+      FOR_EACH_INSN_DEF (r, seq[i])
+	if (DF_REF_REGNO (r) < FIRST_PSEUDO_REGISTER)
+	  SET_HARD_REG_BIT (*reserved, DF_REF_REGNO (r));
+      FOR_EACH_INSN_USE (r, seq[i])
+	if (DF_REF_REGNO (r) < FIRST_PSEUDO_REGISTER)
+	  SET_HARD_REG_BIT (*reserved, DF_REF_REGNO (r));
+    }
+
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      lvx_cms_lrange *g = lr[k];
+      bool rewritten;
+
+      if (g->effects.is_empty ())
+	continue;
+      rewritten = g->effects[0].is_def && !g->use_first;
+      for (int w = 0; w < MAX (g->nregs, 1); w++)
+	if (g->regno + w < FIRST_PSEUDO_REGISTER)
+	  {
+	    nrange[g->regno + w]++;
+	    if (rewritten)
+	      nren[g->regno + w]++;
+	  }
+    }
+
+  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    if (nrange[r] > 0 && nrange[r] == nren[r])
+      CLEAR_HARD_REG_BIT (*reserved, r);
+
+  *reserved |= hard;
+}
+
+/* COLOUR THE RANGES AND FILL THEIR REG[] STACKS.  §7tricies.26.
+
+   lvx_cms_colour is unchanged and takes the same parallel arrays; what changes
+   is what one entry IS.  A unit used to be a value -- one definition that
+   something reads, identified by the register RA gave it -- then a tie class
+   merging the values a tied operand forces together.  It is now a range, and
+   the three gates the class model needed go with it:
+
+     - AMBIGUITY, because a reference finds its range by being IN its effects
+       list, so two ranges sharing a register are not confusable,
+     - the LIVE-OUT refusal, because EXIT_LIVE is a field on the range and the
+       epilogue copy is a property of the object rather than a reason to stop,
+     - the FMA TIE, because a tied operand's read and write are references to
+       the same register in the same instruction and therefore already one
+       range -- there is nothing to merge.
+
+   P2UNROLL IS READ BACK, not recomputed.  lvx_cms_build_lranges puts a
+   provisional power-of-two round in it so the structural report has something
+   to say; what the renaming uses is the number of anodes the colouring
+   actually built, which is the discipline that fixed the -mcms-exact-degree
+   bug (§7ter.14): a rounding rule in two places goes stale, a count of what
+   exists cannot.  */
+
+/* Declared ahead of their definitions: the two accessors over the anode
+   arrays, which the value path keeps next to its own rename map.  */
+static int lvx_cms_value_p2 (const auto_vec<int> &, int);
+static int lvx_cms_anode_of (const auto_vec<int> &, const auto_vec<int> &,
+			     int, int);
+
+static bool
+lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
+			auto_vec<lvx_cms_lrange *> &lr, int ii, int lo,
+			unsigned HOST_WIDE_INT avail, int *nn_out,
+			int *stuck_out, int *maxreg_out, int *kun_out,
+			int *pin_out, int *pinfail_out, int *wide_out)
+{
+  auto_vec<int> idx, def_, last_, deg, nregs_, ec_, vregno, vuf;
+  auto_vec<int> av, an, ar, stuck;
+  int nn = 0, ne = 0, msq = 0, spl = 0, per = 0, kun = 1, maxreg = -1;
+  int pinned = 0, pinfail = 0, wide = 0;
+
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      lvx_cms_lrange *g = lr[k];
+      int ec, life;
+
+      if (g->effects.is_empty () || !g->effects[0].is_def)
+	continue;			/* holds its register */
+      ec = lvx_insn_dest_earlyclobber_p (seq[g->effects[0].insn]) ? 1 : 0;
+      life = g->last_date - g->first_date + (ec ? 1 : 0);
+      idx.safe_push ((int) k);
+      def_.safe_push (g->first_date);
+      last_.safe_push (g->last_date);
+      deg.safe_push (ii > 0 ? MAX ((life + ii - 1) / ii, 1) : 1);
+      nregs_.safe_push (MAX (g->nregs, 1));
+      ec_.safe_push (ec);
+      vregno.safe_push ((int) g->regno);
+      vuf.safe_push (g->use_first ? 1 : 0);
+    }
+
+  lvx_cms_colour (def_, last_, deg, nregs_, ec_, ii, lo, &nn, &ne, &msq,
+		  &spl, &per, &kun, &stuck, &av, &an, &ar, &maxreg, avail,
+		  &vregno, &vuf, &pinned, &pinfail);
+
+  for (unsigned u = 0; u < idx.length (); u++)
+    {
+      lvx_cms_lrange *g = lr[idx[u]];
+      int p2 = lvx_cms_value_p2 (av, (int) u);
+
+      for (int j = 0; j < LVX_CMS_MAX_KUNROLL; j++)
+	g->reg[j] = (int) g->regno;
+      if (p2 > LVX_CMS_MAX_KUNROLL)
+	{
+	  /* More names than the stack can hold.  Not a correctness choice
+	     to make quietly: the range would silently wrap onto a name it
+	     does not own, which is the 3-does-not-divide-4 bug again.  */
+	  wide++;
+	  g->p2unroll = 1;
+	  continue;
+	}
+      g->p2unroll = MAX (p2, 1);
+      for (int j = 0; j < p2; j++)
+	{
+	  int q = lvx_cms_anode_of (av, an, (int) u, j);
+	  if (q >= 0 && ar[q] >= 0)
+	    g->reg[j] = ar[q];
+	}
+    }
+
+  *nn_out = nn;
+  *stuck_out = (int) stuck.length ();
+  *maxreg_out = maxreg;
+  *kun_out = kun;
+  *pin_out = pinned;
+  *pinfail_out = pinfail;
+  *wide_out = wide;
+  return nn > 0 && stuck.is_empty () && pinfail == 0 && wide == 0;
 }
 
 /* THE RANGE A REFERENCE BELONGS TO.  Mirrors
@@ -19279,6 +19491,36 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		  " dup=%d twice=%d maxp2=%d usefirst=%d exitlive=%d\n",
 		  current_function_name (), loop->num, lrok ? "ok" : "BAD",
 		  nrange, lrorph, lrdup, lrtw, lrmaxp2, lruf, lrxl);
+
+    /* STAGE TWO (a): COLOUR THE RANGES, and report the assignment beside the
+       class one.  Nothing is renamed from it yet -- the comparison is the
+       point, because the class figures are what the restriction was measured
+       against.  §7tricies.26.  */
+    if (lrok)
+      {
+	HARD_REG_SET lrresv;
+	unsigned HOST_WIDE_INT lravail = 0;
+	int lrnn = 0, lrstuck = 0, lrmax = -1, lrkun = 1;
+	int lrpin = 0, lrpinf = 0, lrwide = 0;
+	bool lrcok;
+
+	lvx_cms_lrange_reserved (seq, lr, df_get_live_in (loop->header),
+				 &lrresv);
+	for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
+	  if (!TEST_HARD_REG_BIT (lrresv, r))
+	    lravail |= (unsigned HOST_WIDE_INT) 1 << r;
+
+	lrcok = lvx_cms_colour_lranges (seq, lr, found, lo, lravail, &lrnn,
+					&lrstuck, &lrmax, &lrkun, &lrpin,
+					&lrpinf, &lrwide);
+	lvx_cms_dump (";; lvx cms: fn=%s loop %d lrcolour %s nodes=%d"
+		      " stuck=%d maxreg=%d kunroll=%d pinned=%d pinfail=%d"
+		      " wide=%d avail=%d cmaxreg=%d ckunroll=%d\n",
+		      current_function_name (), loop->num,
+		      lrcok ? "ok" : "no", lrnn, lrstuck, lrmax, lrkun,
+		      lrpin, lrpinf, lrwide,
+		      (int) popcount_hwi (lravail), cmaxreg, ckunroll);
+      }
     for (unsigned k = 0; k < lr.length (); k++)
       delete lr[k];
   }
