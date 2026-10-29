@@ -14904,24 +14904,68 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
   for (unsigned i = 0; i < seq.length (); i++)
     {
       df_ref ref;
+      /* A TUPLE REFERENCE IS ONE OPERAND, and DF reports it once PER HARD
+	 REGISTER -- all of them at the SAME location, so all at the same
+	 slot.  §7tricies.70.  Keyed on the reference's own regno and with a
+	 range opened per register, as the first version was, a 256-bit load
+	 became FOUR ranges each claiming the same operand:
+
+	   lr3 r32 root=3 eff=1/0D,8/1U      lo.s $r32r33r34r35 = ...
+	   lr4 r33 root=4 eff=1/0D,8/1U
+	   lr5 r34 root=5 eff=1/0D,9/1U
+	   lr6 r35 root=6 eff=1/0D,9/1U
+
+	 and lvx_cms_verify_lranges, which counts the distinct ROOTS claiming
+	 each operand, reported four for one -- `dup', which refused the loop.
+	 It refused 44 of 131 PolyBench loops, every one of them a body with a
+	 tuple reference and not one without: the dominant blocker, and it was
+	 the vectorised bodies.
+
+	 So the range is keyed on the operand's BASE register, which is
+	 REGNO (DF_REF_REG) -- the whole tuple's rtx -- and not on
+	 DF_REF_REGNO, which is the individual word.  And the N references are
+	 collapsed to one effect, since the SLOT identifies the operand: a
+	 slot is the position of a REG in the pattern's sub-rtx walk, so two
+	 different operands cannot share one.  SEENUSE and SEENDEF carry that
+	 within the instruction, the two sides separately because a
+	 read-modify-write operand is legitimately both.  */
+      auto_vec<int> seenuse, seendef;
 
       /* Uses first: they read what the open range holds.  */
       FOR_EACH_INSN_USE (ref, seq[i])
 	{
-	  unsigned r = DF_REF_REGNO (ref);
-	  rtx ureg = DF_REF_REG (ref);
+	  /* THE OPERAND'S WIDTH COMES FROM THE PATTERN, not from the
+	     reference.  DF_REF_REG gives the individual word -- REG_NREGS of
+	     it is 1 even for a quad -- while DF_REF_LOC points at the REG as
+	     WRITTEN, whose mode carries the real width and whose REGNO is the
+	     tuple's base.  Taking the width from the reference left every
+	     range one register wide: the colouring then allocated a single
+	     name for a four-register operand and the substitution wrote an
+	     unaligned tuple base, which lvx_qgr_reg_name and
+	     lvx_pgr_reg_name assert on.  */
+	  rtx *uloc = DF_REF_LOC (ref);
+	  rtx ureg = (uloc && *uloc && REG_P (*uloc)) ? *uloc
+							: DF_REF_REG (ref);
+	  int nr = ureg && REG_P (ureg) ? REG_NREGS (ureg) : 1;
+	  unsigned r = (ureg && REG_P (ureg)) ? REGNO (ureg)
+					      : DF_REF_REGNO (ref);
 	  lvx_cms_effect e = { i, lvx_cms_reg_index (PATTERN (seq[i]),
 						    DF_REF_LOC (ref)),
-			       ureg && REG_P (ureg) ? REG_NREGS (ureg) : 1,
-			       false, false };
+			       nr, false, false };
 
 	  if (r >= FIRST_PSEUDO_REGISTER)
 	    continue;
+	  if (e.slot >= 0)
+	    {
+	      if (seenuse.contains (e.slot))
+		continue;		/* another word of one operand */
+	      seenuse.safe_push (e.slot);
+	    }
 	  if (open[r] < 0)
 	    {
 	      lvx_cms_lrange *n = new lvx_cms_lrange ();
 	      n->regno = r;
-	      n->nregs = 1;
+	      n->nregs = nr;
 	      /* USE_FIRST means the CYCLIC WRAP and nothing else, so the
 		 normalisation below is the only place that sets it.  A range
 		 that is still use-headed afterwards belongs to a register the
@@ -14936,6 +14980,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	      open[r] = (int) lr.length ();
 	      lr.safe_push (n);
 	    }
+	  lr[open[r]]->nregs = MAX (lr[open[r]]->nregs, nr);
 	  lr[open[r]]->effects.safe_push (e);
 	}
 
@@ -15035,12 +15080,15 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       /* Then the definitions: each opens a new range.  */
       FOR_EACH_INSN_DEF (ref, seq[i])
 	{
-	  unsigned r = DF_REF_REGNO (ref);
-	  rtx reg = DF_REF_REG (ref);
+	  rtx *dloc = DF_REF_LOC (ref);
+	  rtx reg = (dloc && *dloc && REG_P (*dloc)) ? *dloc
+						     : DF_REF_REG (ref);
+	  int nr = reg && REG_P (reg) ? REG_NREGS (reg) : 1;
+	  unsigned r = (reg && REG_P (reg)) ? REGNO (reg)
+					    : DF_REF_REGNO (ref);
 	  lvx_cms_effect e = { i, lvx_cms_reg_index (PATTERN (seq[i]),
 						    DF_REF_LOC (ref)),
-			       reg && REG_P (reg) ? REG_NREGS (reg) : 1,
-			       true, false };
+			       nr, true, false };
 
 	  /* A READ-MODIFY-WRITE REFERENCE IS ONE OPERAND, and DF reports it
 	     twice -- as a use and as a definition at the SAME location.  The
@@ -15052,9 +15100,15 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
 	  if (r >= FIRST_PSEUDO_REGISTER)
 	    continue;
+	  if (e.slot >= 0)
+	    {
+	      if (seendef.contains (e.slot))
+		continue;		/* another word of one operand */
+	      seendef.safe_push (e.slot);
+	    }
 	  lvx_cms_lrange *n = new lvx_cms_lrange ();
 	  n->regno = r;
-	  n->nregs = reg && REG_P (reg) ? REG_NREGS (reg) : 1;
+	  n->nregs = nr;
 	  n->use_first = false;
 	  n->exit_live = false;
 	  n->renamed = false;
