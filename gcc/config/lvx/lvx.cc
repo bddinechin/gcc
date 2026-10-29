@@ -14407,11 +14407,40 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 		continue;
 	      if (d < de || (d == de && (int) i <= ie))
 		continue;
-	      /* A jump in an epilogue cannot be an exit from it -- the
-		 iterations it would have guarded are the ones already
-		 discarded -- so the loopback's instances are dropped here
-		 rather than emitted and inverted.  */
-	      if ((int) i == loopback)
+	      /* THE EXITING ITERATION STOPS AT ITS EXIT.  §7tricies.46.
+
+		 The iteration bound above (l <= le) already keeps the drain
+		 from running iterations the exit discarded.  What it does not
+		 do is stop iteration LE itself: an instance of LE scheduled
+		 after the exit's date was included, and in program order it
+		 comes AFTER the exit, so the original loop never ran it.
+
+		 That is invisible for a BOTTOM test, where the exit is the
+		 last instruction of the body and `i > ie' is impossible --
+		 which is why every single-exit loop was right.  For a TOP
+		 test it is the whole difference: on validation/cms/twoexit.c
+		 the exit-A drain ran `acc += A[i]' and `i++' for the very
+		 iteration whose test had just broken out, so both the sum and
+		 the returned index were wrong.  Instances of LE BEFORE the
+		 exit stay: the original loop did run them, and the schedule
+		 may have placed them after the exit's date.  */
+	      if (l == le && (int) i > ie)
+		continue;
+	      /* NO JUMP IN AN EPILOGUE, whichever jump it is.  §7tricies.45.
+
+		 A drain is entered because some exit fired at iteration L.
+		 Every iteration below L completed in the original program, so
+		 none of ITS jumps would have exited; every iteration above L
+		 must not run at all, so none of its jumps may exit.  Either
+		 way a jump instance reaching the drain would not branch, and
+		 dropping it is what emits the drain as the straight line it
+		 is.  The epilogue's own redirect carries it to the right
+		 destination.
+
+		 This was `i == loopback', which is the same statement for a
+		 single-jump body and leaves a second jump to be emitted as an
+		 exit the drain has no epilogue for.  */
+	      if (JUMP_P (seq[i]))
 		continue;
 	      if (is_main)
 		pl->epilogue++;
@@ -17032,6 +17061,9 @@ lvx_cms_verify_slots (const auto_vec<rtx_insn *> &seq,
    re-finding it cannot go stale against a redirect elsewhere.  */
 struct lvx_cms_site
 {
+  /* The loop itself, so the emission can ask which of a jump's successors
+     leaves it -- a multi-exit body needs that per jump, not once.  */
+  class loop *loop;
   basic_block preheader, header, latch, exit_src, exit_dest;
   int nstages;
   struct lvx_cms_plan plan;
@@ -17066,6 +17098,50 @@ struct lvx_cms_site
      be true of the loop in hand.  */
   bool entry_admits;
 };
+
+/* THE BLOCK A JUMP LEAVES THE LOOP FOR, or null if it has none.  A multi-exit
+   body needs this per jump: lu's loop 7 exits to bb 23 from the header and to
+   bb 18 from the latch, so one SITE->EXIT_DEST cannot describe both.  */
+
+static basic_block
+lvx_cms_jump_exit_dest (const struct lvx_cms_site *site, rtx_insn *jmp)
+{
+  basic_block bb = BLOCK_FOR_INSN (jmp);
+  edge e;
+  edge_iterator ei;
+
+  if (!bb || !site->loop)
+    return NULL;
+  FOR_EACH_EDGE (e, ei, bb->succs)
+    if (!flow_bb_inside_loop_p (site->loop, e->dest))
+      return e->dest;
+  return NULL;
+}
+
+/* Does this jump CONTINUE the loop when taken?  The early-exit emission has to
+   invert such a jump so that leaving becomes the taken direction, and must NOT
+   invert one that already exits when taken -- which is the difference between
+   a bottom test and a top test, and the reason a second jump cannot simply be
+   treated like the loopback.  */
+
+static bool
+lvx_cms_jump_taken_stays_p (const struct lvx_cms_site *site, rtx_insn *jmp)
+{
+  basic_block bb = BLOCK_FOR_INSN (jmp);
+  edge ft, taken = NULL;
+  edge e;
+  edge_iterator ei;
+
+  if (!bb || !site->loop)
+    return true;
+  ft = find_fallthru_edge (bb->succs);
+  FOR_EACH_EDGE (e, ei, bb->succs)
+    if (e != ft)
+      taken = e;
+  if (!taken)
+    return true;
+  return flow_bb_inside_loop_p (site->loop, taken->dest);
+}
 
 /* A finding kept although the code that needed it is gone, because make_insns
    will face it again: `redirect_edge_and_branch' retargets the JUMP and
@@ -17529,20 +17605,45 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   if (blocks.length () != nnode || nnode == 0)
     return false;
 
-  /* ONE JUMP ONLY.  A second jump in the body is an exit the epilogue
-     enumeration does not model -- build_plan drops only the loopback from an
-     epilogue's slots -- so such a loop is declined rather than emitted with a
-     branch nothing targets.  */
+  /* THE LOOPBACK IS THE LATCH'S JUMP, not the last jump in body order.
+     §7tricies.45.
+
+     This used to require exactly ONE jump and take it as the loopback, which
+     declined every multi-exit body -- a loop tested at the top AND at the
+     bottom, which is what lu's loop 7 and ludcmp's loop 8 are.  Two jumps are
+     now allowed and told apart by the CFG: the loopback is the one whose block
+     is the latch and which has the header among its successors; every other
+     jump is an exit with its own destination.
+
+     Taking the last jump in body order happened to agree on both of those
+     loops, and agreeing by accident is not the same as being derived.  */
   int loopback = -1, njump = 0;
   for (unsigned i = 0; i < seq.length (); i++)
     if (JUMP_P (seq[i]))
       {
-	loopback = (int) i;
+	basic_block jb = BLOCK_FOR_INSN (seq[i]);
+
 	njump++;
+	if (jb && jb == site->latch)
+	  {
+	    edge e;
+	    edge_iterator ei;
+
+	    FOR_EACH_EDGE (e, ei, jb->succs)
+	      if (e->dest == site->header)
+		loopback = (int) i;
+	  }
       }
-  *why = "body has more than one jump";
-  if (njump != 1 || loopback < 0)
+  *why = "no jump in the latch returns to the header";
+  if (loopback < 0)
     return false;
+  /* Every jump must have a destination outside the loop to drain to, or it is
+     an intra-loop branch this emission does not model.  */
+  *why = "a jump has no exit out of the loop";
+  for (unsigned i = 0; i < seq.length (); i++)
+    if (JUMP_P (seq[i]) && (int) i != loopback
+	&& !lvx_cms_jump_exit_dest (site, seq[i]))
+      return false;
 
   /* The first kernel node is the branch target that closes the loop, and the
      main epilogue carries the ITER_SLOT instance -- which is how an emitted
@@ -17704,18 +17805,32 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   *why = "cannot redirect an epilogue to the loop exit";
   for (unsigned k = 0; k < nnode; k++)
     {
+      /* EACH DRAIN ENDS WHERE ITS OWN EXIT WENT.  §7tricies.45.  Every
+	 epilogue used to be redirected to SITE->EXIT_DEST, the latch's
+	 out-of-loop successor, which is right only while there is one exit.
+	 A drain for a jump that left the loop elsewhere has to arrive where
+	 that jump went; the MAIN epilogue is the ITER_SLOT fall-out and does
+	 belong to the latch.  */
+      basic_block dest = site->exit_dest;
+
       if (nodes[k].kind != LVX_CMS_NODE_EPILOGUE)
 	continue;
+      if (!nodes[k].main_epilogue && nodes[k].exit_insn >= 0
+	  && nodes[k].exit_insn < (int) seq.length ())
+	{
+	  dest = lvx_cms_jump_exit_dest (site, seq[nodes[k].exit_insn]);
+	  if (!dest)
+	    return false;
+	}
       if (!single_succ_p (blocks[k]))
 	return false;
-      if (single_succ (blocks[k]) == site->exit_dest)
+      if (single_succ (blocks[k]) == dest)
 	continue;
       /* The return value is the block this had to SPLIT, and null on the
 	 ordinary path -- so testing it for failure would fail on success.
 	 The function asserts rather than returning on a redirect it cannot
 	 do, which is why there is nothing to test.  */
-      redirect_edge_and_branch_force (single_succ_edge (blocks[k]),
-				      site->exit_dest);
+      redirect_edge_and_branch_force (single_succ_edge (blocks[k]), dest);
     }
 
   /* EMIT.  The slot list is already in (date, iteration, order), which is the
@@ -17764,10 +17879,19 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	    }
 	}
 
-      if ((int) i == loopback)
+      if (JUMP_P (seq[i]))
 	{
-	  /* THE BRANCH.  Both kinds are the same copied jump; what differs is
-	     where it goes and whether the condition is inverted.  */
+	  /* THE BRANCH.  Every jump goes through here, not just the loopback:
+	     the test was `i == loopback', which for a multi-exit body sent the
+	     OTHER jump down the ordinary-instruction path below, where
+	     emit_insn_after copies a jump pattern into a non-JUMP insn.  The
+	     CFG then knows nothing of it while the assembler still prints a
+	     branch to the original label, so the label is never emitted:
+	     `undefined reference to .L8', caught by validation/cms/twoexit.c
+	     and by nothing that merely compiles (§7tricies.45).
+
+	     What differs between the kinds is where it goes and whether the
+	     condition is inverted.  */
 	  rtx_insn *j = emit_jump_insn_after (copy_insn (PATTERN (seq[i])),
 					     after);
 	  /* The copy carries the original label_ref, so JUMP_LABEL is set to
@@ -17791,14 +17915,18 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	    }
 	  else
 	    {
-	      /* Its own epilogue: the node whose EXIT_DATE and EXIT_ITER are
-		 this instance.  */
+	      /* Its own epilogue: the node whose EXIT_DATE, EXIT_ITER and
+		 EXIT_INSN are this instance.  EXIT_INSN is part of the key
+		 because two jumps of a multi-exit body can have instances at
+		 one date and iteration, and the drain they need is not the
+		 same one (§7tricies.45).  */
 	      int ep = -1;
 	      for (unsigned e = 0; e < nnode; e++)
 		if (nodes[e].kind == LVX_CMS_NODE_EPILOGUE
 		    && !nodes[e].main_epilogue
 		    && nodes[e].exit_date == slots[q].date
-		    && nodes[e].exit_iter == slots[q].iter)
+		    && nodes[e].exit_iter == slots[q].iter
+		    && nodes[e].exit_insn == (int) i)
 		  ep = (int) e;
 	      if (ep < 0)
 		{
@@ -17806,9 +17934,21 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		  return false;
 		}
 	      target = blocks[ep];
-	      if (!invert_jump (jj, block_label (target), 0))
+	      /* INVERT ONLY A JUMP THAT CONTINUES THE LOOP WHEN TAKEN.  The
+		 loopback does, so leaving has to become the taken direction.
+		 A top test does not -- it already exits when taken -- and
+		 inverting it would send the CONTINUING case to the drain.  */
+	      if (lvx_cms_jump_taken_stays_p (site, seq[i]))
 		{
-		  *why = "cannot invert an early exit";
+		  if (!invert_jump (jj, block_label (target), 0))
+		    {
+		      *why = "cannot invert an early exit";
+		      return false;
+		    }
+		}
+	      else if (!redirect_jump (jj, block_label (target), 0))
+		{
+		  *why = "cannot retarget an early exit";
 		  return false;
 		}
 	    }
@@ -20507,7 +20647,51 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   struct lvx_cms_plan pl;
   auto_vec<lvx_cms_slot> plslots;
   auto_vec<lvx_cms_node> plnodes;
-  lvx_cms_build_plan (seq, sigma, found, igkunroll > 0 ? igkunroll : 1,
+  /* THE PLAN'S KUNROLL MUST BE THE RENAMING'S.  §7tricies.47.
+
+     This was IGKUNROLL, from the VALUE colouring, and that was right while
+     codegen renamed from the value/class assignment.  It renames from the
+     LINEAGE assignment now, whose kunroll is its own, and when the two differ
+     the kernel is built with one number of copies while the names rotate with
+     another: the copy that should write name 1 writes name 0, so a register
+     the loop depends on is written only in the prologue.
+
+     On `for (k = 0; k < 16; k++) acc = acc * 3 + A[k]' the plan built a
+     one-copy kernel (PLKER = 5 for a five-instruction body) while the
+     lineages asked for two, and the emitted kernel held neither the load nor
+     the pointer increment of its second copy -- so the exit test compared a
+     register nothing updated and the loop did not terminate.  Caught by
+     validation/cms/twoexit.c, whose main happens to contain that loop, and by
+     nothing in the four older gate programs.
+
+     So the lineage colouring runs FIRST, and only its kunroll reaches the
+     plan.  The codegen block below colours again from the same inputs and
+     checks the two agree, so a future divergence is refused rather than
+     emitted.  */
+  int plkun = 1;
+  {
+    auto_vec<lvx_cms_lrange *> klr;
+    HARD_REG_SET kresv;
+    unsigned HOST_WIDE_INT kavail = 0;
+    int knn = 0, kst = 0, kmx = -1, kkun = 1, kpin = 0, kpinf = 0, kwide = 0;
+
+    lvx_cms_build_lranges (seq, klr, NULL, NULL, NULL);
+    /* No LIVEOUT here: it sets EXIT_LIVE only, which the epilogue copy wants
+       and the unroll factor does not, and the bitmap is not in scope yet.  */
+    lvx_cms_set_lrange_dates (seq, klr, sigma, found, NULL);
+    lvx_cms_lrange_reserved (seq, klr, df_get_live_in (loop->header), &kresv);
+    for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
+      if (!TEST_HARD_REG_BIT (kresv, r))
+	kavail |= (unsigned HOST_WIDE_INT) 1 << r;
+    if (lvx_cms_colour_lranges (seq, klr, found, lo, kavail, &knn, &kst, &kmx,
+				&kkun, &kpin, &kpinf, &kwide))
+      plkun = kkun > 0 ? kkun : 1;
+    else
+      plkun = igkunroll > 0 ? igkunroll : 1;
+    for (unsigned z = 0; z < klr.length (); z++)
+      delete klr[z];
+  }
+  lvx_cms_build_plan (seq, sigma, found, plkun,
 		      nstages, loop->num_nodes, &pl, &plslots, &plnodes);
 
   /* THE MASTER SCHEDULE'S DATAFLOW, checked on the recorded slots before any
@@ -21043,6 +21227,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       site.renameable = rnok;
       site.antidep_ok = adok;
       site.classocc_ok = cgocc;
+      site.loop = loop;
       /* §7tricies.43: all exits from the loopback's own block, so the body
 	 runs to completion once per entry.  */
       {
@@ -21079,6 +21264,45 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	   it is unconditional and entering runs all of it.  */
 	site.entry_admits = (lb >= 0 && nexit > 0 && nelse == 0
 			     && BLOCK_FOR_INSN (seq[lb]) == loop->latch);
+
+	/* A MULTI-JUMP BODY, PRINTED.  The refusal says only that there is
+	   more than one jump; what the fix needs is which jump is the
+	   loopback, where the others go, and whether their targets are
+	   inside the loop.  */
+	{
+	  int nj = 0;
+
+	  for (unsigned z = 0; z < seq.length (); z++)
+	    if (JUMP_P (seq[z]))
+	      nj++;
+	  if (nj > 1)
+	    for (unsigned z = 0; z < seq.length (); z++)
+	      {
+		basic_block zb = BLOCK_FOR_INSN (seq[z]);
+		int code = INSN_CODE (seq[z]);
+
+		lvx_cms_dump (";; lvx cms:   body %u uid=%d bb=%d%s%s %s",
+			      z, INSN_UID (seq[z]), zb ? zb->index : -1,
+			      zb == loop->header ? " HDR" : "",
+			      zb == loop->latch ? " LATCH" : "",
+			      code >= 0 ? get_insn_name (code) : "?");
+		if (JUMP_P (seq[z]))
+		  {
+		    edge e;
+		    edge_iterator ei;
+
+		    lvx_cms_dump (" JUMP label=%d succs=",
+				  JUMP_LABEL (seq[z])
+				  ? INSN_UID (JUMP_LABEL (seq[z])) : -1);
+		    if (zb)
+		      FOR_EACH_EDGE (e, ei, zb->succs)
+			lvx_cms_dump ("%d%s ", e->dest->index,
+				      flow_bb_inside_loop_p (loop, e->dest)
+				      ? "(in)" : "(OUT)");
+		  }
+		lvx_cms_dump ("\n");
+	      }
+	}
 	lvx_cms_dump (";; lvx cms: fn=%s loop %d entryadmits=%d exits=%d"
 		      " notlatch=%d jumpislatch=%d\n",
 		      current_function_name (), loop->num,
@@ -21248,7 +21472,11 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		      }
 		  }
 
-		if (pl.steady_bad)
+		if (kun != plkun)
+		  /* §7tricies.47: the kernel was built for a different number
+		     of copies than the names rotate through.  */
+		  iwhy = "the plan and the renaming disagree about kunroll";
+		else if (pl.steady_bad)
 		  /* The kernel is not a steady state: see the long note at
 		     STEADYBAD's computation.  A block missing one instance of
 		     one instruction is missing it on every trip.  */
