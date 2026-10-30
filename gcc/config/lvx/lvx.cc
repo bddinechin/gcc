@@ -16004,12 +16004,20 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 			   const auto_vec<lvx_cms_lrange *> &lr,
 			   int ii, int lo, int kunroll, int *nconf_out,
 			   int *first_a, int *first_b, int *first_reg,
-			   int *first_cycle)
+			   int *first_cycle, int *nheld_out, int *ninv_out,
+			   int *nocc_out)
 {
   int per = kunroll * ii;
+  /* ONE COUNT FOR THREE CAUSES WAS THE DEFECT.  §7tricies.92.  A loop that
+     fails for register pressure and a loop whose expansion invariant broke
+     reported the same way, so neither could be acted on: the invariant is a
+     statement about our own arithmetic and must be asserted, while an
+     occupancy collision is an allocation outcome an input can reach and must
+     be refused.  Counted apart so the difference is visible.  */
+  int nheld = 0, ninv = 0, nocc = 0;
   int nconf = 0;
 
-  *nconf_out = 0;
+  *nconf_out = *nheld_out = *ninv_out = *nocc_out = 0;
   *first_a = *first_b = *first_reg = *first_cycle = -1;
   if (ii <= 0 || kunroll <= 0 || per > LVX_CMS_IG_MAX_PERIOD)
     return true;		/* not modelled: the caller's other gates */
@@ -16051,7 +16059,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 			*first_reg = r;
 			*first_cycle = c;
 		      }
-		    nconf++;
+		    nconf++, nheld++;
 		  }
 		else
 		  occ[c * 64 + r] = root;
@@ -16079,6 +16087,15 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 	 miscompiled.  */
       if (life > g->p2unroll * ii)
 	{
+	  /* NOT BAD LUCK WITH A LOOP: OUR OWN ARITHMETIC.  §7tricies.92.
+	     P2UNROLL is derived from LIFE to satisfy exactly this, so no
+	     input can break it -- unless the derivation was abandoned, which
+	     happens in one place only: a range needing more names than
+	     LVX_CMS_MAX_KUNROLL has its degree capped, and says so.  That
+	     case is a capacity limit an input can reach and is refused
+	     below; every other way of arriving here is a bug, and refusing
+	     the loop would hide it behind a silently unpipelined loop.  */
+	  gcc_assert (g->capped);
 	  if (nconf == 0)
 	    {
 	      *first_a = root;
@@ -16086,7 +16103,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 	      *first_reg = (int) g->regno;
 	      *first_cycle = -1;
 	    }
-	  nconf++;
+	  nconf++, ninv++;
 	}
 
       /* Name J carries the copies congruent to J modulo P2UNROLL, which is
@@ -16112,7 +16129,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 			  *first_reg = r;
 			  *first_cycle = c;
 			}
-		      nconf++;
+		      nconf++, nocc++;
 		    }
 		  else
 		    occ[c * 64 + r] = root;
@@ -16121,6 +16138,9 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
     }
 
   *nconf_out = nconf;
+  *nheld_out = nheld;
+  *ninv_out = ninv;
+  *nocc_out = nocc;
   return nconf == 0;
 }
 
@@ -23304,6 +23324,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		int subst = 0, refused = 0;
 		int cgloopback = -1;
 		int nconf = 0, ca = -1, cb = -1, creg = -1, ccyc = -1;
+		/* §7tricies.92: apart, because they mean different things.  */
+		int cnheld = 0, cninv = 0, cnocc = 0;
 		int pool = 0;
 		bool cok, vok, rok2, aok = true, lok = true, claimed = false;
 
@@ -23350,7 +23372,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 						 &refused);
 		aok = lvx_cms_verify_lr_antidep (seq, cglr, found, lo,
 						 kun > 0 ? kun : 1, &nconf,
-						 &ca, &cb, &creg, &ccyc);
+						 &ca, &cb, &creg, &ccyc,
+						 &cnheld, &cninv, &cnocc);
 		if (!aok && lvx_cms_probe && dump_file)
 		  {
 		    /* The two live ranges as the CODEGEN assignment left them,
@@ -23414,11 +23437,13 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		lvx_cms_dump (";; lvx cms: fn=%s loop %d cgcolour %s nodes=%d"
 			      " maxreg=%d kunroll=%d subst=%d refused=%d"
 			      " linear=%d claimed=%d lrantidep=%s conf=%d"
+			      " held=%d inv=%d occ=%d"
 			      " pair=%d/%d/r%d@%d avail=%d savepool=%d\n",
 			      current_function_name (), loop->num,
 			      cok ? "ok" : "no", nn, mx, kun, subst, refused,
 			      lok ? 1 : 0, claimed ? 1 : 0,
-			      aok ? "ok" : "BAD", nconf, ca, cb, creg, ccyc,
+			      aok ? "ok" : "BAD", nconf,
+			      cnheld, cninv, cnocc, ca, cb, creg, ccyc,
 			      (int) popcount_hwi (cgavail), pool);
 		/* THE CODEGEN SET, TAGGED.  Only the probe set was dumped,
 		   and the two are built at different stages from different
