@@ -16040,36 +16040,68 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 	continue;		/* one live range, one occupancy */
       nr = MAX (g->nregs, 1);
 
-      if (!g->renamed)
-	{
-	  /* Held: its register is claimed for the whole period.  */
-	  for (int c = 0; c < per; c++)
-	    for (int w = 0; w < nr; w++)
-	      {
-		int r = (int) g->regno + w;
-
-		if (r < 0 || r >= 64)
-		  continue;
-		if (occ[c * 64 + r] >= 0 && occ[c * 64 + r] != root)
-		  {
-		    if (nconf == 0)
-		      {
-			*first_a = occ[c * 64 + r];
-			*first_b = root;
-			*first_reg = r;
-			*first_cycle = c;
-		      }
-		    nconf++, nheld++;
-		  }
-		else
-		  occ[c * 64 + r] = root;
-	      }
-	  continue;
-	}
-
       ec = (lvx_cms_ec_policy ? g->ec : lvx_cms_lrange_ec_p (seq, g)) ? 1 : 0;
       d = g->first_date - lo + (ec ? 0 : 1);
       life = MAX (g->last_date - g->first_date + (ec ? 1 : 0), 1);
+
+      if (!g->renamed)
+	{
+	  /* A HELD RANGE IS BUSY FOR ITS LIFE, NOT FOR THE PERIOD.
+	     §7tricies.93.
+
+	     It used to claim its register for all PER cycles, on the reasoning
+	     that a range the expansion cannot rename is simply unavailable.
+	     That over-claims by the whole period: two SEQUENTIAL ranges of one
+	     hard register then collide at every cycle, though they never
+	     overlap and the incoming allocation already proved they do not.
+	     Measured: 768 such conflicts across MiBench, every one of them
+	     spurious, refusing three loops -- among them
+
+	       lr2 r11+1 p2=1 ren=0 [1,2] eff=1/0D,7/1U
+	       lr9 r11+1 p2=1 ren=0 [2,3] eff=7/0D,10/1U
+
+	     where insn 7 reads the first and defines the second, both in r11.
+
+	     The right occupancy is the one the expansion path below already
+	     computes, for P2UNROLL of 1: a single name, busy for LIFE cycles
+	     at every iteration offset in the period.  So this is the same loop
+	     with REGNO as the only name -- no new model, one less
+	     approximation -- and it keeps the ec convention, which is what
+	     separates the two ranges above into cycles 2 and 3 rather than
+	     leaving them adjacent at 2.
+
+	     Still skipping the invariant check below, and that is not an
+	     oversight: a held range's P2UNROLL is 1 by construction rather
+	     than derived from its LIFE, so LIFE <= P2UNROLL * II is not a
+	     statement about it.  §7tricies.92.  */
+	  for (int cp = 0; cp < kunroll; cp++)
+	    for (int t = 0; t < life; t++)
+	      {
+		int c = ((d + cp * ii + t) % per + per) % per;
+
+		for (int w = 0; w < nr; w++)
+		  {
+		    int r = (int) g->regno + w;
+
+		    if (r < 0 || r >= 64)
+		      continue;
+		    if (occ[c * 64 + r] >= 0 && occ[c * 64 + r] != root)
+		      {
+			if (nconf == 0)
+			  {
+			    *first_a = occ[c * 64 + r];
+			    *first_b = root;
+			    *first_reg = r;
+			    *first_cycle = c;
+			  }
+			nconf++, nheld++;
+		      }
+		    else
+		      occ[c * 64 + r] = root;
+		  }
+	      }
+	  continue;
+	}
 
       /* THE SAME-LIVE RANGE DROP, CHECKED.  §7tricies.79.
 
@@ -16440,6 +16472,47 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
       ec_.safe_push (ec);
       vregno.safe_push ((int) g->regno);
       vuf.safe_push (g->use_first ? 1 : 0);
+    }
+
+  /* MORE NAMES THAN NEEDED, TO LOOSEN THE COLOURING.  §7tricies.94.
+
+     A name carries the kernel copies congruent to it modulo its degree, so a
+     range of degree 2 in a kernel unrolled 4 times has copies 0 and 2 FORCED
+     to share one name.  Raising the degree to KUNROLL turns that forced
+     sharing into a choice -- each name then carries exactly one copy, and its
+     occupancy falls by the factor KUNROLL/degree, which is what makes the
+     interference graph sparser.  Nothing is emitted for this: the copies
+     already exist as separate instances in the unrolled kernel, so it is a
+     renaming and not a split.
+
+     It is not free, though, and the price is not in the kernel.  A range live
+     on an exit edge must be reconciled to the architected register in every
+     drain, and which name holds the value depends on the rotation the exit
+     came from -- so raising its degree multiplies the epilogue copies, once
+     per loop entry.  Hence the two settings: 1 takes the colouring benefit
+     only where there is no such cost, 2 accepts it everywhere.
+
+     Ranges that are not renamed are already excluded: the loop above skips
+     them, so a held range keeps its degree of 1 as §7tricies.91 requires.  */
+  if (lvx_cms_force_p2unroll && !deg.is_empty ())
+    {
+      int mx = 1, k2 = 1, forced = 0;
+
+      for (unsigned u = 0; u < deg.length (); u++)
+	mx = MAX (mx, deg[u]);
+      while (k2 < mx && k2 < LVX_CMS_MAX_KUNROLL)
+	k2 <<= 1;
+      for (unsigned u = 0; u < deg.length (); u++)
+	{
+	  if (deg[u] >= k2)
+	    continue;
+	  if (lvx_cms_force_p2unroll < 2 && lr[idx[u]]->exit_live)
+	    continue;
+	  deg[u] = k2, forced++;
+	}
+      if (forced && lvx_cms_probe)
+	lvx_cms_dump (";; lvx cms:   forcep2 kunroll=%d forced=%d of %u\n",
+		      k2, forced, deg.length ());
     }
 
   lvx_cms_colour (def_, last_, deg, nregs_, ec_, ii, lo, &nn, &ne, &msq,
