@@ -85,10 +85,6 @@ msuperblock-loops
 Target Var(lvx_superblock_loops) Init(1) Optimization
 Lay inner loop bodies out as one superblock run before EBB scheduling.
 
-mself-copy-boundary
-Target Var(lvx_self_copy_boundary) Init(0) Optimization
-Insert self-copies for an inner loop's live-in and live-out registers in its preheader and exit blocks, so register renaming can rename ranges that cross the region boundary.  Unused ones are dropped again.
-
 munfold-inner-loops
 Target Var(lvx_unfold_inner_loops) Init(0) Optimization
 Duplicate the body of an inner loop that is not a hardware loop, so the extended basic block is twice as long.  Implies -mregrename-inner-loops.
