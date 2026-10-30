@@ -5,12 +5,6 @@ ffixed-reg
 Target RejectNegative Joined Var(lvx_deferred_options) Defer
 Set the passed register range as fixed
 
-fstack-limit-register=
-Common RejectNegative Joined Var(lvx_deferred_options) Defer
-
-fstack-limit-symbol=
-Common RejectNegative Joined Var(lvx_deferred_options) Defer
-
 fshaker-seed=
 Target RejectNegative Joined Var(lvx_deferred_options) Defer
 

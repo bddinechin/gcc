@@ -796,70 +796,6 @@ lvx_handle_fixed_reg_option (const char *arg)
 
 /* Fixed Reg Option }}} */
 
-/* -fstack-limit-register {{{ */
-
-/* Return TRUE if target supports -fstack-limit-register */
-bool
-lvx_has_stack_checking (void)
-{
-#ifdef GCC_LVX_MPPA_COS
-  return true;
-#else
-  return false;
-#endif
-}
-
-static bool
-lvx_handle_stack_limit_symbol_option (const char *arg)
-{
-  if (lvx_has_stack_checking ())
-    {
-      /* Only allow $sr as stack-limit register */
-      if (strncmp (arg, "__cos_stack_limit", 17))
-	error ("only %<__cos_stack_limit%> can be used as stack-limit symbol");
-      else
-	{
-	  /* Deactivate previous OPT_fstack_limit_register_ options.  */
-	  opt_fstack_limit_symbol_arg = arg;
-	  opt_fstack_limit_register_no = -1;
-	}
-
-      return true;
-    }
-  else
-    error ("%<-fstack-limit-*%> is not supported");
-
-  return false;
-}
-
-static bool
-lvx_handle_stack_limit_register_option (const char *arg)
-{
-  if (lvx_has_stack_checking ())
-    {
-      int reg = decode_reg_name (arg);
-      if (reg < 0)
-	error ("unrecognized register name %qs", arg);
-      /* Only allow $sr as stack-limit register */
-      else if (strncmp (arg, "sr", 2))
-	error ("only $sr can be used as stack-limit register");
-      else
-	{
-	  /* Deactivate previous OPT_fstack_limit_symbol_ options.  */
-	  opt_fstack_limit_symbol_arg = NULL;
-	  opt_fstack_limit_register_no = reg;
-	}
-
-      return true;
-    }
-  else
-    error ("%<-fstack-limit-*%> is not supported");
-
-  return false;
-}
-
-/* -fstack-limit-register }}} */
-
 /* Options Handling }}} */
 
 /* Function Entry and Exit {{{ */
@@ -1424,14 +1360,6 @@ lvx_compute_frame_info (void)
 
   frame->frame_size = inc_sp_offset;
   frame->laid_out = true;
-}
-
-int
-lvx_get_real_frame_size (function *fun)
-{
-  return reload_completed
-    ? fun->machine->frame.frame_size.to_constant ()
-    : -1;
 }
 
 static void
@@ -10397,12 +10325,6 @@ lvx_option_override (void)
 	case OPT_ffixed_reg:
 	  lvx_handle_fixed_reg_option (opt->arg);
 	  break;
-	case OPT_fstack_limit_register_:
-	  lvx_handle_stack_limit_register_option (opt->arg);
-	  break;
-	case OPT_fstack_limit_symbol_:
-	  lvx_handle_stack_limit_symbol_option (opt->arg);
-	  break;
 	case OPT_fshaker_seed_:
 	  lvx_shaker_enabled = true;
 	  break;
@@ -10410,6 +10332,27 @@ lvx_option_override (void)
 	  gcc_unreachable ();
 	}
     }
+
+  /* `-fstack-limit-*' MUST BE REFUSED, NOT IGNORED.  The pass that
+     implemented it (`lvx-prologue-stack-limit.cc') was built only for
+     lvx-*-cos and is retired, but common.opt still ACCEPTS both options on
+     every target: they are deferred, and the generic handler merely records
+     `stack_limit_rtx'.  GCC then consults it only in
+     `allocate_dynamic_stack_space', so a function with an ordinary frame is
+     left completely unchecked and nothing is printed -- a request for stack
+     checking answered silently with none.  Measured after the retirement:
+     `-fstack-limit-register=sr' on a 256-element frame returned 0 with no
+     diagnostic.  An error is the only honest answer while no pass exists.  */
+  vec <cl_deferred_option> *cv
+    = (vec <cl_deferred_option> *) common_deferred_options;
+  if (cv)
+    FOR_EACH_VEC_ELT (*cv, i, opt)
+      if (opt->opt_index == OPT_fstack_limit_register_
+	  || opt->opt_index == OPT_fstack_limit_symbol_)
+	{
+	  error ("%<-fstack-limit-*%> is not supported on LVX");
+	  break;
+	}
 
   /* THE TWO UNSOUND MEASUREMENT SWITCHES MAY NOT REACH A REAL COMPILE.
      §7decies, the one retirement item with a correctness deadline.

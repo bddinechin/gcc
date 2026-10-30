@@ -35,7 +35,6 @@ extern bool lvx_jump_long_offset_p (rtx_insn *insn);
 
 /* Pass management. */
 
-extern rtl_opt_pass *make_pass_prologue_stack_limit (gcc::context *);
 extern rtl_opt_pass *make_pass_lvx_shaker (gcc::context *);
 
 /* lvx-shaker */
@@ -218,7 +217,6 @@ extern bool lvx_float_fits_bits (const REAL_VALUE_TYPE *r, unsigned bitsz,
 
 extern poly_int64 lvx_initial_elimination_offset (int, int);
 
-extern int lvx_get_real_frame_size (function *);
 
 /*
  */

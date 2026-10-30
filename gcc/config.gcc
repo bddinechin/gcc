@@ -620,7 +620,6 @@ lvx-*-*)
 	extra_objs="lvx-builtins.o lvx-plc.o lvx-network.o"
 	case ${target} in
 		lvx-*-cos*)
-			extra_objs="${extra_objs} lvx-prologue-stack-limit.o"
 			extra_objs="${extra_objs} lvx-shaker.o"
 			;;
 		*)
