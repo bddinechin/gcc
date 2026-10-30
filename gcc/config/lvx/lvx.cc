@@ -20685,6 +20685,10 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
   *dropped_safelen = 0;
   auto_bitmap inloop;
   rtx_insn *insn;
+  /* For the trip-count rule below.  -1 when unknown, which post-reload is the
+     common case; see the note at its use.  */
+  HOST_WIDE_INT maxtrip = get_max_loop_iterations_int (loop);
+  unsigned ntripdrop = 0;
 
   for (unsigned i = 0; i < loop->num_nodes; i++)
     bitmap_set_bit (inloop, body[i]->index);
@@ -21086,6 +21090,40 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		 && lvx_cms_mem_independent_p (mivs[p], mivs[q], mw))
 	    mw++;
 
+	  /* THE TRIP-COUNT RULE.  §7tricies.83.
+
+	     A dependence at distance MW cannot bind in a loop whose iterations
+	     never get MW apart.  With MAXTRIP iterations the largest separation
+	     available is MAXTRIP - 1, so MW >= MAXTRIP is a PROOF that the two
+	     references never conflict in this loop -- not a deferral like the
+	     MW > MAX_DELTA case below, which only says "farther than this
+	     scheduler overlaps" and therefore owes the caller a DROPPED_SAFELEN
+	     to re-check against NSTAGES.  Here nothing is owed and nothing is
+	     reported: the arc is simply absent.
+
+	     The motivating shape is MiBench's FFT butterfly, whose trip count
+	     is BLOCKEND and whose two references are BLOCKEND elements apart
+	     (`k = j + BlockEnd'), so the conflicting distance equals the trip
+	     count exactly and the loop is parallel -- which is invisible to a
+	     conventional test because the distance and the trip count are each
+	     computed in isolation and never compared.  Measured there: the
+	     memory arcs cost RecMII 48 against a true register recurrence of 5.
+
+	     WHETHER THIS FIRES AT ALL IS MEASURED, NOT ASSUMED, and the honest
+	     expectation is that it rarely does today: get_max_loop_iterations
+	     needs loop->any_upper_bound, which record_niter_bound sets at TREE
+	     level, while loop_optimizer_init here re-discovers loops from the
+	     CFG and hands back fresh structures.  loop-iv.cc could rebuild it
+	     but refuses hard registers, and everything is hard after reload.
+	     So TRIPDROP in the dump is the figure that says whether recovering
+	     the trip count post-reload is worth doing -- and for the FFT it
+	     would also have to be SYMBOLIC, the count there being a variable.  */
+	  if (maxtrip > 0 && mw >= maxtrip)
+	    {
+	      ntripdrop++;
+	      continue;
+	    }
+
 	  if (mw > LVX_CMS_MAX_DELTA)
 	    {
 	      if (*dropped_safelen == 0 || *dropped_safelen > mw)
@@ -21112,6 +21150,15 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    }
 	}
     }
+
+  /* Reported AFTER the scan, not with the induction counts above -- those are
+     printed before the memory arcs exist, so folding TRIPDROP into that line
+     would have printed zero always.  MAXTRIP is reported even when nothing was
+     dropped, because "the bound is unknown here" is the finding.  */
+  if (dump_file && lvx_cms_probe)
+    lvx_cms_dump (";; lvx cms: fn=%s loop %d maxtrip="
+		  HOST_WIDE_INT_PRINT_DEC " tripdrop=%u\n",
+		  current_function_name (), loop->num, maxtrip, ntripdrop);
 
   /* What a conditional branch constrains.  Three things, all at zero latency
      because each is an ordering rather than a delay.
