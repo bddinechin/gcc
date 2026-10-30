@@ -24169,9 +24169,36 @@ lvx_unfold_inner_loop (class loop *loop)
   ok = duplicate_loop_body_to_header_edge (loop, loop_latch_edge (loop), 1,
 					   wont_exit, NULL, NULL,
 					   DLTHE_FLAG_UPDATE_FREQ);
+  if (ok)
+    /* SAFELEN IS IN ITERATIONS, AND AN ITERATION JUST GOT TWICE AS BIG.
+       §7tricies.82.
+
+       One unfolded iteration now covers two of the old ones, so M new
+       iterations span 2M old ones and are independent exactly when 2M <=
+       SAFELEN: the new value is SAFELEN / 2, which is what
+       adjust_loop_safelen computes (INT_MAX, the `#pragma GCC ivdep'
+       sentinel, is scale-invariant and kept exactly).
+
+       Leaving it alone OVERSTATES the promise by the unfold factor, and
+       cfgloop.h's own note says that is "unsound for any consumer that
+       believes it -- harmless only while the field is destroyed at
+       pass_rtl_loop_done before anyone reads it".  THERE IS NOW A CONSUMER:
+       CMS reads loop->safelen when it builds the cross-back-edge memory arcs,
+       and it runs in this same reorg, three steps after this one.  An unfolded
+       loop would have told it that a dependence cannot bind nearer than
+       SAFELEN *unfolded* iterations -- twice as far as the promise actually
+       reaches -- and the arcs that should have bound would have been slack by
+       arithmetic.
+
+       The MEM_INTRA arcs need no adjustment and must not get one: the
+       unfold creates new same-body pairs at old distance 1, CMS builds intra
+       arcs from aliasing alone and never consults safelen, so they are kept --
+       which is what makes an unfold by more than SAFELEN safe at all.  */
+    adjust_loop_safelen (loop, 2);
   if (ok && dump_file)
     fprintf (dump_file, ";; lvx unfold: loop %d doubled, now %u blocks,"
-	     " %u insns before\n", loop->num, loop->num_nodes, insns);
+	     " %u insns before, safelen now %d\n", loop->num, loop->num_nodes,
+	     insns, loop->safelen);
   return ok;
 }
 

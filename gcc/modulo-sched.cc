@@ -1665,15 +1665,21 @@ sms_schedule (void)
 	      || (max_trip_count >= 0 && max_trip_count <= stage_count)
 	      || (trip_count >= 0 && trip_count <= stage_count)
 	      /* A cross-iteration memory dependence dropped on the strength of
-		 safelen is only truly absent from this schedule if the schedule
-		 keeps no more than safelen iterations in flight.  See
-		 add_inter_loop_mem_dep.  */
-	      || (g->dropped_safelen != 0 && g->dropped_safelen < stage_count))
+		 safelen is only truly absent from this schedule if no two
+		 iterations it overlaps are safelen or more apart.  A kernel with
+		 STAGE_COUNT iterations in flight spans i .. i + STAGE_COUNT - 1,
+		 so the largest separation overlapping is STAGE_COUNT - 1; the
+		 prologue is slacker still, holding STAGE_COUNT - 1 iterations at
+		 separations up to STAGE_COUNT - 2, so the kernel binds.  This
+		 used to demand safelen >= STAGE_COUNT and so gave away one
+		 iteration.  See add_inter_loop_mem_dep.  */
+	      || (g->dropped_safelen != 0
+		  && g->dropped_safelen < stage_count - 1))
 	    {
 	      if (dump_file)
 		{
 		  if (g->dropped_safelen != 0
-		      && g->dropped_safelen < stage_count)
+		      && g->dropped_safelen < stage_count - 1)
 		    fprintf (dump_file, "SMS safelen %d below stage count %d\n",
 			     g->dropped_safelen, stage_count);
 		  fprintf (dump_file, "SMS failed... \n");

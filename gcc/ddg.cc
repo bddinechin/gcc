@@ -420,12 +420,22 @@ add_inter_loop_mem_dep (ddg_ptr g, ddg_node_ptr from, ddg_node_ptr to)
      since safelen licenses nothing about registers.
 
      The edge is DROPPED rather than widened because this function hard-codes a
-     distance of 1 and the consumers assume nothing reaches further.  That
-     conservatism is also why safelen must be checked again later: a distance-1
-     edge here stands in for a dependence at ANY distance, so removing it is
-     sound only while the schedule keeps fewer than safelen iterations in
-     flight.  Record the weakest safelen relied on and let the caller compare it
-     with the stage count.  */
+     distance of 1 and the consumers assume nothing reaches further.  Distance 1
+     is the CONSERVATIVE REPRESENTATIVE of a dependence at an unknown distance
+     >= 1, not a claim that the dependence is at distance 1: an arc (theta,
+     omega) constrains sigma (dst) - sigma (src) >= theta - omega * II, so a
+     larger omega is a WEAKER constraint and the smallest admissible distance
+     implies every larger one.  (Which is also why omega must be the distance
+     itself and never distance - 1: omega 0 is the intra-iteration constraint,
+     and it would forbid the very overlap pipelining exists to create.)
+
+     That conservatism is why safelen must be checked again later: because the
+     edge stands in for any distance, removing it is sound only while the
+     schedule keeps iterations closer together than safelen.  A kernel with
+     STAGE_COUNT iterations in flight spans iterations i .. i + STAGE_COUNT - 1,
+     so the largest separation actually overlapping is STAGE_COUNT - 1, and that
+     -- not STAGE_COUNT -- is what safelen must cover.  Record the weakest
+     safelen relied on and let the caller make that comparison.  */
   class loop *loop = g->bb->loop_father;
   if (loop != NULL && loop->safelen > 1)
     {
