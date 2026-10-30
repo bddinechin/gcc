@@ -13749,12 +13749,12 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	   even run there: an II was accepted whenever SIMPLIFY succeeded,
 	   while SELECT could still run out of registers at that II.  On
 	   heat-3d's loop 7 (44 nodes, maxreg 63) all four names of two
-	   lineages came back unassigned, and because lvx_cms_colour_lranges
+	   live ranges came back unassigned, and because lvx_cms_colour_lranges
 	   seeds REG[] with the original regno -- which is right for a held
-	   lineage -- they read back as r10,r10,r10,r10: a p2 = 4 lineage with
+	   live range -- they read back as r10,r10,r10,r10: a p2 = 4 live range with
 	   no expansion at all, whose 15-cycle span then self-overlaps at
 	   II = 7.  The occupancy check reported it as a conflict with another
-	   lineage's name 3, which looked like a dropped anti-dependence and is
+	   live range's name 3, which looked like a dropped anti-dependence and is
 	   not one.
 
 	   Reported through STUCK as well as SPL: STUCK's documented meaning is
@@ -14867,7 +14867,7 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
    instruction, and that is not enough in two places.  `x * x' reads one
    register through two operands, which the structural check had to count
    separately as TWICE because the lookup could not tell them apart; and
-   `fixedd.rz r0 = r0' reads two different lineages that RA put in one
+   `fixedd.rz r0 = r0' reads two different live ranges that RA put in one
    register, where answering with either is wrong half the time.
 
    SLOT is the operand: the ordinal of the reference's location in a
@@ -14876,7 +14876,7 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
    location because the rewrite runs on a COPY, where a pointer into the
    original addresses nothing and the traversal order is identical.  Keyed on
    (insn, slot) the lookup needs no is_def argument and cannot be ambiguous --
-   one operand belongs to one lineage.  */
+   one operand belongs to one live range.  */
 
 /* AN INDIRECT USE HAS NO OPERAND, so it has no slot.  A branch reads, by
    transferring control to a block where the register is live, every register
@@ -14897,9 +14897,9 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
 #define LVX_CMS_SLOT_INDIRECT (-2)
 
 /* AN EFFECT IS ON A SUB-OPERAND, so it carries its OFFSET within the
-   lineage's span as well as its width.  §7tricies.71.
+   live range's span as well as its width.  §7tricies.71.
 
-   A lineage is the renaming unit for a whole tuple, and references to it need
+   A live range is the renaming unit for a whole tuple, and references to it need
    not all be the same width: on PolyBench a quad is loaded whole and read as
    two pairs,
 
@@ -14912,7 +14912,7 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
    at most quad -> two pairs -> four singles, because the ISA has only ALIGNED
    sub-tuples -- singleReg, pairedReg, quadReg, the parity classes having been
    retired -- so the spans nest perfectly and every reference lands on exactly
-   one node.  The offset is what the renaming adds to the lineage's name:
+   one node.  The offset is what the renaming adds to the live range's name:
    reg[index] + offset, at the reference's own width, which is the
    "sub-register offset the renaming does not carry" that the old mixed-width
    fallback named as its reason for giving up.  */
@@ -14924,7 +14924,7 @@ struct lvx_cms_effect
   int nregs;			/* THIS reference's width in registers */
   bool is_def;			/* a write (it may also head the range) */
   bool delayed;			/* reads the previous instance */
-  int offset;			/* registers from the lineage's REGNO */
+  int offset;			/* registers from the live range's REGNO */
 };
 
 #define LVX_CMS_MAX_KUNROLL 32
@@ -14939,7 +14939,7 @@ struct lvx_cms_lrange
   int first_date, last_date;
   int p2unroll;
   int self;			/* own index into LR */
-  int parent;			/* union-find over LR: the lineage */
+  int parent;			/* union-find over LR: the live range */
   int reg[LVX_CMS_MAX_KUNROLL];
   auto_vec<lvx_cms_effect> effects;
 };
@@ -14957,7 +14957,7 @@ lvx_cms_lrange_root (const auto_vec<lvx_cms_lrange *> &lr, int k)
   return k;
 }
 
-/* Put two ranges in one lineage.  Returns true if they were not already.  */
+/* Put two ranges in one live range.  Returns true if they were not already.  */
 
 static bool
 lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange *> &lr,
@@ -15094,7 +15094,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	     Containment is the test, and for LVX it is the only case that can
 	     arise: the sub-tuples are aligned, so two spans are either
 	     disjoint, equal, or one inside the other.  A reference that
-	     instead CONTAINS the open range is counted and the lineage held,
+	     instead CONTAINS the open range is counted and the live range held,
 	     since widening a range mid-walk would move every offset already
 	     recorded against it.  */
 	  if (open[r] >= 0)
@@ -15154,7 +15154,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	 cyclic use, and opening a use-headed range lets the normalisation
 	 below fold it into the def-headed range at the bottom -- which is
 	 what puts the branch's indirect use and the later definition in ONE
-	 lineage, and is why nothing has to union them by hand.
+	 live range, and is why nothing has to union them by hand.
 
 	 Requiring an already-open range instead, which the first version did,
 	 dropped the indirect use in exactly that shape and so dropped the
@@ -15167,7 +15167,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	 never references at all is excluded by the same test, and correctly:
 	 it still holds the register the code after the loop reads, so there
 	 is nothing to move.  NREGS comes from the open range where there is
-	 one, because an effect of a different width makes the whole lineage
+	 one, because an effect of a different width makes the whole live range
 	 non-renameable and would silently switch renaming off for every
 	 live-out tuple.
 
@@ -15265,7 +15265,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  /* A READ-MODIFY-WRITE REFERENCE IS ONE OPERAND, and DF reports it
 	     twice -- as a use and as a definition at the SAME location.  The
 	     use already entered it; entering it again as a definition would
-	     put one operand in two lineages, which is the ambiguity this
+	     put one operand in two live ranges, which is the ambiguity this
 	     structure exists to not have.  The write is what opens a range,
 	     so the range opens and the operand stays the effect it already
 	     is, now marked as the definition that heads it.  */
@@ -15359,7 +15359,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		  && lr[open[r]]->effects[q].slot == e.slot)
 		{
 		  /* The same operand: drop the use's copy, and put the two
-		     ranges in one lineage -- the operand is read and written
+		     ranges in one live range -- the operand is read and written
 		     in place, so one register has to serve both.  */
 		  lr[open[r]]->effects.ordered_remove (q);
 		  lvx_cms_lrange_union (lr, n, lr[open[r]]);
@@ -15488,16 +15488,16 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       }
     }
 
-  /* THE KEPT ANTI-DEPENDENCES ARE LINEAGE CONSTRAINTS, and that is now a
+  /* THE KEPT ANTI-DEPENDENCES ARE LIVE RANGE CONSTRAINTS, and that is now a
      property of the GRAPH, not a repair applied after it.  §7tricies.29.
 
      A kept register WAR or WAW arc asserts that two references end in one
-     register.  If they are two lineages with two stacks of names, the
+     register.  If they are two live ranges with two stacks of names, the
      renaming has separated exactly what the arc says cannot be separated --
-     so either the arc is redundant or the lineages must be one.
+     so either the arc is redundant or the live ranges must be one.
 
      The first version read the arcs and unioned: 20 of 113 kept arcs joined
-     distinct lineages, and repairing them that way is the wrong direction,
+     distinct live ranges, and repairing them that way is the wrong direction,
      because those 20 are precisely the arcs that did not need to be kept.
      The partition here is built from the body alone -- the walk, the
      read-modify-write operands and the tie pass, none of which need a
@@ -15550,20 +15550,20 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
      reports it as one reference at the first register.  Another instruction
      may reference part of that span on its own -- a widening multiply writes
      a pair and the shift after it reads only the high half -- and then one
-     lineage's span lies inside another's.  Renamed independently the pair
+     live range's span lies inside another's.  Renamed independently the pair
      moves to a fresh aligned pair while the half moves elsewhere, and the two
      stop naming the same storage.
 
-     Two better answers exist and neither is this one: keep lineages at
+     Two better answers exist and neither is this one: keep live ranges at
      single-register granularity and associate those that share an operand, or
-     keep wide lineages and treat each narrower reference as a partial write,
+     keep wide live ranges and treat each narrower reference as a partial write,
      tracking per effect WHICH registers of the span it touches.  Both need
      the renaming to carry a sub-register offset, which it does not.
 
-     So the fallback, which is immediate and sound: a lineage whose effects
+     So the fallback, which is immediate and sound: a live range whose effects
      are not all the same width, or whose span PARTIALLY overlaps another
-     lineage's, is not renamed -- it keeps the register RA gave it, like any
-     held lineage.  An exact overlap is fine: that is the ordinary case of two
+     live range's, is not renamed -- it keeps the register RA gave it, like any
+     held live range.  An exact overlap is fine: that is the ordinary case of two
      references to one tuple.  */
   for (unsigned k = 0; k < lr.length (); k++)
     {
@@ -15684,7 +15684,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
      doloop_end_<mode> holds its counter FOUR times -- the `ne' comparison's
      match_operand, and three match_dups across the decrement and the
-     unspec -- while the lineage records the one effect DF reports.  The
+     unspec -- while the live range records the one effect DF reports.  The
      substitution rewrites a REG by its position in a sub-rtx walk, so a
      renamed copy has the new register in one place and the old one in the
      others, the match_dups no longer match, and recog rejects it.  That is
@@ -15698,12 +15698,12 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
      RecMII is unchanged.  And the emission wants it held for its own reason:
      the explicit counter tests it builds for the non-closing instances, and
      the SETUP arithmetic for an unrolled kernel, resolve the counter through
-     this lineage and need it to name one register.
+     this live range and need it to name one register.
 
      Asked of the DOLOOP pattern specifically rather than of any pattern that
-     mentions a register more often than the lineage has effects on it.  The
+     mentions a register more often than the live range has effects on it.  The
      general rule is the right one eventually -- and the retry it wants is to
-     hold the lineage and re-colour, not to decline -- but a tied operand's
+     hold the live range and re-colour, not to decline -- but a tied operand's
      read and write are also two occurrences of one register, so the general
      form would hold every accumulator of every fused multiply-add on the
      strength of a guess about how those effects are recorded.  */
@@ -15750,7 +15750,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 /* THE DATES, WHICH NEED A SCHEDULE.  §7tricies.30.
 
    Split from the structural build because the structure must exist BEFORE the
-   graph is finished -- lvx_cms_build_graph consults the lineage partition to
+   graph is finished -- lvx_cms_build_graph consults the live range partition to
    decide which anti-dependences to keep -- while the dates cannot exist until
    SIGMA does.  The reference splits it the same way, and at the same seam:
    unfold_igraph_make_ranges then unfold_igraph_set_range_dates.
@@ -15760,7 +15760,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
    costs in span, and it is why the accumulator of a loop-carried recurrence
    comes out with a life of exactly II.
 
-   The span, the flags and the stack all belong to the LINEAGE, so they are
+   The span, the flags and the stack all belong to the LIVE RANGE, so they are
    aggregated onto the root and then copied back, and P2UNROLL is computed
    once from the root's span.  */
 
@@ -15823,7 +15823,7 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
       (void) liveout;
     }
 
-  /* Onto the lineage.  */
+  /* Onto the live range.  */
   for (unsigned k = 0; k < lr.length (); k++)
     {
       int root;
@@ -15845,9 +15845,9 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
      and the heuristic that approximated it would only be a second answer to
      the same question.  */
 
-  /* Each lineage's unroll factor: the instances its life spans, rounded up to
+  /* Each live range's unroll factor: the instances its life spans, rounded up to
      a power of two so the index is a mask (§7tricies.2's third place the
-     power of two pays).  A lineage that is not renamed is not expanded --
+     power of two pays).  A live range that is not renamed is not expanded --
      after the normalisation that is a register the body never writes, where
      every iteration reads the same value and the span says nothing about
      pressure.  The reference says the same in one line, "In case of USE_FIRST
@@ -15873,7 +15873,7 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
     }
 }
 
-/* THE LINEAGES, PRINTED.  A refusal count says what was rejected; this says
+/* THE LIVE RANGES, PRINTED.  A refusal count says what was rejected; this says
    what the structure IS, which is what a wrong answer needs.  */
 
 static void
@@ -15903,18 +15903,18 @@ lvx_cms_dump_lranges (const auto_vec<rtx_insn *> &seq,
   (void) seq;
 }
 
-/* OVERLAPPING SPANS MUST BE ONE LINEAGE.  §7tricies.33.
+/* OVERLAPPING SPANS MUST BE ONE LIVE RANGE.  §7tricies.33.
 
    A reference to a register TUPLE covers [regno, regno + nregs), and DF
    reports it as one reference at the first register.  Another instruction may
    reference one of the other registers on its own -- a widening multiply
    writes a pair and the shift that follows reads only its high half -- and
-   that opens a SECOND lineage inside the first one's span.  Renamed
+   that opens a SECOND live range inside the first one's span.  Renamed
    independently, the pair moves to a fresh aligned pair while the half moves
    somewhere else, and the two no longer name the same storage.
 
    So this is an invariant of the structure, checked rather than assumed: two
-   lineages may not overlap in registers.  The reference carries the same
+   live ranges may not overlap in registers.  The reference carries the same
    constraint as UNFOLD_EFFECT_FLAG_ALIASED and a PARENT link per
    sub-register, which lvx_cms_build_lranges did not have.  */
 
@@ -15935,7 +15935,7 @@ lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange *> &lr)
 	    continue;
 	  if (lvx_cms_lrange_root (lr, (int) a)
 	      == lvx_cms_lrange_root (lr, (int) b))
-	    continue;		/* one lineage, one stack: consistent */
+	    continue;		/* one live range, one stack: consistent */
 	  alo = lr[a]->regno;
 	  ahi = alo + MAX (lr[a]->nregs, 1);
 	  blo = lr[b]->regno;
@@ -15951,23 +15951,23 @@ lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange *> &lr)
    §7tricies.38.
 
    lvx_cms_antidep_real_p drops a register WAR or WAW arc whenever the two
-   references belong to different lineages and at least one of them is renamed,
+   references belong to different live ranges and at least one of them is renamed,
    on the assumption that modulo expansion separates them.  That assumption is
-   about the FINAL assignment -- which register each lineage's each name got --
-   and nothing on the lineage path was checking it: lvx_cms_verify_antidep
+   about the FINAL assignment -- which register each live range's each name got --
+   and nothing on the live range path was checking it: lvx_cms_verify_antidep
    still runs, but over the class arrays, and site.antidep_ok stopped gating
    anything when the class gates went.  This is the check that belongs there.
 
    IT IS AN OCCUPANCY QUESTION, not a pairwise arc question.  If no register is
-   held by two different lineages in the same cycle of the unrolled kernel,
-   then no WAR or WAW between two lineages can exist to be violated -- the
+   held by two different live ranges in the same cycle of the unrolled kernel,
+   then no WAR or WAW between two live ranges can exist to be violated -- the
    second reference simply is not using the first's storage.  So this rebuilds
    the occupancy from SIGMA and the assigned stacks and counts occupants per
    (cycle, register), the same shape as lvx_cms_verify_rename and for the same
    reason: the colouring decided interference from a model it built itself, so
    a bug in that model cannot be caught by the colouring.
 
-   WHAT IT MUST COVER THAT THE COLOURING DOES NOT.  A HELD lineage is not in
+   WHAT IT MUST COVER THAT THE COLOURING DOES NOT.  A HELD live range is not in
    the interference graph at all -- lvx_cms_colour_lranges skips every root
    that is not renamed -- so its register is invisible there and is kept out of
    AVAIL instead.  Here it is given an occupancy of the WHOLE PERIOD, which is
@@ -15975,7 +15975,7 @@ lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange *> &lr)
    rather than assumed away.
 
    A VIOLATING PAIR IS REPORTED, not just counted, because fixRelaxed needs to
-   know which two lineages to reinstate an arc between.  */
+   know which two live ranges to reinstate an arc between.  */
 
 static bool
 lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
@@ -15992,7 +15992,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
   if (ii <= 0 || kunroll <= 0 || per > LVX_CMS_IG_MAX_PERIOD)
     return true;		/* not modelled: the caller's other gates */
 
-  /* OCC[cycle][reg] is the lineage root holding that register then, or -1.  */
+  /* OCC[cycle][reg] is the live range root holding that register then, or -1.  */
   auto_vec<int> occ;
   occ.safe_grow_cleared (per * 64);
   for (int x = 0; x < per * 64; x++)
@@ -16007,7 +16007,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 	continue;
       root = lvx_cms_lrange_root (lr, (int) k);
       if (root != (int) k)
-	continue;		/* one lineage, one occupancy */
+	continue;		/* one live range, one occupancy */
       nr = MAX (g->nregs, 1);
 
       if (!g->renamed)
@@ -16041,12 +16041,12 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
       d = g->first_date - lo + (ec ? 0 : 1);
       life = MAX (g->last_date - g->first_date + (ec ? 1 : 0), 1);
 
-      /* THE SAME-LINEAGE DROP, CHECKED.  §7tricies.79.
+      /* THE SAME-LIVE RANGE DROP, CHECKED.  §7tricies.79.
 
 	 lvx_cms_antidep_real_p drops a WAR or WAW between two references of
-	 ONE lineage at OMEGA > 0 on the grounds that the expansion separates
+	 ONE live range at OMEGA > 0 on the grounds that the expansion separates
 	 the instances.  The occupancy test below cannot see that: it compares
-	 pairs of DIFFERENT lineages, and one lineage on its own register is
+	 pairs of DIFFERENT live ranges, and one live range on its own register is
 	 never a conflict, so this class of drop was unverified from the start.
 
 	 It is separated exactly when instance I's range is over before the
@@ -16105,13 +16105,13 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 /* IS A REGISTER ANTI-DEPENDENCE WORTH KEEPING?  §7tricies.29.
 
    The arc is real when the two references END IN THE SAME REGISTER, and the
-   partition decides that -- but NOT simply by whether the lineage is one.
+   partition decides that -- but NOT simply by whether the live range is one.
 
-   ONE LINEAGE IS NOT ONE REGISTER.  A lineage is a stack of P2UNROLL names,
+   ONE LIVE RANGE IS NOT ONE REGISTER.  A live range is a stack of P2UNROLL names,
    and within it a delayed read of iteration L takes index L + use_first - 1
    while the heading definition takes L + use_first: different names as soon
-   as the lineage expands.  So `one lineage' means `one register' only where
-   the lineage is NOT expanded.
+   as the live range expands.  So `one live range' means `one register' only where
+   the live range is NOT expanded.
 
    That is where the circularity sits, and it is why the original code tested
    the instruction's shape instead: expansion is P2UNROLL = ceil (life / II),
@@ -16120,25 +16120,25 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
    the expansion while scheduling, then CHECK the result -- and the sound,
    non-circular part of the assumption is exactly this:
 
-     - one lineage that is HELD: never expanded, so one register.  Real.
-     - two lineages that both keep the original register: two lineages on one
+     - one live range that is HELD: never expanded, so one register.  Real.
+     - two live ranges that both keep the original register: two live ranges on one
        regno, so they still collide.  Real.  (`Keeps the original register' is
-       not `not renamed': a renamed USE_FIRST lineage's name 0 is PINNED to
+       not `not renamed': a renamed USE_FIRST live range's name 0 is PINNED to
        it, because the preheader wrote it, and name 0 comes round every
        P2UNROLL iterations.)
-     - one lineage that is renamed: dropped here, and whether the expansion
+     - one live range that is renamed: dropped here, and whether the expansion
        really separated it is what lvx_cms_verify_antidep asks of the chosen
        SIGMA and the chosen P2 -- the condition being life < p2 * II, which
-       p2 = ceil (life / II) gives, so only a lineage that came out at p2 = 1
+       p2 = ceil (life / II) gives, so only a live range that came out at p2 = 1
        can fail it.
      - otherwise one of them has moved to a register of its own.  Redundant.
 
    Two wrong versions of this, both measured rather than reasoned, and the
    measurements are kept because each says something.  As `either side keeps
    its register' (OR instead of AND) it was wrong in the one-held-one-renamed
-   case.  As `one lineage is real' it kept the anti-dependence of every
+   case.  As `one live range is real' it kept the anti-dependence of every
    loop-carried register in the body -- the normalisation puts every pre-def
-   read into its definition's lineage, so every induction variable and every
+   read into its definition's live range, so every induction variable and every
    accumulator qualified -- which is `assume no expansion at all': nwar 12 ->
    687, 534 further arcs kept, sum II 699 -> 1664 over 124 loops.
 
@@ -16153,7 +16153,7 @@ lvx_cms_lrange_keeps_regno_p (const auto_vec<lvx_cms_lrange *> &lr, int root)
 static bool
 lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange *> &lr,
 			lvx_cms_lrange *ga, lvx_cms_lrange *gb,
-			int *why /* [3]: unresolved, one lineage, both keep */,
+			int *why /* [3]: unresolved, one live range, both keep */,
 			HOST_WIDE_INT omega)
 {
   int ra, rb;
@@ -16178,8 +16178,8 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange *> &lr,
 
 	 It was unreachable until a sub-span definition became a partial
 	 definition of its range (§7tricies.75): before that, two writes
-	 within one iteration opened two ranges and took the cross-lineage
-	 path.  Now they are one lineage, and dropping their output
+	 within one iteration opened two ranges and took the cross-range
+	 path.  Now they are one live range, and dropping their output
 	 dependence let two writers of one register share a cycle -- an
 	 intra-cycle circuit, which is the symptom that went from nine loops
 	 to thirteen.  */
@@ -16187,14 +16187,14 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange *> &lr,
 	return true;
       /* The expansion separates them, which is CHECKED rather than assumed:
 	 lvx_cms_verify_lr_antidep requires LIFE <= P2UNROLL * II for every
-	 renamed lineage, and that inequality is exactly the statement that
+	 renamed live range, and that inequality is exactly the statement that
 	 instance I's range ends before instance I + P2UNROLL reuses its
 	 register.  §7tricies.79.
 
 	 Keeping the arc instead is NOT the conservative choice it looks like,
 	 and measuring it was the only way to see that: a self-anti-dependence
 	 at OMEGA 1 reads sigma (def at I + 1) - sigma (use at I) >= -II, which
-	 CAPS EVERY LINEAGE'S LIFETIME AT ABOUT II -- precisely what modulo
+	 CAPS EVERY LIVE RANGE'S LIFETIME AT ABOUT II -- precisely what modulo
 	 variable expansion exists to escape.  Keeping them took TSVC2 from 27
 	 loops at nstages >= 3 to 7, with the built count unmoved, so the cost
 	 was invisible in the count and total in the depth.  */
@@ -16279,9 +16279,9 @@ lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
 
       if (g->effects.is_empty ())
 	continue;
-      /* A register is freeable only if the LINEAGE that holds it is renamed:
+      /* A register is freeable only if the LIVE RANGE that holds it is renamed:
 	 a range whose union is held keeps its register, and so does a
-	 USE_FIRST lineage, whose name 0 is pinned to this very register
+	 USE_FIRST live range, whose name 0 is pinned to this very register
 	 because the preheader wrote it.  */
       rewritten = lr[lvx_cms_lrange_root (lr, (int) k)]->renamed
 		  && !lr[lvx_cms_lrange_root (lr, (int) k)]->use_first;
@@ -16372,15 +16372,15 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
       lvx_cms_lrange *g = lr[k];
       int ec, life;
 
-      /* ONE UNIT PER LINEAGE.  A member that is not the root shares the
-	 root's stack and is filled in from it below; a lineage that is not
+      /* ONE UNIT PER LIVE RANGE.  A member that is not the root shares the
+	 root's stack and is filled in from it below; a live range that is not
 	 renamed holds its register and is not a unit at all.  */
       if (g->effects.is_empty () || !g->renamed
 	  || lvx_cms_lrange_root (lr, (int) k) != (int) k)
 	continue;
       /* CLAIM_DEF_CYCLE makes every interval [def, last] instead of
 	 [def + !earlyclobber, last].  That is not the true interval -- a VLIW
-	 reads before it writes -- but it is the one that stops two lineages
+	 reads before it writes -- but it is the one that stops two live ranges
 	 being packed into one register across a cycle boundary, which is what
 	 makes a cycle's reads and writes unlinearisable (§7tricies.35).  Used
 	 only as a retry, so the pressure it costs is paid only where the exact
@@ -16433,7 +16433,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	}
     }
 
-  /* THE LINEAGE'S STACK IS EVERY MEMBER'S STACK.  Copied rather than followed
+  /* THE LIVE RANGE'S STACK IS EVERY MEMBER'S STACK.  Copied rather than followed
      through the parent at lookup time: the index arithmetic then reads one
      range and one range only, which is what keeps lvx_cms_lrange_reg the
      single place a register is decided.  */
@@ -16457,15 +16457,15 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
   *pin_out = pinned;
   *pinfail_out = pinfail;
   /* A NAME WITH NO COLOURED ANODE IS NOT A FALLBACK TO THE ORIGINAL REGISTER.
-     REG[] is seeded with the original regno so that a held lineage reads
-     correctly, but for a RENAMED lineage an unresolved name leaves two of its
+     REG[] is seeded with the original regno so that a held live range reads
+     correctly, but for a RENAMED live range an unresolved name leaves two of its
      names sharing one register -- no expansion where the span needs it -- and
-     the occupancy check then finds the lineage conflicting with whatever else
+     the occupancy check then finds the live range conflicting with whatever else
      holds that register.  Counted and refused rather than emitted.  */
   *wide_out = wide + unres;
   if (stuck_lr)
     {
-      /* STUCK holds UNIT indices; the caller wants lineages.  */
+      /* STUCK holds UNIT indices; the caller wants live ranges.  */
       stuck_lr->truncate (0);
       for (unsigned q = 0; q < stuck.length (); q++)
 	if (stuck[q] >= 0 && stuck[q] < (int) idx.length ()
@@ -16499,7 +16499,7 @@ lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
 	    if (delayed_out)
 	      *delayed_out = g->effects[e].delayed;
 	    /* THE SUB-OPERAND'S OFFSET, which the renaming adds to the
-	       lineage's name (§7tricies.71).  */
+	       live range's name (§7tricies.71).  */
 	    if (offset_out)
 	      *offset_out = g->effects[e].offset;
 	    if (nregs_out)
@@ -16528,7 +16528,7 @@ lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
 /* And by register for a READ, where the caller knows the register but not the
    operand: the range holding a non-definition effect on INSN.  Several reads
    of one register in one insn are several operands and may be several
-   lineages, so this answers only where there is exactly one; it returns null
+   live ranges, so this answers only where there is exactly one; it returns null
    rather than a guess otherwise.  */
 
 static lvx_cms_lrange *
@@ -16576,10 +16576,10 @@ lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
 {
   int orphan = 0, dup = 0, noloc = 0;
 
-  /* EVERY OPERAND ON EXACTLY ONE LINEAGE.  Asked of DF rather than of the
+  /* EVERY OPERAND ON EXACTLY ONE LIVE RANGE.  Asked of DF rather than of the
      builder: for each reference of each body instruction, resolve the operand
-     it sits at and count the LINEAGES that claim it.  Two ranges of one
-     lineage answering is not a defect -- they share a stack, so they give the
+     it sits at and count the LIVE RANGES that claim it.  Two ranges of one
+     live range answering is not a defect -- they share a stack, so they give the
      same register -- which is why the count is over roots and not ranges.
 
      An operand DF gives no location for is counted apart.  It is not an
@@ -17362,7 +17362,7 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	  break;
 	}
       neu = lvx_cms_lrange_reg (g, iter, false);
-      /* The lineage names its whole span; this reference is at OFF within
+      /* The live range names its whole span; this reference is at OFF within
 	 it, and keeps its own mode -- so its width -- below.  */
       if (neu >= 0)
 	neu += off;
@@ -17398,7 +17398,7 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	g = lvx_cms_lrange_of (lr, self, idx, &dly, &off);
 	if (!g)
 	  {
-	    /* An operand no lineage claims.  With the read-modify-write
+	    /* An operand no live range claims.  With the read-modify-write
 	       operand entered once, the only way here is a reference DF gave
 	       no location for, which cannot be rewritten precisely.  */
 	    ok = false;
@@ -18133,14 +18133,14 @@ lvx_cms_verify_antidep (const auto_vec<rtx_insn *> &seq,
 
    A VLIW bundle reads its operands before it writes them, and the modulo
    schedule uses that: a value's live interval is [def + !earlyclobber, last],
-   so another lineage may be DEFINED in the very cycle this one is last READ,
+   so another live range may be DEFINED in the very cycle this one is last READ,
    and the colouring will hand both the same register.  Emitted RTL is not a
    bundle -- it is a sequential stream that the bundler groups afterwards --
    so a reader placed after the writer reads the new value.
 
    The plan walks (date, iteration, body index), so within a cycle the order
    is body order, which has nothing to do with it.  On `A[i] = (i % 7) + 1'
-   lineages lr9 ([2,3], the zero-extended index) and lr5 ([4,4]) both got r17,
+   live ranges lr9 ([2,3], the zero-extended index) and lr5 ([4,4]) both got r17,
    disjoint by one cycle; at date 3 insn 12 reads lr9's r17 while insn 3
    writes lr5's r17.  Body order put insn 3 first, so the shift took
    `i + (i * magic >> 32)' as its index, the zero-extend became dead and was
@@ -18149,15 +18149,15 @@ lvx_cms_verify_antidep (const auto_vec<rtx_insn *> &seq,
 
    The constraint is on the RENAMED registers, not the original ones: two
    slots touching one original register in one cycle are unconstrained if
-   their lineages were given different registers, which after modulo expansion
-   is the common case.  So the registers are resolved from the lineages first,
+   their live ranges were given different registers, which after modulo expansion
+   is the common case.  So the registers are resolved from the live ranges first,
    then each cycle's slots are ordered by `every reader of a register written
    here comes before its writer'.
 
    A CYCLE IN THAT ORDER CANNOT BE EMITTED.  Two slots exchanging registers in
    one bundle -- A reads r writes s, B reads s writes r -- is legal in a VLIW
    and inexpressible as a sequential stream.  It arises when the colouring
-   packs two lineages into one register with touching intervals in both
+   packs two live ranges into one register with touching intervals in both
    directions, so the caller's answer is to recolour with the definition cycle
    CLAIMED, which makes touching intervals interfere and removes every
    intra-cycle edge; only if that fails too is the loop declined.
@@ -18357,8 +18357,8 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
    Code Quality, and Efficiency", CGO 2009, Algorithm 1 -- transcribed rather
    than reinvented, and the reference says a similar algorithm is C. May's.
 
-   The epilogue copies are PARALLEL: each live-out lineage moves its last
-   name back to the register the code after the loop reads, and one lineage's
+   The epilogue copies are PARALLEL: each live-out live range moves its last
+   name back to the register the code after the loop reads, and one live range's
    source may be another's destination.  Emitted in an arbitrary sequential
    order they clobber a source before it is read -- and for a cyclic
    permutation no order works at all, which is what the one fresh register is
@@ -18367,7 +18367,7 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 
    PSRC/PDST/PMODE are the parallel copies (PDST[k] := PSRC[k]), whose
    destinations must be distinct -- which §7tricies.66's disambiguation
-   guarantees, one live-out lineage per register, and which is also the
+   guarantees, one live-out live range per register, and which is also the
    algorithm's "(unique) predecessor" requirement.  SCRATCH is the fresh
    register, or -1 when none was free: then a cycle is refused rather than
    broken wrongly.  LOC and PRED are indexed by register number, which is
@@ -18623,7 +18623,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 
      Two registers are in play and they must be different ones: the hardware
      loop's own counter, which nothing but its doloop_end may mention, and the
-     pipeline's counter lineage, which the remainder copy's tests read.  */
+     pipeline's counter live range, which the remainder copy's tests read.  */
   bool hwkern = (doloop && site->kunroll > 1);
   /* Every jump must have a destination outside the loop to drain to, or it is
      an intra-loop branch this emission does not model.  */
@@ -18821,7 +18821,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      will now never reach, which on a 256-bit reduction lost the vector
      loop's entire sum rather than one iteration of it.  So this sits ahead
      of the redirection, and anything else that refuses on a property of the
-     LINEAGES belongs here with it.
+     LIVE RANGES belongs here with it.
 
      It was invisible until §7tricies.71 let these loops reach emission at
      all: before that they were refused earlier, by the anti-dependence check.
@@ -18830,7 +18830,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      -- because the half-emitted loop ran a kernel whose drain never
      materialised.
 
-     So every refusal that is a property of the LINEAGES rather than of the
+     So every refusal that is a property of the LIVE RANGES rather than of the
      emission is taken here.  What remains late is the parallel copy's own
      sequentialisation and the recognition of a hard-register move, and those
      are noted at their site.  */
@@ -18845,7 +18845,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       /* A TUPLE IS NOT REFUSED.  §7tricies.73: a tuple copy IS the parallel
 	 copy of its component registers, so it is decomposed into them and
 	 the register-level sequentialisation does the rest.  */
-      *why = "a live-out lineage's definition has no operand";
+      *why = "a live-out range's definition has no operand";
       if (q->effects[0].insn >= seq.length ()
 	  || !lvx_cms_reg_at (&PATTERN (seq[q->effects[0].insn]),
 			      q->effects[0].slot))
@@ -18988,8 +18988,8 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		 because this is an EXIT, not a loop-back.
 
 		 The counter is read and written at one operand, so its
-		 lineage gives one register for both halves of the
-		 decrement -- which is sound only if that lineage does not
+		 live range gives one register for both halves of the
+		 decrement -- which is sound only if that live range does not
 		 rotate, since a rotating one would put the next iteration's
 		 counter in a different name than the decrement wrote.
 
@@ -19020,7 +19020,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	      *why = "a doloop early exit has no epilogue";
 	      if (ep < 0 || creg < 0 || !REG_P (cnt))
 		return false;
-	      *why = "the doloop counter's lineage rotates";
+	      *why = "the doloop counter's range rotates";
 	      if (cg && cg->p2unroll != 1)
 		return false;
 	      creg_rtx = gen_rtx_REG (cm, creg);
@@ -19158,12 +19158,12 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       nemit++;
     }
 
-  /* THE EPILOGUE COPIES FOR THE LIVE-OUT LINEAGES.  §7tricies.63 and .66.
+  /* THE EPILOGUE COPIES FOR THE LIVE-OUT LIVE RANGES.  §7tricies.63 and .66.
 
-     A modulo-expanded lineage ends its last instance in one of its rotating
+     A modulo-expanded live range ends its last instance in one of its rotating
      names, while the code after the loop reads the register it was
      originally allocated to.  So each drain ends by moving the value back:
-     one copy per live-out lineage, from the name that lineage's LAST
+     one copy per live-out live range, from the name that live range's LAST
      executed instance on THAT path wrote.
 
      Which name is known exactly and needs no analysis -- it is
@@ -19171,10 +19171,10 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      iteration whose heading definition appears on the path into this
      epilogue, taken with the same path filter lvx_cms_verify_slots uses so
      the two agree about what a path is.  If no definition appears at all the
-     live-out value is the preheader's, which a USE_FIRST lineage's pinned
+     live-out value is the preheader's, which a USE_FIRST live range's pinned
      name 0 already holds, and nothing is copied.
 
-     THE COPIES ARE PARALLEL.  One lineage's source name can be another's
+     THE COPIES ARE PARALLEL.  One live range's source name can be another's
      destination register, so emitting them in an arbitrary order clobbers a
      source before it is read, and a cyclic permutation has no valid order at
      all.  They are therefore sequentialised properly -- Boissinot et al.,
@@ -19252,7 +19252,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	     register-level sequentialisation handles the rest.  That is
 	     strictly better than teaching the algorithm about spans: PRED
 	     stays unique per register because the destination spans are
-	     already disjoint (§7tricies.66 leaves one live-out lineage per
+	     already disjoint (§7tricies.66 leaves one live-out live range per
 	     register), a cycle needs ONE scratch register rather than n
 	     consecutive aligned ones, and a copy whose source and
 	     destination spans OVERLAP -- r32r33 <- r33r34 -- decomposes into
@@ -19262,7 +19262,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 
 	     The component mode is DImode and not the tuple's: the register
 	     file is 64 bits, so every component of every tuple is one word,
-	     whatever the value's own mode is.  A width-one lineage keeps its
+	     whatever the value's own mode is.  A width-one live range keeps its
 	     operand's mode, so an SImode value still moves as one.  */
 	  for (int k = 0; k < nr; k++)
 	    {
@@ -19370,10 +19370,10 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       if (creg < 0 || !REG_P (cnt) || (cg && cg->p2unroll != 1))
 	return false;
 
-      /* A REGISTER NO LINEAGE HOLDS.  The hardware loop's counter may be
+      /* A REGISTER NO LIVE RANGE HOLDS.  The hardware loop's counter may be
 	 mentioned by nothing but its own doloop_end, so it cannot be the
-	 pipeline's counter lineage -- which the remainder copy reads -- nor
-	 any other lineage's name.  AVAIL is what the colouring was allowed to
+	 pipeline's counter live range -- which the remainder copy reads -- nor
+	 any other live range's name.  AVAIL is what the colouring was allowed to
 	 use; what it did not take is free across the whole pipeline.  */
       for (unsigned g = 0; g < lr.length (); g++)
 	{
@@ -20618,7 +20618,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		  /* ONE MODEL FOR THE SEARCH AND FOR CODEGEN.  §7tricies.40.
 
 		     This asked the VALUE colouring, with AVAIL defaulting to
-		     all 64 registers, while codegen asks the LINEAGE colouring
+		     all 64 registers, while codegen asks the LIVE RANGE colouring
 		     against the registers actually free.  Two models and two
 		     register files: the search accepted an II whose kernel
 		     codegen then could not colour, and since select failure
@@ -20654,7 +20654,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		    {
 		      allocates = false;
 		      *last_bad = "kernel not colourable";
-		      /* Blame the DEFINING instruction of every lineage left
+		      /* Blame the DEFINING instruction of every live range left
 			 uncoloured.  Its range is what interferes, and the
 			 release lever below moves a task later -- which
 			 shortens a live range from its definition end,
@@ -21083,7 +21083,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		  " %u relaxed arcs dropped\n", current_function_name (), loop->num,
 		  (unsigned) bitmap_count_bits (inductions), nrelaxed);
 
-  /* THE LINEAGE PARTITION, built here because the anti-dependence decisions
+  /* THE LIVE RANGE PARTITION, built here because the anti-dependence decisions
      below are made from it (§7tricies.29).  It needs the body and nothing
      else -- no schedule, no arcs -- which is exactly why it can come first.
      Dates and the expansion degree are set later, by
@@ -21130,10 +21130,10 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    continue;
 
 	  /* Only where renaming cannot remove it, which is a question about
-	     the LINEAGES the two references belong to (§7tricies.29) and not
+	     the LIVE RANGES the two references belong to (§7tricies.29) and not
 	     about the killing instruction's shape.  It was
 	     `lvx_insn_def_reads_dest_p (seq[p])', an approximation of
-	     `one lineage' -- and that predicate was answering FALSE for every
+	     `one live range' -- and that predicate was answering FALSE for every
 	     instruction, so no register anti-dependence was kept at all.  */
 	  if (!lvx_cms_antidep_real_p
 		 (lrange,
@@ -21189,14 +21189,14 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     once each has its own register; it is only when a write reads its
 	     own destination that the later result depends on the earlier --
 	     and `reads its own destination' is what puts the two references in
-	     ONE LINEAGE, which is the question actually asked (§7tricies.29).
+	     ONE LIVE RANGE, which is the question actually asked (§7tricies.29).
 
 	     The shape test was also an OR over the two instructions, so one
 	     in-place write kept the arc to a plain full write that the
 	     expansion does separate: 20 of 113 kept arcs on the PolyBench
 	     loops were of that kind.  A partial write still keeps its arc
 	     unconditionally -- it leaves part of the old value in place,
-	     which no lineage question captures.  */
+	     which no live range question captures.  */
 	  if (!partial
 	      && !lvx_cms_antidep_real_p
 		    (lrange, lvx_cms_lrange_def_of (lrange, p, regno),
@@ -21521,7 +21521,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 
   for (unsigned k = 0; k < lrange.length (); k++)
     delete lrange[k];
-  /* How many anti-dependences the lineage test dropped that the shape test
+  /* How many anti-dependences the live range test dropped that the shape test
      would have kept.  The partition itself is not handed out: the caller
      calls the same function on the same body, which is one rule called twice
      rather than two copies of a rule.  */
@@ -22466,20 +22466,20 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
      This was IGKUNROLL, from the VALUE colouring, and that was right while
      codegen renamed from the value/class assignment.  It renames from the
-     LINEAGE assignment now, whose kunroll is its own, and when the two differ
+     LIVE RANGE assignment now, whose kunroll is its own, and when the two differ
      the kernel is built with one number of copies while the names rotate with
      another: the copy that should write name 1 writes name 0, so a register
      the loop depends on is written only in the prologue.
 
      On `for (k = 0; k < 16; k++) acc = acc * 3 + A[k]' the plan built a
      one-copy kernel (PLKER = 5 for a five-instruction body) while the
-     lineages asked for two, and the emitted kernel held neither the load nor
+     live ranges asked for two, and the emitted kernel held neither the load nor
      the pointer increment of its second copy -- so the exit test compared a
      register nothing updated and the loop did not terminate.  Caught by
      validation/cms/twoexit.c, whose main happens to contain that loop, and by
      nothing in the four older gate programs.
 
-     So the lineage colouring runs FIRST, and only its kunroll reaches the
+     So the live range colouring runs FIRST, and only its kunroll reaches the
      plan.  The codegen block below colours again from the same inputs and
      checks the two agree, so a future divergence is refused rather than
      emitted.  */
@@ -23249,22 +23249,22 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	      int nemit = 0;
 	      bool emitted = false;
 
-	      /* THE LINEAGE PATH IS WHAT EMITS.  §7tricies.32.  Four of the
+	      /* THE LIVE RANGE PATH IS WHAT EMITS.  §7tricies.32.  Four of the
 		 five gates that stood here were properties of the CLASS
 		 model and are gone with it:
 
 		   - `two classes share an original register' (72 of 119
-		     loops): an operand belongs to one lineage, so there is
+		     loops): an operand belongs to one live range, so there is
 		     nothing to disambiguate,
 		   - `a class live out of the loop would be renamed' (25):
-		     EXIT_LIVE is a field on the lineage,
+		     EXIT_LIVE is a field on the live range,
 		   - `the class assignment puts two live names in one
-		     register': the occupancy is checked over lineages,
+		     register': the occupancy is checked over live ranges,
 		   - the anti-dependence pin (27), which forced degree 1 and
 		     was §7tricies.19's unsoundness.
 
 		 What remains is the substitution actually recognising, which
-		 is asked of the lineage assignment itself and now refuses
+		 is asked of the live range assignment itself and now refuses
 		 nothing on any of the 124 loops measured.  */
 	      {
 		auto_vec<lvx_cms_lrange *> cglr;
@@ -23324,7 +23324,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 						 &ca, &cb, &creg, &ccyc);
 		if (!aok && lvx_cms_probe && dump_file)
 		  {
-		    /* The two lineages as the CODEGEN assignment left them,
+		    /* The two live ranges as the CODEGEN assignment left them,
 		       which is not what the probe's dump shows.  */
 		    lvx_cms_dump (";; lvx cms:   conflict at r%d cycle %d"
 				  " between:\n", creg, ccyc);
@@ -23369,9 +23369,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		     one instruction is missing it on every trip.  */
 		  iwhy = "the kernel is not a steady state";
 		else if (!vok)
-		  iwhy = "an operand belongs to no lineage";
+		  iwhy = "an operand belongs to no live range";
 		else if (!cok)
-		  iwhy = "the lineages do not colour";
+		  iwhy = "the live ranges do not colour";
 		else if (!lok)
 		  iwhy = "a cycle's reads and writes cannot be linearised";
 		else if (!aok)
