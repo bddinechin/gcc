@@ -11488,6 +11488,88 @@ lvx_doloop_end_p (rtx_insn *insn)
 	  && doloop_condition_get (insn) != NULL_RTX);
 }
 
+/* THE TRIP COUNT, RECOVERED AFTER RELOAD.  §7tricies.84.
+
+   get_max_loop_iterations needs loop->any_upper_bound, which record_niter_bound
+   sets at TREE level, while loop_optimizer_init here re-discovers loops from the
+   CFG and hands back fresh structures.  Measured: maxtrip was -1 for all 294
+   loop analyses in TSVC2 and all three in FFT -- the field is never set by the
+   time CMS runs, so every rule that needs a trip count was dead.
+
+   What survives reload is the DOLOOP COUNTER.  LVX's doloop_end_<mode> tests
+   `(ne (match_operand 0) (const_int 1))' and decrements match_dup 0, and that
+   register holds the iterations still to start (§7tricies.62) -- so when the
+   loop's entry block initialises it from a constant, that constant IS the trip
+   count.  The pattern is still present here because CMS deliberately runs
+   before reorg_loops.
+
+   Deliberately narrow, because a wrong trip count is a miscompile and a missing
+   one only costs an optimisation: a single_set of the counter to a CONST_INT in
+   the entry block, nothing traced further back, nothing reconstructed from an
+   exit test.  A loop with no doloop, a counter set from a register, or an
+   initialisation further away all return -1 and the callers behave as they did
+   when nothing was known.  */
+
+static HOST_WIDE_INT
+lvx_cms_doloop_trip_count (class loop *loop, basic_block *body)
+{
+  rtx cnt = NULL_RTX;
+  basic_block entry = NULL;
+  edge e;
+  edge_iterator ei;
+
+  /* THE COUNTER IS WHAT THE HW-DOLOOP CALLBACK SAYS IT IS.  reorg_loops gets
+     it from `hooks->end_pattern_reg', which for LVX is lvx_hwloop_pattern_reg:
+     it recognises the insn by CODE_FOR_doloop_end_si/di rather than by pattern
+     shape, and takes the register from the DECREMENT's SET_DEST, which is where
+     the counter is defined.  Calling the same callback here is not tidiness --
+     it makes CMS and reorg_loops agree on which insn ends the loop and which
+     register counts it, by construction rather than by two derivations that
+     can drift.  The REG_P test inside it also covers doloop_end_<mode>'s
+     second alternative, which allows the counter in memory.  */
+  for (unsigned i = 0; i < loop->num_nodes && cnt == NULL_RTX; i++)
+    cnt = lvx_hwloop_pattern_reg (BB_END (body[i]));
+  if (cnt == NULL_RTX)
+    return -1;
+
+  /* The entry edge, found rather than taken from loop_preheader_edge: CMS runs
+     loop_optimizer_init with AVOID_CFG_MODIFICATIONS, so there may be no
+     preheader to ask for.  */
+  FOR_EACH_EDGE (e, ei, loop->header->preds)
+    if (!flow_bb_inside_loop_p (loop, e->src))
+      {
+	if (entry)
+	  return -1;		/* two entries: no single initialisation */
+	entry = e->src;
+      }
+  if (!entry)
+    return -1;
+
+  for (rtx_insn *insn = BB_END (entry);
+       insn && insn != PREV_INSN (BB_HEAD (entry));
+       insn = PREV_INSN (insn))
+    {
+      rtx set;
+
+      if (!NONDEBUG_INSN_P (insn))
+	continue;
+      set = single_set (insn);
+      if (!set || !REG_P (SET_DEST (set))
+	  || REGNO (SET_DEST (set)) != REGNO (cnt))
+	{
+	  /* Any other write to the counter in between makes the constant below
+	     the wrong one, so stop rather than look past it.  */
+	  if (reg_set_p (cnt, insn))
+	    return -1;
+	  continue;
+	}
+      if (!CONST_INT_P (SET_SRC (set)) || INTVAL (SET_SRC (set)) <= 0)
+	return -1;
+      return INTVAL (SET_SRC (set));
+    }
+  return -1;
+}
+
 /* True if LOOP is already a hardware loop, which reorg_loops will put a
    LOOPDO on.  Unfolding one of those would mean halving the trip count and
    peeling the odd iteration; a loop without one needs neither, because the
@@ -20688,7 +20770,14 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
   /* For the trip-count rule below.  -1 when unknown, which post-reload is the
      common case; see the note at its use.  */
   HOST_WIDE_INT maxtrip = get_max_loop_iterations_int (loop);
+  const char *tripsrc = maxtrip > 0 ? "niter" : "none";
   unsigned ntripdrop = 0;
+
+  if (maxtrip <= 0)
+    {
+      maxtrip = lvx_cms_doloop_trip_count (loop, body);
+      tripsrc = maxtrip > 0 ? "doloop" : "none";
+    }
 
   for (unsigned i = 0; i < loop->num_nodes; i++)
     bitmap_set_bit (inloop, body[i]->index);
@@ -21157,8 +21246,9 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
      dropped, because "the bound is unknown here" is the finding.  */
   if (dump_file && lvx_cms_probe)
     lvx_cms_dump (";; lvx cms: fn=%s loop %d maxtrip="
-		  HOST_WIDE_INT_PRINT_DEC " tripdrop=%u\n",
-		  current_function_name (), loop->num, maxtrip, ntripdrop);
+		  HOST_WIDE_INT_PRINT_DEC " tripsrc=%s tripdrop=%u\n",
+		  current_function_name (), loop->num, maxtrip, tripsrc,
+		  ntripdrop);
 
   /* What a conditional branch constrains.  Three things, all at zero latency
      because each is an ordering rather than a delay.
@@ -21325,12 +21415,36 @@ lvx_cms_bounds (class loop *loop, basic_block *body,
 
   /* R, from the machine description.  */
   struct lvx_sched_resources resources;
+  /* And the same counters with the doloop_end charged NOTHING, to measure what
+     charging it costs.  §7tricies.86: lvx_cms_resources_add charges a
+     doloop_end as ISSUE_TINY + ISSUE_BCU_BRRP -- a decrement and a branch --
+     but if reorg_loops maps the loop, that insn emits `# loopdo end' and
+     occupies no slot at all, so the charge is an OVERCHARGE for exactly the
+     loops that become hardware loops.  It is deliberately conservative, CMS
+     being unable to know whether the mapping will succeed (LOOPDO's reach and
+     ITER_REG_USED can still refuse it), but "deliberately conservative" and
+     "free" are different claims and this is the one that says which.  */
+  struct lvx_sched_resources nodl;
   memset (&resources, 0, sizeof (resources));
+  memset (&nodl, 0, sizeof (nodl));
   for (unsigned i = 0; i < loop->num_nodes; i++)
     FOR_BB_INSNS (body[i], insn)
-      lvx_cms_resources_add (&resources, insn);
+      {
+	lvx_cms_resources_add (&resources, insn);
+	if (!lvx_doloop_end_p (insn))
+	  lvx_cms_resources_add (&nodl, insn);
+      }
   int r = (int) lvx_sched_resources_full_bundles (&resources);
   r = r ? r : 1;
+  {
+    int rnodl = (int) lvx_sched_resources_full_bundles (&nodl);
+
+    rnodl = rnodl ? rnodl : 1;
+    if (dump_file && lvx_cms_probe && rnodl != r)
+      lvx_cms_dump (";; lvx cms: fn=%s loop %d ResMII=%d, uncharged doloop_end"
+		    " would give %d\n", current_function_name (), loop->num,
+		    r, rnodl);
+  }
 
   /* K, the recurrence bound.  The solver wants node 0 as its root and node
      i + 1 as SEQ[i], with a root arc to every node so each is reachable.  */
@@ -24614,10 +24728,36 @@ lvx_machine_dependent_reorg (void)
   if (optimize && lvx_superblock_loops && optimize_function_for_speed_p (cfun))
     lvx_superblock_inner_loops ();
 
-  /* The CMS measurement, on its own walk.  Before reorg_loops, because
-     lvx_loop_has_doloop_p recognises the doloop_end pattern that LOOPDO
-     generation then consumes -- after it, a hardware loop is indistinguishable
-     from any other.  */
+  /* The CMS measurement, on its own walk.  Before reorg_loops, and the reason
+     is NOT the one this comment used to give.  §7tricies.85.
+
+     It claimed that "after it, a hardware loop is indistinguishable from any
+     other", and that is false.  LOOPDO generation does not consume the
+     doloop_end: doloop_end_<mode>'s register alternative emits `# loopdo end'
+     and nothing else, so the insn SURVIVES mapping with its
+     (set (pc) (if_then_else (ne reg 1) ...)) and its (set reg (reg - 1))
+     intact, costing no instruction because the hardware takes the back edge.
+     Measured in one dump: 262 lvx_loopdo insns coexisting with the
+     UNSPEC_ENDLOOP doloop_ends they supposedly replaced.  A hardware loop is
+     therefore MORE distinguishable after mapping, not less -- there is a
+     lvx_loopdo naming its counter and end label as well as the surviving
+     branch.  (So an LVX hardware loop is a decoration over an intact software
+     loop, which is why the pipeliner would not need kvx-unfold.cc's step of
+     recreating the loopback branch; only the LOOPDO would need re-pointing.)
+
+     The real reasons to go first are about WHICH BODY reorg_loops judges:
+
+     (1) LOOPDO carries the end-of-loop address as a PC-relative immediate with
+	 no extended form, and (lvx_hwloop_optimize) refuses a body past its
+	 reach.  Pipelining changes the body -- KUNROLL copies of the kernel,
+	 prologue and epilogues around it -- so a reach decision taken before
+	 would be a decision about a body that no longer exists.
+     (2) ITER_REG_USED is likewise evaluated on the body in front of it, and
+	 the round-down scheme exists precisely to keep counter tests out of
+	 the kernel; that property has to be true of the FINAL kernel.
+     (3) Going second would also mean deleting the LOOPDO and re-emitting it
+	 with the rounded-down count and the new kernel's end label, which is
+	 work this ordering simply avoids.  */
   if (optimize && lvx_cms_probe && optimize_function_for_speed_p (cfun))
     lvx_cms_probe_loops ();
 
