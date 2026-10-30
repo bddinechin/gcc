@@ -165,6 +165,14 @@ mcms-force-speculative-loads
 Target Var(lvx_cms_force_spec_loads) Init(0) Optimization
 Emit loop-variant-address loads in pipelined inner loops as their dismissible variant.
 
+mcms-select=
+Target RejectNegative Joined UInteger Var(lvx_cms_select_policy) Init(0) Optimization
+-mcms-select=N	Cycle-scheduler candidate selection: 0 priority first then program order, 1 least clock advance first then priority.
+
+mcms-free-doloop-end
+Target Var(lvx_cms_free_doloop_end) Init(0) Optimization
+Charge a doloop_end no resources, on the assumption that reorg_loops will map the loop and it will emit no instruction; for measurement only, since the mapping can still be refused, and rejected without -mcms-probe.
+
 mcms-assume-ivdep
 Target Var(lvx_cms_assume_ivdep) Init(0) Optimization
 Assume every inner loop carries #pragma GCC ivdep; for measurement only, not a legal transformation, and rejected without -mcms-probe.

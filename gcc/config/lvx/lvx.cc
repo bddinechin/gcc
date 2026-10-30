@@ -10433,6 +10433,9 @@ lvx_option_override (void)
      loop-variant-address load to its dismissible variant, which is what the
      schedule it measures actually requires, so it becomes mandatory rather
      than dangerous once codegen exists.  */
+  if (lvx_cms_free_doloop_end && !lvx_cms_probe)
+    error ("%<-mcms-free-doloop-end%> assumes a mapping that can still be "
+	   "refused and is for measurement only; it requires %<-mcms-probe%>");
   if (lvx_cms_assume_ivdep && !lvx_cms_probe)
     error ("%<-mcms-assume-ivdep%> drops real cross-iteration memory "
 	   "dependences and is for measurement only; it requires "
@@ -12768,6 +12771,18 @@ lvx_cms_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
       lvx_sched_resources_add (resources, insn);
       return;
     }
+
+  /* MEASUREMENT ONLY.  §7tricies.88.  A mapped doloop_end emits `# loopdo end'
+     and occupies nothing, so charging it is an overcharge for exactly the loops
+     that become hardware loops -- 19 of TSVC2's, 13 of them doubling ResMII,
+     and 24 converged schedules had a placement pushed to a later cycle by this
+     charge alone.  None of that says whether the charge costs II, span or
+     depth, which is what this lever is for: charge nothing, and diff the
+     schedules.  It is not sound as a default, because reorg_loops can still
+     refuse the loop (LOOPDO's reach, ITER_REG_USED) and then the decrement and
+     the branch are real.  */
+  if (lvx_cms_free_doloop_end)
+    return;
 
   const struct lvx_issue_resources *dec = &lvx_issue_table[ISSUE_TINY];
   const struct lvx_issue_resources *br = &lvx_issue_table[ISSUE_BCU_BRRP];
@@ -19944,6 +19959,86 @@ lvx_cms_slot_fits_p (const struct lvx_sched_resources *slot, rtx_insn *insn)
   return true;
 }
 
+/* THE CYCLE AT WHICH COPY BC OF TASK BI WOULD LAND: the earliest date its
+   dependences and its release date allow, advanced to the first cycle whose
+   resources admit it.  §7tricies.89.
+
+   Pure with respect to CYC, which is read and never written, so the SELECTION
+   can ask exactly the question the PLACEMENT will answer.  That matters more
+   than it saves: the alternative is to compute the landing cycle twice, and two
+   derivations of one quantity drift -- which is how a sub-register offset came
+   to be applied in the masks and not in the substitution.
+
+   BLOCKED_BY, when non-null, receives the counter that refused the first cycle
+   tried, which is what a release date should move.  CYC_NODL and NDLBLOCK are
+   the doloop_end overcharge instrumentation (§7tricies.87) and are passed only
+   by the real placement, so the dry runs do not double-count.
+
+   Returns -1 if a predecessor is unscheduled, which a ready task cannot have.  */
+
+static int
+lvx_cms_place_cycle (const auto_vec<rtx_insn *> &seq,
+		     const auto_vec<lvx_cms_arc> &arcs,
+		     const auto_vec<int> &release,
+		     const auto_vec<int> &date,
+		     const auto_vec<struct lvx_sched_resources> &cyc,
+		     unsigned n, int ncopy, int ii, unsigned bi, int bc,
+		     int *earliest_out, int *blocked_by,
+		     const auto_vec<struct lvx_sched_resources> *cyc_nodl,
+		     unsigned *ndlblock)
+{
+  int earliest = 0;
+
+  if (bc > 0)
+    earliest = date[(unsigned) (bc - 1) * n + bi] + ii;
+  for (unsigned a = 0; a < arcs.length (); a++)
+    if (arcs[a].dst == bi)
+      {
+	int sc = bc - (int) arcs[a].omega;
+	int d;
+
+	if (sc < 0 || sc >= ncopy)
+	  continue;
+	d = date[(unsigned) sc * n + arcs[a].src];
+	if (d < 0)
+	  return -1;
+	if (earliest < d + (int) arcs[a].theta)
+	  earliest = d + (int) arcs[a].theta;
+      }
+  if (earliest < 0)
+    earliest = 0;
+  if (!release.is_empty () && release[bi] > 0)
+    {
+      int r = release[bi] + bc * ii;
+
+      if (earliest < r)
+	earliest = r;
+    }
+
+  /* Reported out because the BLAME machinery measures displacement as
+     WHEN - EARLIEST: how far the resources pushed this task past the date its
+     dependences and release date allowed.  */
+  if (earliest_out)
+    *earliest_out = earliest;
+
+  /* Past the end of the table every cycle is empty, so the first one there
+     fits and the walk stops.  */
+  int when = earliest;
+  if (blocked_by)
+    *blocked_by = -1;
+  while (when < (int) cyc.length ()
+	 && !lvx_cms_slot_fits_p (&cyc[when], seq[bi]))
+    {
+      if (cyc_nodl && ndlblock && when < (int) cyc_nodl->length ()
+	  && lvx_cms_slot_fits_p (&(*cyc_nodl)[when], seq[bi]))
+	(*ndlblock)++;
+      if (blocked_by && *blocked_by < 0)
+	*blocked_by = lvx_cms_blocking_resource (&cyc[when], seq[bi]);
+      when++;
+    }
+  return when;
+}
+
 /* Convergent modulo scheduling of the body SEQ at initiation interval II.
 
    One task per instruction and per-copy arrays indexed by the copy number,
@@ -20003,6 +20098,21 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
       pred[(unsigned) c * n + i]++;
 
   auto_vec<struct lvx_sched_resources> cyc;
+  /* THE SAME TABLE WITH THE DOLOOP_END UNCHARGED.  §7tricies.87.
+     lvx_cms_resources_add charges a doloop_end as a decrement plus a branch,
+     and on a loop that gets mapped it occupies no slot (it emits
+     `# loopdo end').  Measuring that on ResMII measured the harmless half: the
+     bound only seeds the II search, which increments until CONVERGE succeeds,
+     so an overstated bound costs search steps and not the answer.  What can
+     cost the answer is THIS table -- if the charge is why a cycle refuses an
+     instruction, the placement walks to a later cycle and the schedule is
+     really worse.  So the shadow table is maintained in lockstep, charged
+     everything except the doloop_end, and every refusal is retried against it:
+     NDLBLOCK counts the placements the charge alone pushed out of a cycle.
+     Read-only -- the shadow never decides anything.  */
+  auto_vec<struct lvx_sched_resources> cyc_nodl;
+  unsigned ndlblock = 0;
+  unsigned nseldiff = 0;
 
   int placed = 0;
   while (placed < (int) cells)
@@ -20012,7 +20122,15 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 longest-path-to-sink therefore enters negated.  This comment used to
 	 say "the longest remaining dependence path", which is the path to the
 	 SINK and the opposite of what the default priority is.  */
-      int best = -1;
+      /* Both rules are evaluated every time, and the policy only decides which
+	 answer is used, so that DISAGREE counts how often they would differ.
+	 Measuring that was the point: policy 1 produced byte-identical assembly
+	 on all 149 TSVC2 loops, which is either a dead branch or two criteria
+	 that genuinely coincide, and only the count can say which.  CMS's
+	 priority is longest-path-to-sink, and a task with a long path to the
+	 sink tends to be early in the dependence order and so to land early,
+	 so coincidence is plausible -- but plausible is not measured.  */
+      int best = -1, bestwhen = -1, bestprio = -1;
       for (int c = 0; c < ncopy; c++)
 	{
 	  for (unsigned i = 0; i < n; i++)
@@ -20020,11 +20138,60 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	      unsigned k = (unsigned) c * n + i;
 	      if (date[k] >= 0 || pred[k] > 0)
 		continue;
-	      if (best < 0
-		  || prio[i] < prio[(unsigned) best % n]
-		  || (prio[i] == prio[(unsigned) best % n]
-		      && i < (unsigned) best % n))
-		best = (int) k;
+	      /* The priority rule's answer, always.  */
+	      if (bestprio < 0
+		  || prio[i] < prio[(unsigned) bestprio % n]
+		  || (prio[i] == prio[(unsigned) bestprio % n]
+		      && i < (unsigned) bestprio % n))
+		bestprio = (int) k;
+	      if (lvx_cms_select_policy == 0)
+		{
+		  best = bestprio;
+		}
+	      else
+		{
+		  /* LEAST CLOCK ADVANCE FIRST, then priority, then program
+		     order.  §7tricies.89.
+
+		     The original rule commits to a candidate BEFORE knowing how
+		     far it will have to walk: if the cheapest-priority ready
+		     task is blocked for five cycles while another would fit in
+		     the current one, it still takes the first, and the cycle it
+		     could have filled stays empty.  Filling the current cycle
+		     before advancing is the ordinary list-scheduling discipline
+		     for a wide-issue machine, and at a FIXED II a denser packing
+		     is exactly what lets the schedule fit.
+
+		     Measured headroom when this was added: 25 of 149 TSVC2
+		     loops ended at an II above BOTH bounds (17 at +1, 5 at +2,
+		     2 at +4, one at +8), and those are the loops where the
+		     placement, not a bound, is what forced II up.  CMS repairs
+		     such a commitment by ITERATION instead -- SWO moves release
+		     dates and re-places, and 12 loops took 13 passes and 2 took
+		     25 -- which this rule avoids by construction.
+
+		     The trade, stated because it is real: selecting a filler
+		     ahead of a critical-path task can lengthen the SPAN, so
+		     more stages and more registers live, while lowering II.
+		     The arcs still enforce the path and the modulo table's
+		     capacity is what binds at fixed II, so this costs depth and
+		     pressure, never feasibility.  */
+		  int w = lvx_cms_place_cycle (seq, arcs, release, date, cyc,
+					       n, ncopy, ii, i, c, NULL, NULL,
+					       NULL, NULL);
+		  if (w < 0)
+		    continue;
+		  if (best < 0
+		      || w < bestwhen
+		      || (w == bestwhen
+			  && (prio[i] < prio[(unsigned) best % n]
+			      || (prio[i] == prio[(unsigned) best % n]
+				  && i < (unsigned) best % n))))
+		    {
+		      best = (int) k;
+		      bestwhen = w;
+		    }
+		}
 	    }
 	  if (best >= 0)
 	    break;
@@ -20033,70 +20200,45 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	/* Nothing ready and cells remain: the enforced subgraph has a circuit
 	   the chosen II cannot break.  */
 	return false;
+      if (bestprio >= 0 && best != bestprio)
+	nseldiff++;
 
       unsigned bi = (unsigned) best % n;
       int bc = best / (int) n;
 
-      /* Earliest dependence-feasible date.  */
-      int earliest = 0;
-      if (bc > 0)
-	earliest = date[(unsigned) (bc - 1) * n + bi] + ii;
-      for (unsigned a = 0; a < arcs.length (); a++)
-	if (arcs[a].dst == bi)
-	  {
-	    int sc = bc - (int) arcs[a].omega;
-	    if (sc < 0 || sc >= ncopy)
-	      continue;
-	    int d = date[(unsigned) sc * n + arcs[a].src];
-	    if (d < 0)
-	      return false;
-	    if (earliest < d + (int) arcs[a].theta)
-	      earliest = d + (int) arcs[a].theta;
-	  }
-      if (earliest < 0)
-	earliest = 0;
-
+      /* Where it lands, from the same function the selection used, so the two
+	 cannot disagree.  The release-date rationale that used to sit here is
+	 kept below; the arithmetic itself moved into lvx_cms_place_cycle.  */
       /* The RELEASE DATE, II-PERIODIC, enforced here rather than by an arc
-	 from the dependence graph's source node.
+      	 from the dependence graph's source node.
 
-	 Two reasons it belongs in the scheduler and not in the graph.  First,
-	 periodicity: copy C of task I is iteration C's instance, so its release
-	 is RELEASE[I] + C * II, and an arc from the source would pin only copy
-	 zero -- expressing the periodic form would need one arc per copy, which
-	 is a graph that changes with II.  Second, and the reason this is a safe
-	 SWO parameter at all: the graph is left alone, so RecMII and the lower
-	 bound are the same whatever the release dates are, and no amount of
-	 perturbation can make the problem infeasible the way an added arc can.
-	 A release only ever delays a task that is already dependence-ready; it
-	 never removes it from the ready set, so the construction still
-	 terminates.  */
-      if (!release.is_empty () && release[bi] > 0)
+      	 Two reasons it belongs in the scheduler and not in the graph.  First,
+      	 periodicity: copy C of task I is iteration C's instance, so its release
+      	 is RELEASE[I] + C * II, and an arc from the source would pin only copy
+      	 zero -- expressing the periodic form would need one arc per copy, which
+      	 is a graph that changes with II.  Second, and the reason this is a safe
+      	 SWO parameter at all: the graph is left alone, so RecMII and the lower
+      	 bound are the same whatever the release dates are, and no amount of
+      	 perturbation can make the problem infeasible the way an added arc can.
+      	 A release only ever delays a task that is already dependence-ready; it
+      	 never removes it from the ready set, so the construction still
+      	 terminates.  */
+      int blocked_by = -1, earliest = 0;
+      int when = lvx_cms_place_cycle (seq, arcs, release, date, cyc,
+				      n, ncopy, ii, bi, bc, &earliest,
+				      &blocked_by, &cyc_nodl, &ndlblock);
+      if (when < 0)
+	return false;
+      while ((int) cyc.length () <= when)
 	{
-	  int r = release[bi] + bc * ii;
-	  if (earliest < r)
-	    earliest = r;
-	}
-
-      /* First resource-feasible date at or after it, remembering WHICH counter
-	 refused it the first time -- that is the resource to blame, and the
-	 one whose holders a release date should move.  */
-      int when = earliest;
-      int blocked_by = -1;
-      while (true)
-	{
-	  while ((int) cyc.length () <= when)
-	    {
-	      struct lvx_sched_resources empty;
-	      memset (&empty, 0, sizeof (empty));
-	      cyc.safe_push (empty);
-	    }
-	  if (lvx_cms_slot_fits_p (&cyc[when], seq[bi]))
-	    break;
-	  if (blocked_by < 0)
-	    blocked_by = lvx_cms_blocking_resource (&cyc[when], seq[bi]);
-	  when++;
+	  struct lvx_sched_resources empty;
+	  memset (&empty, 0, sizeof (empty));
+	  cyc.safe_push (empty);
+	  cyc_nodl.safe_push (empty);
 	}
       lvx_cms_resources_add (&cyc[when], seq[bi]);
+      if (!lvx_doloop_end_p (seq[bi]))
+	lvx_cms_resources_add (&cyc_nodl[when], seq[bi]);
       date[(unsigned) best] = when;
       placed++;
 
@@ -20156,6 +20298,17 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	      sigma.truncate (0);
 	      for (unsigned i = 0; i < n; i++)
 		sigma.safe_push (date[(unsigned) bc * n + i] - bc * ii);
+	      /* Reported only on the converged II, and only when non-zero: the
+		 question is whether the doloop_end's charge ever actually moved
+		 a placement in the schedule that was kept.  §7tricies.87.  */
+	      if (nseldiff && dump_file && lvx_cms_probe)
+		lvx_cms_dump (";; lvx cms: fn=%s II=%d seldiff=%u the two"
+			      " selection rules disagreed\n",
+			      current_function_name (), ii, nseldiff);
+	      if (ndlblock && dump_file && lvx_cms_probe)
+		lvx_cms_dump (";; lvx cms: fn=%s II=%d dlblock=%u placements"
+			      " pushed on by the doloop_end charge alone\n",
+			      current_function_name (), ii, ndlblock);
 	      return true;
 	    }
 	}
