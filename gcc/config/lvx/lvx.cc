@@ -15523,6 +15523,66 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	}
     }
 
+  /* A WIDE REFERENCE REACHES REGISTERS ANOTHER RANGE OWNS.  §7tricies.80.
+
+     The loop above compares RANGE SPANS, and a range's span comes from its
+     heading definition.  An EFFECT may be wider than that: DF reports a tuple
+     read once per register but all at one pattern location, so it is one slot
+     and one effect, attached to the range of its BASE register and carrying
+     its own NREGS.  The other words of that reference are then accounted
+     nowhere, and a range holding only them does not overlap anything by span.
+
+     s116 on lvx-2 is the case.  `fmuldp $r32r33' reads a pair; the read
+     attaches to r32's range (nregs 1, effect nregs 2, so the width rule above
+     holds it, correctly).  r33 was DEFINED separately -- `copyd $r33 = $r4',
+     earlier in the body, so nothing was open on r33 and it opened its own
+     one-register range -- and that range has a definition and NO use: the
+     pair read never reached it.  It therefore looked dead, was renamed to r4,
+     and the write to r33 was deleted as dead while the fmuldp went on reading
+     r33.  Lane 1 of every pair was stale.
+
+     So the covered ranges must be held too.  Held rather than unioned
+     because it is immediate and sound, which is this file's own stated
+     fallback for the general shape; unioning them into one range of the
+     reference's span is the better answer and the one §7tricies.71 is working
+     towards.  */
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      if (lr[k]->effects.is_empty ())
+	continue;
+      for (unsigned e = 0; e < lr[k]->effects.length (); e++)
+	{
+	  unsigned base, top;
+	  int rk;
+
+	  if (lr[k]->effects[e].slot == LVX_CMS_SLOT_INDIRECT)
+	    continue;
+	  if (MAX (lr[k]->effects[e].nregs, 1) <= 1)
+	    continue;
+	  base = lr[k]->regno + lr[k]->effects[e].offset;
+	  top = base + MAX (lr[k]->effects[e].nregs, 1);
+	  rk = lvx_cms_lrange_root (lr, (int) k);
+	  for (unsigned j = 0; j < lr.length (); j++)
+	    {
+	      unsigned jlo, jhi;
+	      int rj;
+
+	      if (j == k || lr[j]->effects.is_empty ())
+		continue;
+	      rj = lvx_cms_lrange_root (lr, (int) j);
+	      if (rj == rk)
+		continue;
+	      jlo = lr[j]->regno;
+	      jhi = jlo + MAX (lr[j]->nregs, 1);
+	      if (jlo < top && base < jhi)
+		{
+		  lr[rj]->renamed = false;
+		  lr[rk]->renamed = false;
+		}
+	    }
+	}
+    }
+
   /* THE DOLOOP COUNTER IS HELD, NOT RENAMED.  §7tricies.64.
 
      doloop_end_<mode> holds its counter FOUR times -- the `ne' comparison's
@@ -16003,8 +16063,31 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange *> &lr,
 	 to thirteen.  */
       if (omega == 0)
 	return true;
-      if (lr[ra]->renamed)
-	return false;		/* the expansion separates them, verified */
+      /* AND IT SEPARATES THEM ONLY IF THE NAMES DIFFER.  §7tricies.79.
+
+	 "Renamed, so the expansion separates them" was still wrong at
+	 OMEGA > 0, for a second reason that OMEGA == 0 hid.  Instance I
+	 uses reg[(I + use_first - delayed) & (p2 - 1)], so the instances
+	 I and I - OMEGA share a name exactly when P2UNROLL divides OMEGA --
+	 and at P2UNROLL == 1, which is every lineage whose lifetime fits in
+	 one II, it divides EVERY omega.  Nothing is separated and the arc
+	 is real.
+
+	 P2UNROLL is not known here: the graph is built before the colouring
+	 chooses it.  So this cannot be decided and must be kept, which is
+	 nearly free -- lvx_arc_latency clamps an anti-dependence to theta 0
+	 and an output dependence to theta 1, so at OMEGA >= 1 the
+	 constraint is sigma (dst) - sigma (src) >= -omega * II (or
+	 1 - omega * II) and is slack in any schedule that is not already
+	 tight for another reason.
+
+	 WHY THE VERIFIER DID NOT CATCH IT.  lvx_cms_verify_lr_antidep is an
+	 OCCUPANCY check over pairs of DIFFERENT lineages -- "no register
+	 held by two lineages in one cycle".  A same-lineage drop has one
+	 lineage on its own register, which is never a conflict, so these
+	 drops were unverified from the start.  s116 on lvx-2 dropped 13 of
+	 them at maxp2 = 1 and was miscompiled in the second lane of every
+	 vector pair.  */
       why[1]++;
       return true;
     }
@@ -18940,7 +19023,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	 insn DF has never seen, so the references are looked up on SEQ[I] and
 	 written to C by operand position (§7tricies.27).  */
       if (!lvx_cms_rename_lr_insn_p (seq[i], c, i, slots[q].iter, lr, &n,
-				     true))
+				     true, lvx_cms_probe != 0))
 	{
 	  *why = "the renamed copy does not recognise";
 	  return false;
