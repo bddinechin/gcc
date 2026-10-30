@@ -24516,6 +24516,196 @@ lvx_unfold_inner_loop (class loop *loop)
   return ok;
 }
 
+/* THE REGION BOUNDARY, MADE RENAMEABLE BY SELF-COPIES.  §7tricies.90.
+
+   regrename can only rename a chain whose references are CONTAINED in the
+   blocks it is given: a chain still open at the region boundary gets
+   `cannot_rename' (regrename.cc), so a value live INTO an inner loop, or live
+   OUT of it, keeps the register allocation gave it however much slack the loop
+   has.  On a superblock inner loop that is most of the interesting values.
+
+   A self-copy at the boundary splits the range.  `X = X' in the preheader puts
+   the READ in the incoming, unrenameable chain and its WRITE starts a fresh
+   chain wholly inside the region, which regrename may then rename; a self-copy
+   in an exit block closes the internal chain and restores the architected
+   register.  The cost structure follows: a split regrename USES becomes a real
+   move, and the ones it declines stay no-ops.
+
+   THE NO-OPS MUST BE REMOVED BY US.  `delete_noop_moves' is called from
+   combine.cc alone, which runs before register allocation -- nothing between
+   machine reorg and `final' drops a no-op move, and `final' does not test for
+   one.  A surviving `X = X' would be emitted, and worse, would occupy a TINY
+   slot in LVX's own bundler, which runs later in the same reorg.
+   lvx_drop_boundary_self_copies does the sweep after regrename.
+
+   WHY HERE AND NOT AT REGRENAME.  Inserting instructions must happen before
+   reorg_loops validates LOOPDO's reach against the body length and before
+   lvx_fix_pcreljump_ranges chooses branch forms BY DISTANCE.  regrename runs
+   after both, so it may rename -- which is length-neutral -- but may not
+   insert.  Deleting at that point is safe in a way inserting is not: it only
+   SHRINKS distances, and a shorter distance never needs a wider branch form.
+
+   The copies go in the preheader and in exit blocks only, never the body, so
+   the pipeliner does not schedule them and LOOPDO's body length is unchanged.
+
+   An exit block qualifies only if every one of its predecessors is in the loop
+   or is the preheader: otherwise the copy would read a value that is not the
+   loop's on some other path into it.  */
+
+static rtx_insn *lvx_self_copy_first;
+static rtx_insn *lvx_self_copy_last;
+
+static void
+lvx_boundary_exclusions (HARD_REG_SET *x, class loop *loop, basic_block *body)
+{
+  /* The same set regrename refuses, so a copy is never inserted for a register
+     it could not rename anyway -- that would be churn the sweep has to undo.  */
+  CLEAR_HARD_REG_SET (*x);
+  add_to_hard_reg_set (x, Pmode, FRAME_POINTER_REGNUM);
+  if (!HARD_FRAME_POINTER_IS_FRAME_POINTER)
+    add_to_hard_reg_set (x, Pmode, HARD_FRAME_POINTER_REGNUM);
+  add_to_hard_reg_set (x, Pmode, STACK_POINTER_REGNUM);
+  for (unsigned r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    if (fixed_regs[r] || global_regs[r])
+      SET_HARD_REG_BIT (*x, r);
+
+  /* And the doloop counter.  reorg_loops has not run yet, so the pattern is
+     still here; after mapping, that register is named by both the LOOPDO and
+     the surviving doloop_end -- whose three match_dups are what defeated
+     renaming it in the pipeliner too (§7tricies.64).  */
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    {
+      rtx cnt = lvx_hwloop_pattern_reg (BB_END (body[i]));
+
+      if (cnt != NULL_RTX && REG_P (cnt))
+	add_to_hard_reg_set (x, GET_MODE (cnt), REGNO (cnt));
+    }
+}
+
+/* Emit `R = R' for every hard register in WANT that is not excluded, at the
+   end of AFTER_BB when AT_END, else at its head.  Returns how many.  */
+
+static int
+lvx_emit_self_copies (basic_block bb, bitmap want, const HARD_REG_SET &excl,
+		      bool at_end)
+{
+  int n = 0;
+
+  for (unsigned r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    {
+      rtx reg, set;
+      rtx_insn *ins;
+
+      if (!bitmap_bit_p (want, r) || TEST_HARD_REG_BIT (excl, r))
+	continue;
+      /* One per hard register, in the register's own natural mode.  A tuple's
+	 words therefore get one copy each, which is what lets regrename see
+	 them as it sees every other reference.  */
+      reg = gen_rtx_REG (reg_raw_mode[r], r);
+      set = gen_rtx_SET (reg, reg);
+      /* THE _NOLOC FORMS, WHICH TAKE THE BLOCK.  §7tricies.90a.
+
+	 emit_insn_after infers the block from BLOCK_FOR_INSN (after), and this
+	 runs in cfglayout mode (lvx_superblock_inner_loops enters it), where a
+	 block's tail is followed by notes and barriers belonging to no block
+	 and BB_END is not the last insn of the chain.  Inserting "after
+	 BB_END" could therefore place the insn past the block's extent, where
+	 nothing claims it -- `insn outside basic block' from
+	 rtl_verify_bb_layout, on five of twelve MiBench programs.  The _noloc
+	 forms are given BB explicitly and keep BB_END consistent, which is
+	 the idiom cfgrtl.cc uses on itself.  */
+      if (at_end)
+	{
+	  rtx_insn *last = BB_END (bb);
+
+	  ins = (JUMP_P (last) ? emit_insn_before_noloc (set, last, bb)
+			       : emit_insn_after_noloc (set, last, bb));
+	}
+      else
+	/* AFTER THE BLOCK NOTE, not after BB_HEAD.  §7tricies.90b.
+
+	   BB_HEAD may be a CODE_LABEL, and the block's insns begin at the
+	   NOTE_INSN_BASIC_BLOCK that follows it -- so "after BB_HEAD" puts the
+	   copy BETWEEN the label and the note, which is outside the block and
+	   displaces the note into the middle of it.  Measured exactly that:
+	   "NOTE_INSN_BASIC_BLOCK is missing for block 6", "NOTE_INSN_BASIC_BLOCK
+	   55 in middle of basic block 6", "insn outside basic block
+	   (insn 153 52 55 6 (set (reg:DI 19 r19) (reg:DI 19 r19)))".
+	   bb_note () is the helper for this and does the label skip itself;
+	   the pipeline emission anchors on the note for the same reason.
+
+	   Several copies end up in reverse order, which is immaterial for
+	   self-copies since they are mutually independent.  */
+	ins = emit_insn_after_noloc (set, bb_note (bb), bb);
+      if (lvx_self_copy_first == NULL)
+	lvx_self_copy_first = ins;
+      lvx_self_copy_last = ins;
+      n++;
+    }
+  return n;
+}
+
+/* Self-copies at LOOP's boundary.  Returns how many were emitted.  */
+
+static int
+lvx_loop_boundary_self_copies (class loop *loop)
+{
+  basic_block *body, pre = NULL;
+  HARD_REG_SET excl;
+  edge e;
+  edge_iterator ei;
+  auto_bitmap inloop, want;
+  int n = 0;
+
+  if (loop->latch == NULL || loop->header == NULL)
+    return 0;
+
+  /* The single out-of-loop predecessor of the header, which phase A made.  */
+  FOR_EACH_EDGE (e, ei, loop->header->preds)
+    if (!flow_bb_inside_loop_p (loop, e->src))
+      {
+	if (pre != NULL)
+	  return 0;			/* not single-entry: leave it alone */
+	pre = e->src;
+      }
+  if (pre == NULL || pre == ENTRY_BLOCK_PTR_FOR_FN (cfun))
+    return 0;
+
+  body = get_loop_body (loop);
+  lvx_boundary_exclusions (&excl, loop, body);
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    bitmap_set_bit (inloop, body[i]->index);
+
+  /* LIVE-IN: what the header needs on entry.  Each gets a self-copy at the end
+     of the preheader, so the loop's uses form a chain that starts inside.  */
+  bitmap_and (want, df_get_live_in (loop->header), df_get_live_out (pre));
+  n += lvx_emit_self_copies (pre, want, excl, true);
+
+  /* LIVE-OUT: the same at each exit, but only where the block cannot also be
+     reached from outside the loop or the preheader.  */
+  for (unsigned i = 0; i < loop->num_nodes; i++)
+    FOR_EACH_EDGE (e, ei, body[i]->succs)
+      {
+	basic_block d = e->dest;
+	edge p;
+	edge_iterator pi;
+	bool only_ours = true;
+
+	if (bitmap_bit_p (inloop, d->index) || d == EXIT_BLOCK_PTR_FOR_FN (cfun))
+	  continue;
+	FOR_EACH_EDGE (p, pi, d->preds)
+	  if (!bitmap_bit_p (inloop, p->src->index) && p->src != pre)
+	    only_ours = false;
+	if (!only_ours)
+	  continue;
+	bitmap_and (want, df_get_live_in (d), df_get_live_out (body[i]));
+	n += lvx_emit_self_copies (d, want, excl, false);
+      }
+
+  free (body);
+  return n;
+}
+
 /* Give every innermost loop a single-entry preheader and lay its body out as
    one run, so that EBB formation sees the body whole and the software
    pipeliner's loop selection accepts it.
@@ -24569,6 +24759,28 @@ lvx_superblock_inner_loops (void)
 	if (lvx_unfold_inner_loop (loop))
 	  changed = true;
       dfa_finish ();
+    }
+
+  /* Phase B2: self-copies at the region boundary, so regrename can rename
+     ranges that are live in or live out.  After the unfold, so the body whose
+     boundary is taken is the final one; before the layout, before reorg_loops
+     and before the pcrel fixups, because this INSERTS instructions and those
+     two later steps choose LOOPDO's reach and the branch forms by distance.  */
+  if (lvx_self_copy_boundary)
+    {
+      int nself = 0;
+
+      df_analyze ();
+      for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
+	nself += lvx_loop_boundary_self_copies (loop);
+      if (nself)
+	{
+	  changed = true;
+	  df_analyze ();
+	}
+      if (dump_file && nself)
+	fprintf (dump_file, ";; lvx straighten: %d boundary self-copies\n",
+		 nself);
     }
 
   /* Phase C: the layout.  */
@@ -24929,6 +25141,37 @@ lvx_machine_dependent_reorg (void)
       && optimize_function_for_speed_p (cfun))
     {
       lvx_regrename_inner_loops ();
+      /* And drop the boundary self-copies regrename did not use.  Nothing
+	 later does it: delete_noop_moves lives in combine.cc, which ran before
+	 register allocation, and `final' does not test for a no-op move -- a
+	 surviving `X = X' would be emitted, and would take a TINY slot in the
+	 bundler below.  Deleting only shrinks distances, so it cannot
+	 invalidate the branch forms lvx_fix_pcreljump_ranges already chose.  */
+      if (lvx_self_copy_boundary)
+	{
+	  rtx_insn *insn, *next;
+	  int dropped = 0;
+
+	  for (insn = get_insns (); insn != NULL; insn = next)
+	    {
+	      next = NEXT_INSN (insn);
+	      /* noop_move_p, NOT set_noop_p: the latter takes a SET and reads
+		 SET_DEST/SET_SRC unconditionally, so on a PARALLEL, USE,
+		 CLOBBER or ASM pattern it dereferences garbage -- which is an
+		 ICE, and was one (segfault in set_noop_p from here, on
+		 sha_driver.c).  noop_move_p is GCC's own insn-level test, the
+		 one delete_noop_moves uses: it unwraps COND_EXEC, checks for a
+		 SET before testing it, and handles a PARALLEL of self-sets.  */
+	      if (NONJUMP_INSN_P (insn) && noop_move_p (insn))
+		{
+		  delete_insn (insn);
+		  dropped++;
+		}
+	    }
+	  if (dump_file && dropped)
+	    fprintf (dump_file, ";; lvx straighten: %d self-copies unused,"
+		     " dropped\n", dropped);
+	}
       df_analyze ();
     }
 
