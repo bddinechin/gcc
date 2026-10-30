@@ -10397,6 +10397,19 @@ lvx_option_override (void)
      wrong instance, with nothing to say so: the same shape as the
      -mcms-exact-degree hole below, where a measurement lever was reachable
      from the emission path because the gate tested the wrong thing.  */
+  /* THE SAME HOLE, FOR THE SAME REASON.  §7tricies.95.  `-mcms-assume-ivdep'
+     had only the `requires -mcms-probe' test above, which -mcms-codegen and
+     -mcms-pipeline satisfy ALONGSIDE the probe while emission still happens.
+     It drops genuine cross-iteration memory dependences on an assumption
+     nothing verifies -- §7sexvicies measured it changing 103 of 162 loops'
+     recurrence bound -- so a pipeline emitted on that graph reorders real
+     memory dependences and is wrong.  The guard its neighbour got, which it
+     needed just as much.  */
+  if (lvx_cms_assume_ivdep && (lvx_cms_codegen || lvx_cms_pipeline))
+    error ("%<-mcms-assume-ivdep%> drops real cross-iteration memory "
+	   "dependences on an assumption nothing verifies; it is for "
+	   "measurement only and is incompatible with %<-mcms-codegen%>");
+
   if (lvx_cms_inductive_relaxation && (lvx_cms_codegen || lvx_cms_pipeline))
     error ("%<-mcms-inductive-relaxation%> drops dependences that only the "
 	   "displacement adjustment of PaCT 1997 section 4 makes sound, and "

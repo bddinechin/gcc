@@ -190,3 +190,7 @@ Emit the software pipeline itself, not only the body in schedule order.  Require
 mcms-ec=
 Target RejectNegative Joined UInteger Var(lvx_cms_ec_policy) Init(2) Optimization
 -mcms-ec=N	How a live range's early clobber is decided: 0 per site from effects[0] (what the three sites did), 1 assumed for every range, 2 taken from the range's first definition and stored.
+
+mcms-force-p2unroll=
+Target RejectNegative Joined UInteger Var(lvx_cms_force_p2unroll) Init(0) Optimization
+-mcms-force-p2unroll=N	Give every renamed live range kunroll names instead of the minimum its lifetime needs, so each name carries one kernel copy and the colouring is less constrained: 0 off, 1 interior ranges only, 2 including ranges live on an exit edge (which costs epilogue copies).
