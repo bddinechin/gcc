@@ -15945,6 +15945,32 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
       d = g->first_date - lo + (ec ? 0 : 1);
       life = MAX (g->last_date - g->first_date + (ec ? 1 : 0), 1);
 
+      /* THE SAME-LINEAGE DROP, CHECKED.  §7tricies.79.
+
+	 lvx_cms_antidep_real_p drops a WAR or WAW between two references of
+	 ONE lineage at OMEGA > 0 on the grounds that the expansion separates
+	 the instances.  The occupancy test below cannot see that: it compares
+	 pairs of DIFFERENT lineages, and one lineage on its own register is
+	 never a conflict, so this class of drop was unverified from the start.
+
+	 It is separated exactly when instance I's range is over before the
+	 instance that reuses its register begins, which is LIFE <= P2UNROLL *
+	 II.  The colouring chooses P2UNROLL >= ceil (LIFE / II), so this holds
+	 whenever the colouring did its job and costs nothing; it fires only if
+	 that ever stops being true, and then the loop is refused rather than
+	 miscompiled.  */
+      if (life > g->p2unroll * ii)
+	{
+	  if (nconf == 0)
+	    {
+	      *first_a = root;
+	      *first_b = root;
+	      *first_reg = (int) g->regno;
+	      *first_cycle = -1;
+	    }
+	  nconf++;
+	}
+
       /* Name J carries the copies congruent to J modulo P2UNROLL, which is
 	 exact because P2UNROLL divides KUNROLL.  */
       for (int j = 0; j < g->p2unroll && j < LVX_CMS_MAX_KUNROLL; j++)
@@ -16063,31 +16089,21 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange *> &lr,
 	 to thirteen.  */
       if (omega == 0)
 	return true;
-      /* AND IT SEPARATES THEM ONLY IF THE NAMES DIFFER.  §7tricies.79.
+      /* The expansion separates them, which is CHECKED rather than assumed:
+	 lvx_cms_verify_lr_antidep requires LIFE <= P2UNROLL * II for every
+	 renamed lineage, and that inequality is exactly the statement that
+	 instance I's range ends before instance I + P2UNROLL reuses its
+	 register.  §7tricies.79.
 
-	 "Renamed, so the expansion separates them" was still wrong at
-	 OMEGA > 0, for a second reason that OMEGA == 0 hid.  Instance I
-	 uses reg[(I + use_first - delayed) & (p2 - 1)], so the instances
-	 I and I - OMEGA share a name exactly when P2UNROLL divides OMEGA --
-	 and at P2UNROLL == 1, which is every lineage whose lifetime fits in
-	 one II, it divides EVERY omega.  Nothing is separated and the arc
-	 is real.
-
-	 P2UNROLL is not known here: the graph is built before the colouring
-	 chooses it.  So this cannot be decided and must be kept, which is
-	 nearly free -- lvx_arc_latency clamps an anti-dependence to theta 0
-	 and an output dependence to theta 1, so at OMEGA >= 1 the
-	 constraint is sigma (dst) - sigma (src) >= -omega * II (or
-	 1 - omega * II) and is slack in any schedule that is not already
-	 tight for another reason.
-
-	 WHY THE VERIFIER DID NOT CATCH IT.  lvx_cms_verify_lr_antidep is an
-	 OCCUPANCY check over pairs of DIFFERENT lineages -- "no register
-	 held by two lineages in one cycle".  A same-lineage drop has one
-	 lineage on its own register, which is never a conflict, so these
-	 drops were unverified from the start.  s116 on lvx-2 dropped 13 of
-	 them at maxp2 = 1 and was miscompiled in the second lane of every
-	 vector pair.  */
+	 Keeping the arc instead is NOT the conservative choice it looks like,
+	 and measuring it was the only way to see that: a self-anti-dependence
+	 at OMEGA 1 reads sigma (def at I + 1) - sigma (use at I) >= -II, which
+	 CAPS EVERY LINEAGE'S LIFETIME AT ABOUT II -- precisely what modulo
+	 variable expansion exists to escape.  Keeping them took TSVC2 from 27
+	 loops at nstages >= 3 to 7, with the built count unmoved, so the cost
+	 was invisible in the count and total in the depth.  */
+      if (lr[ra]->renamed)
+	return false;
       why[1]++;
       return true;
     }
