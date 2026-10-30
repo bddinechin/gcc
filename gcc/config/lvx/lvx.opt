@@ -186,3 +186,7 @@ Emit the convergent modulo schedule as code, rather than only measuring it.  Inc
 mcms-pipeline
 Target Var(lvx_cms_pipeline) Init(0) Optimization
 Emit the software pipeline itself, not only the body in schedule order.  Requires -mcms-codegen; separate from it so that a broken pipeline cannot regress the reordering, which is verified.
+
+mcms-ec=
+Target RejectNegative Joined UInteger Var(lvx_cms_ec_policy) Init(2) Optimization
+-mcms-ec=N	How a live range's early clobber is decided: 0 per site from effects[0] (what the three sites did), 1 assumed for every range, 2 taken from the range's first definition and stored.

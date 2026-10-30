@@ -14883,11 +14883,57 @@ struct lvx_cms_lrange
   bool renamed;			/* its union gets a stack of names */
   int first_date, last_date;
   int p2unroll;
+  bool ec;			/* the early clobber the COLOURING used, stored so the
+			   verifier cannot recompute a different one.  §7tricies.90 */
+  bool capped;			/* p2unroll was forced to 1 by LVX_CMS_MAX_KUNROLL,
+			   not derived from LIFE.  §7tricies.92 */
   int self;			/* own index into LR */
   int parent;			/* union-find over LR: the live range */
   int reg[LVX_CMS_MAX_KUNROLL];
   auto_vec<lvx_cms_effect> effects;
 };
+
+/* THE EARLY CLOBBER OF A RANGE, NOT OF AN INSTRUCTION.  §7tricies.90.
+
+   `ec' decides whether the range's register is busy from its definition's
+   issue cycle or from the cycle after, so it lengthens LIFE by one and moves
+   the occupancy start back by one.  It was read in three places from
+   `effects[0]' with three different formulas, and the one that SET p2unroll
+   omitted it entirely -- harmless only because the colouring overwrites that
+   value with its own ec-aware degree, which is the kind of agreement that
+   holds by accident.
+
+   The property belongs to one instruction; the decision belongs to the range,
+   which spans many.  So it is computed once, here, and STORED on the range:
+
+     0  what the three sites did -- `effects[0]', whatever it is
+     1  conservative -- assume it for every range, safe for every member
+     2  exact -- the first DEF of the range, which is the instruction that
+	actually governs when the register becomes busy
+
+   Policy 2 is correct only because a range whose `effects[0]' is not a
+   definition is marked `renamed = false' and never reaches an allocation
+   decision; were that to change, the loop below still finds the first real
+   definition rather than trusting position zero.  */
+
+static bool
+lvx_cms_lrange_ec_p (const auto_vec<rtx_insn *> &seq, const lvx_cms_lrange *g)
+{
+  if (g->effects.is_empty ())
+    return false;
+  if (lvx_cms_ec_policy == 1)
+    return true;
+  if (lvx_cms_ec_policy >= 2)
+    {
+      for (unsigned e = 0; e < g->effects.length (); e++)
+	if (g->effects[e].is_def)
+	  return (g->effects[e].insn < seq.length ()
+		  && lvx_insn_dest_earlyclobber_p (seq[g->effects[e].insn]));
+      return false;
+    }
+  return (g->effects[0].insn < seq.length ()
+	  && lvx_insn_dest_earlyclobber_p (seq[g->effects[0].insn]));
+}
 
 /* The representative of a range's tie union, with path compression.  */
 
@@ -15071,6 +15117,8 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	      n->exit_live = false;
 	      n->renamed = false;
 	      n->p2unroll = 1;
+	      n->ec = false;
+	      n->capped = false;
 	      n->self = n->parent = (int) lr.length ();
 	      n->first_date = n->last_date = 0;
 	      open[r] = (int) lr.length ();
@@ -15157,6 +15205,8 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		  n->exit_live = false;
 		  n->renamed = false;
 		  n->p2unroll = 1;
+		  n->ec = false;
+		  n->capped = false;
 		  n->self = n->parent = (int) lr.length ();
 		  n->first_date = n->last_date = 0;
 		  open[r] = (int) lr.length ();
@@ -15294,6 +15344,8 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  n->exit_live = false;
 	  n->renamed = false;
 	  n->p2unroll = 1;
+	  n->ec = false;
+	  n->capped = false;
 	  n->self = n->parent = (int) lr.length ();
 	  n->first_date = n->last_date = 0;
 	  n->effects.safe_push (e);
@@ -15485,6 +15537,26 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
       lr[root]->renamed = true;
     }
+  /* STILL USE-HEADED MEANS THE BODY NEVER WRITES IT.  §7tricies.91.
+
+     This looks like a refusal to rename the loop-carried values, which are
+     exactly the ones worth renaming, and it is not: the normalisation above
+     has already ROTATED them.  A register with a use-headed range at the top
+     and a def-headed one at the bottom -- the cyclic wrap -- has the wrapped
+     uses folded into the def-headed range with `delayed' set, so the merged
+     range IS def-headed and passes this test.  That rotation is what makes
+     `(iteration + use_first - delayed) & (p2unroll - 1)' the whole of the
+     index computation.
+
+     What reaches here still use-headed is the case the normalisation skips,
+     FIRST == LAST: one range, opened by a use.  A definition always opens a
+     range of its own, so a single use-headed range means the body contains no
+     definition of that register at all -- a loop-invariant or a value defined
+     outside.  There is one value for every iteration, p2unroll of 1 is the
+     right answer rather than a conservative one, and giving it kunroll names
+     would mean copying the incoming value into each of them.  So this is not
+     a restriction to be lifted; it is the statement that there is nothing to
+     expand.  Counted as `held' in the lranges dump.  */
   for (unsigned k = 0; k < lr.length (); k++)
     if (!lr[k]->effects.is_empty () && !lr[k]->effects[0].is_def)
       lr[lvx_cms_lrange_root (lr, (int) k)]->renamed = false;
@@ -15801,7 +15873,12 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
     {
       int root = lr[k]->effects.is_empty () ? (int) k
 		 : lvx_cms_lrange_root (lr, (int) k);
-      int life = lr[root]->last_date - lr[root]->first_date;
+      /* §7tricies.90: this value is provisional -- the colouring overwrites
+	 it with its own degree -- but it must not be SMALLER than what the
+	 verifier will demand, so it carries the same ec.  */
+      int life = (lr[root]->last_date - lr[root]->first_date
+		  + (lvx_cms_ec_policy && lvx_cms_lrange_ec_p (seq, lr[root])
+		     ? 1 : 0));
       int need = ii > 0 ? (life + ii - 1) / ii : 1;
       int p2 = 1;
 
@@ -15982,7 +16059,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 	  continue;
 	}
 
-      ec = lvx_insn_dest_earlyclobber_p (seq[g->effects[0].insn]) ? 1 : 0;
+      ec = (lvx_cms_ec_policy ? g->ec : lvx_cms_lrange_ec_p (seq, g)) ? 1 : 0;
       d = g->first_date - lo + (ec ? 0 : 1);
       life = MAX (g->last_date - g->first_date + (ec ? 1 : 0), 1);
 
@@ -16330,8 +16407,10 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	 makes a cycle's reads and writes unlinearisable (§7tricies.35).  Used
 	 only as a retry, so the pressure it costs is paid only where the exact
 	 interval cannot be emitted.  */
-      ec = (claim_def_cycle
-	    || lvx_insn_dest_earlyclobber_p (seq[g->effects[0].insn])) ? 1 : 0;
+      ec = (claim_def_cycle || lvx_cms_lrange_ec_p (seq, g)) ? 1 : 0;
+      /* STORED, so the verifier checks the ec the colouring actually used.
+	 Recomputing it there is what let claim_def_cycle diverge.  */
+      g->ec = ec != 0;
       life = g->last_date - g->first_date + (ec ? 1 : 0);
       idx.safe_push ((int) k);
       def_.safe_push (g->first_date);
@@ -16361,6 +16440,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	     does not own, which is the 3-does-not-divide-4 bug again.  */
 	  wide++;
 	  g->p2unroll = 1;
+	  g->capped = true;
 	  continue;
 	}
       g->p2unroll = MAX (p2, 1);
@@ -16389,6 +16469,8 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
       if (root == (int) k)
 	continue;
       lr[k]->p2unroll = lr[root]->p2unroll;
+      lr[k]->ec = lr[root]->ec;
+      lr[k]->capped = lr[root]->capped;
       lr[k]->use_first = lr[root]->use_first;
       lr[k]->renamed = lr[root]->renamed;
       for (int j = 0; j < LVX_CMS_MAX_KUNROLL; j++)
