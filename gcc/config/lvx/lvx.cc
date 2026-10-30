@@ -15591,10 +15591,9 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
      substitution rewrites a REG by its position in a sub-rtx walk, so a
      renamed copy has the new register in one place and the old one in the
      others, the match_dups no longer match, and recog rejects it.  That is
-     the dry-run's "a slot's insn refuses the rename substitution", and before
-     -mcms-hwloop it was unreachable because a doloop latch was declined
-     outright; with the latch kept it cost seven PolyBench loops that the
-     -fno-hwloop arm pipelines.
+     the dry-run's "a slot's insn refuses the rename substitution", and while
+     a doloop latch was declined outright it was unreachable; with the latch
+     kept it cost seven PolyBench loops that the -fno-hwloop arm pipelines.
 
      Holding the counter costs nothing.  It is a self-recurrence at distance
      one whose successive definitions are a true dependence, so the copies
@@ -18446,7 +18445,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      approximate by retargeting the pattern.  */
   /* RE-FORMING THE HARDWARE LOOP.  §7tricies.61.
 
-     Under -mcms-hwloop the doloop latch is kept rather than declined: the
+     The doloop latch is kept rather than declined: the
      kernel's own closing instance stays a doloop_end, which reorg_loops --
      running after this pass -- consumes into a LOOPDO over the kernel, and
      every OTHER loopback instance becomes an explicit `counter -= 1; if zero
@@ -18468,9 +18467,23 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      story -- see ROUNDING DOWN below.  */
   bool doloop = lvx_doloop_end_p (seq[loopback]);
 
-  *why = "the loopback is a doloop_end, which the emission cannot retarget";
-  if (doloop && !lvx_cms_hwloop)
-    return false;
+  /* NO GATE HERE ANY MORE.  §7tricies.81.
+
+     A doloop latch used to be declined unless -mcms-hwloop was given, and
+     that option's whole effect was this one refusal -- it generated no code
+     and changed no decision anywhere else.  It was staging, and said so
+     ("Off by default while incomplete").  The staging is over: the doloop and
+     branch-loop arms build the same 27 loops at nstages >= 3 with identical
+     nstages histograms, agree with the unpipelined reference on all 151 TSVC2
+     checksums across three configurations, and the doloop arm is far cheaper
+     in code -- 1.02x the dynamic bundles against 1.26x -- because the
+     loopback branch is implicit and the exit test costs no issue slot.  So
+     the pipeliner considers any superblock inner loop, doloop or while, and
+     -fno-hwloop is no longer a prerequisite for pipelining anything.
+
+     The two refusals below are NOT staging and stay: a power-of-two unroll
+     factor is what makes the trip-count division a shift, and a kunroll > 1
+     kernel needs a prologue to set the count up from.  */
   *why = "a doloop kernel's unroll factor is not a power of two";
   if (doloop && (site->kunroll < 1
 		 || (site->kunroll & (site->kunroll - 1)) != 0))
