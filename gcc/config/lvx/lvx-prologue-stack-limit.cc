@@ -93,26 +93,27 @@ lvx_prologue_stack_limit (function *fun)
       if (opt_fstack_limit_register_no == -1 && !opt_fstack_limit_symbol_arg)
 	error ("`-fstack-limit-*' not enabled.");
 
-      insn = emit_insn_before (
-	gen_move_insn (stack_limit_reg,
-		       opt_fstack_limit_symbol_arg
-			 ? gen_rtx_SYMBOL_REF (Pmode, "__cos_stack_limit")
-			 : stack_limit_rtx),
-	NEXT_INSN (BB_HEAD (prologue)));
+      insn = emit_insn_before_noloc (
+	      gen_move_insn (stack_limit_reg,
+			     opt_fstack_limit_symbol_arg
+			       ? gen_rtx_SYMBOL_REF (Pmode, "__cos_stack_limit")
+			       : stack_limit_rtx),
+	      NEXT_INSN (BB_HEAD (prologue)), NULL);
 
-      insn
-	= emit_insn_after (gen_add3_insn (new_stack_pointer_reg,
-					  stack_pointer_rtx, GEN_INT (-size)),
-			   insn);
-      insn = emit_insn_after (gen_sub3_insn (new_stack_pointer_reg,
-					     stack_limit_reg,
-					     new_stack_pointer_reg),
-			      insn);
+      insn = emit_insn_after_noloc (gen_add3_insn (new_stack_pointer_reg,
+						   stack_pointer_rtx,
+						   GEN_INT (-size)),
+				    insn, NULL);
+      insn = emit_insn_after_noloc (gen_sub3_insn (new_stack_pointer_reg,
+						   stack_limit_reg,
+						   new_stack_pointer_reg),
+				    insn, NULL);
 
-      insn = emit_jump_insn_after (
-	gen_cbranch (gen_rtx_GT (Pmode, new_stack_pointer_reg, const0_rtx),
-		     new_stack_pointer_reg, const0_rtx, trap_label),
-	insn);
+      insn = emit_jump_insn_after_noloc (
+	      gen_cbranch (gen_rtx_GT (Pmode, new_stack_pointer_reg,
+				       const0_rtx),
+			   new_stack_pointer_reg, const0_rtx, trap_label),
+	      insn);
       JUMP_LABEL (insn) = trap_label;
       LABEL_NUSES (trap_label)++;
 

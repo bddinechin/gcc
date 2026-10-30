@@ -5035,12 +5035,12 @@ lvx_hwloop_fail (hwloop_info loop)
   gen_cbranch = (mode == SImode) ? gen_cbranchsi4 : gen_cbranchdi4;
 
   rtx decr = gen_add (loop->iter_reg, loop->iter_reg, constm1_rtx);
-  emit_insn_before (decr, loop->loop_end);
+  emit_insn_before_noloc (decr, loop->loop_end, NULL);
 
   rtx test = gen_rtx_NE (VOIDmode, NULL_RTX, NULL_RTX);
   rtx cbranch
     = gen_cbranch (test, loop->iter_reg, const0_rtx, loop->start_label);
-  rtx_insn *jump_insn = emit_jump_insn_before (cbranch, loop->loop_end);
+  rtx_insn *jump_insn = emit_jump_insn_before_noloc (cbranch, loop->loop_end);
 
   JUMP_LABEL (jump_insn) = loop->start_label;
   LABEL_NUSES (loop->start_label)++;
@@ -5231,7 +5231,7 @@ lvx_hwloop_optimize (hwloop_info loop)
       edge ee = split_block (loop->head, NEXT_INSN (BB_HEAD (loop->head)));
       basic_block hwloop_header = ee->src;
       basic_block hwloop_body = ee->dest;
-      emit_insn_after (seq, NEXT_INSN (BB_HEAD (hwloop_header)));
+      emit_insn_after_noloc (seq, NEXT_INSN (BB_HEAD (hwloop_header)), NULL);
 
       edge e;
       edge_iterator ei;
@@ -5251,7 +5251,7 @@ lvx_hwloop_optimize (hwloop_info loop)
   else if (entry_bb != ENTRY_BLOCK_PTR_FOR_FN (cfun))
     {
       rtx_insn *entry_after = BB_END (entry_bb);
-      emit_insn_after (seq, entry_after);
+      emit_insn_after_noloc (seq, entry_after, NULL);
     }
   else
     {
@@ -11197,7 +11197,8 @@ lvx_ifcvt_machdep_init (struct ce_if_block *ce_info, bool after_combine)
 	    last_insn = PREV_INSN (last_insn);
 
 	  // Insert a use of the tested register in then_bb to pull its live range.
-	  emit_insn_after (gen_rtx_USE (VOIDmode, tested_reg), last_insn);
+	  emit_insn_after_noloc (gen_rtx_USE (VOIDmode, tested_reg), last_insn,
+				 NULL);
 	  df_set_bb_dirty (then_bb);
 	}
 
@@ -11213,7 +11214,8 @@ lvx_ifcvt_machdep_init (struct ce_if_block *ce_info, bool after_combine)
 	  // XEXP (reg_cond, 0): on a bit-test branch the latter is the
 	  // ZERO_EXTRACT owned by the jump pattern, and re-emitting it here
 	  // shares rtl, which verify_rtl_sharing rejects after ce2.
-	  emit_insn_after (gen_rtx_USE (VOIDmode, tested_reg), last_insn);
+	  emit_insn_after_noloc (gen_rtx_USE (VOIDmode, tested_reg), last_insn,
+				 NULL);
 	  df_set_bb_dirty (else_bb);
 	}
     }
@@ -18933,16 +18935,16 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  /* THE BRANCH.  Every jump goes through here, not just the loopback:
 	     the test was `i == loopback', which for a multi-exit body sent the
 	     OTHER jump down the ordinary-instruction path below, where
-	     emit_insn_after copies a jump pattern into a non-JUMP insn.  The
-	     CFG then knows nothing of it while the assembler still prints a
+	     emit_insn_after_noloc copies a jump pattern into a non-JUMP insn.
+	     The CFG then knows nothing of it while the assembler still prints a
 	     branch to the original label, so the label is never emitted:
 	     `undefined reference to .L8', caught by validation/cms/twoexit.c
 	     and by nothing that merely compiles (§7tricies.45).
 
 	     What differs between the kinds is where it goes and whether the
 	     condition is inverted.  */
-	  rtx_insn *j = emit_jump_insn_after (copy_insn (PATTERN (seq[i])),
-					     after);
+	  rtx_insn *j
+	    = emit_jump_insn_after_noloc (copy_insn (PATTERN (seq[i])), after);
 	  /* The copy carries the original label_ref, so JUMP_LABEL is set to
 	     the original target before retargeting: `redirect_jump' and
 	     `invert_jump' both read it as the label to replace, and a null one
@@ -19032,14 +19034,14 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		rtx decr = (cm == SImode
 			    ? gen_addsi3 (creg_rtx, creg_rtx, constm1_rtx)
 			    : gen_adddi3 (creg_rtx, creg_rtx, constm1_rtx));
-		rtx_insn *di = emit_insn_after (decr, after);
+		rtx_insn *di = emit_insn_after_noloc (decr, after, NULL);
 		rtx test = gen_rtx_EQ (VOIDmode, NULL_RTX, NULL_RTX);
 		rtx cb = (cm == SImode
 			  ? gen_cbranchsi4 (test, creg_rtx, const0_rtx,
 					    block_label (blocks[ep]))
 			  : gen_cbranchdi4 (test, creg_rtx, const0_rtx,
 					    block_label (blocks[ep])));
-		rtx_insn *cj = emit_jump_insn_after (cb, di);
+		rtx_insn *cj = emit_jump_insn_after_noloc (cb, di);
 
 		JUMP_LABEL (cj) = block_label (blocks[ep]);
 		LABEL_NUSES (JUMP_LABEL (cj))++;
@@ -19143,7 +19145,8 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	}
 
       /* An ordinary instruction: a copy, renamed for this iteration.  */
-      rtx_insn *c = emit_insn_after (copy_insn (PATTERN (seq[i])), after);
+      rtx_insn *c
+	= emit_insn_after_noloc (copy_insn (PATTERN (seq[i])), after, NULL);
       int n = 0;
       /* RESOLVED ON THE ORIGINAL, APPLIED TO THE COPY.  copy_insn produces an
 	 insn DF has never seen, so the references are looked up on SEQ[I] and
@@ -19300,7 +19303,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 
       /* At the END of the drain, after every instance of every definition it
 	 holds -- and still before the block's terminator, which
-	 emit_insn_after from TAIL gives.  */
+	 emit_insn_after_noloc from TAIL gives.  */
       after = tail[k];
       if (!after)
 	{
@@ -19314,9 +19317,10 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       for (unsigned z = 0; z < osrc.length (); z++)
 	{
 	  rtx_insn *mv
-	    = emit_insn_after (gen_rtx_SET (gen_rtx_REG (omode[z], odst[z]),
-					    gen_rtx_REG (omode[z], osrc[z])),
-			       after);
+	    = emit_insn_after_noloc (gen_rtx_SET
+				       (gen_rtx_REG (omode[z], odst[z]),
+					gen_rtx_REG (omode[z], osrc[z])),
+				     after, NULL);
 
 	  *why = "a live-out copy does not recognise";
 	  if (recog_memoized (mv) < 0)
@@ -19432,7 +19436,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	if (!at)
 	  return false;
 	for (int x = 0; x < 4; x++)
-	  at = emit_insn_after (seq4[x], at), nemit++;
+	  at = emit_insn_after_noloc (seq4[x], at, NULL), nemit++;
       }
 
       /* THE EXIT-FREE KERNEL, as a chain of blocks.  The same slots, in the
@@ -19487,7 +19491,8 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		  return false;
 		target = blocks[ep];
 
-		j = emit_jump_insn_after (copy_insn (PATTERN (seq[i])), at);
+		j = emit_jump_insn_after_noloc (copy_insn (PATTERN (seq[i])),
+						at);
 		JUMP_LABEL (j) = JUMP_LABEL (seq[i]);
 		if (JUMP_LABEL (j) && LABEL_P (JUMP_LABEL (j)))
 		  LABEL_NUSES (JUMP_LABEL (j))++;
@@ -19537,7 +19542,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		continue;
 	      }
 
-	    c = emit_insn_after (copy_insn (PATTERN (seq[i])), at);
+	    c = emit_insn_after_noloc (copy_insn (PATTERN (seq[i])), at, NULL);
 	    *why = "the renamed copy does not recognise";
 	    if (!lvx_cms_rename_lr_insn_p (seq[i], c, i, slots[q].iter, lr,
 					   &n, true))
@@ -19553,12 +19558,11 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	if (nk == 0)
 	  return false;
 
-	de = emit_jump_insn_after ((cm == SImode
-				    ? gen_doloop_end_si (hw_rtx,
-							 block_label (kbb))
-				    : gen_doloop_end_di (hw_rtx,
-							 block_label (kbb))),
-				   at);
+	de = emit_jump_insn_after_noloc
+	       ((cm == SImode
+		 ? gen_doloop_end_si (hw_rtx, block_label (kbb))
+		 : gen_doloop_end_di (hw_rtx, block_label (kbb))),
+		at);
 	JUMP_LABEL (de) = block_label (kbb);
 	LABEL_NUSES (JUMP_LABEL (de))++;
 	nemit++;

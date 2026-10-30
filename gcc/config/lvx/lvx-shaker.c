@@ -143,7 +143,7 @@ lvx_shaker (function * fun)
 	      struct lvx_shaker_ls ls_info = { 0, 0 };
 	      int is_load = load_p (cur_insn, &ls_info);
 	      if (shake_p % 51 == 0)
-		emit_insn_before (gen_nop (), cur_insn);
+		emit_insn_before_noloc (gen_nop (), cur_insn, NULL);
 	    }
 	  default:
 	    break;
