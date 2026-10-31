@@ -14892,7 +14892,29 @@ struct lvx_cms_effect
 
 #define LVX_CMS_MAX_KUNROLL 32
 
-struct lvx_cms_lrange
+/* A PART OF A LIVE RANGE, NOT A LIVE RANGE.  §7tricies.98.
+
+   The renaming unit -- the thing that gets P2UNROLL names, one occupancy and
+   one colour -- is a UNION of these, identified by its root through
+   lvx_cms_lrange_root.  One object is a member of it, and only a root object
+   stands for the whole; the colouring says so where it skips the others
+   ("ONE UNIT PER LIVE RANGE"), and so does the verifier ("one live range, one
+   occupancy").  The type was called `lvx_cms_lrange' and so read as the whole
+   while denoting a part, which is the same imprecision the lineage/live-range
+   rename removed from the prose.
+
+   Most live ranges are a single part: measured over 194 loops of TSVC2 and
+   PolyBench, 1527 units from 92 unions, with a union occurring in 63 loops.
+   That is exactly why the distinction is easy to forget -- the compensating
+   call to lvx_cms_lrange_root is correct in all but a sixteenth of cases even
+   if omitted.
+
+   The functions keep the `lvx_cms_lrange_' prefix as a module name: ..._root
+   maps a part to its live range, ..._union joins two, and the rest take a
+   part and are written to be called on the root where the answer is the live
+   range's.  */
+
+struct lvx_cms_lrange_part
 {
   unsigned regno;
   int nregs;
@@ -14935,7 +14957,7 @@ struct lvx_cms_lrange
    definition rather than trusting position zero.  */
 
 static bool
-lvx_cms_lrange_ec_p (const auto_vec<rtx_insn *> &seq, const lvx_cms_lrange *g)
+lvx_cms_lrange_ec_p (const auto_vec<rtx_insn *> &seq, const lvx_cms_lrange_part *g)
 {
   if (g->effects.is_empty ())
     return false;
@@ -14958,7 +14980,7 @@ lvx_cms_lrange_ec_p (const auto_vec<rtx_insn *> &seq, const lvx_cms_lrange *g)
 /* The representative of a range's tie union, with path compression.  */
 
 static int
-lvx_cms_lrange_root (const auto_vec<lvx_cms_lrange *> &lr, int k)
+lvx_cms_lrange_root (const auto_vec<lvx_cms_lrange_part *> &lr, int k)
 {
   while (lr[k]->parent != k)
     {
@@ -14971,8 +14993,8 @@ lvx_cms_lrange_root (const auto_vec<lvx_cms_lrange *> &lr, int k)
 /* Put two ranges in one live range.  Returns true if they were not already.  */
 
 static bool
-lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange *> &lr,
-		      lvx_cms_lrange *ga, lvx_cms_lrange *gb)
+lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange_part *> &lr,
+		      lvx_cms_lrange_part *ga, lvx_cms_lrange_part *gb)
 {
   int a, b;
 
@@ -14993,17 +15015,17 @@ lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange *> &lr,
 /* Declared ahead of their definitions: the three operand lookups, which the
    build's unification passes need and which read the structure the build has
    just produced.  */
-static lvx_cms_lrange *lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &,
+static lvx_cms_lrange_part *lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange_part *> &,
 					  unsigned, int, bool *,
 					  int * = NULL, int * = NULL);
-static lvx_cms_lrange *
-lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange *> &, unsigned, unsigned);
-static lvx_cms_lrange *
-lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange *> &, unsigned, unsigned);
+static lvx_cms_lrange_part *
+lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange_part *> &, unsigned, unsigned);
+static lvx_cms_lrange_part *
+lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange_part *> &, unsigned, unsigned);
 
 static void
 lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
-		       auto_vec<lvx_cms_lrange *> &lr, int *ntie_out,
+		       auto_vec<lvx_cms_lrange_part *> &lr, int *ntie_out,
 		       int *nunit_out, int *nheld_out, int *nwiden_out = NULL)
 {
   int ntie = 0;
@@ -15125,7 +15147,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	    }
 	  if (open[r] < 0)
 	    {
-	      lvx_cms_lrange *n = new lvx_cms_lrange ();
+	      lvx_cms_lrange_part *n = new lvx_cms_lrange_part ();
 	      n->regno = r;
 	      n->nregs = nr;
 	      /* USE_FIRST means the CYCLIC WRAP and nothing else, so the
@@ -15218,7 +15240,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		continue;
 	      if (open[r] < 0)
 		{
-		  lvx_cms_lrange *n = new lvx_cms_lrange ();
+		  lvx_cms_lrange_part *n = new lvx_cms_lrange_part ();
 		  n->regno = r;
 		  n->nregs = 1;
 		  n->use_first = false;
@@ -15357,7 +15379,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		}
 	    }
 
-	  lvx_cms_lrange *n = new lvx_cms_lrange ();
+	  lvx_cms_lrange_part *n = new lvx_cms_lrange_part ();
 	  n->regno = r;
 	  n->nregs = nr;
 	  n->use_first = false;
@@ -15494,7 +15516,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       /* The matched operand is the input this destination must equal.  */
       {
 	rtx u = recog_data.operand[m];
-	lvx_cms_lrange *gd, *gu;
+	lvx_cms_lrange_part *gd, *gu;
 
 	if (!u || !REG_P (u) || REGNO (u) >= FIRST_PSEUDO_REGISTER)
 	  continue;
@@ -15803,12 +15825,12 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
 static void
 lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
-			  auto_vec<lvx_cms_lrange *> &lr,
+			  auto_vec<lvx_cms_lrange_part *> &lr,
 			  const auto_vec<int> &sigma, int ii, bitmap liveout)
 {
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange *g = lr[k];
+      lvx_cms_lrange_part *g = lr[k];
       bool first = true;
 
       g->first_date = g->last_date = 0;
@@ -15924,11 +15946,11 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
 
 static void
 lvx_cms_dump_lranges (const auto_vec<rtx_insn *> &seq,
-		      const auto_vec<lvx_cms_lrange *> &lr, const char *tag)
+		      const auto_vec<lvx_cms_lrange_part *> &lr, const char *tag)
 {
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange *g = lr[k];
+      lvx_cms_lrange_part *g = lr[k];
 
       if (g->effects.is_empty ())
 	continue;
@@ -15965,7 +15987,7 @@ lvx_cms_dump_lranges (const auto_vec<rtx_insn *> &seq,
    sub-register, which lvx_cms_build_lranges did not have.  */
 
 static int
-lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange *> &lr)
+lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange_part *> &lr)
 {
   int bad = 0;
 
@@ -16025,7 +16047,7 @@ lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange *> &lr)
 
 static bool
 lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
-			   const auto_vec<lvx_cms_lrange *> &lr,
+			   const auto_vec<lvx_cms_lrange_part *> &lr,
 			   int ii, int lo, int kunroll, int *nconf_out,
 			   int *first_a, int *first_b, int *first_reg,
 			   int *first_cycle, int *nheld_out, int *ninv_out,
@@ -16054,7 +16076,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange *g = lr[k];
+      lvx_cms_lrange_part *g = lr[k];
       int root, ec, d, life, nr;
 
       if (g->effects.is_empty ())
@@ -16243,14 +16265,14 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
    An unresolvable reference keeps the arc.  */
 
 static bool
-lvx_cms_lrange_keeps_regno_p (const auto_vec<lvx_cms_lrange *> &lr, int root)
+lvx_cms_lrange_keeps_regno_p (const auto_vec<lvx_cms_lrange_part *> &lr, int root)
 {
   return !lr[root]->renamed || lr[root]->use_first;
 }
 
 static bool
-lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange *> &lr,
-			lvx_cms_lrange *ga, lvx_cms_lrange *gb,
+lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
+			lvx_cms_lrange_part *ga, lvx_cms_lrange_part *gb,
 			int *why /* [3]: unresolved, one live range, both keep */,
 			HOST_WIDE_INT omega)
 {
@@ -16333,7 +16355,7 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange *> &lr,
 
 static void
 lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
-			 const auto_vec<lvx_cms_lrange *> &lr,
+			 const auto_vec<lvx_cms_lrange_part *> &lr,
 			 bitmap livein, HARD_REG_SET *reserved,
 			 int *pool_out = NULL)
 {
@@ -16372,7 +16394,7 @@ lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
 
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange *g = lr[k];
+      lvx_cms_lrange_part *g = lr[k];
       bool rewritten;
 
       if (g->effects.is_empty ())
@@ -16453,7 +16475,7 @@ static int lvx_cms_anode_of (const auto_vec<int> &, const auto_vec<int> &,
 
 static bool
 lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
-			auto_vec<lvx_cms_lrange *> &lr, int ii, int lo,
+			auto_vec<lvx_cms_lrange_part *> &lr, int ii, int lo,
 			unsigned HOST_WIDE_INT avail, int *nn_out,
 			int *stuck_out, int *maxreg_out, int *kun_out,
 			int *pin_out, int *pinfail_out, int *wide_out,
@@ -16467,7 +16489,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange *g = lr[k];
+      lvx_cms_lrange_part *g = lr[k];
       int ec, life;
 
       /* ONE UNIT PER LIVE RANGE.  A member that is not the root shares the
@@ -16563,7 +16585,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 
   for (unsigned u = 0; u < idx.length (); u++)
     {
-      lvx_cms_lrange *g = lr[idx[u]];
+      lvx_cms_lrange_part *g = lr[idx[u]];
       int p2 = lvx_cms_value_p2 (av, (int) u);
 
       for (int j = 0; j < LVX_CMS_MAX_KUNROLL; j++)
@@ -16644,8 +16666,8 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
    That is what tells two ranges in one register apart, and it is the whole of
    what §7tricies.22's gate was standing in for.  */
 
-static lvx_cms_lrange *
-lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
+static lvx_cms_lrange_part *
+lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
 		   int slot, bool *delayed_out, int *offset_out,
 		   int *nregs_out)
 {
@@ -16653,7 +16675,7 @@ lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
     return NULL;
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange *g = lr[k];
+      lvx_cms_lrange_part *g = lr[k];
 
       for (unsigned e = 0; e < g->effects.length (); e++)
 	if (g->effects[e].insn == insn && g->effects[e].slot == slot)
@@ -16676,8 +16698,8 @@ lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
    `the destination of this insn' -- the tie pass reading recog_data.  Keyed on
    the heading definition, which is unique per range.  */
 
-static lvx_cms_lrange *
-lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
+static lvx_cms_lrange_part *
+lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
 		       unsigned regno)
 {
   for (unsigned k = 0; k < lr.length (); k++)
@@ -16693,11 +16715,11 @@ lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
    live ranges, so this answers only where there is exactly one; it returns null
    rather than a guess otherwise.  */
 
-static lvx_cms_lrange *
-lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
+static lvx_cms_lrange_part *
+lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
 		       unsigned regno)
 {
-  lvx_cms_lrange *found = NULL;
+  lvx_cms_lrange_part *found = NULL;
 
   for (unsigned k = 0; k < lr.length (); k++)
     {
@@ -16719,7 +16741,7 @@ lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange *> &lr, unsigned insn,
    computation, and the only place the renaming decides anything.  */
 
 static int
-lvx_cms_lrange_reg (lvx_cms_lrange *g, int iteration, bool delayed)
+lvx_cms_lrange_reg (lvx_cms_lrange_part *g, int iteration, bool delayed)
 {
   int index = (iteration + (g->use_first ? 1 : 0) - (delayed ? 1 : 0))
 	      & (g->p2unroll - 1);
@@ -16732,7 +16754,7 @@ lvx_cms_lrange_reg (lvx_cms_lrange *g, int iteration, bool delayed)
 
 static bool
 lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
-			const auto_vec<lvx_cms_lrange *> &lr,
+			const auto_vec<lvx_cms_lrange_part *> &lr,
 			int *nrange_out, int *orphan_out, int *dup_out,
 			int *noloc_out)
 {
@@ -17493,7 +17515,7 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
 
 static bool
 lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
-			  int iter, const auto_vec<lvx_cms_lrange *> &lr,
+			  int iter, const auto_vec<lvx_cms_lrange_part *> &lr,
 			  int *nsubst, bool apply, bool trace = false)
 {
   int base = num_validated_changes ();
@@ -17511,7 +17533,7 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 						  : DF_REF_REG (ref);
       unsigned r = (rreg && REG_P (rreg)) ? REGNO (rreg)
 					  : DF_REF_REGNO (ref);
-      lvx_cms_lrange *g;
+      lvx_cms_lrange_part *g;
       int idx, neu, off = 0;
 
       if (r >= FIRST_PSEUDO_REGISTER)
@@ -17550,7 +17572,7 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 						    : DF_REF_REG (ref);
 	unsigned r = (rreg && REG_P (rreg)) ? REGNO (rreg)
 					    : DF_REF_REGNO (ref);
-	lvx_cms_lrange *g;
+	lvx_cms_lrange_part *g;
 	bool dly = false;
 	int idx, neu, off = 0;
 
@@ -17637,7 +17659,7 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 static bool
 lvx_cms_rename_lr_dryrun (const auto_vec<rtx_insn *> &seq,
 			  const auto_vec<lvx_cms_slot> &slots,
-			  const auto_vec<lvx_cms_lrange *> &lr,
+			  const auto_vec<lvx_cms_lrange_part *> &lr,
 			  int *subst_out, int *fail_out,
 			  auto_vec<int> *refused = NULL)
 {
@@ -18331,7 +18353,7 @@ lvx_cms_verify_antidep (const auto_vec<rtx_insn *> &seq,
 static bool
 lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 		    const auto_vec<lvx_cms_slot> &slots,
-		    const auto_vec<lvx_cms_lrange *> &lr, int loopback,
+		    const auto_vec<lvx_cms_lrange_part *> &lr, int loopback,
 		    auto_vec<int> &order)
 {
   auto_vec<unsigned HOST_WIDE_INT> srd, swr;
@@ -18354,7 +18376,7 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 					    DF_REF_LOC (ref));
 	      bool dly = false;
 	      int off = 0, wid = 1;
-	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, &dly, &off,
+	      lvx_cms_lrange_part *g = lvx_cms_lrange_of (lr, i, slot, &dly, &off,
 						     &wid);
 	      /* THE EFFECT'S SPAN, NOT THE RANGE'S.  §7tricies.77.  Taking
 		 the range's name and width recorded a partial reference as
@@ -18376,7 +18398,7 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 	      int slot = lvx_cms_reg_index (PATTERN (seq[i]),
 					    DF_REF_LOC (ref));
 	      int off = 0, wid = 1;
-	      lvx_cms_lrange *g = lvx_cms_lrange_of (lr, i, slot, NULL, &off,
+	      lvx_cms_lrange_part *g = lvx_cms_lrange_of (lr, i, slot, NULL, &off,
 						     &wid);
 	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, false) + off
 			  : (int) r;
@@ -18629,7 +18651,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		       const auto_vec<lvx_cms_slot> &slots,
 		       const auto_vec<lvx_cms_node> &nodes,
 		       const auto_vec<basic_block> &blocks,
-		       const auto_vec<lvx_cms_lrange *> &lr,
+		       const auto_vec<lvx_cms_lrange_part *> &lr,
 		       unsigned HOST_WIDE_INT avail,
 		       int *nemit_out, const char **why)
 {
@@ -18998,7 +19020,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      are noted at their site.  */
   for (unsigned g = 0; g < lr.length (); g++)
     {
-      lvx_cms_lrange *q = lr[g];
+      lvx_cms_lrange_part *q = lr[g];
 
       if (q->effects.is_empty () || !q->exit_live
 	  || lvx_cms_lrange_root (lr, (int) g) != (int) g
@@ -19166,7 +19188,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 								   (seq[i]),
 								 0, 1)));
 	      bool cdly = false;
-	      lvx_cms_lrange *cg = lvx_cms_lrange_of (lr, i, cslot, &cdly);
+	      lvx_cms_lrange_part *cg = lvx_cms_lrange_of (lr, i, cslot, &cdly);
 	      int creg = cg ? lvx_cms_lrange_reg (cg, slots[q].iter, cdly)
 			    : (REG_P (cnt) ? (int) REGNO (cnt) : -1);
 	      machine_mode cm = GET_MODE (cnt);
@@ -19356,7 +19378,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 
       for (unsigned g = 0; g < lr.length (); g++)
 	{
-	  lvx_cms_lrange *q = lr[g];
+	  lvx_cms_lrange_part *q = lr[g];
 	  unsigned dins;
 	  int dslot, best = -1, nm, nr;
 	  rtx *dloc;
@@ -19520,7 +19542,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       rtx cnt = SET_DEST (XVECEXP (cpat, 0, 1));
       int cslot = lvx_cms_reg_index (cpat, &SET_DEST (XVECEXP (cpat, 0, 1)));
       bool cdly = false;
-      lvx_cms_lrange *cg = lvx_cms_lrange_of (lr, loopback, cslot, &cdly);
+      lvx_cms_lrange_part *cg = lvx_cms_lrange_of (lr, loopback, cslot, &cdly);
       machine_mode cm = GET_MODE (cnt);
       int creg = cg ? lvx_cms_lrange_reg (cg, 0, cdly)
 		    : (REG_P (cnt) ? (int) REGNO (cnt) : -1);
@@ -19541,7 +19563,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	 use; what it did not take is free across the whole pipeline.  */
       for (unsigned g = 0; g < lr.length (); g++)
 	{
-	  lvx_cms_lrange *q = lr[g];
+	  lvx_cms_lrange_part *q = lr[g];
 	  for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
 	    if (q->reg[x] >= 0 && q->reg[x] < 64)
 	      free_regs &= ~((unsigned HOST_WIDE_INT) 1 << q->reg[x]);
@@ -20796,7 +20818,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		     per candidate II, and it raises II where the registers are
 		     genuinely not there, which is the honest answer: the lower
 		     II was not achievable, it was only unmeasured.  */
-		  auto_vec<lvx_cms_lrange *> flr;
+		  auto_vec<lvx_cms_lrange_part *> flr;
 		  auto_vec<int> fstuck;
 		  HARD_REG_SET fresv;
 		  unsigned HOST_WIDE_INT favail = 0;
@@ -21252,7 +21274,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
      else -- no schedule, no arcs -- which is exactly why it can come first.
      Dates and the expansion degree are set later, by
      lvx_cms_set_lrange_dates, once SIGMA exists.  */
-  auto_vec<lvx_cms_lrange *> lrange;
+  auto_vec<lvx_cms_lrange_part *> lrange;
   int ndrop = 0, awhy[3] = { 0, 0, 0 };
 
   lvx_cms_build_lranges (seq, lrange, NULL, NULL, NULL);
@@ -22666,7 +22688,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int plkun = 1;
   bool plclaimed = false;
   {
-    auto_vec<lvx_cms_lrange *> klr;
+    auto_vec<lvx_cms_lrange_part *> klr;
     HARD_REG_SET kresv;
     unsigned HOST_WIDE_INT kavail = 0;
     int klb = -1;
@@ -23130,7 +23152,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      the structure the renaming is being moved onto, verified against DF
      before anything is renamed from it.  */
   {
-    auto_vec<lvx_cms_lrange *> lr;
+    auto_vec<lvx_cms_lrange_part *> lr;
     int nrange = 0, lrorph = 0, lrdup = 0, lrnoloc = 0;
     int lrmaxp2 = 0, lruf = 0, lrxl = 0;
     int lrtie = 0, lrunit = 0, lrheld = 0;
@@ -23431,7 +23453,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		 is asked of the live range assignment itself and now refuses
 		 nothing on any of the 124 loops measured.  */
 	      {
-		auto_vec<lvx_cms_lrange *> cglr;
+		auto_vec<lvx_cms_lrange_part *> cglr;
 		HARD_REG_SET cgresv;
 		unsigned HOST_WIDE_INT cgavail = 0;
 		int nn = 0, nst = 0, mx = -1, kun = 1, pin = 0, pinf = 0;
@@ -23498,7 +23520,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		    for (int z = 0; z < 2; z++)
 		      {
 			int kk = z ? cb : ca;
-			lvx_cms_lrange *g;
+			lvx_cms_lrange_part *g;
 
 			if (kk < 0 || kk >= (int) cglr.length ())
 			  continue;
