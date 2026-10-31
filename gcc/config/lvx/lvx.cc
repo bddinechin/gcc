@@ -10410,6 +10410,15 @@ lvx_option_override (void)
 	   "dependences on an assumption nothing verifies; it is for "
 	   "measurement only and is incompatible with %<-mcms-codegen%>");
 
+  if (lvx_cms_drop_liveout_arcs && !lvx_cms_probe)
+    error ("%<-mcms-drop-liveout-arcs%> is for measurement only; it requires "
+	   "%<-mcms-probe%>");
+  if (lvx_cms_drop_liveout_arcs && (lvx_cms_codegen || lvx_cms_pipeline))
+    error ("%<-mcms-drop-liveout-arcs%> lets a definition of a live-out "
+	   "register move above the exit branch, so the exit returns a value "
+	   "from the wrong iteration; the split of %<§5a2b%> is what makes it "
+	   "sound, and it is incompatible with %<-mcms-codegen%>");
+
   if (lvx_cms_inductive_relaxation && (lvx_cms_codegen || lvx_cms_pipeline))
     error ("%<-mcms-inductive-relaxation%> drops dependences that only the "
 	   "displacement adjustment of PaCT 1997 section 4 makes sound, and "
@@ -21689,6 +21698,18 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 
 	  /* (2) */
 	  if (exitbb == NULL)
+	    continue;
+	  /* MEASUREMENT ONLY, AND UNSOUND WITHOUT THE SPLIT.  §7tricies.99.
+	     Dropping these arcs is what the SPLIT achieves soundly -- compute
+	     into a scratch register and copy to the architected one, so only
+	     the copy carries the arc (mlir-pipeliner-design.md §5a2b/§5a2c).
+	     Dropping them alone lets the next iteration's definition of a
+	     live-out register move above the exit branch, so the exit returns
+	     a value one iteration too far: a wrong program, not a faster one.
+	     The lever exists to size the OPPORTUNITY before building the
+	     phase, which is the step skipped twice (§7tricies.82, .97), and
+	     lvx_option_override refuses it with codegen.  */
+	  if (lvx_cms_drop_liveout_arcs)
 	    continue;
 	  FOR_EACH_INSN_DEF (def, seq[q])
 	    if (DF_REF_REGNO (def) < FIRST_PSEUDO_REGISTER

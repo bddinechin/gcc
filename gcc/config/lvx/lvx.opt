@@ -190,3 +190,7 @@ Emit the software pipeline itself, not only the body in schedule order.  Require
 mcms-force-p2unroll=
 Target RejectNegative Joined UInteger Var(lvx_cms_force_p2unroll) Init(0) Optimization
 -mcms-force-p2unroll=N	Give every renamed live range kunroll names instead of the minimum its lifetime needs, so each name carries one kernel copy: 0 off, 1 interior ranges only, 2 including ranges live on an exit edge, which costs reconciliation copies in each drain.  Measured to change no II on this target (7tricies.97); kept as a control for other register allocators.
+
+mcms-drop-liveout-arcs
+Target Var(lvx_cms_drop_liveout_arcs) Init(0) Optimization
+Omit the CTRL_LIVEOUT control arcs, to size what splitting the live-out definition would be worth; measurement only, requires -mcms-probe and refused with -mcms-codegen.
