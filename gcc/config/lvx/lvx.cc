@@ -13239,6 +13239,11 @@ lvx_cms_collect_values (const auto_vec<rtx_insn *> &seq,
       rtx ds = single_set (seq[i]);
       int nr = (ds && REG_P (SET_DEST (ds))) ? REG_NREGS (SET_DEST (ds)) : 1;
       nregs_.safe_push (MAX (nr, 1));
+      /* PER INSTRUCTION HERE, AND THAT IS RIGHT.  §7tricies.96.  This model is
+	 keyed by instruction, not by live range, so the flag of the
+	 instruction in hand is exactly the right one -- do not "unify" it with
+	 lvx_cms_lrange_ec_p, which answers a different question about a
+	 different object.  */
       ec_.safe_push (lvx_insn_dest_earlyclobber_p (seq[i]) ? 1 : 0);
       if (owner)
 	owner->safe_push ((int) i);
@@ -14934,18 +14939,20 @@ lvx_cms_lrange_ec_p (const auto_vec<rtx_insn *> &seq, const lvx_cms_lrange *g)
 {
   if (g->effects.is_empty ())
     return false;
-  if (lvx_cms_ec_policy == 1)
-    return true;
-  if (lvx_cms_ec_policy >= 2)
-    {
-      for (unsigned e = 0; e < g->effects.length (); e++)
-	if (g->effects[e].is_def)
-	  return (g->effects[e].insn < seq.length ()
-		  && lvx_insn_dest_earlyclobber_p (seq[g->effects[e].insn]));
-      return false;
-    }
-  return (g->effects[0].insn < seq.length ()
-	  && lvx_insn_dest_earlyclobber_p (seq[g->effects[0].insn]));
+  /* THE RANGE'S OWN FIRST DEFINITION, and nothing else.  A range whose first
+     def is not an early clobber is NOT affected by one elsewhere in the loop:
+     the flag decides when THIS register becomes busy.  The alternative --
+     assuming it for every range -- was measured and is expensive, costing 6
+     of 111 built pipelines and 2 of 16 deep ones on TSVC2 with the sum of IIs
+     unchanged, so the loss was entirely ranges pushed to a larger P2UNROLL by
+     one needless cycle of occupancy.  §7tricies.96.  */
+  for (unsigned e = 0; e < g->effects.length (); e++)
+    if (g->effects[e].is_def)
+      return (g->effects[e].insn < seq.length ()
+	      && lvx_insn_dest_earlyclobber_p (seq[g->effects[e].insn]));
+  /* No definition in the body: the rotation of §7tricies.91 leaves these
+     unrenameable, and their occupancy does not depend on the flag.  */
+  return false;
 }
 
 /* The representative of a range's tie union, with path compression.  */
@@ -15886,12 +15893,16 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
     {
       int root = lr[k]->effects.is_empty () ? (int) k
 		 : lvx_cms_lrange_root (lr, (int) k);
-      /* §7tricies.90: this value is provisional -- the colouring overwrites
-	 it with its own degree -- but it must not be SMALLER than what the
-	 verifier will demand, so it carries the same ec.  */
+      /* PROVISIONAL, AND READ ONLY BY THE DUMP.  §7tricies.90.  The colouring
+	 overwrites P2UNROLL with its own degree, and every functional read --
+	 the index computation, the invariant check -- happens after that.  So
+	 the `maxp2' of the lranges dump line is THIS value, not the one the
+	 renaming uses: a trap worth knowing, since it makes that column
+	 useless for measuring anything the colouring decides.  It carries the
+	 same ec anyway, so the two never disagree in the direction that
+	 matters.  */
       int life = (lr[root]->last_date - lr[root]->first_date
-		  + (lvx_cms_ec_policy && lvx_cms_lrange_ec_p (seq, lr[root])
-		     ? 1 : 0));
+		  + (lvx_cms_lrange_ec_p (seq, lr[root]) ? 1 : 0));
       int need = ii > 0 ? (life + ii - 1) / ii : 1;
       int p2 = 1;
 
@@ -16053,7 +16064,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 	continue;		/* one live range, one occupancy */
       nr = MAX (g->nregs, 1);
 
-      ec = (lvx_cms_ec_policy ? g->ec : lvx_cms_lrange_ec_p (seq, g)) ? 1 : 0;
+      ec = g->ec ? 1 : 0;	/* what the COLOURING used.  §7tricies.90 */
       d = g->first_date - lo + (ec ? 0 : 1);
       life = MAX (g->last_date - g->first_date + (ec ? 1 : 0), 1);
 
@@ -16487,26 +16498,36 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
       vuf.safe_push (g->use_first ? 1 : 0);
     }
 
-  /* MORE NAMES THAN NEEDED, TO LOOSEN THE COLOURING.  §7tricies.94.
+  /* MORE NAMES DO NOT LOOSEN THE COLOURING.  §7tricies.97.
 
      A name carries the kernel copies congruent to it modulo its degree, so a
      range of degree 2 in a kernel unrolled 4 times has copies 0 and 2 FORCED
-     to share one name.  Raising the degree to KUNROLL turns that forced
-     sharing into a choice -- each name then carries exactly one copy, and its
-     occupancy falls by the factor KUNROLL/degree, which is what makes the
-     interference graph sparser.  Nothing is emitted for this: the copies
-     already exist as separate instances in the unrolled kernel, so it is a
-     renaming and not a split.
+     to share one name; raising every renamed range's degree to KUNROLL makes
+     each name carry one copy and the interference graph sparser by that
+     factor.  It costs no instruction -- the copies already exist as instances
+     in the unrolled kernel -- so it is a renaming and not a split.  It was
+     implemented, measured on the loops built in BOTH arms, and removed:
 
-     It is not free, though, and the price is not in the kernel.  A range live
-     on an exit edge must be reconciled to the architected register in every
-     drain, and which name holds the value depends on the rotation the exit
-     came from -- so raising its degree multiplies the epilogue copies, once
-     per loop entry.  Hence the two settings: 1 takes the colouring benefit
-     only where there is no such cost, 2 accepts it everywhere.
+       TSVC2     102 common, II changed on 0, maxreg on 21, NINE loops lost
+       PolyBench  17 common, II changed on 0, maxreg on 14, net +34 registers
 
-     Ranges that are not renamed are already excluded: the loop above skips
-     them, so a held range keeps its degree of 1 as §7tricies.91 requires.  */
+     Not one loop's II moved.  The colouring does assign differently, so the
+     transformation was effective rather than inert; it simply buys nothing,
+     because `stuck' and `pinfail' are zero everywhere on these corpora -- the
+     colouring never fails, and freedom to avoid a failure cannot pay.  The
+     code is in the commit that removed it, for a target whose colouring does
+     get stuck.
+
+     P2UNROLL ITSELF IS NOT KUNROLL, even when every reallocatable range ends
+     up expanded KUNROLL times: it is the per-range degree the index
+     computation masks with, the quantity LIFE <= P2UNROLL * II is stated over,
+     and 1 for a held range.
+
+     KEPT AS A CONTROL, default off, for experimenting with a different
+     register allocator: the measurement above says the mechanism works and is
+     unrewarded HERE, not that it is wrong.  An allocator that does get stuck
+     is where it would pay, and that is a property of the allocator rather
+     than of this transformation.  */
   if (lvx_cms_force_p2unroll && !deg.is_empty ())
     {
       int mx = 1, k2 = 1, forced = 0;
@@ -16519,13 +16540,21 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	{
 	  if (deg[u] >= k2)
 	    continue;
+	  /* Setting 1 spares the ranges that pay: which name holds a live-out
+	     value depends on the rotation its exit came from, so raising their
+	     degree multiplies the drain's reconciliation copies -- once per
+	     loop ENTRY, not per iteration.  */
 	  if (lvx_cms_force_p2unroll < 2 && lr[idx[u]]->exit_live)
 	    continue;
 	  deg[u] = k2, forced++;
 	}
+      /* `fn=' IS LOAD-BEARING.  Every harness here filters dump lines on it,
+	 so a line without it is invisible -- which is how this counter read
+	 zero while the forcing was firing, and why the option first looked
+	 inert.  */
       if (forced && lvx_cms_probe)
-	lvx_cms_dump (";; lvx cms:   forcep2 kunroll=%d forced=%d of %u\n",
-		      k2, forced, deg.length ());
+	lvx_cms_dump (";; lvx cms: fn=%s forcep2 kunroll=%d forced=%d of %u\n",
+		      current_function_name (), k2, forced, deg.length ());
     }
 
   lvx_cms_colour (def_, last_, deg, nregs_, ec_, ii, lo, &nn, &ne, &msq,
