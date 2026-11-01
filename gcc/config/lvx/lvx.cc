@@ -24024,6 +24024,43 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 			  INSN_UID (seq[a.src]), INSN_UID (seq[a.dst]),
 			  (int) a.theta, (int) a.omega);
 	  }
+      /* WHICH OF THE CIRCUIT'S NODES ARE REGISTER COPIES.  §7tricies.105.
+	 A copy on a critical circuit contributes its own latency to the
+	 recurrence, and a reader can be rewritten to take the copy's SOURCE
+	 instead -- `p -> c -> u' becoming `p -> u' with the thetas of the
+	 first arc and the omegas added, which is legal across iterations and
+	 drops the copy's theta from the circuit.  Dumped rather than
+	 implemented, because the last three refinements measured here were
+	 worth nothing, nothing and nothing-usable, and the number that
+	 decides this one is how many critical circuits contain such a node.  */
+      {
+	int ncopy = 0, ntied = 0;
+
+	for (unsigned i = 0; i < crit.length (); i++)
+	  if (crit[i] >= 0)
+	    {
+	      rtx_insn *ci = seq[arcs[crit[i]].src];
+	      rtx set = single_set (ci);
+
+	      if (set == NULL_RTX || !REG_P (SET_DEST (set))
+		  || !REG_P (SET_SRC (set)))
+		continue;
+	      ncopy++;
+	      /* AND WHETHER THE TIE FORBIDS IT.  §7tricies.105.  These are
+		 POST-RA copies, and the allocator inserts many of them
+		 precisely so that an instruction can have an input and its
+		 output in one register.  Rewriting that input to the copy's
+		 source while the output stays put breaks the match and
+		 produces an insn that does not recognise -- `fma r1 = a,
+		 r41', the §7tricies.28 failure, 8 refused instances on one
+		 loop.  So a copy whose reader carries a tied operand is not
+		 a candidate, and counting those apart is what turns the
+		 opportunity from an upper bound into a figure.  */
+	      if (lvx_insn_has_tied_operand_p (seq[arcs[crit[i]].dst]))
+		ntied++;
+	    }
+	lvx_cms_dump (" copies=%d tied=%d", ncopy, ntied);
+      }
       lvx_cms_dump ("\n");
     }
 }
