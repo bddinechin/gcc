@@ -79,25 +79,21 @@ msuperblock-loops
 Target Var(lvx_superblock_loops) Init(1) Optimization
 Lay inner loop bodies out as one superblock run before EBB scheduling.
 
-munfold-inner-loops
-Target Var(lvx_unfold_inner_loops) Init(0) Optimization
-Duplicate the body of an inner loop that is not a hardware loop, so the extended basic block is twice as long.  Implies -mregrename-inner-loops.
 
-munfold-max-blocks=
-Target RejectNegative Joined UInteger Var(lvx_unfold_max_blocks) Init(8) Optimization
+mregrename-max-blocks=
+Target RejectNegative Joined UInteger Var(lvx_regrename_max_blocks) Init(16) Optimization
+-mregrename-max-blocks=N	Largest straightened inner loop, in basic blocks, that register renaming will consider.
 -munfold-max-blocks=N	Do not unfold an inner loop whose body has more than N blocks.
 
-munfold-max-insns=
-Target RejectNegative Joined UInteger Var(lvx_unfold_max_insns) Init(64) Optimization
+mregrename-max-insns=
+Target RejectNegative Joined UInteger Var(lvx_regrename_max_insns) Init(128) Optimization
+-mregrename-max-insns=N	Largest straightened inner loop, in instructions, that register renaming will consider.
 -munfold-max-insns=N	Do not unfold an inner loop whose body has more than N instructions.
 
 mregrename-inner-loops
-Target Var(lvx_regrename_inner_loops_p) Init(0) Optimization
+Target Var(lvx_regrename_inner_loops_p) Init(1) Optimization
 Rename registers through inner superblock loops before EBB scheduling, so successive definitions use different registers.
 
-munfold-min-gain=
-Target RejectNegative Joined UInteger Var(lvx_unfold_min_gain) Init(10) Optimization
--munfold-min-gain=N	Do not unfold an inner loop unless the predicted saving is at least N percent.
 
 mcms-probe
 Target Var(lvx_cms_probe) Init(0) Optimization
@@ -181,11 +177,11 @@ Reach for the minimum cumulative register lifetime dates at the current initiati
 
 mcms-codegen
 Target Var(lvx_cms_codegen) Init(0) Optimization
-Emit the convergent modulo schedule as code, rather than only measuring it.  Incomplete: builds the pipeline block structure only.
+Emit the convergent modulo schedule as code, rather than only measuring it.  Incomplete: builds the pipeline block structure only.  Enables the loop walk by itself; -mcms-probe is not needed for code generation, only for the dump.
 
 mcms-pipeline
 Target Var(lvx_cms_pipeline) Init(0) Optimization
-Emit the software pipeline itself, not only the body in schedule order.  Requires -mcms-codegen; separate from it so that a broken pipeline cannot regress the reordering, which is verified.
+Emit the software pipeline itself, not only the body in schedule order.  Requires -mcms-codegen and is refused without it; separate from it so that a broken pipeline cannot regress the reordering, which is verified.
 
 mcms-force-p2unroll=
 Target RejectNegative Joined UInteger Var(lvx_cms_force_p2unroll) Init(0) Optimization

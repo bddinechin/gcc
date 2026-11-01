@@ -10419,51 +10419,36 @@ lvx_option_override (void)
 	   "from the wrong iteration; the split of %<§5a2b%> is what makes it "
 	   "sound, and it is incompatible with %<-mcms-codegen%>");
 
+  /* `-mcms-pipeline' EMITS NOTHING ON ITS OWN, and lvx.opt already said so --
+     "Requires -mcms-codegen" -- without anything enforcing it.  Its emission
+     sits inside the codegen path (`if (built && lvx_cms_pipeline)'), so alone
+     it is the same silent inertness as §7tricies.100.  A claim in help text is
+     not a check.  */
+  if (lvx_cms_pipeline && !lvx_cms_codegen)
+    error ("%<-mcms-pipeline%> emits nothing without %<-mcms-codegen%>");
+
+  /* A PIPELINE NEEDS DISMISSIBLE LOADS, AND THAT IS NOT A PREFERENCE.
+     §7tricies.102.  The dependence graph lets a load cross a conditional
+     branch, so a schedule built on it is legal only if every such load is
+     dismissible: the prologue hoists loads above the trip-count test, and as
+     ordinary loads they read past the end of the object.  Measured as a fault
+     on the ISS at the first one.  So pipelining implies the dismissible form
+     rather than requiring the two flags to be remembered together --
+     SET_OPTION_IF_UNSET, so an explicit choice is still the user's.  */
+  if (lvx_cms_pipeline)
+    SET_OPTION_IF_UNSET (&global_options, &global_options_set,
+			 lvx_cms_force_spec_loads, 1);
+  if (lvx_cms_pipeline && !lvx_cms_force_spec_loads)
+    error ("%<-mcms-pipeline%> hoists loads above the trip-count test and "
+	   "needs %<-mcms-force-speculative-loads%>; disabling it leaves the "
+	   "prologue reading past the end of the object");
+
   if (lvx_cms_inductive_relaxation && (lvx_cms_codegen || lvx_cms_pipeline))
     error ("%<-mcms-inductive-relaxation%> drops dependences that only the "
 	   "displacement adjustment of PaCT 1997 section 4 makes sound, and "
 	   "that adjustment is not implemented; it is for measurement only "
 	   "and is incompatible with %<-mcms-codegen%>");
 
-  /* EXACT DEGREES AND CODE GENERATION ARE INCOMPATIBLE, not merely in
-     tension, and the reason is arithmetic.
-
-     The renaming needs every value's name count to DIVIDE the unroll factor,
-     since name J carries the iterations congruent to J modulo that count
-     (§7tricies.2).  Code generation needs the unroll factor to be a POWER OF
-     TWO, because the preheader computes `count / kunroll' trips with
-     `count % kunroll' iterations peeled, and on LVX that count is what LOOPDO
-     is given -- a shift and a mask there, or a magic-multiply divide and
-     remainder on the path into every pipelined loop that no later pass can
-     clean up (§7quinquies.2b, requirement 2).
-
-     No power of two is divisible by three.  So a value of exact degree 3
-     admits no unroll factor satisfying both, and generalising KUNROLL to the
-     lcm -- which is what made the renaming sound under this flag -- silently
-     traded the property codegen depends on for the one the allocator wanted.
-     Nothing caught it because make_insns does not emit the preheader
-     arithmetic yet.
-
-     -mcms-exact-degree stays what §7ter.10 built it for: a measurement lever
-     that separates the cost of the power-of-two rounding from the cost of the
-     schedule.  It is refused on the emission path rather than silently
-     rounded, so the figures it reports keep meaning what they say.  */
-  if (lvx_cms_exact_degree && lvx_cms_codegen)
-    error ("%<-mcms-exact-degree%> can give a value an expansion degree that "
-	   "is not a power of two, and the unroll factor must be one for the "
-	   "preheader to peel with a shift and a mask; it is for measurement "
-	   "only and is incompatible with %<-mcms-codegen%>");
-
-  /* Unfolding an inner loop implies renaming through it.  The dependence
-     model the unfold is justified by drops the anti- and output dependences
-     register allocation introduced, which is sound only because a renaming
-     step follows and removes them; without it the two copies reuse the same
-     registers and serialise against each other, which measures as pure cost.
-     SET_OPTION_IF_UNSET, so an explicit -mno-regrename-inner-loops still
-     wins -- the implication is the default, not a constraint.  */
-  if (lvx_unfold_inner_loops)
-    SET_OPTION_IF_UNSET (&global_options, &global_options_set,
-			 lvx_regrename_inner_loops_p, 1);
 
 #if 0 // If 1 then gcc/gcc/testsuite/gcc.dg/ipa/iinline-attr.c fails.
   SET_OPTION_IF_UNSET (&global_options, &global_options_set,
@@ -15021,6 +15006,62 @@ lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange_part *> &lr,
    body order, with every reference to that register attached to the range
    the reaching definition opened.  */
 
+/* THE EXIT LIVENESS OF EACH BRANCH, CAPTURED BEFORE ANY MUTATION.
+   §7tricies.104.
+
+   For every jump in SEQ, the registers live on its out-of-loop successors.
+   lvx_cms_build_lranges needs this to decide which ranges are live out, and
+   computed it from `jbb->succs' at the point of use -- which is correct on
+   the probe path and a NULL dereference on the codegen one: by then
+   lvx_cms_make_nodes has created blocks and redirected edges, so a successor
+   can be a block DF has never seen and `df_get_live_in' returns nothing at
+   all.  Compiling libgcc with -mcms-codegen segfaulted here.
+
+   A null check would have been the wrong repair: a branch whose exit liveness
+   silently read as empty leaves every range it should have marked `exit_live'
+   unmarked, and the renaming then rewrites a value the exit path reads --
+   a miscompile in place of a crash.  The liveness wanted is the ORIGINAL
+   loop's, so it is taken while that is still what the CFG holds and threaded
+   in.
+
+   A HARD_REG_SET rather than a bitmap because the consumer only ever asks
+   about hard registers, and because a value type needs no freeing on the
+   paths that bail out early.  */
+
+static void
+lvx_cms_capture_exit_live (const auto_vec<rtx_insn *> &seq,
+			   auto_vec<HARD_REG_SET> &xl)
+{
+  xl.safe_grow_cleared (seq.length ());
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      basic_block jbb;
+      edge e;
+      edge_iterator ei;
+
+      CLEAR_HARD_REG_SET (xl[i]);
+      if (!JUMP_P (seq[i]) || (jbb = BLOCK_FOR_INSN (seq[i])) == NULL)
+	continue;
+      FOR_EACH_EDGE (e, ei, jbb->succs)
+	{
+	  bitmap lin;
+	  bool inbody = false;
+
+	  for (unsigned z = 0; z < seq.length (); z++)
+	    if (BLOCK_FOR_INSN (seq[z]) == e->dest)
+	      {
+		inbody = true;
+		break;
+	      }
+	  if (inbody || (lin = df_get_live_in (e->dest)) == NULL)
+	    continue;
+	  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+	    if (bitmap_bit_p (lin, r))
+	      SET_HARD_REG_BIT (xl[i], r);
+	}
+    }
+}
+
 /* Declared ahead of their definitions: the three operand lookups, which the
    build's unification passes need and which read the structure the build has
    just produced.  */
@@ -15035,7 +15076,8 @@ lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange_part *> &, unsigned, unsign
 static void
 lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		       auto_vec<lvx_cms_lrange_part *> &lr, int *ntie_out,
-		       int *nunit_out, int *nheld_out, int *nwiden_out = NULL)
+		       int *nunit_out, int *nheld_out, int *nwiden_out = NULL,
+		       const auto_vec<HARD_REG_SET> *pre_xlive = NULL)
 {
   int ntie = 0;
   /* References that CONTAIN an already-open range rather than sitting inside
@@ -15224,28 +15266,42 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       if (JUMP_P (seq[i]) && BLOCK_FOR_INSN (seq[i]) != NULL)
 	{
 	  basic_block jbb = BLOCK_FOR_INSN (seq[i]);
-	  auto_bitmap xlive;
+	  HARD_REG_SET xlive;
 	  edge e;
 	  edge_iterator ei;
 
-	  FOR_EACH_EDGE (e, ei, jbb->succs)
+	  /* THREADED IN WHERE THE CFG HAS MOVED.  §7tricies.104.  On the
+	     codegen path make_nodes has already created blocks and redirected
+	     edges, so a successor here can be one DF never saw; the caller
+	     captured this set while the CFG was still the loop's.  */
+	  if (pre_xlive && i < pre_xlive->length ())
+	    xlive = (*pre_xlive)[i];
+	  else
 	    {
-	      bool inbody = false;
+	      CLEAR_HARD_REG_SET (xlive);
+	      FOR_EACH_EDGE (e, ei, jbb->succs)
+		{
+		  bitmap lin;
+		  bool inbody = false;
 
-	      for (unsigned z = 0; z < seq.length (); z++)
-		if (BLOCK_FOR_INSN (seq[z]) == e->dest)
-		  {
-		    inbody = true;
-		    break;
-		  }
-	      if (!inbody)
-		bitmap_ior_into (xlive, df_get_live_in (e->dest));
+		  for (unsigned z = 0; z < seq.length (); z++)
+		    if (BLOCK_FOR_INSN (seq[z]) == e->dest)
+		      {
+			inbody = true;
+			break;
+		      }
+		  if (inbody || (lin = df_get_live_in (e->dest)) == NULL)
+		    continue;
+		  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+		    if (bitmap_bit_p (lin, r))
+		      SET_HARD_REG_BIT (xlive, r);
+		}
 	    }
 	  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
 	    {
 	      lvx_cms_effect e2;
 
-	      if (!bitmap_bit_p (xlive, r) || !bitmap_bit_p (touched, r))
+	      if (!TEST_HARD_REG_BIT (xlive, r) || !bitmap_bit_p (touched, r))
 		continue;
 	      if (open[r] < 0)
 		{
@@ -23301,11 +23357,66 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		cgconf, cgunseen, cgambig, cgunass, cgmisal, cgnondiv,
 		cgclash2);
 
+  /* THE RESOURCE DEMAND, TAKEN BEFORE ANY EMISSION.  §7tricies.103.
+
+     This used to be computed beside its consumer, several hundred lines below
+     and AFTER code generation.  By then the caller's BODY array -- filled by
+     get_loop_body before this function was entered -- names basic blocks
+     emission has replaced, and LOOP->NUM_NODES no longer describes the loop
+     either, so the walk dereferenced freed blocks: a segfault in
+     `__deregister_frame_info_bases' the moment libgcc was compiled with
+     -mcms-codegen, and the reason code generation could not be turned on by
+     default.
+
+     It is the third appearance of one hazard -- state captured before
+     emission, used after it -- which §VI of the design note says to enforce
+     structurally rather than by discipline.  Structurally, here, means
+     computing it while the body is still the loop's.  The value is a property
+     of the ORIGINAL body, which is also what its consumer wants.  */
+  /* And the per-branch exit liveness, for the same reason and at the same
+     point: §7tricies.104.  */
+  auto_vec<HARD_REG_SET> xlcap;
+  lvx_cms_capture_exit_live (seq, xlcap);
+
+  struct lvx_sched_resources dem;
+  memset (&dem, 0, sizeof (dem));
+  {
+    basic_block *dbody = get_loop_body (loop);
+    for (unsigned i = 0; i < loop->num_nodes; i++)
+      {
+	rtx_insn *bi;
+	FOR_BB_INSNS (dbody[i], bi)
+	  lvx_cms_resources_add (&dem, bi);
+      }
+    free (dbody);
+  }
+
   /* CODEGEN, phase one: the block structure (§7quinquies.9).  Behind
      -mcms-codegen and off by default, because it is incomplete -- the blocks
      are built empty and no instruction moves, so the loop is unchanged and the
      edge surgery can be verified against a working program before the schedule
-     is allowed to touch it.  */
+     is allowed to touch it.
+
+     AND BECAUSE IT STILL READS PRE-MUTATION STATE AFTER MUTATING.
+     §7tricies.104.  Turning it on by default was measured to be worth it --
+     CMS 0.9551 on MiBench against 0.9961 for the unfold it replaces, and
+     susan_smoothing at 0.4880 -- and then withdrawn, because compiling libgcc
+     with it segfaults the compiler in two separate places:
+
+       lvx_cms_probe_loop   a resource walk over the caller's BODY array,
+			    whose blocks emission had replaced (fixed:
+			    §7tricies.103 computes it before emission)
+       lvx_cms_build_lranges  df_get_live_in (e->dest) on an exit edge whose
+			    destination make_nodes had just created, so the
+			    block has no DF info at all -- NULL dereference
+
+     Both are the hazard §VI of mlir-pipeliner-design.md names: state captured
+     before emission, used after it.  That note says to enforce the boundary
+     STRUCTURALLY rather than by discipline, and these are the third and
+     fourth instances of ignoring it.  The second one wants the exit liveness
+     threaded in from before make_nodes, not a null check -- a null check
+     would silently drop a range's exit_live flag and miscompile instead of
+     crashing.  So the default waits for the boundary, not for another patch.  */
   if (lvx_cms_codegen && pl.ok && nstages >= 2)
     {
       /* RECORD, do not transform: the loop structures are finalized before
@@ -23491,7 +23602,9 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		  if (JUMP_P (seq[z]))
 		    cgloopback = (int) z;
 
-		lvx_cms_build_lranges (seq, cglr, NULL, NULL, NULL);
+		/* §7tricies.104: the exit liveness from before make_nodes.  */
+		lvx_cms_build_lranges (seq, cglr, NULL, NULL, NULL, NULL,
+				       &xlcap);
 		lvx_cms_set_lrange_dates (seq, cglr, sigma, found, liveout);
 		vok = lvx_cms_verify_lranges (seq, cglr, &nr, &orph, &dupl,
 					      &nol);
@@ -23699,14 +23812,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int splitok = 0, spillok = 0, cand = 0, nsplit = 0, spl_after = -1;
   int spl_nodes = 0, spl_before = -1, nspill = 0, sp_after = -1, sp_why = 0;
   {
-    struct lvx_sched_resources dem;
-    memset (&dem, 0, sizeof (dem));
-    for (unsigned i = 0; i < loop->num_nodes; i++)
-      {
-	rtx_insn *bi;
-	FOR_BB_INSNS (body[i], bi)
-	  lvx_cms_resources_add (&dem, bi);
-      }
+    /* DEM is computed above, before emission: §7tricies.103 explains why it
+       cannot be taken here.  */
     /* A spill reload is a CACHED load whatever the data loads are (author,
        2026-10-27): the slot is in the frame, which is hot, so it is priced at
        the description's cached figure of 3 and NOT at -mcms-load-latency's
@@ -24059,7 +24166,8 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
 		nstages, delta, passes, n, arcs.length ());
 }
 
-/* Whether CMS may consider LOOP at all.  This is NOT lvx_unfoldable_loop_p:
+/* Whether CMS may consider LOOP at all.  This was NOT the unfold's own test
+   (removed with it, §7tricies.101):
    that gate is sized for code duplication and asks for things a modulo
    schedule does not need, while missing nothing CMS does need.  The
    differences, each deliberate:
@@ -24409,150 +24517,6 @@ lvx_cms_probe_loops (void)
    it should not.  Memory arcs want the scheduler's dependence machinery,
    which is not set up at this point in reorg.  */
 
-static bool
-lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
-				 unsigned insns)
-{
-  auto_vec<rtx_insn *> seq;
-  auto_vec<lvx_cms_arc> arcs;
-  auto_vec<int> height;
-
-  int dropped_safelen = 0;
-  if (!lvx_cms_build_graph (loop, body, seq, arcs, height, &dropped_safelen))
-    {
-      if (dump_file)
-	fprintf (dump_file, ";; lvx unfold: loop %d declined, body is not"
-		 " a chain the analysis can walk\n", loop->num);
-      return false;
-    }
-  unsigned n = seq.length ();
-
-  /* M, R and K, shared with the CMS walk rather than recomputed: the three
-     bounds are properties of the graph, not of what the caller means to do
-     with it.  */
-  int m, r, k;
-  if (!lvx_cms_bounds (loop, body, seq, arcs, height, &m, &r, &k))
-    {
-      if (dump_file)
-	fprintf (dump_file, ";; lvx unfold: loop %d declined, the recurrence"
-		 " bound did not solve\n", loop->num);
-      return false;
-    }
-
-  /* The steady-state floor, per iteration.  This is the baseline, and it used
-     to be MAX (m, r) -- the makespan of ONE iteration scheduled in isolation,
-     which is what SCHED2 reports because an EBB is acyclic.  The machine does
-     not stop at the latch: it is a scoreboarded in-order pipeline with no
-     barrier there, so successive iterations overlap and what a loop actually
-     settles at is bounded below by its recurrence, not by its height.
-
-     Comparing against M credited the unfold with closing a gap that was never
-     open.  Measured on the two loops the old criterion accepted: dijkstra's
-     `enqueue' pointer chase (M=4 R=1 K=3) was predicted to gain 12%, and
-     SCHED2 then produced a schedule with the same 2 bundles and the same 4
-     modelled cycles per iteration -- bit-identical dynamic bundle counts, a
-     no-op, measured +5.045%.  bitcnts' `bit_shifter' (M=3 R=2 K=1) was
-     predicted 33%, did shorten its bundle schedule 3 -> 2.5 per iteration as
-     the model said, and measured +7.274% anyway.  */
-
-  int floor_ii = MAX (MAX (k, r), m);
-
-  /* How far copy 2 can be hoisted, which bounds the overlap the unfold can
-     actually buy.  The duplicated body puts copy 2 below copy 1's exit
-     branch, so only a speculatable instruction may move above it; one that may
-     not must issue strictly after the branch.  An instruction of copy 2 at
-     depth d sits at OFFSET + d, so a non-speculatable one requires
-     OFFSET + d > hb, hb being the depth of the deepest branch in the body.
-
-     With everything speculatable this reduces to OFFSET = K, the recurrence,
-     which is what the formula used to assume unconditionally.  The pointer
-     chase is the case that assumption got wrong: dijkstra's `enqueue' carries
-     its recurrence in a plain `ld', so copy 2's load cannot precede copy 1's
-     branch and the two copies cannot overlap at all -- the measured schedule
-     puts that load one cycle after the branch, and the dynamic bundle count
-     came out bit-identical to the un-unfolded loop.  Branches are left out of
-     the scan because their ordering is already an arc of its own.  */
-  int hb = -1;
-  for (unsigned i = 0; i < n; i++)
-    if (JUMP_P (seq[i]) && height[i] > hb)
-      hb = height[i];
-
-  int offset = k;
-  if (hb >= 0)
-    for (unsigned i = 0; i < n; i++)
-      if (!JUMP_P (seq[i]) && !lvx_speculatable_p (seq[i]))
-	offset = MAX (offset, hb + 1 - height[i]);
-
-  /* What a taken branch costs beyond its own bundle before the target's first
-     bundle issues.  Processor@minTaken is 2, for a branch that settles the
-     next PC in ID; a `cb'/`ccb' waits for its comparison and settles it in RR,
-     so it costs one more.  A loop's back edge is always one of those, hence 3
-     rather than 2 -- which is what the ISS charges since lvx-gem5 288d83dba3,
-     where it had been charging 2 for both.
-
-     FIXME: this belongs in a generated header.  BE/MLIR already receives it as
-     kMinTakenLatency, with a per-mnemonic takenBranchLatencyOf() beside it;
-     BE/GCC receives neither, so the value is written out here.  Same shape as
-     the resource availabilities before they were emitted -- see
-     docs/handoff-mds-resource-availabilities.md.  */
-#define LVX_MIN_TAKEN 3
-
-  /* The part of the taken-branch cost a loop does not already absorb.
-     Unfolding halves how often the back edge is taken -- the duplicated body
-     branches back once per two iterations, the other exit falling through --
-     so this is the one term that favours the unfold, and the criterion used to
-     omit it entirely.
-
-     It is neither purely additive nor purely max-combined, and getting that
-     wrong is easy.  The ISS computes a release cycle
-     `branch_issue + 1 + penalty' and refuses to issue the successor before it,
-     so the successor issues at MAX (release, its own constraints).  The
-     penalty is therefore ADDITIVE to everything up to and including the
-     branch's own issue -- the body's issue length, which precedes it -- and
-     MAX-combined against whatever constrains the successor, the loop-carried
-     recurrence reaching forward past the branch.  Measured (lvx-csw-82's sweep,
-     cycles per trip against LVX_TAKEN_BUBBLE):
-
-       10 bundles, no stalls            10.18 12.18 13.17 14.17 15.17  additive
-       4 bundles, 15-cycle recurrence   17.20 17.20 17.20 17.20 17.20  saturated
-       4 bundles, 3-cycle recurrence     5.21  5.21  6.20  7.20  8.20  partial
-
-     So what hides the bubble is the floor MINUS the issue length, not the whole
-     floor: the loop waits `floor', but `issue' of that is spent issuing bundles
-     before the branch ever executes.  An earlier form of this used the whole
-     floor and so zeroed the term almost everywhere -- over 400 newlib units it
-     fired on 9 of 155 loops, every one with floor 1, which is exactly backwards
-     from what the sweep shows.
-
-     ResMII is the issue length in bundles, which is what the slack wants.  Note
-     the unfolded body has its own, over two iterations: twice the resources and
-     one taken branch rather than two.  */
-  int slack = MAX (0, floor_ii - r);
-  int b = MAX (0, LVX_MIN_TAKEN - slack);
-
-  /* S1 is what two iterations cost now, S2 what they would cost unfolded.
-     Doubled to keep the halving exact.
-
-     S2 carries 2*k and 2*r as well as k + m: two iterations of the unfolded
-     body must still respect the recurrence twice and the resources twice, and
-     the old form omitted both, which is how k + m came out below the floor.  */
-  int s1 = 2 * (floor_ii + b);
-
-  int f2 = MAX (MAX (2 * r, 2 * k), offset + m);
-  int slack2 = MAX (0, f2 - 2 * r);
-  int b2 = MAX (0, LVX_MIN_TAKEN - slack2);
-  int s2 = f2 + b2;
-  int gain = s1 - s2;
-
-  bool ok = gain * 100 >= s1 * lvx_unfold_min_gain;
-
-  if (dump_file)
-    fprintf (dump_file, ";; lvx unfold: loop %d %s -- M=%d ResMII=%d"
-	     " RecMII=%d floor=%d offset=%d taken=%d/%d, %d insns, gain %d/%d = %d%%\n",
-	     loop->num, ok ? "profitable" : "declined", m, r, k, floor_ii, offset, b, b2,
-	     insns, gain, s1, s1 ? gain * 100 / s1 : 0);
-  return ok;
-}
 
 /* True if innermost LOOP can be unfolded and measured.  This is deliberately
    NOT lvx_inner_superblock_loop_p: that one reproduces unfold_inner_find's
@@ -24569,164 +24533,7 @@ lvx_loop_profitable_to_unfold_p (class loop *loop, basic_block *body,
    model prices; no computed jump or complex edge, which duplication cannot
    handle; and the size bounds.  */
 
-static bool
-lvx_unfoldable_loop_p (class loop *loop, basic_block *body, unsigned insns,
-		       unsigned max_blocks, unsigned max_insns, const char **why)
-{
-  auto_bitmap inloop;
 
-  *why = "multiple latches";
-  if (loop->latch == NULL)
-    return false;
-  *why = "too many blocks";
-  if (loop->num_nodes > max_blocks)
-    return false;
-  *why = "too many insns";
-  if (insns > max_insns)
-    return false;
-
-  for (unsigned i = 0; i < loop->num_nodes; i++)
-    bitmap_set_bit (inloop, body[i]->index);
-
-  for (unsigned i = 0; i < loop->num_nodes; i++)
-    {
-      basic_block bb = body[i];
-      rtx_insn *insn, *end = BB_END (bb);
-      unsigned inside = 0;
-      edge e;
-      edge_iterator ei;
-
-      *why = "block not schedulable";
-      if ((bb->flags & BB_DISABLE_SCHEDULE) != 0 || computed_jump_p (end))
-	return false;
-
-      FOR_EACH_EDGE (e, ei, bb->succs)
-	{
-	  *why = "complex edge";
-	  if (e->flags & EDGE_COMPLEX)
-	    return false;
-	  if (bitmap_bit_p (inloop, e->dest->index))
-	    inside++;
-	}
-      *why = inside ? "body is not a chain" : "block exits the loop entirely";
-      if (inside != 1)
-	return false;
-
-      for (insn = BB_HEAD (bb); insn != NEXT_INSN (end);
-	   insn = NEXT_INSN (insn))
-	if (NONDEBUG_INSN_P (insn))
-	  {
-	    *why = "holds a call";
-	    if (CALL_P (insn))
-	      return false;
-	    *why = "holds a volatile reference";
-	    if (volatile_refs_p (PATTERN (insn)))
-	      return false;
-	    *why = "holds an asm";
-	    if (asm_noperands (PATTERN (insn)) >= 0)
-	      return false;
-	  }
-    }
-  *why = NULL;
-  return true;
-}
-
-/* Unfold innermost LOOP once, so its body appears twice and the extended
-   basic block the post-pass scheduler forms over it is twice as long.
-
-   This is `unroll_loop_stupid' applied late and deliberately: the duplicate
-   keeps every exit test, so no trip count, prolog or zero-trip guard is
-   needed, and consecutive iterations become schedulable against each other.
-   Returns true if LOOP was unfolded.  */
-static bool
-lvx_unfold_inner_loop (class loop *loop)
-{
-  basic_block *body;
-  unsigned insns = 0;
-  const char *why = "";
-  bool ok;
-
-  if (loop->latch == NULL
-      || loop->num_nodes > lvx_unfold_max_blocks
-      || lvx_loop_has_doloop_p (loop)
-      || !can_duplicate_loop_p (loop))
-    return false;
-
-  body = get_loop_body (loop);
-  for (unsigned i = 0; i < loop->num_nodes; i++)
-    {
-      rtx_insn *insn;
-      FOR_BB_INSNS (body[i], insn)
-	if (NONDEBUG_INSN_P (insn))
-	  insns++;
-    }
-  if (insns > lvx_unfold_max_insns)
-    {
-      free (body);
-      return false;
-    }
-
-  /* Without a gate a loop holding a call, a volatile reference or asm is
-     unfolded, and -- worse -- a body that is not a chain reaches the
-     profitability test, whose walk stops at the first block with no in-loop
-     successor and so measures a prefix.  */
-  if (!lvx_unfoldable_loop_p (loop, body, insns, lvx_unfold_max_blocks,
-			      lvx_unfold_max_insns, &why))
-    {
-      if (dump_file)
-	fprintf (dump_file, ";; lvx unfold: loop %d declined, %s\n",
-		 loop->num, why);
-      free (body);
-      return false;
-    }
-
-  if (!lvx_loop_profitable_to_unfold_p (loop, body, insns))
-    {
-      free (body);
-      return false;
-    }
-  free (body);
-
-  /* Every copy keeps its exits, which is what makes the trip count
-     irrelevant.  */
-  auto_sbitmap wont_exit (2);
-  bitmap_clear (wont_exit);
-
-  ok = duplicate_loop_body_to_header_edge (loop, loop_latch_edge (loop), 1,
-					   wont_exit, NULL, NULL,
-					   DLTHE_FLAG_UPDATE_FREQ);
-  if (ok)
-    /* SAFELEN IS IN ITERATIONS, AND AN ITERATION JUST GOT TWICE AS BIG.
-       §7tricies.82.
-
-       One unfolded iteration now covers two of the old ones, so M new
-       iterations span 2M old ones and are independent exactly when 2M <=
-       SAFELEN: the new value is SAFELEN / 2, which is what
-       adjust_loop_safelen computes (INT_MAX, the `#pragma GCC ivdep'
-       sentinel, is scale-invariant and kept exactly).
-
-       Leaving it alone OVERSTATES the promise by the unfold factor, and
-       cfgloop.h's own note says that is "unsound for any consumer that
-       believes it -- harmless only while the field is destroyed at
-       pass_rtl_loop_done before anyone reads it".  THERE IS NOW A CONSUMER:
-       CMS reads loop->safelen when it builds the cross-back-edge memory arcs,
-       and it runs in this same reorg, three steps after this one.  An unfolded
-       loop would have told it that a dependence cannot bind nearer than
-       SAFELEN *unfolded* iterations -- twice as far as the promise actually
-       reaches -- and the arcs that should have bound would have been slack by
-       arithmetic.
-
-       The MEM_INTRA arcs need no adjustment and must not get one: the
-       unfold creates new same-body pairs at old distance 1, CMS builds intra
-       arcs from aliasing alone and never consults safelen, so they are kept --
-       which is what makes an unfold by more than SAFELEN safe at all.  */
-    adjust_loop_safelen (loop, 2);
-  if (ok && dump_file)
-    fprintf (dump_file, ";; lvx unfold: loop %d doubled, now %u blocks,"
-	     " %u insns before, safelen now %d\n", loop->num, loop->num_nodes,
-	     insns, loop->safelen);
-  return ok;
-}
 
 /* Give every innermost loop a single-entry preheader and lay its body out as
    one run, so that EBB formation sees the body whole and the software
@@ -24761,27 +24568,13 @@ lvx_superblock_inner_loops (void)
 	&& create_preheader (loop, CP_SIMPLE_PREHEADERS) != NULL)
       changed = true;
 
-  /* Phase B: unfold, so the body the layout then gathers is twice as long.
-     duplicate_loop_body_to_header_edge reads the dominator tree through
-     get_loop_body_in_dom_order, and at this point in the pipeline that tree
-     can be marked available while being stale -- which makes
-     calculate_dominance_info a no-op and the read a segfault.  Force it.  */
-  if (lvx_unfold_inner_loops)
-    {
-      free_dominance_info (CDI_DOMINATORS);
-      calculate_dominance_info (CDI_DOMINATORS);
-      /* The profitability test reads df_get_live_in to find what a branch
-	 implicitly uses on its exit edge, so the liveness problem has to be
-	 solved before it, not only after the layout.  */
-      df_analyze ();
-      /* And it asks the DFA for bypassed latencies, which needs the insn-code
-	 cache the scheduler would otherwise own.  */
-      dfa_start ();
-      for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
-	if (lvx_unfold_inner_loop (loop))
-	  changed = true;
-      dfa_finish ();
-    }
+  /* Phase B WAS THE UNFOLD, and it is gone.  §7tricies.101.  Measured on
+     MiBench at -O2: duplicating the body bought nothing that renaming did not
+     already have -- unfold 0.9961 against regrename alone 0.9896 -- while
+     costing 9.5% on bitcnts, the one program where its duplication fires.
+     Software pipelining is what pays on the loops unfold was reaching for:
+     CMS 0.9551, and 0.9459 with renaming.  Straightening (Phase A) and the
+     renaming stay; only the duplication goes.  */
 
   /* Phase C: the layout.  */
   for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
@@ -25051,11 +24844,14 @@ lvx_regrename_inner_loops (void)
 
   loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
 
-  /* Twice the unfold phase's limits: an unfolded body is twice the size of
-     the one that phase accepted.  */
+  /* ITS OWN LIMITS NOW.  §7tricies.101.  These were twice the unfold phase's,
+     because an unfolded body was twice the size of the one that phase
+     accepted; with the unfold gone the doubling has nothing to compensate
+     for, so the options were re-homed at the values this pass actually sees
+     and the factor of two folded into their defaults.  */
   for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
-    if (lvx_inner_superblock_loop_p (loop, 2 * lvx_unfold_max_blocks,
-				     2 * lvx_unfold_max_insns))
+    if (lvx_inner_superblock_loop_p (loop, lvx_regrename_max_blocks,
+				     lvx_regrename_max_insns))
       lvx_regrename_one_loop (loop, fixed_unavail, ticks, &tick);
 
   loop_optimizer_finalize ();
@@ -25123,7 +24919,27 @@ lvx_machine_dependent_reorg (void)
      (3) Going second would also mean deleting the LOOPDO and re-emitting it
 	 with the rounded-down count and the new kernel's end label, which is
 	 work this ordering simply avoids.  */
-  if (optimize && lvx_cms_probe && optimize_function_for_speed_p (cfun))
+  /* CODE GENERATION ENABLES ITS OWN WALK.  §7tricies.100.
+
+     This read `lvx_cms_probe' alone, so `-mcms-codegen -mcms-pipeline' without
+     `-mcms-probe' compiled exactly like no option at all: the walk never ran,
+     nothing was built, nothing was said.  The function below is already
+     written for that caller -- its first test is
+     `if (!dump_file && !lvx_cms_codegen) return;', i.e. the dump is one
+     consumer and codegen the other -- so only this gate disagreed.
+
+     It cost a measurement: a five-arm unfold-versus-CMS comparison whose two
+     CMS arms were byte-identical to the baseline on all fourteen programs,
+     while the static counts beside them reported twenty pipelines built,
+     because that step passed -mcms-probe and the timed arms did not.  The
+     name invites it -- a `probe' reads as reporting, not as the master
+     switch.
+
+     This is the mirror of the guards above.  Those refuse combinations that
+     are UNSOUND; this one was silently INERT, which is worse to debug because
+     a wrong answer looks like a measurement.  */
+  if (optimize && (lvx_cms_probe || lvx_cms_codegen)
+      && optimize_function_for_speed_p (cfun))
     lvx_cms_probe_loops ();
 
   /* Doloop optimization. */
