@@ -10415,21 +10415,46 @@ lvx_option_override (void)
   if (lvx_cms_copy_prop)
     SET_OPTION_IF_UNSET (&global_options, &global_options_set,
 			 lvx_cms_recompute_heights_p, 1);
-  if (lvx_cms_recompute_heights_p && !lvx_cms_probe)
-    error ("%<-mcms-recompute-heights%> is for measurement only; it requires "
-	   "%<-mcms-probe%>");
+  /* NOT measurement-only: §7tricies.110's propagation implies it and that
+     runs with code generation.  Construction UNDER-states the height
+     (§7tricies.107), so recomputing is the more accurate answer for any
+     caller; it stays off by default only because M feeds the stage count and
+     the span, and changing those everywhere is a separate decision.  */
 
-  if (lvx_cms_copy_prop && !lvx_cms_probe)
-    error ("%<-mcms-copy-prop%> is for measurement only; it requires "
-	   "%<-mcms-probe%>");
-  /* §7tricies.106: redirecting the arcs without the matching operand rewrite
-     at emission makes the schedule assume a reader takes the copy's source
-     while the code still takes its destination.  A wrong program, not a
-     partial feature.  */
+  /* STILL MEASUREMENT-ONLY, AFTER FOUR ATTEMPTS.  §7tricies.110.
+
+     What is built and verified: the record pins the operand, the register,
+     the PRODUCER and the iteration distance; the graph is rebuilt knowing it,
+     so the flow arc comes from the recorded definition and the
+     anti-dependences keeping that definition's value alive to its new reader
+     come out of the same walk; and the live ranges are built from the same
+     record, so the renaming substitutes from the right range with no special
+     case at emission.
+
+     That took `unroll' from a wrong answer to agreeing -- it was the
+     loop-carried case where searching backward for the nearest write of the
+     source finds a different definition, which is the ordinary post-RA
+     situation and the reason PRODUCER is in the record.
+
+     `pipe' is still wrong.  Its propagation is a self-recurrence -- the
+     producer and the reader are one instruction, insn 2 defining r2 while
+     reading r1 from the copy -- and the analysis is reached twice for that
+     loop, choosing a different candidate each time, so the record the graph
+     was rebuilt from is not the record a later stage would have chosen.
+
+     The refusal stays until that is one record.  The honest accounting: the
+     transformation measures 8 II cycles over some 200 loops, and each of four
+     attempts at emission has found a real defect -- arcs and ranges
+     disagreeing, a missing iteration shift, a producer resolved by search
+     instead of by record, and now an analysis reached twice.  That rate says
+     the difficulty is the post-RA representation rather than the idea: every
+     one of these bugs is about a hard register standing for several values.
+     In MLIR an operand is an SSA edge and none of them exist, which is where
+     §5a2d of the design note says to build it.  */
   if (lvx_cms_copy_prop && (lvx_cms_codegen || lvx_cms_pipeline))
-    error ("%<-mcms-copy-prop%> changes the graph but not yet the operands, "
-	   "so a pipeline built on it would read the wrong register; it is "
-	   "incompatible with %<-mcms-codegen%>");
+    error ("%<-mcms-copy-prop%> is not yet correct with code generation: the "
+	   "analysis is reached twice for a loop and may choose a different "
+	   "propagation each time; it is incompatible with %<-mcms-codegen%>");
 
   if (lvx_cms_drop_liveout_arcs && !lvx_cms_probe)
     error ("%<-mcms-drop-liveout-arcs%> is for measurement only; it requires "
@@ -15073,6 +15098,100 @@ lvx_cms_operand_tied_p (rtx_insn *insn, int useidx)
   return true;
 }
 
+/* DID THE SPLIT ACTUALLY HAPPEN?  §7tricies.112.
+
+   -mcms-liveout-split drops the CTRL_LIVEOUT arcs on the expectation that the
+   renaming writes a name of its own and the drain reconciles it.  That is
+   decided after scheduling, so it is a commitment to be checked, not a fact to
+   be assumed: a range that came out holding its architected register has a
+   body instruction writing what the exit edge reads, with the arc that said so
+   removed.  The loop is refused rather than emitted.
+
+   Checked over the whole set rather than a recorded subset, because the arcs
+   were dropped for all of them: every exit-live range with a body definition
+   must be renamed, and no name of it may be its own regno.  */
+
+static bool
+lvx_cms_verify_liveout_split (const auto_vec<lvx_cms_lrange_part *> &lr,
+			      int *nbad_out)
+{
+  int nbad = 0;
+
+  *nbad_out = 0;
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      lvx_cms_lrange_part *g = lr[k];
+
+      if (g->effects.is_empty () || !g->exit_live
+	  || lvx_cms_lrange_root (lr, (int) k) != (int) k
+	  || !g->effects[0].is_def)
+	continue;
+      if (!g->renamed)
+	{
+	  nbad++;
+	  continue;
+	}
+      for (int j = 0; j < g->p2unroll && j < LVX_CMS_MAX_KUNROLL; j++)
+	if (g->reg[j] == (int) g->regno)
+	  {
+	    nbad++;
+	    break;
+	  }
+    }
+  *nbad_out = nbad;
+  return nbad == 0;
+}
+
+/* THE PROPAGATION RECORD, WITH THE PRODUCER PINNED.  §7tricies.110.
+
+   One entry per operand that is to be taken as reading a copy's source
+   instead of its destination.  Keyed by the insn's index in SEQ and the slot
+   the arc builder numbers operands with -- never by register number, since
+   one instruction can mention one regno for two different values, which is
+   why the arc carries USEIDX at all.
+
+   PRODUCER IS IN THE RECORD, and that is the whole lesson of the first
+   attempt.  Naming only the register leaves the arc builder to resolve the
+   reaching definition itself, by searching backward for the last write of
+   that register before the reader.  Post-RA that search finds the wrong
+   answer: a hard register carries several values -- `unroll' has three live
+   ranges on r3 -- and for a LOOP-CARRIED read, where the reader precedes the
+   copy in program order, the nearest earlier definition is generally not the
+   one that fed the copy at all.  The graph would then be built against a
+   different value, silently.
+
+   DELAYED says the operand reads the PREVIOUS instance.  The reader took the
+   copy's destination as the copy wrote it an iteration earlier -- a
+   use-headed reference the cyclic normalisation folds in with this flag set
+   -- and the source's range is def-headed, so injecting the use plainly
+   would read the current instance: right register, wrong iteration.  The
+   flag is a bool and the index computation subtracts exactly one, so a reader
+   two or more iterations behind has no representation and is refused rather
+   than approximated.  */
+
+struct lvx_cms_prop
+{
+  unsigned insn;		/* the reader, as an index into SEQ */
+  int slot;			/* which operand of it */
+  unsigned regno;		/* the register it is to be taken to read */
+  unsigned producer;		/* and WHICH definition of it: an index into SEQ */
+  HOST_WIDE_INT omega;		/* the distance from that definition */
+  bool delayed;			/* it reads the previous instance */
+};
+
+/* The entry for SLOT of insn I, or NULL if that operand was not propagated.  */
+
+static const lvx_cms_prop *
+lvx_cms_prop_lookup (const auto_vec<lvx_cms_prop> *prop, unsigned i, int slot)
+{
+  if (prop == NULL || slot < 0)
+    return NULL;
+  for (unsigned k = 0; k < prop->length (); k++)
+    if ((*prop)[k].insn == i && (*prop)[k].slot == slot)
+      return &(*prop)[k];
+  return NULL;
+}
+
 /* THE EXIT LIVENESS OF EACH BRANCH, CAPTURED BEFORE ANY MUTATION.
    §7tricies.104.
 
@@ -15144,7 +15263,8 @@ static void
 lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		       auto_vec<lvx_cms_lrange_part *> &lr, int *ntie_out,
 		       int *nunit_out, int *nheld_out, int *nwiden_out = NULL,
-		       const auto_vec<HARD_REG_SET> *pre_xlive = NULL)
+		       const auto_vec<HARD_REG_SET> *pre_xlive = NULL,
+		       const auto_vec<lvx_cms_prop> *prop = NULL)
 {
   int ntie = 0;
   /* References that CONTAIN an already-open range rather than sitting inside
@@ -15230,6 +15350,16 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
 	  if (r >= FIRST_PSEUDO_REGISTER)
 	    continue;
+	  /* §7tricies.110: the propagated operand belongs to the SOURCE's
+	     range, and reads the previous instance of it where the copy it
+	     replaced was loop-carried.  The renaming then substitutes from
+	     that range with no special case at emission.  */
+	  {
+	    const lvx_cms_prop *pe = lvx_cms_prop_lookup (prop, i, e.slot);
+
+	    if (pe)
+	      r = pe->regno, e.delayed = pe->delayed;
+	  }
 	  if (e.slot >= 0)
 	    {
 	      if (seenuse.contains (e.slot))
@@ -21230,7 +21360,8 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		     auto_vec<rtx_insn *> &seq,
 		     auto_vec<lvx_cms_arc> &arcs,
 		     auto_vec<int> &height,
-		     int *dropped_safelen, int *lrdrop_out /* [4] */ = NULL)
+		     int *dropped_safelen, int *lrdrop_out /* [4] */ = NULL,
+		    const auto_vec<lvx_cms_prop> *prop = NULL)
 {
   /* The weakest safelen of any memory arc dropped below, or 0 if none was.
      The caller must check it against the converged NSTAGES: dropping is sound
@@ -21339,6 +21470,30 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  unsigned regno = DF_REF_REGNO (use);
 	  int p = -1;
 	  HOST_WIDE_INT w = 0;
+	  /* PROPAGATED: take this operand as reading the copy's source, FROM
+	     THE RECORDED DEFINITION.  §7tricies.110.  Searching backward for
+	     the nearest write of that register is what the first attempt did
+	     and it finds the wrong one post-RA: a hard register carries
+	     several values, and for a loop-carried read the reader precedes
+	     the copy, so the nearest earlier definition is generally not the
+	     one that fed it.  */
+	  const lvx_cms_prop *pe
+	    = lvx_cms_prop_lookup (prop, q,
+				   lvx_cms_reg_index (PATTERN (seq[q]),
+						      DF_REF_LOC (use)));
+	  if (pe)
+	    {
+	      int lat = lvx_arc_latency (seq[pe->producer], seq[q],
+					 REG_DEP_TRUE);
+
+	      lvx_cms_push_arc (arcs, pe->producer, q, lat, pe->omega,
+				LVX_ARC_REG_RAW);
+	      arcs.last ().useidx
+		= lvx_cms_reg_index (PATTERN (seq[q]), DF_REF_LOC (use));
+	      if (pe->omega == 0 && height[q] < height[pe->producer] + lat)
+		height[q] = height[pe->producer] + lat;
+	      continue;
+	    }
 
 	  /* The last definition strictly before Q.  */
 	  bool partial_def = false;
@@ -21430,6 +21585,19 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  unsigned regno = DF_REF_REGNO (use);
 	  int p = -1;
 	  HOST_WIDE_INT w = 0;
+	  /* §7tricies.110: and here the propagated operand must read rS, so
+	     that the anti-dependences keeping rS alive to this reader are the
+	     ones built.  Omitting this is what made the first attempt
+	     miscompile: the renaming had the right register and nothing
+	     stopped a later writer of it being scheduled in between.  */
+	  {
+	    const lvx_cms_prop *pq
+	      = lvx_cms_prop_lookup (prop, q,
+				     lvx_cms_reg_index (PATTERN (seq[q]),
+							DF_REF_LOC (use)));
+	    if (pq)
+	      regno = pq->regno;
+	  }
 
 	  if (lvx_insn_defs_regno_p (seq[q], regno))
 	    continue;
@@ -21834,6 +22002,26 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     lvx_option_override refuses it with codegen.  */
 	  if (lvx_cms_drop_liveout_arcs)
 	    continue;
+	  /* THE SPLIT, WHICH THE RENAMING ALREADY PERFORMS.  §7tricies.112.
+
+	     The arc exists because a body instruction writes a register the
+	     exit edge reads, so the branch must precede it.  That is only
+	     true if the body instruction writes the ARCHITECTED register --
+	     and where the range is renamed it does not: it writes a name of
+	     its own and the drain copies that back on the way out, which is
+	     Young & Smith's live off-trace renaming with the reconciliation
+	     off-trace rather than in the loop (§5a2c-bis).  Measured: 123
+	     live-out ranges across TSVC2 and MiBench are already renamed and
+	     already reconciled in the drains, so for those the arc is a
+	     constraint on a write that does not happen.
+
+	     Whether a range IS renamed is decided after scheduling, so the
+	     arc is dropped optimistically and the commitment verified before
+	     emission: every exit-live range with a body definition must come
+	     out with no name equal to its architected register, or the loop
+	     is refused.  Bound, transform, re-bound.  */
+	  if (lvx_cms_liveout_split)
+	    continue;
 	  FOR_EACH_INSN_DEF (def, seq[q])
 	    if (DF_REF_REGNO (def) < FIRST_PSEUDO_REGISTER
 		&& bitmap_bit_p (df_get_live_in (exitbb), DF_REF_REGNO (def)))
@@ -22081,7 +22269,7 @@ lvx_cms_recompute_heights (const auto_vec<lvx_cms_arc> &arcs,
     }
 }
 
-/* COPY PROPAGATION: REDIRECT THE ARCS.  §7tricies.106.
+/* COPY PROPAGATION: FIND THE CANDIDATES.  §7tricies.110.
 
    For each candidate `(p, c, u)' replace `c -> u' by `p -> u' at
    theta (p->c) and omega (p->c) + omega (c->u).  Returns how many arcs were
@@ -22099,8 +22287,9 @@ lvx_cms_recompute_heights (const auto_vec<lvx_cms_arc> &arcs,
    dead copy still occupies its slot until emission omits it.  */
 
 static int
-lvx_cms_apply_copy_prop (const auto_vec<rtx_insn *> &seq,
-			 auto_vec<lvx_cms_arc> &arcs)
+lvx_cms_find_copy_prop (const auto_vec<rtx_insn *> &seq,
+			const auto_vec<lvx_cms_arc> &arcs,
+			auto_vec<lvx_cms_prop> *prop)
 {
   int ndone = 0;
 
@@ -22127,12 +22316,34 @@ lvx_cms_apply_copy_prop (const auto_vec<rtx_insn *> &seq,
 	    continue;
 	  if (lvx_cms_operand_tied_p (seq[arcs[a].dst], arcs[a].useidx))
 	    continue;
-	  /* The composition.  USEIDX stays the reader's own operand -- it is
-	     that operand which will take rS -- and only the source end and
-	     the distances move.  */
-	  arcs[a].omega += arcs[pidx].omega;
-	  arcs[a].theta = arcs[pidx].theta;
-	  arcs[a].src = arcs[pidx].src;
+	  /* ONE OPERAND, ONE ANSWER.  Two arcs reaching one operand from
+	     different copies is the graph describing something this rewrite
+	     cannot express, and the lookup would answer with whichever was
+	     recorded first.  Decline the second rather than lose it.  */
+	  if (lvx_cms_prop_lookup (prop, arcs[a].dst, arcs[a].useidx))
+	    continue;
+	  /* One iteration back is all DELAYED can say.  */
+	  if (arcs[a].omega + arcs[pidx].omega > 1)
+	    continue;
+	  {
+	    lvx_cms_prop pe;
+
+	    pe.insn = arcs[a].dst;
+	    pe.slot = arcs[a].useidx;
+	    pe.regno = REGNO (SET_SRC (set));
+	    /* PINNED: the definition that fed THIS copy, not whichever write
+	       of that register happens to precede the reader.  */
+	    pe.producer = arcs[pidx].src;
+	    pe.omega = arcs[a].omega + arcs[pidx].omega;
+	    pe.delayed = pe.omega != 0;
+	    prop->safe_push (pe);
+	  }
+	  lvx_cms_dump (";; lvx cms:   cprop insn %u slot %d: r%u<-r%u"
+			" from insn %u omega %d\n",
+			arcs[a].dst, arcs[a].useidx,
+			REGNO (SET_DEST (set)), REGNO (SET_SRC (set)),
+			arcs[pidx].src,
+			(int) (arcs[a].omega + arcs[pidx].omega));
 	  ndone++;
 	}
     }
@@ -22219,13 +22430,38 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      Here because it changes RecMII and the bounds are computed next, and
      because it needs nothing a schedule would have to provide: the candidate
      test is the arcs plus a per-operand tie check.  */
-  if (lvx_cms_copy_prop)
-    {
-      int nprop = lvx_cms_apply_copy_prop (seq, arcs);
+  /* IDENTIFY, THEN REBUILD.  §7tricies.110.
 
-      if (nprop)
-	lvx_cms_dump (";; lvx cms: fn=%s loop %d cprop applied=%d\n",
-		      current_function_name (), loop->num, nprop);
+     Redirecting the arcs in place and telling only the live-range builder
+     gave the renaming the right register and nothing to protect it: the arcs
+     had been constructed before the record existed, so no anti-dependence
+     kept the source live from its definition to the new reader.  Wrong
+     answers on two of the seven gate programs.
+
+     So the record is made first and the graph is built again knowing it.  One
+     description of the dependences, derived once, with the flow arc and the
+     anti-dependences both coming out of the same walks -- and HEIGHT out of
+     the rebuild rather than needing its own repair.  */
+  auto_vec<lvx_cms_prop> prop;
+  if (lvx_cms_copy_prop && lvx_cms_find_copy_prop (seq, arcs, &prop))
+    {
+      lvx_cms_dump (";; lvx cms: fn=%s loop %d cprop found=%u, rebuilding\n",
+		    current_function_name (), loop->num, prop.length ());
+      arcs.truncate (0);
+      height.truncate (0);
+      if (!lvx_cms_build_graph (loop, body, seq, arcs, height,
+				&dropped_safelen, lrdropped, &prop))
+	{
+	  /* The propagated graph need not walk where the original did: the
+	     reader may now precede its producer in program order, so an
+	     intra-iteration arc runs backward.  Declining is correct -- and
+	     it is a decline, not a different graph, because the producer is
+	     pinned rather than searched for.  */
+	  lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, the propagated"
+			" graph does not walk\n",
+			current_function_name (), loop->num);
+	  return;
+	}
     }
 
   /* THE HEIGHTS, SEPARATELY.  §7tricies.107.
@@ -23100,7 +23336,8 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	      klb = (int) z;
 	}
 
-    lvx_cms_build_lranges (seq, klr, NULL, NULL, NULL);
+    lvx_cms_build_lranges (seq, klr, NULL, NULL, NULL, NULL, NULL,
+			   &prop);
     /* No LIVEOUT here: it sets EXIT_LIVE only, which the epilogue copy wants
        and the unroll factor does not, and the bitmap is not in scope yet.  */
     lvx_cms_set_lrange_dates (seq, klr, sigma, found, NULL);
@@ -23577,7 +23814,10 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       }
     /* The same function the graph builder called, on the same body: the
        partition the anti-dependence decisions were made from.  */
-    lvx_cms_build_lranges (seq, lr, &lrtie, &lrunit, &lrheld);
+    /* §7tricies.110: the same record for every set built here, or two
+       of them would describe different programs.  */
+    lvx_cms_build_lranges (seq, lr, &lrtie, &lrunit, &lrheld, NULL,
+			   NULL, &prop);
     lvx_cms_set_lrange_dates (seq, lr, sigma, found, liveout);
     bool lrok = lvx_cms_verify_lranges (seq, lr, &nrange, &lrorph, &lrdup,
 					&lrnoloc);
@@ -23938,7 +24178,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
 		/* §7tricies.104: the exit liveness from before make_nodes.  */
 		lvx_cms_build_lranges (seq, cglr, NULL, NULL, NULL, NULL,
-				       &xlcap);
+				       &xlcap, &prop);
 		lvx_cms_set_lrange_dates (seq, cglr, sigma, found, liveout);
 		vok = lvx_cms_verify_lranges (seq, cglr, &nr, &orph, &dupl,
 					      &nol);
@@ -23979,6 +24219,22 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 						 kun > 0 ? kun : 1, &nconf,
 						 &ca, &cb, &creg, &ccyc,
 						 &cnheld, &cninv, &cnocc);
+		/* §7tricies.112: and the commitment the dropped CTRL_LIVEOUT
+		   arcs were made on.  Before emission, with the rest.  */
+		if (lvx_cms_liveout_split)
+		  {
+		    int losbad = 0;
+
+		    if (!lvx_cms_verify_liveout_split (cglr, &losbad))
+		      {
+			lvx_cms_dump (";; lvx cms: fn=%s loop %d liveout"
+				      " split BAD, %d range(s) kept the"
+				      " architected register\n",
+				      current_function_name (), loop->num,
+				      losbad);
+			aok = false;
+		      }
+		  }
 		if (!aok && lvx_cms_probe && dump_file)
 		  {
 		    /* The two live ranges as the CODEGEN assignment left them,

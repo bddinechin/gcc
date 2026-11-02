@@ -198,3 +198,7 @@ Redirect a reader of a register copy onto the copy's source in the dependence gr
 mcms-recompute-heights
 Target Var(lvx_cms_recompute_heights_p) Init(0) Optimization
 Recompute the dependence heights by relaxation over the intra-iteration arcs instead of taking what graph construction left; measurement only, and required by -mcms-copy-prop whose redirected arcs construction's values do not describe.
+
+mcms-liveout-split
+Target Var(lvx_cms_liveout_split) Init(0) Optimization
+Omit the CTRL_LIVEOUT control arcs for live-out ranges the renaming gives a name of their own, the drain reconciling that name to the architected register on the way out.  The commitment is verified before emission and the loop refused if a range kept its architected register.
