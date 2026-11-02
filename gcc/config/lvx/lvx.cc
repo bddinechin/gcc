@@ -15057,7 +15057,31 @@ lvx_cms_lrange_root (const auto_vec<lvx_cms_lrange_part *> &lr, int k)
   return k;
 }
 
-/* Put two ranges in one live range.  Returns true if they were not already.  */
+/* Put two ranges in one live range.  Returns true if they were not already.
+
+   THE ROOT IS CHOSEN BY PROGRAM ORDER, NOT BY ARGUMENT ORDER.  §7tricies.119.
+
+   Union-find carries no order, and the parts of a live range are ordered:
+   LR is appended to as the walk meets each opening reference, so a part's
+   index IS its position in program order.  Most consumers do not care,
+   because what they read off the root is a commutative merge -- FIRST_DATE is
+   a MIN, LAST_DATE a MAX, EXIT_LIVE and USE_FIRST an OR, NREGS a MAX.  Three
+   do care, and they read `effects[0]' off the root as *the definition that
+   heads this live range*: the colouring's VNOTOWN exclusion, the live-out
+   split verification, and the live-out copy placement, which takes the
+   instruction to copy after from `q->effects[0].insn'.
+
+   For those three the root must be the LAST part of the union, because the
+   value that leaves the iteration is the one the last definition produced.
+   It already was -- but only because both call sites happen to pass the newer
+   part as GA and this function happened to make GA's root the root.  Nothing
+   said so and nothing checked it, and a third call site passing its arguments
+   the other way would have moved the live-out copy with no diagnostic.
+
+   So the rule is stated here instead: the root is the member with the
+   greatest index, which is the latest in program order.  The two existing
+   call sites are unaffected, which is the point -- an invariant that was
+   holding by accident now holds by construction.  */
 
 static bool
 lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange_part *> &lr,
@@ -15071,6 +15095,8 @@ lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange_part *> &lr,
   b = lvx_cms_lrange_root (lr, gb->self);
   if (a == b)
     return false;
+  if (a < b)
+    std::swap (a, b);
   lr[b]->parent = a;
   return true;
 }
@@ -16267,6 +16293,12 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
       root = lvx_cms_lrange_root (lr, (int) k);
       if (root == (int) k)
 	continue;
+      /* §7tricies.119: the root is the LATEST part of its union, which is
+	 what makes `lr[root]->effects[0]' the definition that heads the live
+	 range for the three consumers that read it.  Asserted rather than
+	 trusted, because union-find states no order and the property used to
+	 rest on the two call sites' argument order.  */
+      gcc_assert (root > (int) k);
       lr[root]->first_date = MIN (lr[root]->first_date, lr[k]->first_date);
       lr[root]->last_date = MAX (lr[root]->last_date, lr[k]->last_date);
       lr[root]->exit_live |= lr[k]->exit_live;
