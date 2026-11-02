@@ -17237,6 +17237,55 @@ lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
 {
   int orphan = 0, dup = 0, noloc = 0;
 
+  /* A LIVE RANGE IS A CONTIGUOUS SUBLIST OF ONE REGISTER'S PARTS.
+     §7tricies.119.
+
+     LR is appended to as the walk meets each opening reference, so a part's
+     index is its position in program order, and the measured shape of every
+     union -- 114 of them over 275 loops of TSVC2, PolyBench and MiBench --
+     is a CONSECUTIVE RUN of the parts of one register.  That is a stronger
+     and far more checkable statement than the root rule it implies, and it
+     is what makes the positional facts positional: the run's LAST part heads
+     the live range, only its FIRST part can be use-headed (a definition
+     opens every later one), and the parts of one register partition into
+     runs that ARE its live ranges.
+
+     Asserted, because a violation is a design error and not bad luck with a
+     loop: a union with a hole would mean two values on one register joined
+     around a third, and the merged interval would then span a live range
+     that is not in the union.
+
+     The one case deliberately NOT asserted is a union across two different
+     registers, which the tie pass can in principle build.  That is sound and
+     held -- §7tricies.71 marks it `noname' -- rather than wrong, so it is
+     excluded here instead of trapped.  It has never been observed to
+     occur.  */
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      int lo = -1, hi = -1;
+      bool onereg = true;
+
+      if (lr[k]->effects.is_empty ()
+	  || lvx_cms_lrange_root (lr, (int) k) != (int) k)
+	continue;
+      for (unsigned j = 0; j < lr.length (); j++)
+	if (!lr[j]->effects.is_empty ()
+	    && lvx_cms_lrange_root (lr, (int) j) == (int) k)
+	  {
+	    if (lo < 0)
+	      lo = (int) j;
+	    hi = (int) j;
+	    if (lr[j]->regno != lr[k]->regno)
+	      onereg = false;
+	  }
+      if (!onereg || lo < 0)
+	continue;
+      for (int j = lo + 1; j < hi; j++)
+	gcc_assert (lr[j]->effects.is_empty ()
+		    || lr[j]->regno != lr[k]->regno
+		    || lvx_cms_lrange_root (lr, j) == (int) k);
+    }
+
   /* EVERY OPERAND ON EXACTLY ONE LIVE RANGE.  Asked of DF rather than of the
      builder: for each reference of each body instruction, resolve the operand
      it sits at and count the LIVE RANGES that claim it.  Two ranges of one
