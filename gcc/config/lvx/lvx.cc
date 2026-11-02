@@ -15119,6 +15119,29 @@ lvx_cms_operand_tied_p (rtx_insn *insn, int useidx)
   return true;
 }
 
+/* IS THIS LIVE-OUT ARC'S RANGE ONE THE COLOURING CANNOT FREE?  §7tricies.114.
+
+   The drop promises the body writes a name of its own.  A value carried across
+   the back edge cannot promise it: name 0 comes from the preheader, which wrote
+   the architected register, so the pin holds that register and the body does
+   write it.  Ranges do not exist when the arcs are built, so the test is on the
+   instruction -- does it define a register live on entry to the loop header.  */
+
+static bool
+lvx_cms_liveout_arc_pinned_p (class loop *loop,
+			      const auto_vec<rtx_insn *> &seq, unsigned q)
+{
+  df_ref def;
+
+  if (q >= seq.length ())
+    return true;
+  FOR_EACH_INSN_DEF (def, seq[q])
+    if (DF_REF_REGNO (def) < FIRST_PSEUDO_REGISTER
+	&& bitmap_bit_p (df_get_live_in (loop->header), DF_REF_REGNO (def)))
+      return true;
+  return false;
+}
+
 /* DID THE SPLIT ACTUALLY HAPPEN?  §7tricies.112.
 
    -mcms-liveout-split drops the CTRL_LIVEOUT arcs on the expectation that the
@@ -16566,7 +16589,8 @@ static bool
 lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
 			lvx_cms_lrange_part *ga, lvx_cms_lrange_part *gb,
 			int *why /* [3]: unresolved, one live range, both keep */,
-			HOST_WIDE_INT omega)
+			HOST_WIDE_INT omega, unsigned ia = ~0u,
+			unsigned ib = ~0u)
 {
   int ra, rb;
 
@@ -16610,6 +16634,54 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
 	 variable expansion exists to escape.  Keeping them took TSVC2 from 27
 	 loops at nstages >= 3 to 7, with the built count unmoved, so the cost
 	 was invisible in the count and total in the depth.  */
+      /* OMEGA IS NOT THE SAME QUESTION AS "DIFFERENT INSTANCES".
+	 §7tricies.115.
+
+	 The drop reasons that at OMEGA > 0 the two references belong to
+	 iterations I and I + OMEGA, which the expansion puts in different
+	 registers.  That holds only when both references index the expansion
+	 the same way.  They do not when their DELAYED flags differ: the index
+	 is `(iteration + use_first - delayed) & (p2unroll - 1)', so a
+	 reference at iteration I + 1 carrying DELAYED lands on the SAME name
+	 as one at iteration I without it.
+
+	 THE SHAPE IS THE ROTATION, NOT THE INSTRUCTION.  A write that also
+	 READS its destination -- tied, partial or predicated, and the reason
+	 does not matter -- standing before the full write that heads the
+	 range produces exactly it.  The effects walk enters uses first, so
+	 that write's read opens a USE-HEADED range; the full write opens a
+	 def-headed one; and the normalisation folds the first into the second
+	 with DELAYED set, carrying the earlier WRITE in as a delayed
+	 reference.  It then indexes `(i + 1) - 1' against the heading write's
+	 `i': one name, two writers, OMEGA 1.  Dropping the arc lets the next
+	 iteration's write clobber this one's.
+
+	 Keying on DELAYED rather than on the instruction's shape is what
+	 covers all three kinds without enumerating them.
+
+	 The exact test is `(omega - delta delayed) mod p2unroll != 0', and
+	 P2UNROLL does not exist here -- it is derived after scheduling.  So
+	 the conservative half is taken: where the two references disagree
+	 about DELAYED, the arc is kept.  The occupancy verifier cannot stand
+	 in for this, since both references share a root and it only reports
+	 collisions BETWEEN roots.  */
+      if (ia != ~0u && ib != ~0u)
+	{
+	  bool da = false, db = false, ha = false, hb = false;
+
+	  for (unsigned e = 0; e < lr[ra]->effects.length (); e++)
+	    {
+	      if (lr[ra]->effects[e].insn == ia)
+		da = lr[ra]->effects[e].delayed, ha = true;
+	      if (lr[ra]->effects[e].insn == ib)
+		db = lr[ra]->effects[e].delayed, hb = true;
+	    }
+	  if (ha && hb && da != db)
+	    {
+	      why[2]++;
+	      return true;
+	    }
+	}
       if (lr[ra]->renamed)
 	return false;
       why[1]++;
@@ -21666,6 +21738,31 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  if (p < 0)
 	    continue;
 
+	  /* A PARTIAL KILLING WRITE KEEPS ITS ARC, AS ON THE WAW PATH.
+	     §7tricies.116.  That path has guarded against this since
+	     §7tricies.29 -- a partial write "leaves part of the old value in
+	     place, which no live range question captures" -- and this one
+	     never did, though the reasoning is the same and does not depend on
+	     the arc's kind.  A partial write does not fully define its name's
+	     instance: the bytes it does not write still hold what that name
+	     held before, which belongs to a DIFFERENT instance, so the
+	     expansion does not separate the two references however far apart
+	     their iterations are.  */
+	  {
+	    bool wpartial = false;
+
+	    lvx_insn_defs_regno_p (seq[p], regno, &wpartial);
+	    if (wpartial)
+	      {
+		awhy[2]++;
+		lvx_cms_push_arc (arcs, q, (unsigned) p,
+				  lvx_arc_latency (seq[q], seq[p],
+						   REG_DEP_ANTI),
+				  w, LVX_ARC_REG_WAR);
+		continue;
+	      }
+	  }
+
 	  /* Only where renaming cannot remove it, which is a question about
 	     the LIVE RANGES the two references belong to (§7tricies.29) and not
 	     about the killing instruction's shape.  It was
@@ -21679,7 +21776,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 							DF_REF_LOC (use)),
 				     NULL),
 		  lvx_cms_lrange_def_of (lrange, (unsigned) p, regno), awhy,
-		  w))
+		  w, q, (unsigned) p))
 	    {
 	      ndrop++;
 	      continue;
@@ -21738,7 +21835,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	      && !lvx_cms_antidep_real_p
 		    (lrange, lvx_cms_lrange_def_of (lrange, p, regno),
 		     lvx_cms_lrange_def_of (lrange, (unsigned) q, regno),
-		     awhy, w))
+		     awhy, w, p, (unsigned) q))
 	    {
 	      ndrop++;
 	      continue;
@@ -22075,20 +22172,16 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    if (DF_REF_REGNO (def) < FIRST_PSEUDO_REGISTER
 		&& bitmap_bit_p (df_get_live_in (exitbb), DF_REF_REGNO (def)))
 	      {
-		/* §7tricies.113: dropped only where the colouring has been
-		   told to keep the promise, and the two tests must agree.
-		   The colouring excludes the architected register from an
-		   exit-live range that is NOT use-headed; a use-headed one
-		   has its name 0 pinned to the register the preheader wrote,
-		   so it does write the architected register in the body and
-		   the arc is real.  The proxy available here -- ranges do not
-		   exist yet -- is whether the register is carried across the
-		   back edge, which is what makes a range use-headed.  */
-		if (lvx_cms_liveout_split
-		    && !bitmap_bit_p (df_get_live_in (loop->header),
-				      DF_REF_REGNO (def)))
-		  break;
 		lvx_cms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_LIVEOUT);
+		/* §7tricies.114: whether this arc is DROPPED is decided after
+		   the bounds, not here -- it turns on RecMII exceeding
+		   ResMII, and neither exists yet.  What is decided here is
+		   whether it is droppable at all: a range carried across the
+		   back edge is use-headed, its name 0 pinned to the register
+		   the preheader wrote, so it does write the architected
+		   register in the body and its arc is real whatever the
+		   bounds say.  Marked by leaving OMEGA alone and recording
+		   the register, which the filter below reads.  */
 		break;
 	      }
 	}
@@ -22553,6 +22646,62 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, the recurrence"
 		    " bound did not solve\n", current_function_name (), loop->num);
       return;
+    }
+
+  /* THE LIVE-OUT DROP, DECIDED ON THE BOUNDS.  §7tricies.114.
+
+     Dropping a CTRL_LIVEOUT arc can only lower RecMII, never ResMII, so
+     `lower' improves only where the RECURRENCE is what binds:
+     `RecMII > ResMII', strictly.  At equality the resource bound already pins
+     the maximum, so lowering RecMII moves nothing -- and the drop still
+     perturbs the scheduler, which was measured taking `s315 loop 1' from II 4
+     to 5.  `>=' would admit precisely the cases whose upside is zero and whose
+     downside is not.
+
+     Decided here rather than in the arc builder because neither bound exists
+     there.  It needs no graph rebuild: a CTRL_LIVEOUT arc carries theta 1 and
+     never feeds HEIGHT, which construction updates for REG_RAW and MEM_INTRA
+     alone, so removing one leaves the makespan untouched.
+
+     A range carried across the back edge keeps its arc whatever the bounds
+     say: it is use-headed, name 0 pinned to the register the preheader wrote,
+     so it does write the architected register and the colouring cannot promise
+     otherwise (§7tricies.113).
+
+     Kept only if the bound STRICTLY improves.  Equal is the perturbation
+     without the gain.  */
+  if (lvx_cms_liveout_split && k > r)
+    {
+      auto_vec<lvx_cms_arc> kept;
+      auto_vec<int> crit2;
+      int m2, r2, k2, ndrop = 0;
+
+      for (unsigned a = 0; a < arcs.length (); a++)
+	{
+	  if (arcs[a].kind == LVX_ARC_CTRL_LIVEOUT
+	      && !lvx_cms_liveout_arc_pinned_p (loop, seq, arcs[a].dst))
+	    {
+	      ndrop++;
+	      continue;
+	    }
+	  kept.safe_push (arcs[a]);
+	}
+      if (ndrop
+	  && lvx_cms_bounds (loop, body, seq, kept, height, &m2, &r2, &k2,
+			     &crit2)
+	  && MAX (k2, r2) < MAX (k, r))
+	{
+	  lvx_cms_dump (";; lvx cms: fn=%s loop %d liveout split: dropped %d"
+			" arc(s), lower %d -> %d\n", current_function_name (),
+			loop->num, ndrop, MAX (k, r), MAX (k2, r2));
+	  arcs.truncate (0);
+	  for (unsigned a = 0; a < kept.length (); a++)
+	    arcs.safe_push (kept[a]);
+	  m = m2, r = r2, k = k2;
+	  crit.truncate (0);
+	  for (unsigned a = 0; a < crit2.length (); a++)
+	    crit.safe_push (crit2[a]);
+	}
     }
 
   int delta = lvx_cms_delta (arcs);
