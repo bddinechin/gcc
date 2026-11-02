@@ -13361,7 +13361,8 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		unsigned HOST_WIDE_INT avail = ~(unsigned HOST_WIDE_INT) 0,
 		const auto_vec<int> *vregno = NULL,
 		const auto_vec<int> *vusefirst = NULL,
-		int *pinned_out = NULL, int *pinfail_out = NULL)
+		int *pinned_out = NULL, int *pinfail_out = NULL,
+		const auto_vec<int> *vnotown = NULL)
 {
   int nn = 0, ne = 0, msq = 0, spl = 0, per = 0, kun = 1, maxreg = -1;
   int pinned = 0, pinfail = 0;
@@ -13721,6 +13722,26 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		  continue;
 		for (int t = 0; t < nnreg[b2] && reg[b2] + t < 64; t++)
 		  busy |= (unsigned HOST_WIDE_INT) 1 << (reg[b2] + t);
+	      }
+	    /* MUST NOT KEEP ITS OWN REGISTER.  §7tricies.113.
+
+	       A live-out range whose CTRL_LIVEOUT arc was dropped promised
+	       that the body writes a name of its OWN and the drain copies it
+	       back -- so the one register it may not be given is the
+	       architected one it would otherwise still be writing.  Expressed
+	       as an exclusion here, where the selection already knows which
+	       registers are unavailable, rather than checked afterwards:
+	       verifying the promise refused 32 loops on TSVC2 and cost 18
+	       built pipelines, because nothing had told the colouring to keep
+	       it.  A constraint the allocator can satisfy beats a condition it
+	       can only fail.  */
+	    if (vnotown && nval[a] < (int) vnotown->length ()
+		&& (*vnotown)[nval[a]] >= 0)
+	      {
+		int own = (*vnotown)[nval[a]];
+
+		for (int t = 0; t < nr && own + t < 64; t++)
+		  busy |= (unsigned HOST_WIDE_INT) 1 << (own + t);
 	      }
 	    for (int r = 0; r + nr <= 64; r += nr)	/* aligned by construction */
 	      {
@@ -15125,6 +15146,15 @@ lvx_cms_verify_liveout_split (const auto_vec<lvx_cms_lrange_part *> &lr,
       if (g->effects.is_empty () || !g->exit_live
 	  || lvx_cms_lrange_root (lr, (int) k) != (int) k
 	  || !g->effects[0].is_def)
+	continue;
+      /* THE CHECK MUST MATCH THE DROP.  §7tricies.113.  A USE_FIRST range
+	 keeps its arc -- its name 0 is pinned to the register the preheader
+	 wrote, so it does write the architected register in the body -- and
+	 demanding the promise of it anyway failed 31 of the 32 loops this
+	 verifier refused, on ranges whose arcs had correctly been kept.  A
+	 verifier stricter than the transformation it guards reports the
+	 transformation's successes as failures.  */
+      if (g->use_first)
 	continue;
       if (!g->renamed)
 	{
@@ -16841,9 +16871,30 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 		      current_function_name (), k2, forced, deg.length ());
     }
 
+  /* §7tricies.113: when the CTRL_LIVEOUT arcs have been dropped, an exit-live
+     range has PROMISED to write a name of its own, so the architected register
+     is excluded from its choices.  Indexed like VREGNO, by value.  A range
+     that is also USE_FIRST is left alone -- its name 0 is pinned to the
+     register the preheader wrote, which is an external constraint the promise
+     cannot override, and such a range keeps its arc.  */
+  auto_vec<int> vnotown;
+  if (lvx_cms_liveout_split)
+    {
+      vnotown.safe_grow_cleared (idx.length ());
+      for (unsigned u = 0; u < idx.length (); u++)
+	{
+	  lvx_cms_lrange_part *g = lr[idx[u]];
+
+	  vnotown[u] = (g->exit_live && !g->use_first
+			&& !g->effects.is_empty () && g->effects[0].is_def)
+		       ? (int) g->regno : -1;
+	}
+    }
+
   lvx_cms_colour (def_, last_, deg, nregs_, ec_, ii, lo, &nn, &ne, &msq,
 		  &spl, &per, &kun, &stuck, &av, &an, &ar, &maxreg, avail,
-		  &vregno, &vuf, &pinned, &pinfail);
+		  &vregno, &vuf, &pinned, &pinfail,
+		  lvx_cms_liveout_split ? &vnotown : NULL);
 
   for (unsigned u = 0; u < idx.length (); u++)
     {
@@ -22020,12 +22071,23 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     emission: every exit-live range with a body definition must come
 	     out with no name equal to its architected register, or the loop
 	     is refused.  Bound, transform, re-bound.  */
-	  if (lvx_cms_liveout_split)
-	    continue;
 	  FOR_EACH_INSN_DEF (def, seq[q])
 	    if (DF_REF_REGNO (def) < FIRST_PSEUDO_REGISTER
 		&& bitmap_bit_p (df_get_live_in (exitbb), DF_REF_REGNO (def)))
 	      {
+		/* §7tricies.113: dropped only where the colouring has been
+		   told to keep the promise, and the two tests must agree.
+		   The colouring excludes the architected register from an
+		   exit-live range that is NOT use-headed; a use-headed one
+		   has its name 0 pinned to the register the preheader wrote,
+		   so it does write the architected register in the body and
+		   the arc is real.  The proxy available here -- ranges do not
+		   exist yet -- is whether the register is carried across the
+		   back edge, which is what makes a range use-headed.  */
+		if (lvx_cms_liveout_split
+		    && !bitmap_bit_p (df_get_live_in (loop->header),
+				      DF_REF_REGNO (def)))
+		  break;
 		lvx_cms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_LIVEOUT);
 		break;
 	      }
