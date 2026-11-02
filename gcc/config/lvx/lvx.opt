@@ -190,3 +190,11 @@ Target RejectNegative Joined UInteger Var(lvx_cms_force_p2unroll) Init(0) Optimi
 mcms-drop-liveout-arcs
 Target Var(lvx_cms_drop_liveout_arcs) Init(0) Optimization
 Omit the CTRL_LIVEOUT control arcs, to size what splitting the live-out definition would be worth; measurement only, requires -mcms-probe and refused with -mcms-codegen.
+
+mcms-copy-prop
+Target Var(lvx_cms_copy_prop) Init(0) Optimization
+Redirect a reader of a register copy onto the copy's source in the dependence graph, shortening recurrences through the copy; measurement only, requires -mcms-probe and refused with -mcms-codegen until emission performs the matching operand rewrite.
+
+mcms-recompute-heights
+Target Var(lvx_cms_recompute_heights_p) Init(0) Optimization
+Recompute the dependence heights by relaxation over the intra-iteration arcs instead of taking what graph construction left; measurement only, and required by -mcms-copy-prop whose redirected arcs construction's values do not describe.

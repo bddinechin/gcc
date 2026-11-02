@@ -10410,6 +10410,27 @@ lvx_option_override (void)
 	   "dependences on an assumption nothing verifies; it is for "
 	   "measurement only and is incompatible with %<-mcms-codegen%>");
 
+  /* §7tricies.107: the propagation's arcs are not the ones construction
+     measured the heights from, so the two go together.  */
+  if (lvx_cms_copy_prop)
+    SET_OPTION_IF_UNSET (&global_options, &global_options_set,
+			 lvx_cms_recompute_heights_p, 1);
+  if (lvx_cms_recompute_heights_p && !lvx_cms_probe)
+    error ("%<-mcms-recompute-heights%> is for measurement only; it requires "
+	   "%<-mcms-probe%>");
+
+  if (lvx_cms_copy_prop && !lvx_cms_probe)
+    error ("%<-mcms-copy-prop%> is for measurement only; it requires "
+	   "%<-mcms-probe%>");
+  /* §7tricies.106: redirecting the arcs without the matching operand rewrite
+     at emission makes the schedule assume a reader takes the copy's source
+     while the code still takes its destination.  A wrong program, not a
+     partial feature.  */
+  if (lvx_cms_copy_prop && (lvx_cms_codegen || lvx_cms_pipeline))
+    error ("%<-mcms-copy-prop%> changes the graph but not yet the operands, "
+	   "so a pipeline built on it would read the wrong register; it is "
+	   "incompatible with %<-mcms-codegen%>");
+
   if (lvx_cms_drop_liveout_arcs && !lvx_cms_probe)
     error ("%<-mcms-drop-liveout-arcs%> is for measurement only; it requires "
 	   "%<-mcms-probe%>");
@@ -15005,6 +15026,52 @@ lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange_part *> &lr,
 /* Build the live ranges of SEQ.  One per definition of a hard register, in
    body order, with every reference to that register attached to the range
    the reaching definition opened.  */
+
+/* IS THE OPERAND AT USEIDX TIED TO A DESTINATION?  §7tricies.106.
+
+   Per operand, not per instruction.  lvx_insn_has_tied_operand_p answers
+   "does this insn carry any tie", which for copy propagation rejects far too
+   much: an instruction may have a tied accumulator and separately read an
+   untied value through a copy, and only the first is a reason to refuse.
+
+   USEIDX indexes the arc builder's sub-rtx walk, not recog_data.operand[], so
+   the two are joined by POINTER IDENTITY: lvx_cms_reg_at gives the location
+   inside the pattern, and recog_data.operand_loc[] holds those same
+   locations.  Matching on register number instead is what §7tricies's arc
+   note already records as not being a key -- one instruction can mention one
+   regno for two different values.
+
+   Answers TRUE when it cannot tell, which is the direction that refuses the
+   transformation rather than performing it unsoundly.  */
+
+static bool
+lvx_cms_operand_tied_p (rtx_insn *insn, int useidx)
+{
+  const operand_alternative *alt;
+  rtx *loc;
+
+  if (useidx < 0)
+    return true;
+  loc = lvx_cms_reg_at (&PATTERN (insn), useidx);
+  if (loc == NULL)
+    return true;
+  if (recog_memoized (insn) < 0)
+    return true;
+  extract_insn (insn);
+  if (!constrain_operands (1, get_enabled_alternatives (insn)))
+    return true;
+  if (which_alternative < 0)
+    return true;
+  alt = which_op_alt ();
+  if (alt == NULL)
+    return true;
+  for (int i = 0; i < recog_data.n_operands; i++)
+    if (recog_data.operand_loc[i] == loc)
+      return alt[i].matches >= 0 || alt[i].matched >= 0;
+  /* The arc names a register the constrained operand list does not: a
+     hard-coded operand or one inside a sub-expression.  Not rewritable.  */
+  return true;
+}
 
 /* THE EXIT LIVENESS OF EACH BRANCH, CAPTURED BEFORE ANY MUTATION.
    §7tricies.104.
@@ -21911,6 +21978,225 @@ lvx_cms_bounds (class loop *loop, basic_block *body,
    asks for -- lowest converging II against the true lower bound -- and it
    needs no cycle counts and no ISS, being a property of the scheduler.  */
 
+/* COPY PROPAGATION ON THE DEPENDENCE GRAPH: THE CANDIDATES.  §7tricies.106.
+
+   An instruction that reads the result of a register copy can be made to read
+   the copy's SOURCE instead.  On the graph that is three nodes and two arcs --
+   `p -> c' carrying rS into the copy `c: rD = rS', and `c -> u' carrying rD
+   into the reader -- and the rewrite replaces the second by
+
+       p -> u    theta = theta (p->c)    omega = omega (p->c) + omega (c->u)
+
+   the omegas ADDING, which is what makes it work across iterations with no
+   separate mechanism: `u' in iteration i+1 consumes what `p' produced in i as
+   one arc at omega 1.  A circuit through `p -> c -> u' loses the copy's theta.
+
+   It is the only refinement measured in this file that can move BOTH bounds
+   the right way: a copy that loses every reader and is not live out DIES, and
+   its TINY slot leaves the body, so ResMII falls as well.
+
+   THIS FUNCTION ONLY COUNTS.  Redirecting the arcs without the matching
+   rewrite at emission is not an incomplete feature, it is a miscompile: the
+   schedule would assume `u' reads rS while the code still reads rD.  So the
+   analysis lands first, with its filters measured, and the transformation
+   follows behind an option refused with -mcms-codegen until emission can
+   honour it.
+
+   The filters, each able to reject on its own:
+
+     TIED    the operand of `u' that reads rD is matched to u's destination.
+	     Post-RA copies often exist precisely so an instruction can hold
+	     an input and its output in one register; rewriting the input
+	     while the destination stays put gives `fma r1 = a, r41',
+	     §7tricies.28's unrecognisable insn.  Checked PER OPERAND through
+	     the arc's USEIDX -- lvx_insn_has_tied_operand_p answers the
+	     coarser question "has any tie" and would reject too much.
+   TWO FILTERS WERE TRIED AND BOTH ASKED THE WRONG THING, which is worth
+   recording because the right question turns out not to be a graph predicate
+   at all.  The first required rS to have no other definition in the body and
+   rejected 98 of 98 copies -- post-RA code reuses every hard register, so that
+   is not a conservative subset but an empty one, and it asked about the
+   REGISTER where the question is about the VALUE.  The second required the
+   copy's source reference and the definition reaching it to be one live range,
+   and rejected NOTHING on either corpus, because a REG_RAW arc exists exactly
+   when a definition reaches a use and the live-range construction puts those
+   in one range: the test is a tautology.
+
+   What actually decides legality is whether extending rS's range to the new
+   reader leaves the schedule feasible -- its life still within p2unroll * II
+   (§7tricies.92) -- and that is a property of a schedule, not of the graph.
+   So the candidate count below is an UPPER BOUND, and the judge has to be
+   bound/transform/re-bound with the colouring and the invariant deciding.
+     MULTIP  the copy has more than one producing arc, so the reader would
+	     have to wait on all of them and the composition is not one arc.
+     WIDE    the copy is not a single register, where propagating a part of a
+	     tuple is not the same transformation.  */
+
+/* RECOMPUTE THE DEPENDENCE HEIGHTS FROM THE ARCS.  §7tricies.106.
+
+   lvx_cms_build_graph fills HEIGHT as it walks the body, in one forward pass
+   (`height[q] = height[p] + lat' for every intra-iteration arc), and
+   lvx_cms_bounds then READS it to form M.  Redirecting an arc therefore leaves
+   HEIGHT describing the graph as it was -- and since a redirection only ever
+   shortens a path, the stale value over-states M rather than under-stating it,
+   which is conservative and still wrong.  A comment here first claimed the
+   bound recomputed it; it does not, and that claim is the kind this file has
+   been bitten by twice (§7tricies.103, .104).
+
+   Longest path by relaxation over the intra-iteration arcs.  n rounds suffice
+   because that subgraph is acyclic.  Called only when the propagation has
+   actually changed something, so the ordinary path keeps construction's own
+   values byte for byte.  */
+
+static void
+lvx_cms_recompute_heights (const auto_vec<lvx_cms_arc> &arcs,
+			   auto_vec<int> &height)
+{
+  unsigned n = height.length ();
+
+  for (unsigned i = 0; i < n; i++)
+    height[i] = 0;
+  for (unsigned round = 0; round < n; round++)
+    {
+      bool moved = false;
+
+      for (unsigned a = 0; a < arcs.length (); a++)
+	{
+	  /* THE SAME KINDS CONSTRUCTION COUNTS, and no others.  It updates
+	     HEIGHT in exactly two places, for REG_RAW and for MEM_INTRA at
+	     omega 0.  Including the control arcs here would be defensible as
+	     an acyclic makespan and would also make this arm incomparable to
+	     the baseline, M moving for a reason that is not the propagation.  */
+	  if (arcs[a].omega != 0
+	      || (arcs[a].kind != LVX_ARC_REG_RAW
+		  && arcs[a].kind != LVX_ARC_MEM_INTRA)
+	      || arcs[a].src >= n || arcs[a].dst >= n)
+	    continue;
+	  int want = height[arcs[a].src] + (int) arcs[a].theta;
+	  if (height[arcs[a].dst] < want)
+	    height[arcs[a].dst] = want, moved = true;
+	}
+      if (!moved)
+	break;
+    }
+}
+
+/* COPY PROPAGATION: REDIRECT THE ARCS.  §7tricies.106.
+
+   For each candidate `(p, c, u)' replace `c -> u' by `p -> u' at
+   theta (p->c) and omega (p->c) + omega (c->u).  Returns how many arcs were
+   redirected.
+
+   MEASUREMENT ONLY, AND REFUSED WITH -mcms-codegen.  Doing this without the
+   matching rewrite at emission is not an incomplete feature but a miscompile:
+   the schedule would assume `u' reads rS while the code still reads rD.  The
+   emission side substitutes registers already (the renaming does it per
+   operand through the arc's USEIDX), so the rewrite belongs there -- and
+   until it exists, this may only inform a bound, never a program.
+
+   The copy is NOT deleted even when it loses every reader.  Its death is what
+   would lower ResMII, and claiming that here would overstate the result: a
+   dead copy still occupies its slot until emission omits it.  */
+
+static int
+lvx_cms_apply_copy_prop (const auto_vec<rtx_insn *> &seq,
+			 auto_vec<lvx_cms_arc> &arcs)
+{
+  int ndone = 0;
+
+  for (unsigned c = 0; c < seq.length (); c++)
+    {
+      rtx set = single_set (seq[c]);
+      int np = 0, pidx = -1;
+
+      if (set == NULL_RTX || !REG_P (SET_DEST (set)) || !REG_P (SET_SRC (set)))
+	continue;
+      if (REGNO (SET_DEST (set)) >= FIRST_PSEUDO_REGISTER
+	  || REGNO (SET_SRC (set)) >= FIRST_PSEUDO_REGISTER
+	  || REG_NREGS (SET_DEST (set)) != 1
+	  || REG_NREGS (SET_SRC (set)) != 1)
+	continue;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].dst == c && arcs[a].kind == LVX_ARC_REG_RAW)
+	  np++, pidx = (int) a;
+      if (np != 1)
+	continue;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	{
+	  if (arcs[a].src != c || arcs[a].kind != LVX_ARC_REG_RAW)
+	    continue;
+	  if (lvx_cms_operand_tied_p (seq[arcs[a].dst], arcs[a].useidx))
+	    continue;
+	  /* The composition.  USEIDX stays the reader's own operand -- it is
+	     that operand which will take rS -- and only the source end and
+	     the distances move.  */
+	  arcs[a].omega += arcs[pidx].omega;
+	  arcs[a].theta = arcs[pidx].theta;
+	  arcs[a].src = arcs[pidx].src;
+	  ndone++;
+	}
+    }
+  return ndone;
+}
+
+static void
+lvx_cms_count_copy_prop (const auto_vec<rtx_insn *> &seq,
+			 const auto_vec<lvx_cms_arc> &arcs,
+			 int *ncand_out, int *ntied_out, int *nmultidef_out,
+			 int *nmultip_out, int *nwide_out)
+{
+  int ncand = 0, ntied = 0, nmultidef = 0, nmultip = 0, nwide = 0;
+
+  *ncand_out = *ntied_out = *nmultidef_out = *nmultip_out = *nwide_out = 0;
+
+  for (unsigned c = 0; c < seq.length (); c++)
+    {
+      rtx set = single_set (seq[c]);
+      unsigned sreg, dreg;
+      int np = 0, pidx = -1, ndefs = 0;
+
+      if (set == NULL_RTX || !REG_P (SET_DEST (set)) || !REG_P (SET_SRC (set)))
+	continue;
+      dreg = REGNO (SET_DEST (set));
+      sreg = REGNO (SET_SRC (set));
+      if (dreg >= FIRST_PSEUDO_REGISTER || sreg >= FIRST_PSEUDO_REGISTER)
+	continue;
+      if (REG_NREGS (SET_DEST (set)) != 1 || REG_NREGS (SET_SRC (set)) != 1)
+	{
+	  nwide++;
+	  continue;
+	}
+
+      /* The producing arcs of the copy, and the definitions of rS anywhere
+	 in the body.  */
+      for (unsigned a = 0; a < arcs.length (); a++)
+	if (arcs[a].dst == c && arcs[a].kind == LVX_ARC_REG_RAW)
+	  np++, pidx = (int) a;
+      if (np != 1)
+	{
+	  nmultip++;
+	  continue;
+	}
+      (void) ndefs;
+
+      for (unsigned a = 0; a < arcs.length (); a++)
+	{
+	  if (arcs[a].src != c || arcs[a].kind != LVX_ARC_REG_RAW)
+	    continue;
+	  if (lvx_cms_operand_tied_p (seq[arcs[a].dst], arcs[a].useidx))
+	    ntied++;
+	  else
+	    ncand++;
+	}
+      (void) pidx;
+    }
+  *ncand_out = ncand;
+  *ntied_out = ntied;
+  *nmultidef_out = nmultidef;
+  *nmultip_out = nmultip;
+  *nwide_out = nwide;
+}
+
 static void
 lvx_cms_probe_loop (class loop *loop, basic_block *body)
 {
@@ -21928,6 +22214,39 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		    loop->num);
       return;
     }
+
+  /* COPY PROPAGATION, BETWEEN THE GRAPH AND THE BOUNDS.  §7tricies.106.
+     Here because it changes RecMII and the bounds are computed next, and
+     because it needs nothing a schedule would have to provide: the candidate
+     test is the arcs plus a per-operand tie check.  */
+  if (lvx_cms_copy_prop)
+    {
+      int nprop = lvx_cms_apply_copy_prop (seq, arcs);
+
+      if (nprop)
+	lvx_cms_dump (";; lvx cms: fn=%s loop %d cprop applied=%d\n",
+		      current_function_name (), loop->num, nprop);
+    }
+
+  /* THE HEIGHTS, SEPARATELY.  §7tricies.107.
+
+     The propagation needs these recomputed -- lvx_cms_bounds READS HEIGHT
+     rather than deriving it, so a redirected arc would otherwise leave the
+     makespan describing the graph as it was.  But recomputing only on that
+     path confounded the experiment, because the recompute does not agree with
+     construction even when nothing is redirected: construction fills HEIGHT
+     DURING the arc-building walk, so an arc out of P can be handled before an
+     arc INTO P has raised P's height, and the single interleaved pass
+     UNDER-states the longest path.  Measured as M rising on s276 loop 2 (30 to
+     36) and s443 loop 2 (30 to 35) under propagation, which redirection alone
+     cannot do since it only shortens paths.
+
+     So the recompute is its own lever, and the propagation arm has to be read
+     against a baseline that shares it.  Whether construction's under-estimate
+     is worth fixing on its own account is a separate question with its own
+     answer -- M feeds the stage count and the span.  */
+  if (lvx_cms_recompute_heights_p)
+    lvx_cms_recompute_heights (arcs, height);
 
   int m, r, k;
   auto_vec<int> crit;
@@ -23284,6 +23603,21 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		  lrtie, lrunit, lrheld, nwar, nwaw, nlotight, nlo,
 		  lrdropped[0],
 		  lrdropped[1], lrdropped[2], lrdropped[3], arcs.length ());
+    /* §7tricies.106: the copy-propagation candidates, each filter's
+       rejections apart so the opportunity and the cost of every rule are both
+       visible.  Reported here rather than beside the circuit because the
+       filter asks about LIVE RANGES, and this is where they exist.  */
+    {
+      int pcand, ptied, pmdef, pmp, pwide;
+
+      lvx_cms_count_copy_prop (seq, arcs, &pcand, &ptied, &pmdef, &pmp,
+			       &pwide);
+      lvx_cms_dump (";; lvx cms: fn=%s loop %d cprop=%d tiedop=%d"
+		    " otherrange=%d multip=%d wide=%d\n",
+		    current_function_name (), loop->num, pcand, ptied, pmdef,
+		    pmp, pwide);
+    }
+
     if (lvx_cms_probe && dump_file)
       lvx_cms_dump_lranges (seq, lr, "probe");
 
