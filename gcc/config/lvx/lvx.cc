@@ -16733,7 +16733,7 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
 			lvx_cms_lrange_part *ga, lvx_cms_lrange_part *gb,
 			int *why /* [3]: unresolved, one live range, both keep */,
 			HOST_WIDE_INT omega, unsigned ia = ~0u,
-			unsigned ib = ~0u)
+			unsigned ib = ~0u, bool src_is_def = false)
 {
   int ra, rb;
 
@@ -16812,11 +16812,26 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
 	{
 	  bool da = false, db = false, ha = false, hb = false;
 
+	  /* THE REFERENCE THE ARC NAMES, NOT ANY REFERENCE AT THAT INSN.
+	     §7tricies.126.  One instruction can hold BOTH a def and a use of
+	     one register -- `r4 = r4 + 32' is the ordinary induction variable
+	     -- and after the cyclic normalisation the use is DELAYED while the
+	     def is not.  Scanning for "an effect at this insn" took whichever
+	     came last, compared a def against a use, invented a disagreement
+	     and kept the arc.  That is what held saxpy's induction recurrence:
+	     its WAR relates the store's READ to the increment's WRITE, both
+	     undelayed, and the test saw the increment's own delayed read.
+
+	     A WAR or WAW destination is a write, so IB matches a definition.
+	     The source is a read for a WAR and a write for a WAW, which
+	     SRC_IS_DEF says.  */
 	  for (unsigned e = 0; e < lr[ra]->effects.length (); e++)
 	    {
-	      if (lr[ra]->effects[e].insn == ia)
+	      if (lr[ra]->effects[e].insn == ia && !ha
+		  && lr[ra]->effects[e].is_def == src_is_def)
 		da = lr[ra]->effects[e].delayed, ha = true;
-	      if (lr[ra]->effects[e].insn == ib)
+	      if (lr[ra]->effects[e].insn == ib && !hb
+		  && lr[ra]->effects[e].is_def)
 		db = lr[ra]->effects[e].delayed, hb = true;
 	    }
 	  if (ha && hb && da != db)
@@ -16830,13 +16845,46 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
       why[1]++;
       return true;
     }
-  if (lvx_cms_lrange_keeps_regno_p (lr, ra)
-      && lvx_cms_lrange_keeps_regno_p (lr, rb))
-    {
-      why[2]++;
-      return true;
-    }
-  return false;
+  /* A KILLING DEF OF A RENAMEABLE RANGE CANNOT BE THE DESTINATION OF A WAR OR
+     A WAW.  §7tricies.126.
+
+     CMS runs after register allocation, so every register anti- and output
+     dependence is an artefact of the allocator having reused a register --
+     not a fact about the dataflow.  GB is the destination at both call sites
+     (the WAR pushes src=read dst=write, the WAW pushes src=p dst=q).  If the
+     range GB belongs to begins with a killing write and may be renamed, then
+     the renaming gives that write a name of its own and the arc never existed
+     in the values.  Nothing about II, lifetime or degree enters the
+     judgement.
+
+     THE DEGREE IS A CONSEQUENCE, NOT A PRECONDITION, which is what makes this
+     sound without knowing P2UNROLL here.  Dropping the arc lets the earlier
+     reference slip past the later write; the range's interval then WIDENS to
+     cover it, LVX_CMS_SET_LRANGE_DATES measures that on the schedule the drop
+     produced, and `ceil (life / II)' yields the second name by itself.  The
+     invariant `life <= p2unroll * II' is checked afterwards rather than
+     assumed, so the obligation is verified where it is discharged.
+
+     USE_FIRST IS NOT AN EXCEPTION, and treating it as one is what this
+     replaces.  The test used to be `both ends keep their architected
+     register', with lvx_cms_lrange_keeps_regno_p = `!renamed || use_first'.
+     That predicate belongs to §7tricies.26, where the question is which
+     registers the colouring may FREE, and there USE_FIRST matters because
+     name 0 is pinned to what the preheader wrote.  It is the wrong question
+     here: name 0 being pinned does not stop names 1..p2-1 from separating two
+     references.  Borrowing it cost saxpy its recurrence -- the ivtmp's
+     `r4 = r4 + 32' is a killing def of a renameable range, and its WAR was
+     kept for a reason that was never about this arc.
+
+     The source side keeps its old meaning: if the READER has been moved to a
+     different register, the arc is equally spurious.  */
+  if (!lvx_cms_lrange_keeps_regno_p (lr, ra))
+    return false;
+  if (lr[rb]->renamed && !lr[rb]->effects.is_empty ()
+      && lr[rb]->effects[0].is_def)
+    return false;
+  why[2]++;
+  return true;
 }
 
 /* THE REGISTERS THE RANGE MODEL HOLDS.  §7tricies.26.
@@ -17299,14 +17347,48 @@ lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
    `the destination of this insn' -- the tie pass reading recog_data.  Keyed on
    the heading definition, which is unique per range.  */
 
+/* A RANGE COVERS A SPAN, AND THE ARCS ASK ABOUT ITS COMPONENTS.  §7tricies.125.
+
+   A live range on a tuple is registered under its BASE: `r8+4' spans r8 to
+   r11 and its REGNO is 8.  The dependence graph, though, builds register WAR
+   and WAW arcs one COMPONENT at a time, because that is how DF reports them --
+   so an arc on r9 asked for "the range whose regno is 9", found none, and the
+   caller read the NULL as "unresolvable reference, keep the arc".
+
+   Matching the base exactly therefore lost every anti-dependence drop on all
+   but the FIRST register of every tuple.  Scalar code never noticed; a
+   vectorized loop loses three components in four.  In saxpy, vectorized to
+   V8SF across r8-r11 and r32-r35, fourteen arcs were kept this way -- the
+   whole of its `akunres' -- and one of them closes the recurrence that pins
+   II at 7 against a ResMII of 2.
+
+   The span test is what the range already means everywhere else: EFFECTS
+   carry an OFFSET within the span (§7tricies.71) precisely so that a
+   narrower reference belongs to the wider range.  */
+
 static lvx_cms_lrange_part *
 lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
 		       unsigned regno)
 {
   for (unsigned k = 0; k < lr.length (); k++)
-    if (lr[k]->regno == regno && !lr[k]->effects.is_empty ()
-	&& lr[k]->effects[0].is_def && lr[k]->effects[0].insn == insn)
-      return lr[k];
+    {
+      if (lr[k]->effects.is_empty ()
+	  || regno < lr[k]->regno
+	  || regno >= lr[k]->regno + (unsigned) MAX (lr[k]->nregs, 1))
+	continue;
+      /* ANY DEFINITION IN THE RANGE, NOT ONLY THE ONE THAT HEADS IT.
+	 §7tricies.125.  A read-modify-write does not open a range -- that is
+	 the whole point of the in-place rule -- so its WRITE is an effect in
+	 the middle of the range its read already belongs to.  Requiring
+	 EFFECTS[0] made every such write unfindable, and the caller again
+	 read NULL as "unresolvable, keep the arc".  Resolving it instead
+	 returns the SAME range for both endpoints, which is the "one live
+	 range" answer §7tricies.29 wants: two writes that share a register by
+	 construction, whose order is real.  */
+      for (unsigned e = 0; e < lr[k]->effects.length (); e++)
+	if (lr[k]->effects[e].is_def && lr[k]->effects[e].insn == insn)
+	  return lr[k];
+    }
   return NULL;
 }
 
@@ -21033,8 +21115,10 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	    break;
 	}
       if (best < 0)
-	/* Nothing ready and cells remain: the enforced subgraph has a circuit
-	   the chosen II cannot break.  */
+	/* Nothing ready and cells remain.  This gives up at this II; it does
+	   NOT establish that no schedule exists there.  Deciding modulo
+	   schedulability at a fixed II under resource constraints is
+	   NP-complete, so no search licenses that claim.  §7tricies.127.  */
 	return false;
       if (bestprio >= 0 && best != bestprio)
 	nseldiff++;
@@ -22034,6 +22118,17 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     `lvx_insn_def_reads_dest_p (seq[p])', an approximation of
 	     `one live range' -- and that predicate was answering FALSE for every
 	     instruction, so no register anti-dependence was kept at all.  */
+	  {
+	    int dbg_i = lvx_cms_reg_index (PATTERN (seq[q]), DF_REF_LOC (use));
+	    if (!lvx_cms_lrange_of (lrange, q, dbg_i, NULL)
+		|| !lvx_cms_lrange_def_of (lrange, (unsigned) p, regno))
+	      lvx_cms_dump (";; lvx cms:   WARUNRES r%u use=%u slot=%d%s"
+			    " def=%u%s\n", regno, q, dbg_i,
+			    lvx_cms_lrange_of (lrange, q, dbg_i, NULL)
+			      ? "" : "=NULL", (unsigned) p,
+			    lvx_cms_lrange_def_of (lrange, (unsigned) p, regno)
+			      ? "" : "=NULL");
+	  }
 	  if (!lvx_cms_antidep_real_p
 		 (lrange,
 		  lvx_cms_lrange_of (lrange, q,
@@ -22096,11 +22191,19 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     loops were of that kind.  A partial write still keeps its arc
 	     unconditionally -- it leaves part of the old value in place,
 	     which no live range question captures.  */
+	  if (!lvx_cms_lrange_def_of (lrange, p, regno)
+	      || !lvx_cms_lrange_def_of (lrange, (unsigned) q, regno))
+	    lvx_cms_dump (";; lvx cms:   WAWUNRES r%u p=%u%s q=%u%s\n",
+			  regno, p,
+			  lvx_cms_lrange_def_of (lrange, p, regno) ? "" : "=NULL",
+			  (unsigned) q,
+			  lvx_cms_lrange_def_of (lrange, (unsigned) q, regno)
+			    ? "" : "=NULL");
 	  if (!partial
 	      && !lvx_cms_antidep_real_p
 		    (lrange, lvx_cms_lrange_def_of (lrange, p, regno),
 		     lvx_cms_lrange_def_of (lrange, (unsigned) q, regno),
-		     awhy, w, p, (unsigned) q))
+		     awhy, w, p, (unsigned) q, true))
 	    {
 	      ndrop++;
 	      continue;
