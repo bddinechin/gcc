@@ -16929,13 +16929,44 @@ static int lvx_cms_value_p2 (const auto_vec<int> &, int);
 static int lvx_cms_anode_of (const auto_vec<int> &, const auto_vec<int> &,
 			     int, int);
 
+/* DOES THIS LIVE RANGE CARRY A TIED REFERENCE?  §7tricies.120.
+
+   A tie forces one register on two references, so the range holding them
+   cannot be expanded: the definition has `delayed' clear and the tied read
+   has it set, and the index computation then hands them different names.
+   Asked of the ROOT's whole union, because the register is the union's.  */
+
+static bool
+lvx_cms_lrange_tied_p (const auto_vec<rtx_insn *> &seq,
+		       const auto_vec<lvx_cms_lrange_part *> &lr, int root)
+{
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      if (lr[k]->effects.is_empty ()
+	  || lvx_cms_lrange_root (lr, (int) k) != root)
+	continue;
+      for (unsigned e = 0; e < lr[k]->effects.length (); e++)
+	{
+	  unsigned i = lr[k]->effects[e].insn;
+
+	  if (lr[k]->effects[e].is_def
+	      || lr[k]->effects[e].slot == LVX_CMS_SLOT_INDIRECT
+	      || i >= seq.length ())
+	    continue;
+	  if (lvx_cms_operand_tied_p (seq[i], lr[k]->effects[e].slot))
+	    return true;
+	}
+    }
+  return false;
+}
+
 static bool
 lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 			auto_vec<lvx_cms_lrange_part *> &lr, int ii, int lo,
 			unsigned HOST_WIDE_INT avail, int *nn_out,
 			int *stuck_out, int *maxreg_out, int *kun_out,
 			int *pin_out, int *pinfail_out, int *wide_out,
-			bool claim_def_cycle = false,
+			int claim_def_cycle = 0,
 			auto_vec<int> *stuck_lr = NULL)
 {
   auto_vec<int> idx, def_, last_, deg, nregs_, ec_, vregno, vuf;
@@ -16961,7 +16992,26 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	 makes a cycle's reads and writes unlinearisable (§7tricies.35).  Used
 	 only as a retry, so the pressure it costs is paid only where the exact
 	 interval cannot be emitted.  */
-      ec = (claim_def_cycle || lvx_cms_lrange_ec_p (seq, g)) ? 1 : 0;
+      /* CLAIM_DEF_CYCLE: 0 none, 1 every range, 2 every range EXCEPT one
+	 carrying a tie.  §7tricies.120.
+
+	 The claim lengthens an interval by a cycle so two live ranges cannot
+	 be packed into one register across a cycle boundary (§7tricies.35).
+	 Inside this model the longer interval genuinely needs a second name
+	 when it passes II, so the degree must follow it -- decoupling the two
+	 makes `life <= p2unroll * II' false and fires the capacity assert.
+
+	 But a range carrying a TIE cannot take a second name at all, and
+	 claiming for it turned five loops' entire pipeline into a late
+	 `recog' refusal.  Mode 2 withholds the claim from exactly those
+	 ranges, which is LESS conservative and therefore not assumed to be
+	 sound: lvx_cms_slot_order is run on the result and the mode is used
+	 only if it still linearises.  */
+      ec = ((claim_def_cycle == 1
+	     || (claim_def_cycle == 2
+		 && !lvx_cms_lrange_tied_p (seq, lr,
+					    lvx_cms_lrange_root (lr, (int) k))))
+	    || lvx_cms_lrange_ec_p (seq, g)) ? 1 : 0;
       /* STORED, so the verifier checks the ec the colouring actually used.
 	 Recomputing it there is what let claim_def_cycle diverge.  */
       g->ec = ec != 0;
@@ -23670,7 +23720,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      the emission will use, so the codegen block no longer decides the retry
      -- it is told.  */
   int plkun = 1;
-  bool plclaimed = false;
+  int plclaimed = 0;
   {
     auto_vec<lvx_cms_lrange_part *> klr;
     HARD_REG_SET kresv;
@@ -23699,9 +23749,26 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	kavail |= (unsigned HOST_WIDE_INT) 1 << r;
 
     plkun = igkunroll > 0 ? igkunroll : 1;
-    for (int attempt = 0; attempt < 2; attempt++)
+    /* THREE MODELS, AND THE TEST IS WHETHER THE RESULT CAN BE EMITTED.
+       §7tricies.120.
+
+       The order matters and is from least to most conservative: no claim,
+       the claim withheld from ranges carrying a tie, the claim everywhere.
+       Inserting the middle one is strictly additive -- the two it sits
+       between are unchanged, so a loop that settled before can only settle
+       the same way or earlier.
+
+       And the acceptance test now asks LVX_CMS_RENAME_LR_DRYRUN as well as
+       LVX_CMS_SLOT_ORDER.  Asking only whether the model linearises is what
+       let the negotiation choose a model whose renaming the target then
+       refused: five loops linearised under the full claim, were accepted on
+       that basis, and lost their whole pipeline at emission when `recog'
+       rejected an FMA whose tie the claim had split.  A model that cannot be
+       emitted is not a model, and the plan it needs is a throwaway walk --
+       which is what makes asking affordable.  */
+    for (int attempt = 0; attempt < 3; attempt++)
       {
-	bool claim = attempt == 1;
+	int claim = attempt;
 	int knn = 0, kst = 0, kmx = -1, kkun = 1;
 	int kpin = 0, kpinf = 0, kwide = 0;
 
@@ -23714,18 +23781,21 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	  auto_vec<lvx_cms_slot> tslots;
 	  auto_vec<lvx_cms_node> tnodes;
 	  auto_vec<int> torder;
+	  int tsubst = 0, trefused = 0;
 
 	  lvx_cms_build_plan (seq, sigma, found, kkun > 0 ? kkun : 1, nstages,
 			      loop->num_nodes, &tp, &tslots, &tnodes);
-	  if (lvx_cms_slot_order (seq, tslots, klr, klb, torder))
+	  if (lvx_cms_slot_order (seq, tslots, klr, klb, torder)
+	      && lvx_cms_rename_lr_dryrun (seq, tslots, klr, &tsubst,
+					   &trefused))
 	    {
 	      plkun = kkun > 0 ? kkun : 1;
 	      plclaimed = claim;
 	      break;
 	    }
-	  /* Not linearisable at this kunroll: fall through to the claimed
-	     model, and if that fails too keep the last kunroll so the plan is
-	     still built from the assignment the emission will check.  */
+	  /* Not usable at this kunroll: fall through to the next model, and
+	     if every one fails keep the last kunroll so the plan is still
+	     built from the assignment the emission will check.  */
 	  plkun = kkun > 0 ? kkun : 1;
 	  plclaimed = claim;
 	}
@@ -24557,7 +24627,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		    cok = lvx_cms_colour_lranges (seq, cglr, found, lo,
 						  cgavail, &nn, &nst, &mx,
 						  &kun, &pin, &pinf, &wide,
-						  true);
+						  plclaimed);
 		  }
 		{
 		  auto_vec<int> probe_order;
@@ -24654,7 +24724,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 			      " pair=%d/%d/r%d@%d avail=%d savepool=%d\n",
 			      current_function_name (), loop->num,
 			      cok ? "ok" : "no", nn, mx, kun, subst, refused,
-			      lok ? 1 : 0, claimed ? 1 : 0,
+			      lok ? 1 : 0, plclaimed,
 			      aok ? "ok" : "BAD", nconf,
 			      cnheld, cninv, cnocc, ca, cb, creg, ccyc,
 			      (int) popcount_hwi (cgavail), pool);
