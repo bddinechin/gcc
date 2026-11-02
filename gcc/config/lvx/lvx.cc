@@ -13362,7 +13362,8 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		const auto_vec<int> *vregno = NULL,
 		const auto_vec<int> *vusefirst = NULL,
 		int *pinned_out = NULL, int *pinfail_out = NULL,
-		const auto_vec<int> *vnotown = NULL)
+		const auto_vec<int> *vnotown = NULL,
+		const auto_vec<int> *vprefer = NULL)
 {
   int nn = 0, ne = 0, msq = 0, spl = 0, per = 0, kun = 1, maxreg = -1;
   int pinned = 0, pinfail = 0;
@@ -13743,6 +13744,56 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		for (int t = 0; t < nr && own + t < 64; t++)
 		  busy |= (unsigned HOST_WIDE_INT) 1 << (own + t);
 	      }
+	    /* THE CHEAPEST COPY IS THE ONE THE NAME MAKES UNNECESSARY.
+	       §7tricies.122, after Moon & Ebcioglu 1992.
+
+	       The live-out copy already deletes itself when the name it would
+	       read is the architected register --
+
+		 if (nm < 0 || nm == (int) q->regno) continue;
+
+	       -- but nothing ever tried to arrange that.  The selection below
+	       takes the LOWEST free aligned register, which is as good as any
+	       other for pressure and worse than one particular choice for code
+	       size: the range's own REGNO, where it is free, costs the same
+	       register and removes a copy from the drain.
+
+	       Moon & Ebcioglu state it as a preference and not a constraint --
+	       "the program prefers a destination register d' equal to the
+	       original destination register d ... since this will eliminate
+	       the need for leaving a copy operation d := d'" -- and a
+	       preference is what it has to be: taking REGNO when it is busy
+	       would be a pin, and pins that cannot be satisfied were measured
+	       at 476 with 141 unsatisfiable.  So it is tried first and the
+	       first-fit scan follows if it is not available.
+
+	       VPREFER is populated only where the colouring can KNOW the copy
+	       would be deleted, which is degree one: the drain reads
+	       `lvx_cms_lrange_reg (q, best, delayed)' with a BEST decided at
+	       emission, and at one name every BEST gives the same register.
+	       At a higher degree the preference would be a guess at which name
+	       the drain reads, and guessing the wrong one spends a
+	       higher-numbered register to delete nothing.  */
+	    if (vprefer && a < nn && nval[a] < (int) vprefer->length ()
+		&& (*vprefer)[nval[a]] >= 0)
+	      {
+		int p = (*vprefer)[nval[a]];
+		unsigned HOST_WIDE_INT want = 0;
+
+		if (p >= 0 && p + nr <= 64 && p % nr == 0)
+		  {
+		    for (int t = 0; t < nr; t++)
+		      want |= (unsigned HOST_WIDE_INT) 1 << (p + t);
+		    if (!(busy & want) && !(~avail & want))
+		      {
+			reg[a] = p;
+			if (p + nr - 1 > maxreg)
+			  maxreg = p + nr - 1;
+		      }
+		  }
+	      }
+	    if (reg[a] >= 0)
+	      continue;			/* took the copy-deleting register */
 	    for (int r = 0; r + nr <= 64; r += nr)	/* aligned by construction */
 	      {
 		unsigned HOST_WIDE_INT want = 0;
@@ -17091,6 +17142,26 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
      that is also USE_FIRST is left alone -- its name 0 is pinned to the
      register the preheader wrote, which is an external constraint the promise
      cannot override, and such a range keeps its arc.  */
+  /* THE COPY-DELETING PREFERENCE.  §7tricies.122.  Indexed like VREGNO, by
+     value: the register this value would like, because taking it deletes the
+     drain's copy back to the architected register.  Only where the colouring
+     can know that -- an exit-live range at degree one, whose single name is
+     what the drain reads whichever iteration it drains from.  A range
+     excluded from its own register by VNOTOWN is left at -1: that exclusion
+     is a correctness constraint for the live-out drop and outranks a
+     code-size preference.  */
+  auto_vec<int> vprefer;
+  vprefer.safe_grow_cleared (idx.length ());
+  for (unsigned u = 0; u < idx.length (); u++)
+    {
+      lvx_cms_lrange_part *g = lr[idx[u]];
+
+      vprefer[u] = (g->exit_live && !g->effects.is_empty ()
+		    && g->effects[0].is_def
+		    && u < deg.length () && deg[u] == 1)
+		   ? (int) g->regno : -1;
+    }
+
   auto_vec<int> vnotown;
   if (lvx_cms_liveout_split)
     {
@@ -17102,13 +17173,16 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	  vnotown[u] = (g->exit_live && !g->use_first
 			&& !g->effects.is_empty () && g->effects[0].is_def)
 		       ? (int) g->regno : -1;
+	  if (vnotown[u] >= 0)
+	    vprefer[u] = -1;	/* the exclusion outranks the preference */
 	}
     }
 
   lvx_cms_colour (def_, last_, deg, nregs_, ec_, ii, lo, &nn, &ne, &msq,
 		  &spl, &per, &kun, &stuck, &av, &an, &ar, &maxreg, avail,
 		  &vregno, &vuf, &pinned, &pinfail,
-		  lvx_cms_liveout_split ? &vnotown : NULL);
+		  lvx_cms_liveout_split ? &vnotown : NULL,
+		  lvx_cms_copy_pref ? &vprefer : NULL);
 
   for (unsigned u = 0; u < idx.length (); u++)
     {
