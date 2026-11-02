@@ -14988,6 +14988,12 @@ struct lvx_cms_lrange_part
 			   verifier cannot recompute a different one.  §7tricies.90 */
   bool capped;			/* p2unroll was forced to 1 by LVX_CMS_MAX_KUNROLL,
 			   not derived from LIFE.  §7tricies.92 */
+  bool noname;			/* this PART cannot take a stack of names, so its
+			   union cannot either.  Sticky because `renamed' is
+			   RESET optimistically once the unions are final:
+			   a guard that fires before that point has to leave
+			   its answer somewhere the reset does not touch.
+			   §7tricies.118 */
   int self;			/* own index into LR */
   int parent;			/* union-find over LR: the live range */
   int reg[LVX_CMS_MAX_KUNROLL];
@@ -15442,7 +15448,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		{
 		  if (nwiden)
 		    (*nwiden)++;
-		  lr[lvx_cms_lrange_root (lr, open[r])]->renamed = false;
+		  lr[open[r]]->noname = true;
 		  e.offset = 0;
 		}
 	    }
@@ -15459,6 +15465,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	      n->use_first = false;
 	      n->exit_live = false;
 	      n->renamed = false;
+	      n->noname = false;
 	      n->p2unroll = 1;
 	      n->ec = false;
 	      n->capped = false;
@@ -15561,6 +15568,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		  n->use_first = false;
 		  n->exit_live = false;
 		  n->renamed = false;
+		  n->noname = false;
 		  n->p2unroll = 1;
 		  n->ec = false;
 		  n->capped = false;
@@ -15613,6 +15621,44 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  lvx_cms_effect e = { i, lvx_cms_reg_index (PATTERN (seq[i]),
 						    DF_REF_LOC (ref)),
 			       nr, true, false };
+	  bool nofull = false;
+	  /* A WRITE THAT DOES NOT FULLY AND UNCONDITIONALLY DEFINE ITS VALUE
+	     CANNOT BE EXPANDED.  §7tricies.117.
+
+	     Modulo expansion gives instance I a name of its own and assumes
+	     that name is completely produced each iteration.  Two writes
+	     break the assumption without breaking anything a later check
+	     looks at:
+
+	       PARTIAL     the bytes it does not write still hold what that
+			   name held, which under expansion is instance
+			   I - P2UNROLL's data rather than I - 1's.
+	       PREDICATED  a false guard writes nothing at all, so the name
+			   keeps instance I - P2UNROLL's value.  The same
+			   defect in time rather than in bytes.
+
+	     Neither is caught downstream, and that is why this is a guard
+	     and not a verification: the renamed instruction is perfectly
+	     valid -- a legal write to a legal register -- and `recog'
+	     accepts it.  What is wrong is which instance the UNWRITTEN part
+	     belongs to, and nothing examines that.  (The third member of the
+	     family, a TIED write, is caught: the expansion would put source
+	     and destination in different registers and the tie fails recog,
+	     so it refuses rather than miscompiles.)
+
+	     Held rather than capped at degree one, which is the same thing
+	     for a range with a single definition and the safer statement for
+	     one with several.  */
+	  if ((DF_REF_FLAGS (ref) & DF_REF_PARTIAL) != 0
+	      || GET_CODE (PATTERN (seq[i])) == COND_EXEC)
+	    {
+	      if (r < FIRST_PSEUDO_REGISTER)
+		{
+		  if (open[r] >= 0)
+		    lr[open[r]]->noname = true;
+		  nofull = true;	/* and the range it may OPEN below */
+		}
+	    }
 
 	  /* A READ-MODIFY-WRITE REFERENCE IS ONE OPERAND, and DF reports it
 	     twice -- as a use and as a definition at the SAME location.  The
@@ -15700,6 +15746,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  n->use_first = false;
 	  n->exit_live = false;
 	  n->renamed = false;
+	  n->noname = nofull;
 	  n->p2unroll = 1;
 	  n->ec = false;
 	  n->capped = false;
@@ -15883,7 +15930,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	 would do; until the case is shown to occur it is held, which is
 	 sound, and NWIDEN-style counting is what would show it.  */
       if (lr[k]->regno != lr[root]->regno)
-	lr[root]->renamed = false;
+	lr[k]->noname = true;
       lr[root]->nregs = MAX (lr[root]->nregs, lr[k]->nregs);
       lr[root]->use_first |= lr[k]->use_first;
     }
@@ -15894,6 +15941,19 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
       lr[root]->renamed = true;
     }
+  /* AND NOW THE GUARDS THAT FIRED BEFORE THE RESET.  §7tricies.118.
+
+     `renamed' is reset optimistically above, once the unions are final,
+     because the union does not merge flags: a guard writing `false' on a part
+     that later becomes a non-root member would lose its answer.  The cost of
+     that design is that a guard running EARLIER than the reset is silently
+     undone, and three were -- the widening fallback, the different-bases
+     union, and the partial/predicated write of §7tricies.117.  They set
+     `noname' on the part instead, which the reset does not touch, and it is
+     applied to the root here.  */
+  for (unsigned k = 0; k < lr.length (); k++)
+    if (lr[k]->noname)
+      lr[lvx_cms_lrange_root (lr, (int) k)]->renamed = false;
   /* STILL USE-HEADED MEANS THE BODY NEVER WRITES IT.  §7tricies.91.
 
      This looks like a refusal to rename the loop-carried values, which are
