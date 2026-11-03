@@ -21036,7 +21036,8 @@ lvx_cms_place_cycle (const auto_vec<rtx_insn *> &seq,
    reservation table.  §7tricies.128.  */
 static const char *lvx_cms_verify (const auto_vec<rtx_insn *> &,
 				   const auto_vec<lvx_cms_arc> &, int,
-				   const auto_vec<int> &);
+				   const auto_vec<int> &,
+				   auto_vec<int> * = NULL);
 
 static bool
 lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
@@ -21073,6 +21074,19 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
   auto_vec<int> date, pred;
   date.safe_grow_cleared (cells);
   pred.safe_grow_cleared (cells);
+
+  /* THE ORACLE IS THE SQUEAK.  §7tricies.129.
+     Squeaky Wheel Optimization needs the constructor to FAIL on identifiable
+     tasks, and a cycle scheduler never fails: it places every instruction, so
+     the only signal left was `when - earliest', the delay a placement
+     suffered, attributed to a RESOURCE TYPE rather than to an instruction --
+     which cannot say which task to move.  The real failure is in the
+     PROJECTION, and lvx_cms_verify knows exactly which instructions caused
+     it.  Every copy that completes asks the oracle, and every refusal names
+     its culprits here; what survives when the budget runs out is the squeak,
+     accumulated over the whole construction rather than over one copy.  */
+  auto_vec<int> guilty;
+  guilty.safe_grow_cleared (n);
   for (unsigned k = 0; k < cells; k++)
     date[k] = -1;
 
@@ -21258,7 +21272,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	      if (resblame != NULL)
 		resblame[blocked_by] += when - earliest;
 
-	      if (culprit != NULL)
+	      if (culprit != NULL && lvx_cms_squeak != 2)
 		for (unsigned ck = 0; ck < cells; ck++)
 		  if (date[ck] >= earliest && date[ck] < when
 		      && lvx_cms_insn_uses_resource_p (seq[ck % n], blocked_by))
@@ -21315,7 +21329,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		auto_vec<int> cand;
 		for (unsigned i = 0; i < n; i++)
 		  cand.safe_push (date[(unsigned) bc * n + i] - bc * ii);
-		settled = lvx_cms_verify (seq, arcs, ii, cand) == NULL;
+		settled = lvx_cms_verify (seq, arcs, ii, cand, &guilty) == NULL;
 	      }
 	  }
 	  if (settled)
@@ -21337,6 +21351,32 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	      return true;
 	    }
 	}
+    }
+
+  /* THE SQUEAK, DELIVERED.  §7tricies.129.  The budget ran out, so no copy's
+     projection ever verified; GUILTY holds, per instruction, how many times
+     the oracle named it as the reason.  Those are the tasks whose placement
+     has to change, and CULPRIT is the array whose meaning is already `move
+     this out of the way' -- policies 2 and 3 push a culprit with slack later,
+     which is precisely how an instruction leaves the residue it is
+     overflowing or the cycle that makes an arc infeasible.
+
+     Unlike the delay signal this one is attributed to INSTRUCTIONS and comes
+     from an actual failure, which is what SWO's analysis phase assumes it has
+     and what a cycle scheduler otherwise cannot give it.  */
+  if (culprit != NULL && lvx_cms_squeak != 0)
+    {
+      unsigned named = 0, total = 0;
+      for (unsigned i = 0; i < n; i++)
+	{
+	  (*culprit)[i] += guilty[i];
+	  if (guilty[i] > 0)
+	    named++, total += guilty[i];
+	}
+      if (dump_file && lvx_cms_probe)
+	lvx_cms_dump (";; lvx cms: fn=%s II=%d SQUEAK named=%u/%u"
+		      " accusations=%u\n", current_function_name (), ii,
+		      named, n, total);
     }
 
   return false;
@@ -21389,10 +21429,6 @@ lvx_cms_path_metrics (const auto_vec<rtx_insn *> &seq,
   for (unsigned i = 0; i < n; i++)
     slack[i] = (makespan - tosink[i]) - asap[i];
 }
-
-static const char *lvx_cms_verify (const auto_vec<rtx_insn *> &,
-				   const auto_vec<lvx_cms_arc> &,
-				   int, const auto_vec<int> &);
 
 /* SQUEAKY WHEEL OPTIMIZATION at a fixed II, after Joslin and Clements, JAIR
    1999: Construct, Analyze, Prioritize, and go round again.
@@ -21612,6 +21648,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 
   for (int pass = 0; pass < budget; pass++)
     {
+      unsigned sqk_named = 0, sqk_movable = 0;
       blame.truncate (0);
       blame.safe_grow_cleared (n);
       culprit.truncate (0);
@@ -21859,12 +21896,46 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	    case 4:  move = (slack[i] > 0); break;	/* no selectivity at all */
 	    default: move = (blame[i] == 0 && slack[i] > 0); break;
 	    }
+
+	  /* THE SQUEAK REACHES THE ACTIVE ARM.  §7tricies.129.
+	     Merging the oracle's verdict into CULPRIT is inert on its own,
+	     because the default policy -- the one that is actually on -- does
+	     not read CULPRIT: it moves every UNBLAMED task with slack, so an
+	     instruction that both overflowed a residue and was displaced
+	     during construction is excluded by its own blame, which is exactly
+	     backwards.  At squeak=1 the oracle's verdict is OR-ed in, so a
+	     named task with slack moves whatever its blame; at squeak=2 the
+	     oracle REPLACES the arm, and the only tasks that move are the ones
+	     a failed projection actually accused.  */
+	  if (lvx_cms_squeak == 1 && culprit[i] > 0 && slack[i] > 0)
+	    move = true;
+	  else if (lvx_cms_squeak == 2
+		   && lvx_cms_release_policy != 0
+		   && lvx_cms_release_policy != 3)
+	    move = (culprit[i] > 0 && slack[i] > 0);
 	  /* Its ALAP when moved.  When not moved, back to the MCRL date under
 	     the persistent-base reading and to nothing under the pass-0 one. */
 	  int home = (mcrl_release == 2 && !mcrl.is_empty ()
 		      ? mcrl[i] : 0);
 	  release[i] = move ? height[i] + slack[i] : home;
+	  if (culprit[i] > 0)
+	    {
+	      sqk_named++;
+	      if (slack[i] > 0)
+		sqk_movable++;
+	    }
 	}
+
+      /* CAN THE SQUEAK BE ACTED ON AT ALL?  §7tricies.129.  The release lever
+	 only ever DELAYS a task, and only one that has slack, so a named task
+	 at zero slack is a failure the analysis can see and the perturbation
+	 cannot touch -- the next construction is then identical and SWO spins.
+	 Reported because it is the question that decides whether the signal is
+	 useful or merely correct.  */
+      if (dump_file && lvx_cms_probe && lvx_cms_squeak != 0 && sqk_named)
+	lvx_cms_dump (";; lvx cms: fn=%s II=%d SQUEAK pass=%d named=%u"
+		      " movable=%u\n", current_function_name (), ii, pass,
+		      sqk_named, sqk_movable);
 
       /* The branch pin is structural, so it survives the policy's
 	 reassignment above -- which sets RELEASE to 0 for every task it
@@ -21892,7 +21963,8 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 static const char *
 lvx_cms_verify (const auto_vec<rtx_insn *> &seq,
 		const auto_vec<lvx_cms_arc> &arcs,
-		int ii, const auto_vec<int> &sigma)
+		int ii, const auto_vec<int> &sigma,
+		auto_vec<int> *guilty)
 {
   if (ii <= 0 || sigma.length () != seq.length ())
     return "malformed schedule";
@@ -21901,7 +21973,15 @@ lvx_cms_verify (const auto_vec<rtx_insn *> &seq,
     {
       HOST_WIDE_INT need = arcs[a].theta - arcs[a].omega * (HOST_WIDE_INT) ii;
       if ((HOST_WIDE_INT) (sigma[arcs[a].dst] - sigma[arcs[a].src]) < need)
-	return "dependence arc violated";
+	{
+	  /* THE SQUEAK, NAMED.  §7tricies.129.  Both ends are implicated:
+	     the destination is too early, or the source too late.  */
+	  if (guilty && arcs[a].dst < guilty->length ())
+	    (*guilty)[arcs[a].dst]++;
+	  if (guilty && arcs[a].src < guilty->length ())
+	    (*guilty)[arcs[a].src]++;
+	  return "dependence arc violated";
+	}
     }
 
   auto_vec<struct lvx_sched_resources> slot;
@@ -21915,7 +21995,18 @@ lvx_cms_verify (const auto_vec<rtx_insn *> &seq,
     {
       int at = ((sigma[i] % ii) + ii) % ii;
       if (!lvx_cms_slot_fits_p (&slot[at], seq[i]))
-	return "modulo reservation overflows";
+	{
+	  /* THE SQUEAK, NAMED.  §7tricies.129.  An overflow is a COMPETITION
+	     for one residue, so everything already standing in it is as guilty
+	     as the instruction that did not fit -- blaming only the latter
+	     would make the squeak an artefact of iteration order.  */
+	  if (guilty && i < guilty->length ())
+	    (*guilty)[i]++;
+	  for (unsigned j = 0; guilty && j < i; j++)
+	    if (((sigma[j] % ii) + ii) % ii == at && j < guilty->length ())
+	      (*guilty)[j]++;
+	  return "modulo reservation overflows";
+	}
       lvx_cms_resources_add (&slot[at], seq[i]);
     }
   return NULL;
