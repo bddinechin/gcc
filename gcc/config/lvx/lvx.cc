@@ -19377,6 +19377,61 @@ lvx_cms_seq_pcopy (const auto_vec<int> &psrc, const auto_vec<int> &pdst,
   return true;
 }
 
+/* WHERE THE NEXT INSN ON A PATH GOES.  §7tricies.130.
+
+   *CUR is the block emission is currently appending to for this path and TAIL
+   the last insn it received.  Normally the answer is TAIL, and on an empty
+   block the NOTE_INSN_BASIC_BLOCK -- BB_HEAD can be a CODE_LABEL and the note
+   follows it (§7tricies.8, the reason phase one's first version failed the
+   verifier twice).
+
+   The third case is the one this function exists for.  A jump is its block's
+   TERMINATOR, so when TAIL holds one there is no room left after it: emitting
+   there would leave a flow control insn inside a basic block, which the RTL
+   verifier rejects outright.  That happens because lvx_cms_slot_order puts
+   the terminator last WITHIN A CYCLE (§7tricies.35), which is not the same as
+   last within a block -- in a multi-exit body a data-dependent exit can be
+   scheduled in an earlier cycle than other slots on its own path.
+
+   So the block is CLOSED and the path continues in a new one: split the
+   fall-through edge, which is the direction the exit was not taken, and emit
+   the rest of the path there.  The branch's own successor edge is untouched,
+   the new block inherits the fall-through to wherever the path went, and the
+   node's ENTRY block -- the one branch targets name -- is unchanged, which is
+   why CUR is separate from BLOCKS rather than an update of it.  */
+
+static rtx_insn *
+lvx_cms_emit_point (basic_block *cur, rtx_insn *tail, const char **why)
+{
+  rtx_insn *after = tail;
+
+  if (after && JUMP_P (after))
+    {
+      basic_block jb = BLOCK_FOR_INSN (after);
+      edge fe = jb ? find_fallthru_edge (jb->succs) : NULL;
+
+      /* An unconditional jump has no fall-through to continue into, and a
+	 path whose remaining slots are unreachable is not something to
+	 paper over: decline and let CMS try another II.  */
+      *why = "a closed path has no fall-through to continue into";
+      if (!fe)
+	return NULL;
+      *cur = split_edge (fe);
+      after = NULL;
+    }
+
+  if (!after)
+    {
+      after = BB_HEAD (*cur);
+      if (LABEL_P (after))
+	after = NEXT_INSN (after);
+      *why = "no NOTE_INSN_BASIC_BLOCK to emit after";
+      if (!after || !NOTE_INSN_BASIC_BLOCK_P (after))
+	return NULL;
+    }
+  return after;
+}
+
 static bool
 lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		       const auto_vec<rtx_insn *> &seq,
@@ -19806,6 +19861,14 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   for (unsigned k = 0; k < nnode; k++)
     tail.safe_push (NULL);
 
+  /* Where each path is currently appending.  It starts as the node's block
+     and moves on whenever a path is closed by a branch with slots still to
+     come (§7tricies.130); BLOCKS keeps naming the ENTRY blocks, which is what
+     every branch target and the loop-back read.  */
+  auto_vec<basic_block> cur;
+  for (unsigned k = 0; k < nnode; k++)
+    cur.safe_push (blocks[k]);
+
   /* The order the slots are emitted in: reads before writes within a cycle,
      the terminator last (§7tricies.35).  Asked again here rather than passed
      in, so the emission cannot be handed an order computed from a different
@@ -19822,54 +19885,23 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       unsigned i = (unsigned) slots[q].insn;
       if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
 	continue;
-      basic_block bb = blocks[nd];
       bool is_iter = ((int) i == loopback
 		      && slots[q].date == nodes[mainep].exit_date
 		      && slots[q].iter == nodes[mainep].exit_iter);
 
-      /* Where to put it: after the last insn this block received, or after
-	 the block note on the first.  BB_HEAD can be a CODE_LABEL and the
-	 note follows it -- §7tricies.8, and the reason phase one's first
-	 version failed the verifier twice.  */
-      rtx_insn *after = tail[nd];
+      /* Where to put it, and which block that turns out to be: the helper
+	 splits the path open again if the previous slot closed it with a
+	 branch, so BB is read AFTER it and not before (§7tricies.130).  */
+      basic_block was = cur[nd];
+      rtx_insn *after = lvx_cms_emit_point (&cur[nd], tail[nd], why);
       if (!after)
-	{
-	  after = BB_HEAD (bb);
-	  if (LABEL_P (after))
-	    after = NEXT_INSN (after);
-	  if (!after || !NOTE_INSN_BASIC_BLOCK_P (after))
-	    {
-	      *why = "no NOTE_INSN_BASIC_BLOCK to emit after";
-	      return false;
-	    }
-	}
-
-      /* A PATH THAT HAS ALREADY BRANCHED CANNOT RECEIVE MORE.  §7tricies.130.
-
-	 TAIL[nd] is where this path's next slot goes, and when the previous
-	 slot on it was a jump that is the block's TERMINATOR -- emitting after
-	 it leaves a flow-control insn inside a basic block, which the RTL
-	 verifier rejects outright ("flow control insn inside a basic block",
-	 rtl_verify_bb_insns).
-
-	 lvx_cms_slot_order puts the terminator last, but it does so WITHIN A
-	 CYCLE (§7tricies.35), and that is not the same thing: in a multi-exit
-	 body a data-dependent exit can be scheduled in an earlier cycle than
-	 other slots on its own path, and then the order is correct per cycle
-	 and wrong per block.  Reachable in practice -- count_bits in MiBench's
-	 lame takehiro.c at II=7, which is its lower bound, ICEd here.
-
-	 Declining is the conservative half of the fix: the SCHEDULE is legal,
-	 so what is missing is the ability to express it, which needs the block
-	 split after the branch and the remaining slots emitted into the
-	 fall-through successor -- what the hardware-loop chain already does
-	 for its own exits.  Until then CMS gives this II up rather than
-	 emitting RTL the verifier will reject.  */
-      if (after && JUMP_P (after))
-	{
-	  *why = "a slot follows its own path's exit branch";
-	  return false;
-	}
+	return false;
+      basic_block bb = cur[nd];
+      if (bb != was && dump_file && lvx_cms_probe)
+	lvx_cms_dump (";; lvx cms:   path reopened: node%d kind=%d bb%d closed"
+		      " by its branch, insn=%u date=%d iter=%d continues in"
+		      " bb%d\n", nd, (int) nodes[nd].kind, was->index, i,
+		      slots[q].date, slots[q].iter, bb->index);
 
       if (JUMP_P (seq[i]))
 	{
@@ -20243,18 +20275,13 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	return false;
 
       /* At the END of the drain, after every instance of every definition it
-	 holds -- and still before the block's terminator, which
-	 emit_insn_after_noloc from TAIL gives.  */
-      after = tail[k];
+	 holds.  A drain that closed itself with a branch is continued in the
+	 split block the same way the slot loop continues one, so the copies
+	 land after the last instance and never after a terminator
+	 (§7tricies.130).  */
+      after = lvx_cms_emit_point (&cur[k], tail[k], why);
       if (!after)
-	{
-	  after = BB_HEAD (blocks[k]);
-	  if (LABEL_P (after))
-	    after = NEXT_INSN (after);
-	  *why = "no NOTE_INSN_BASIC_BLOCK for a live-out copy";
-	  if (!after || !NOTE_INSN_BASIC_BLOCK_P (after))
-	    return false;
-	}
+	return false;
       for (unsigned z = 0; z < osrc.length (); z++)
 	{
 	  rtx_insn *mv
@@ -20271,7 +20298,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  nemit++;
 	}
       lvx_cms_dump (";; lvx cms:   live-out node%u bb%d: %u parallel copies"
-		    " -> %u sequential, scratch r%d\n", k, blocks[k]->index,
+		    " -> %u sequential, scratch r%d\n", k, cur[k]->index,
 		    psrc.length (), osrc.length (), scratch);
     }
 
