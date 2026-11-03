@@ -24163,7 +24163,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
        rejected an FMA whose tie the claim had split.  A model that cannot be
        emitted is not a model, and the plan it needs is a throwaway walk --
        which is what makes asking affordable.  */
-    for (int attempt = 0; attempt < 3; attempt++)
+    for (int attempt = (int) lvx_cms_claim_floor; attempt < 3; attempt++)
       {
 	int claim = attempt;
 	int knn = 0, kst = 0, kmx = -1, kkun = 1;
