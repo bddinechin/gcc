@@ -20977,6 +20977,13 @@ lvx_cms_place_cycle (const auto_vec<rtx_insn *> &seq,
 
    Returns true and fills SIGMA on convergence.  */
 
+/* The convergence ORACLE, defined below: it answers whether a candidate
+   periodic schedule satisfies every arc (omega included) and fits the modulo
+   reservation table.  §7tricies.128.  */
+static const char *lvx_cms_verify (const auto_vec<rtx_insn *> &,
+				   const auto_vec<lvx_cms_arc> &, int,
+				   const auto_vec<int> &);
+
 static bool
 lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		  const auto_vec<lvx_cms_arc> &arcs,
@@ -20990,7 +20997,22 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
   if (n == 0 || ii <= 0)
     return false;
 
-  /* Enough copies to see a repeat beyond the furthest-reaching arc.  */
+  /* COPIES ARE A SEARCH BUDGET, AND THE ORACLE DECIDES.  §7tricies.128.
+
+     Dinechin & Munier Kordon 2014, Theorem 10, gives Δ >= max{Δ1, Δ2} as
+     SUFFICIENT for the projection of an unwound schedule to be a legal
+     periodic one -- Δ1 = max |h_ij| for the precedences (Lemma 5), Δ2 =
+     ceil ((dmax - rmin) / w) for the resources (Lemma 9).  Waiting for that
+     many stationary copies was implemented and measured: it demands copies
+     the heuristic does not need, and the loops it recovered the exact test
+     recovers at HALF the budget.
+
+     So Δ2 is not computed and the budget stays at Δ1 + 4.  The acceptance
+     test below asks lvx_cms_verify directly, which is the property Δ2 was
+     standing in for.  Exhausting this budget means `not settled' and never
+     `II infeasible': no bound on copies could establish the latter, since
+     deciding modulo schedulability at a fixed II under resource constraints
+     is NP-complete.  */
   int ncopy = delta + 4;
   unsigned cells = n * (unsigned) ncopy;
 
@@ -21205,14 +21227,43 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 later IS the kernel.  */
       if (bc > 0 && (unsigned) placed % n == 0)
 	{
-	  bool settled = true;
-	  for (unsigned i = 0; i < n && settled; i++)
-	    {
-	      int cur = date[(unsigned) bc * n + i];
-	      int prev = date[(unsigned) (bc - 1) * n + i];
-	      if (cur < 0 || prev < 0 || cur - prev != ii)
-		settled = false;
-	    }
+	  /* THE ORACLE, NOT A PROXY FOR IT.  §7tricies.128.
+
+	     What convergence must establish is that the PROJECTION is a legal
+	     modulo schedule: every arc satisfied at distance omega, and the
+	     modulo reservation table fitting.  lvx_cms_verify computes exactly
+	     that from a candidate SIGMA, so it can be asked directly instead
+	     of waiting for a structural property that implies it.
+
+	     Stationarity was the proxy.  One adjacent pair repeating at II is
+	     too weak -- it accepted two-copy `kernels' whose projection put
+	     six instructions on one residue (§7tricies.127).  Theorem 10's
+	     max{Δ1, Δ2} consecutive pairs is SOUND but conservative: it is a
+	     SUFFICIENT condition, so it demands copies the heuristic may not
+	     need, and measured over four suites it moved two loops of 565 to
+	     their lower bound for no change in anything else.
+
+	     The oracle is exact in both directions.  It never accepts an
+	     invalid projection, and it accepts the moment one is valid --
+	     including the schedules stationarity structurally cannot see,
+	     where a periodic schedule is legal without consecutive copies
+	     being exactly II apart.  Theorem 10 keeps its role as the reason
+	     the search TERMINATES: some Δ always suffices, so the copies are
+	     bounded; it is simply not the acceptance test.  */
+	  bool settled = false;
+	  {
+	    bool whole = true;
+	    for (unsigned i = 0; i < n && whole; i++)
+	      if (date[(unsigned) bc * n + i] < 0)
+		whole = false;
+	    if (whole)
+	      {
+		auto_vec<int> cand;
+		for (unsigned i = 0; i < n; i++)
+		  cand.safe_push (date[(unsigned) bc * n + i] - bc * ii);
+		settled = lvx_cms_verify (seq, arcs, ii, cand) == NULL;
+	      }
+	  }
 	  if (settled)
 	    {
 	      sigma.truncate (0);
