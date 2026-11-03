@@ -24650,6 +24650,27 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	    lruf++;
 	  if (lr[k]->exit_live)
 	    lrxl++;
+	  /* TWO NOTIONS OF `LIVES PAST THE LOOP', COMPARED.  §7tricies.134.
+	     EXIT_LIVE is set on a range OPEN AT A JUMP whose exit edge reads
+	     the register; LIVEOUT is the union of liveness over every edge
+	     leaving the loop.  Only EXIT_LIVE earns a reconciliation copy, so
+	     a range whose register is in LIVEOUT while EXIT_LIVE is clear is
+	     renamed with nothing to copy it back -- the code after the loop
+	     then reads an architectural register the pipeline stopped
+	     writing.  */
+	  if (dump_file && lvx_cms_probe)
+	    {
+	      bool lo = false;
+	      for (int w = 0; w < MAX (lr[k]->nregs, 1); w++)
+		if (liveout && bitmap_bit_p (liveout, lr[k]->regno + w))
+		  lo = true;
+	      if (lo != lr[k]->exit_live)
+		lvx_cms_dump (";; lvx cms:   XL-DISAGREE g%u r%u nregs=%d"
+			      " exit_live=%d liveout=%d uf=%d p2=%d\n", k,
+			      lr[k]->regno, MAX (lr[k]->nregs, 1),
+			      lr[k]->exit_live ? 1 : 0, lo ? 1 : 0,
+			      lr[k]->use_first ? 1 : 0, lr[k]->p2unroll);
+	    }
 	}
     lvx_cms_dump (";; lvx cms: fn=%s loop %d lranges %s n=%d orphan=%d"
 		  " dup=%d noloc=%d overlap=%d maxp2=%d usefirst=%d"
