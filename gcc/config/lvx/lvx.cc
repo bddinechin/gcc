@@ -19844,6 +19844,33 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	    }
 	}
 
+      /* A PATH THAT HAS ALREADY BRANCHED CANNOT RECEIVE MORE.  §7tricies.130.
+
+	 TAIL[nd] is where this path's next slot goes, and when the previous
+	 slot on it was a jump that is the block's TERMINATOR -- emitting after
+	 it leaves a flow-control insn inside a basic block, which the RTL
+	 verifier rejects outright ("flow control insn inside a basic block",
+	 rtl_verify_bb_insns).
+
+	 lvx_cms_slot_order puts the terminator last, but it does so WITHIN A
+	 CYCLE (§7tricies.35), and that is not the same thing: in a multi-exit
+	 body a data-dependent exit can be scheduled in an earlier cycle than
+	 other slots on its own path, and then the order is correct per cycle
+	 and wrong per block.  Reachable in practice -- count_bits in MiBench's
+	 lame takehiro.c at II=7, which is its lower bound, ICEd here.
+
+	 Declining is the conservative half of the fix: the SCHEDULE is legal,
+	 so what is missing is the ability to express it, which needs the block
+	 split after the branch and the remaining slots emitted into the
+	 fall-through successor -- what the hardware-loop chain already does
+	 for its own exits.  Until then CMS gives this II up rather than
+	 emitting RTL the verifier will reject.  */
+      if (after && JUMP_P (after))
+	{
+	  *why = "a slot follows its own path's exit branch";
+	  return false;
+	}
+
       if (JUMP_P (seq[i]))
 	{
 	  /* THE BRANCH.  Every jump goes through here, not just the loopback:
