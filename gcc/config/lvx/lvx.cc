@@ -18392,6 +18392,16 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
     for (unsigned b = a + 1; b < at.length (); b++)
       if (at[a] == at[b] && to[a] != to[b])
 	{
+	  /* §7tricies.137.  Counted apart from the recog refusal below,
+	     because the two say different things: THIS is one RTL location
+	     that DF reports as both a definition and a use -- an in-place
+	     update -- being asked for two names, which only happens once its
+	     range EXPANDS; recog refusing is the pattern rejecting a register
+	     it was given.  Lumping them hid which of the two the live-out
+	     interval extension (§7tricies.135) was paying for.  */
+	  if (dump_file && lvx_cms_probe)
+	    lvx_cms_dump (";; lvx cms:   RENREFUSE rmw insn=%u slot=%d\n",
+			  self, at[a]);
 	  ok = false;
 	  break;
 	}
@@ -18420,6 +18430,8 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
   if (ok && num_validated_changes () > base)
     {
       ok = verify_changes (base);
+      if (!ok && dump_file && lvx_cms_probe)
+	lvx_cms_dump (";; lvx cms:   RENREFUSE recog insn=%u\n", self);
       if (ok && apply)
 	{
 	  confirm_change_group ();
