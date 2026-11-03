@@ -210,3 +210,7 @@ Omit the CTRL_LIVEOUT control arcs for live-out ranges the renaming gives a name
 mcms-squeak=
 Target RejectNegative Joined UInteger Var(lvx_cms_squeak) Init(0) Optimization
 -mcms-squeak=N	Where SWO's failure signal comes from: 0 construction delay alone, as before, 1 delay plus the convergence oracle's named culprits, 2 the oracle alone.
+
+mcms-only-loop=
+Target RejectNegative Joined UInteger Var(lvx_cms_only_loop) Init(0) Optimization
+-mcms-only-loop=N	Consider only loop N of each function, to bisect which pipelined loop a wrong answer comes from; 0 considers them all.  Measurement only.

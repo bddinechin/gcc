@@ -23141,6 +23141,19 @@ lvx_cms_count_copy_prop (const auto_vec<rtx_insn *> &seq,
 static void
 lvx_cms_probe_loop (class loop *loop, basic_block *body)
 {
+  /* BISECTING A WRONG ANSWER DOWN TO ONE LOOP.  §7tricies.133.  Scoping CMS
+     to one translation unit is as fine as the flags went, and a function with
+     several pipelined loops then gives one verdict for all of them -- which
+     is how `CMS miscompiles inflate_fast' stayed unattributed.  Numbered by
+     loop->num, which is what every dump line already prints, so a dump and a
+     bisect arm name the same loop.  */
+  if (lvx_cms_only_loop != 0 && loop->num != (int) lvx_cms_only_loop)
+    {
+      lvx_cms_dump (";; lvx cms: fn=%s loop %d skipped by -mcms-only-loop\n",
+		    current_function_name (), loop->num);
+      return;
+    }
+
   auto_vec<rtx_insn *> seq;
   auto_vec<lvx_cms_arc> arcs;
   auto_vec<int> height;
