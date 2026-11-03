@@ -19768,6 +19768,63 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	return false;
     }
 
+  /* NOTHING MAY FOLLOW A PATH'S TERMINATOR, DECIDED BEFORE ANYTHING IS
+     MUTATED.  §7tricies.131.
+
+     A path node becomes one basic block and GCC gives a block ONE terminator,
+     at the end.  So if any slot is emitted after this node's jump, the result
+     is a jump inside a basic block, which the RTL verifier rejects -- "flow
+     control insn inside a basic block", four files across TSVC2, MiBench,
+     PolyBench and lvx-kernels on the compiler before this.
+
+     THE CONDITION IS NOT TWO BRANCHES IN A CYCLE, which is what the schedule
+     of zlib's inflate_fast made it look like (`8:1/0J 9:1/0J', two jumps at
+     one date).  Measured on the gate's own earlyexit.c the node carries ONE
+     jump slot and the blocked slot is an ORDINARY instruction: a node spans a
+     range of dates, lvx_cms_slot_order puts the terminator last only WITHIN A
+     CYCLE (§7tricies.35), and an ordinary slot at a later date in the same
+     node therefore follows it.  Two branches in one cycle is a real and
+     separate question -- the architecture allows it, BCU availability being 2
+     and the ISS resolving BCU0-first (lvx-gem5 tests/lvx/diff/brprio.s) -- but
+     it is not what these failures are.
+
+     SO THE TEST IS THE EMITTER'S OWN: walk the order emission will walk, and
+     refuse if any slot follows a jump on its node.  Asking
+     lvx_cms_slot_order here rather than reasoning about dates means the check
+     cannot drift from the order it is checking.
+
+     AND IT IS TAKEN HERE because two earlier attempts refused from inside the
+     emit loop, and both were unsound for the reason §7tricies.72 records: by
+     then the epilogues are redirected and part of the pipeline is written
+     into the blocks, so a refusal leaves a half-built loop -- a WRONG ANSWER
+     rather than a declined one.  The gate's earlyexit.c returned
+     4581331092030434362 against an oracle of -479514617468511649 that way.
+     Everything below this line mutates; this is the last place to say no.  */
+  {
+    auto_vec<int> probe_order;
+    auto_vec<bool> closed;
+
+    *why = "a cycle's reads and writes cannot be linearised";
+    if (!lvx_cms_slot_order (seq, slots, lr, loopback, probe_order))
+      return false;
+
+    closed.safe_grow_cleared (nnode);
+    for (unsigned oq = 0; oq < probe_order.length (); oq++)
+      {
+	unsigned q = (unsigned) probe_order[oq];
+	int nd = slots[q].node;
+	unsigned i = (unsigned) slots[q].insn;
+
+	if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
+	  continue;
+	*why = "a slot follows its own path's terminator";
+	if (closed[nd])
+	  return false;
+	if (JUMP_P (seq[i]))
+	  closed[nd] = true;
+      }
+  }
+
   *why = "cannot redirect an epilogue to the loop exit";
   for (unsigned k = 0; k < nnode; k++)
     {
