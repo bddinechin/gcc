@@ -22118,17 +22118,6 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     `lvx_insn_def_reads_dest_p (seq[p])', an approximation of
 	     `one live range' -- and that predicate was answering FALSE for every
 	     instruction, so no register anti-dependence was kept at all.  */
-	  {
-	    int dbg_i = lvx_cms_reg_index (PATTERN (seq[q]), DF_REF_LOC (use));
-	    if (!lvx_cms_lrange_of (lrange, q, dbg_i, NULL)
-		|| !lvx_cms_lrange_def_of (lrange, (unsigned) p, regno))
-	      lvx_cms_dump (";; lvx cms:   WARUNRES r%u use=%u slot=%d%s"
-			    " def=%u%s\n", regno, q, dbg_i,
-			    lvx_cms_lrange_of (lrange, q, dbg_i, NULL)
-			      ? "" : "=NULL", (unsigned) p,
-			    lvx_cms_lrange_def_of (lrange, (unsigned) p, regno)
-			      ? "" : "=NULL");
-	  }
 	  if (!lvx_cms_antidep_real_p
 		 (lrange,
 		  lvx_cms_lrange_of (lrange, q,
@@ -22191,14 +22180,6 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     loops were of that kind.  A partial write still keeps its arc
 	     unconditionally -- it leaves part of the old value in place,
 	     which no live range question captures.  */
-	  if (!lvx_cms_lrange_def_of (lrange, p, regno)
-	      || !lvx_cms_lrange_def_of (lrange, (unsigned) q, regno))
-	    lvx_cms_dump (";; lvx cms:   WAWUNRES r%u p=%u%s q=%u%s\n",
-			  regno, p,
-			  lvx_cms_lrange_def_of (lrange, p, regno) ? "" : "=NULL",
-			  (unsigned) q,
-			  lvx_cms_lrange_def_of (lrange, (unsigned) q, regno)
-			    ? "" : "=NULL");
 	  if (!partial
 	      && !lvx_cms_antidep_real_p
 		    (lrange, lvx_cms_lrange_def_of (lrange, p, regno),
