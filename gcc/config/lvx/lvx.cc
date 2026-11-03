@@ -16355,6 +16355,50 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
       lr[root]->exit_live |= lr[k]->exit_live;
     }
 
+  /* A LIVE-OUT RANGE LIVES TO THE END OF ITS DRAIN, NOT TO ITS LAST IN-LOOP
+     USE.  §7tricies.135.
+
+     The interval used to stop at LAST_DATE, the last reference inside the
+     body.  That is wrong for a range that leaves the loop, and the way it is
+     wrong is not about interference between its own copies: two DIFFERENT
+     live-out ranges then get disjoint intervals and the colouring gives them
+     ONE register, which no drain can unpick.
+
+     Measured on mad libz's inflate_fast loop 2, II = 11: lr3 (architectural
+     r7, interval [1,3]) and lr7 (architectural r8, interval [4,11]) were both
+     given r8, and the two intervals TILE the circle of circumference
+     kunroll * II exactly, so r8 always holds one of them.  Both leave the
+     loop, so every drain must restore both architectural registers and emits
+     `r7 <- r8' unconditionally -- and which value is resident depends on where
+     the exit was taken.  The decoded match came out with the wrong length AND
+     distance while the bit position stayed exact.
+
+     AND THE EXIT'S OWN DATE IS NOT THE BOUND EITHER.  A drain replays the
+     work still in flight when its exit was taken: the drain for the exit at
+     date 1 holds insn 4 at date 3 and insn 7 at date 4, and insn 4 is lr7's
+     definition.  So the drain's own replayed work overwrites r8 before the
+     reconciliation copy at the end of that drain reads it.  The value has to
+     survive to the end of the DRAIN, which is bounded by the end of the
+     schedule.
+
+     So the interval runs to the schedule's last date.  Conservative -- it
+     makes every live-out range conflict with everything scheduled after its
+     definition -- and that is the direction a register's contents must be
+     reasoned about when a drain is going to copy them back.  The control is
+     -mno-cms-exit-live-span.  */
+  if (lvx_cms_exit_live_span)
+    {
+      int endd = 0;
+
+      for (unsigned i = 0; i < sigma.length (); i++)
+	endd = MAX (endd, sigma[i] + ii);
+      for (unsigned k = 0; k < lr.length (); k++)
+	if (!lr[k]->effects.is_empty ()
+	    && lvx_cms_lrange_root (lr, (int) k) == (int) k
+	    && lr[k]->exit_live)
+	  lr[k]->last_date = MAX (lr[k]->last_date, endd);
+    }
+
   /* §7tricies.66's disambiguation -- keeping, among the ranges on one
      register, the one with the greatest LAST_DATE -- is gone with the
      predicate that needed it.  An indirect use attaches to exactly one range
@@ -18775,15 +18819,77 @@ lvx_cms_jump_taken_stays_p (const struct lvx_cms_site *site, rtx_insn *jmp)
   return flow_bb_inside_loop_p (site->loop, taken->dest);
 }
 
-/* A finding kept although the code that needed it is gone, because make_insns
+/* THE SKELETON BLOCKS.  §7tricies.136.
+
+   This is what `lvx_cms_node' is, and the name is unfortunate because two
+   different things in CMS are called nodes:
+
+     SKELETON BLOCK   one lvx_cms_node, one BASIC BLOCK of the emitted
+		      pipeline.  BLOCKS[k] is the block, NODES[k].kind says
+		      which part of the pipeline it is, and SLOTS[q].node says
+		      which block a slot is emitted into.
+     ANODE            a node of the circular-arc INTERFERENCE graph, one per
+		      (value, name) pair -- lvx_cms_anode_of, counted by NN.
+		      Nothing to do with blocks.
+
+   A software pipeline is a chain of skeleton blocks, in this order, and this
+   is the whole construct:
+
+     PREHEADER        not a skeleton block: the original loop's, where the
+		      trip count is divided when the kernel is k-unrolled.
+
+     PROLOGUE[0..]    the stages being filled.  Each block is a PARTIAL copy
+		      of the body, and the chain lengthens as the pipe fills.
+
+     KERNEL[0..]      the steady state, entered with every stage occupied.
+		      The last block closes with the loop-back branch.
+		      KUNROLL copies of the body live here when the kernel is
+		      unrolled, and the modulo-expanded names rotate across
+		      them.
+
+   HOW MANY BLOCKS EACH PART HAS IS NOT A FUNCTION OF NSTAGES.  One rule in
+   lvx_cms_build_plan decides every boundary --
+
+     if (prev_exit || enter_kernel || nodes == 0) ... new block ...
+
+   -- so a block starts at the beginning, after EVERY EXIT INSTANCE, and where
+   the kernel begins, and nothing counts stages.  inflate_fast loop 2 with
+   NSTAGES = 2 has FOUR prologue blocks, cut after the exits at insn 8 and
+   insn 9 (both date 1) and after the loop-back instance at insn 16 (date 11),
+   and three kernel blocks for the same reason.
+
+   `S - 1' HOLDS FOR A SINGLE-BASIC-BLOCK BODY, S being the number of stages:
+   a doloop or a while whose body is one block has only the loop-back as an
+   exit instance, one per stage being filled, so the cuts land one per stage
+   and the prologue has S - 1 blocks.  That is the textbook picture, and it
+   follows FROM the exit-cutting rule under that shape rather than being a
+   second rule.  Once the body is more than one block, S says nothing about
+   the count.
+
+     EPILOGUE[0..]    the DRAINS, one per exit -- EXEP of them, plus the main
+		      one for the loop-back falling out.  A drain is NOT just
+		      cleanup: it REPLAYS the work still in flight when its
+		      exit was taken, so it holds the later stages of the
+		      iterations that had already started (EPISYM counts those
+		      replicated slots).  It then ends with the live-out
+		      reconciliation copies (§7tricies.63, .66), which is why a
+		      live-out value must survive to the END OF ITS DRAIN and
+		      not merely to its exit: the replayed work can overwrite
+		      the register the copy is about to read (§7tricies.135).
+
+   PATHS is the number of ways through this chain -- one per epilogue plus the
+   bare kernel path -- and lvx_cms_verify_slots checks each separately,
+   because an instance's operands must be defined on EVERY path that reaches
+   it, not merely somewhere in the schedule.
+
+   A finding kept although the code that needed it is gone, because make_insns
    will face it again: `redirect_edge_and_branch' retargets the JUMP and
    REFUSES a fall-through edge outright, while `redirect_edge_succ' moves the
    edge and leaves the jump alone -- right for a fall-through, silently wrong
    for a branch.  And which edge is which is not what intuition says: in a
    bottom-tested loop the latch branches BACK to the header and FALLS THROUGH
    to the exit, so the back edge is the branch and the loop's exit is the
-   fall-through.  Two cycles went on getting that backwards in both
-   directions before split_edge made the question moot here.  */
+   fall-through.  */
 
 static bool
 lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
@@ -18847,7 +18953,7 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
 
      This used to create `nstages - 1' stage blocks plus one drain on the
      latch's exit, which was the right skeleton for a pipeline with no early
-     exits and is not the skeleton the plan asks for: the plan's nodes are the
+     exits and is not the skeleton the plan asks for: the plan's blocks are the
      prologue stages SPLIT AT EVERY EXIT, the k-unrolled kernel split the same
      way, and one epilogue per exit plus the main one (§7tricies.5 --
      plexep = kunroll - 1, so there are always more than one).  Creating them
@@ -24212,6 +24318,23 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int slundef = 0, slorder = 0, slpaths = 0;
   bool slok = lvx_cms_verify_slots (seq, arcs, plslots, plnodes,
 				    &slundef, &slorder, &slpaths);
+  /* §7tricies.136.  The slot table itself, so an abutment in the circular-arc
+     model can be checked against the BLOCK each of its two slots lands in:
+     the read-before-write exemption that lets two arcs abut is only valid
+     inside one bundle, and a cycle's slots are distributed over SKELETON
+     BLOCKS -- see the definition at lvx_cms_make_nodes.  */
+  if (dump_file && lvx_cms_probe)
+    for (unsigned z = 0; z < plslots.length (); z++)
+      {
+	int nd = plslots[z].node;
+	lvx_cms_dump (";; lvx cms:   SLOT fn=%s loop %d z=%u insn=%d iter=%d"
+		      " date=%d node=%d kind=%d\n", current_function_name (),
+		      loop->num, z, plslots[z].insn, plslots[z].iter,
+		      plslots[z].date,
+		      nd, (nd >= 0 && nd < (int) plnodes.length ()
+			   ? (int) plnodes[nd].kind : -1));
+      }
+
   lvx_cms_dump (";; lvx cms: fn=%s loop %d slots %s n=%u nodes=%u paths=%d"
 		" undef=%d order=%d pro=%d ker=%d epi=%d episym=%d"
 		" exitslots=%d exep=%d steadybad=%d\n", current_function_name (),

@@ -220,3 +220,7 @@ mcms-claim-floor=
 Target RejectNegative Joined UInteger Var(lvx_cms_claim_floor) Init(0) Optimization
 -mcms-claim-floor=N	Start the claim_def_cycle negotiation at N instead of 0, so a loop that linearises without the claim is still given it: 1 withholds it from tie-carrying ranges, 2 claims everywhere.  Diagnostic for 7tricies.135.
 
+
+mcms-exit-live-span
+Target Var(lvx_cms_exit_live_span) Init(1) Optimization
+Extend a live-out live range's interval to the end of the schedule, so the drain's replayed work cannot overwrite the register its reconciliation copy reads.  On by default; -mno-cms-exit-live-span restores the interval that ends at the last in-loop use, for measuring what the extension costs.
