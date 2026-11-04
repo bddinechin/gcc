@@ -11979,6 +11979,19 @@ lvx_insn_dest_earlyclobber_p (rtx_insn *insn)
     return false;
   extract_insn (insn);
   preprocess_constraints (insn);
+  /* WHICH_ALTERNATIVE MUST BE ESTABLISHED, NOT INHERITED.  §7tricies.147.
+     preprocess_constraints fills RECOG_OP_ALT but does not choose an
+     alternative, so reading WHICH_ALTERNATIVE here took whatever the last
+     constrain_operands anywhere in the compiler had left -- an index into
+     THIS insn's alternatives chosen for a DIFFERENT insn.  The answer was
+     then arbitrary, and an arbitrary `true' costs a pipeline: it sets the
+     range's EC, which lengthens its interval by a cycle, which pushes
+     P2UNROLL past 1, which splits a constraint group across two names and
+     refuses the loop at `recog'.  lvx_cms_operand_tied_p in this same file
+     already asks constrain_operands first, which is what made the omission
+     visible once the two were compared.  */
+  if (!constrain_operands (1, get_enabled_alternatives (insn)))
+    return false;
   if (which_alternative < 0)
     return false;
 
@@ -15198,9 +15211,29 @@ lvx_cms_operand_tied_p (rtx_insn *insn, int useidx)
   if (recog_memoized (insn) < 0)
     return true;
   extract_insn (insn);
+  /* PREPROCESS_CONSTRAINTS, OR WHICH_OP_ALT READS ANOTHER INSN'S TABLE.
+     §7tricies.150.
+
+     `recog_op_alt' is filled per insn CODE by preprocess_constraints, and
+     which_op_alt indexes it as `which_alternative * recog_data.n_operands'.
+     extract_insn and constrain_operands fill `recog_data' and choose the
+     alternative but leave that table alone -- recog.h says so beside the
+     declaration: "Only valid after calling preprocess_constraints and
+     constrain_operands."
+
+     Without this call the predicate reads whatever insn was preprocessed
+     last, with this insn's operand count and alternative index.  It did not
+     crash while the only callers ran late, after a pass that had preprocessed
+     the same insns; called from lvx_cms_build_lranges it segfaults on an
+     insn whose table is shorter.  The silent half is worse than the crash:
+     every answer this predicate has given came off whichever table happened
+     to be loaded.  */
+  preprocess_constraints (insn);
   if (!constrain_operands (1, get_enabled_alternatives (insn)))
     return true;
   if (which_alternative < 0)
+    return true;
+  if (which_alternative >= recog_data.n_alternatives)
     return true;
   alt = which_op_alt ();
   if (alt == NULL)
@@ -15729,10 +15762,16 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	     and not a verification: the renamed instruction is perfectly
 	     valid -- a legal write to a legal register -- and `recog'
 	     accepts it.  What is wrong is which instance the UNWRITTEN part
-	     belongs to, and nothing examines that.  (The third member of the
-	     family, a TIED write, is caught: the expansion would put source
-	     and destination in different registers and the tie fails recog,
-	     so it refuses rather than miscompiles.)
+	     belongs to, and nothing examines that.
+
+	     The third member of the family, a TIED write, is deliberately NOT
+	     here, and §7tricies.148 is why.  Its miss is a refusal rather
+	     than a miscompile -- the expansion puts source and destination in
+	     different registers and the tie fails `recog' -- so the rename
+	     site can simply decline to rewrite a tied operand, which is where
+	     it is handled.  Holding tied-headed ranges here as well was
+	     measured and costs 16 pipelines for nothing once §7tricies.150
+	     let that site read the right constraint table.
 
 	     Held rather than capped at degree one, which is the same thing
 	     for a range with a single definition and the safer statement for
@@ -15747,6 +15786,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		  nofull = true;	/* and the range it may OPEN below */
 		}
 	    }
+
 
 	  /* A READ-MODIFY-WRITE REFERENCE IS ONE OPERAND, and DF reports it
 	     twice -- as a use and as a definition at the SAME location.  The
@@ -17431,9 +17471,12 @@ lvx_cms_operand_tied_certain_p (rtx_insn *insn, int useidx)
   if (recog_memoized (insn) < 0)
     return false;
   extract_insn (insn);
+  preprocess_constraints (insn);	/* §7tricies.150, as above */
   if (!constrain_operands (1, get_enabled_alternatives (insn)))
     return false;
   if (which_alternative < 0)
+    return false;
+  if (which_alternative >= recog_data.n_alternatives)
     return false;
   alt = which_op_alt ();
   if (alt == NULL)
@@ -17532,6 +17575,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
     {
       lvx_cms_lrange_part *g = lr[k];
       int ec, life;
+      bool ec_tied_dbg = false, ec_ecp_dbg = false;
 
       /* ONE UNIT PER LIVE RANGE.  A member that is not the root shares the
 	 root's stack and is filled in from it below; a live range that is not
@@ -17561,11 +17605,31 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	 ranges, which is LESS conservative and therefore not assumed to be
 	 sound: lvx_cms_slot_order is run on the result and the mode is used
 	 only if it still linearises.  */
-      ec = ((claim_def_cycle == 1
-	     || (claim_def_cycle == 2
-		 && !lvx_cms_lrange_tied_p (seq, lr,
-					    lvx_cms_lrange_root (lr, (int) k))))
-	    || lvx_cms_lrange_ec_p (seq, g)) ? 1 : 0;
+      /* BOTH PREDICATES ASKED ONCE, IN A DEFINED ORDER.  §7tricies.147.
+
+	 lvx_cms_lrange_tied_p and lvx_cms_lrange_ec_p each run
+	 extract_insn and constrain_operands, so each LEAVES recog_data and
+	 WHICH_ALTERNATIVE pointing at whatever insn it looked at last.  Asked
+	 inside one expression they were therefore order-dependent: the `||'
+	 evaluated the tie test first and the earlyclobber test second, and
+	 asking the same two in the other order produced a DIFFERENT answer --
+	 which is how a range with claim=2, tied and not earlyclobber still
+	 came out with ec=1, taking a second name it did not need and
+	 splitting a constraint group across two registers.
+
+	 Hoisted into locals, so the order is written down rather than implied
+	 by `||', and so the dump can print exactly what the decision used.  */
+      {
+	int root_k = lvx_cms_lrange_root (lr, (int) k);
+	bool tied_k = lvx_cms_lrange_tied_p (seq, lr, root_k);
+	bool ecp_k = lvx_cms_lrange_ec_p (seq, g);
+
+	ec = ((claim_def_cycle == 1
+	       || (claim_def_cycle == 2 && !tied_k))
+	      || ecp_k) ? 1 : 0;
+	ec_tied_dbg = tied_k;
+	ec_ecp_dbg = ecp_k;
+      }
       /* STORED, so the verifier checks the ec the colouring actually used.
 	 Recomputing it there is what let claim_def_cycle diverge.  */
       g->ec = ec != 0;
@@ -17578,6 +17642,15 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	 §7tricies.137.  */
       last_.safe_push (MAX (g->occ_last, g->last_date));
       deg.safe_push (ii > 0 ? MAX ((life + ii - 1) / ii, 1) : 1);
+      /* §7tricies.147: the degree's own inputs, for ranges that will rotate.
+	 Deducing EC from the pattern and the claim mode got the wrong answer
+	 twice; this prints what the computation actually used.  */
+      if (dump_file && lvx_cms_probe && deg.last () > 1)
+	lvx_cms_dump (";; lvx cms:   DEG lr%u r%u [%d,%d] ec=%d life=%d ii=%d"
+		      " deg=%d claim=%d tied=%d ecp=%d\n", k, g->regno,
+		      g->first_date, g->last_date, ec, life, ii, deg.last (),
+		      claim_def_cycle,
+		      ec_tied_dbg ? 1 : 0, ec_ecp_dbg ? 1 : 0);
       nregs_.safe_push (MAX (g->nregs, 1));
       ec_.safe_push (ec);
       vregno.safe_push ((int) g->regno);
@@ -24955,6 +25028,32 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   }
   lvx_cms_build_plan (seq, sigma, found, plkun,
 		      nstages, loop->num_nodes, &pl, &plslots, &plnodes);
+
+  /* THE LOCAL SCHEDULE, ONE BODY INSTANCE WITH ITS CYCLES.  §7tricies.146.
+     SIGMA is the schedule of a single iteration, so this is the thing the
+     recurrence and the resource bounds are both statements about, and the
+     thing a reader needs to see to judge either.  Printed in cycle order
+     rather than program order, since that is what a VLIW schedule means.  */
+  if (dump_file && lvx_cms_probe)
+    {
+      int last = 0;
+
+      for (unsigned i = 0; i < seq.length (); i++)
+	last = MAX (last, sigma[i]);
+      for (int c = 0; c <= last; c++)
+	for (unsigned i = 0; i < seq.length (); i++)
+	  if (sigma[i] == c)
+	    {
+	      int code = INSN_CODE (seq[i]);
+
+	      lvx_cms_dump (";; lvx cms:   LOCALSCHED fn=%s loop %d cycle=%d"
+			    " i=%u uid=%d %s\n", current_function_name (),
+			    loop->num, c, i, INSN_UID (seq[i]),
+			    code >= 0 ? insn_data[code].name : "?");
+	      if (dump_file)
+		print_rtl_single (dump_file, seq[i]);
+	    }
+    }
 
   /* THE MASTER SCHEDULE'S DATAFLOW, checked on the recorded slots before any
      of it is emitted.  The plan counts and the rename map colours; neither
