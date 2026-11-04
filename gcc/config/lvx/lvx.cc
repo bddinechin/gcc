@@ -15032,6 +15032,17 @@ struct lvx_cms_lrange_part
   int nregs;
   bool use_first;
   bool exit_live;
+  /* THE OCCUPANCY END, SEPARATE FROM LAST_DATE.  §7tricies.137.
+     LAST_DATE is the last reference INSIDE the body, and it is what the
+     DEGREE must be computed from: that is how long the value really lives,
+     so that is how many names its copies need.  OCC_LAST is how long its
+     REGISTER must be reserved, which for a live-out range runs to the end of
+     the schedule because the drain's replayed work must not overwrite the
+     register the reconciliation copy will read (§7tricies.135).  The two were
+     one field, and extending it moved the degree as a side effect -- forcing
+     modulo expansion on ranges that then failed `recog', 17 pipelines lost
+     for a requirement that was only ever about not SHARING.  */
+  int occ_last;
   bool renamed;			/* its union gets a stack of names */
   int first_date, last_date;
   int p2unroll;
@@ -16386,18 +16397,21 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
      definition -- and that is the direction a register's contents must be
      reasoned about when a drain is going to copy them back.  The control is
      -mno-cms-exit-live-span.  */
-  if (lvx_cms_exit_live_span)
-    {
-      int endd = 0;
+  {
+    int endd = 0;
 
-      for (unsigned i = 0; i < sigma.length (); i++)
-	endd = MAX (endd, sigma[i] + ii);
-      for (unsigned k = 0; k < lr.length (); k++)
-	if (!lr[k]->effects.is_empty ()
+    for (unsigned i = 0; i < sigma.length (); i++)
+      endd = MAX (endd, sigma[i] + ii);
+    for (unsigned k = 0; k < lr.length (); k++)
+      {
+	lr[k]->occ_last = lr[k]->last_date;
+	if (lvx_cms_exit_live_span
+	    && !lr[k]->effects.is_empty ()
 	    && lvx_cms_lrange_root (lr, (int) k) == (int) k
 	    && lr[k]->exit_live)
-	  lr[k]->last_date = MAX (lr[k]->last_date, endd);
-    }
+	  lr[k]->occ_last = MAX (lr[k]->last_date, endd);
+      }
+  }
 
   /* §7tricies.66's disambiguation -- keeping, among the ranges on one
      register, the one with the greatest LAST_DATE -- is gone with the
@@ -17161,7 +17175,11 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
       life = g->last_date - g->first_date + (ec ? 1 : 0);
       idx.safe_push ((int) k);
       def_.safe_push (g->first_date);
-      last_.safe_push (g->last_date);
+      /* The OCCUPANCY, which is what the interference edges are built from --
+	 "two nodes meet iff their occupancies share a cycle".  DEG below
+	 stays on LIFE, so reserving the register longer costs no extra name.
+	 §7tricies.137.  */
+      last_.safe_push (MAX (g->occ_last, g->last_date));
       deg.safe_push (ii > 0 ? MAX ((life + ii - 1) / ii, 1) : 1);
       nregs_.safe_push (MAX (g->nregs, 1));
       ec_.safe_push (ec);
