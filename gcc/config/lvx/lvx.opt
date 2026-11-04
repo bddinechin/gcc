@@ -228,3 +228,7 @@ Extend a live-out live range's interval to the end of the schedule, so the drain
 mcms-tied-copy
 Target Var(lvx_cms_tied_copy) Init(0) Optimization
 Insert a copy after an instruction whose constraint group has a delayed read, so the group keeps one register while its downstream readers rotate.  Off by default: it mutates the loop body post-RA and needs a spare hard register.
+
+mcms-partial-arcs
+Target Var(lvx_cms_partial_arcs) Init(1) Optimization
+Where a partial definition reaches a use, make an arc from every definition that contributes to the value instead of declining the loop.  -mno-cms-partial-arcs restores the refusal, for measuring what it costs.

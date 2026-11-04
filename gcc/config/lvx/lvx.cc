@@ -22769,10 +22769,68 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    if (lvx_insn_defs_regno_p (seq[i], regno, &partial_def))
 	      p = i;
 
-	  /* A partial reaching definition does not define the whole value, so
-	     one arc from it would omit the dependence on whatever supplied the
-	     rest.  Refuse rather than under-constrain.  */
-	  if (partial_def)
+	  /* A PARTIAL REACHING DEFINITION NEEDS AN ARC FROM EVERY CONTRIBUTOR.
+	     §7tricies.142.
+
+	     One arc from the last definition would omit the dependence on
+	     whatever supplied the rest of the value, so this used to refuse
+	     the loop -- 55 of them over four suites, 18 on r0 alone, which is
+	     this ABI's first argument and return register, so a narrow write
+	     into a wider one feeding a wide read.
+
+	     Refusing was the right conservative answer and the wrong
+	     permanent one: the value a use reads is the last FULL definition
+	     plus every PARTIAL definition after it, and an arc from each of
+	     those is exactly the dependence.  So walk back pushing an arc per
+	     contributor and stop at the first full definition, which supplies
+	     the whole value and makes anything before it dead.  DF_REF_PARTIAL
+	     carries no extents, so coverage cannot be computed -- but it does
+	     not need to be: stopping at the full definition is precise, and
+	     every arc added is a CONSTRAINT, so the result can only be more
+	     constrained than the truth, never less.
+
+	     If the walk reaches the top without a full definition the
+	     remainder comes from the previous iteration, which is what the
+	     `p < 0' path below already handles, so the loop-carried arc is
+	     left to it.  */
+	  if (partial_def && lvx_cms_partial_arcs)
+	    {
+	      bool full_seen = false;
+	      int nc = 0;
+
+	      for (int i = (int) q - 1; i >= 0; i--)
+		{
+		  bool ipart = false;
+
+		  if (!lvx_insn_defs_regno_p (seq[i], regno, &ipart))
+		    continue;
+		  {
+		    int lat2 = lvx_arc_latency (seq[i], seq[q], REG_DEP_TRUE);
+
+		    lvx_cms_push_arc (arcs, (unsigned) i, q, lat2, 0,
+				      LVX_ARC_REG_RAW);
+		    arcs.last ().useidx
+		      = lvx_cms_reg_index (PATTERN (seq[q]), DF_REF_LOC (use));
+		    if (height[q] < height[i] + lat2)
+		      height[q] = height[i] + lat2;
+		    nc++;
+		  }
+		  if (!ipart)
+		    {
+		      full_seen = true;
+		      break;
+		    }
+		}
+	      if (dump_file && lvx_cms_probe)
+		lvx_cms_dump (";; lvx cms:   PARTIALARCS r%u use=%u arcs=%d"
+			      " full=%d\n", regno, q, nc, full_seen ? 1 : 0);
+	      /* Covered by the contributors above, or by the previous
+		 iteration if no full definition was found -- which the
+		 p < 0 path supplies.  */
+	      if (full_seen || nc > 0)
+		continue;
+	    }
+	  else if (partial_def)
 	    {
 	      if (dump_file)
 		lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, partial"
