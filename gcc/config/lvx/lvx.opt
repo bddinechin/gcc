@@ -224,3 +224,7 @@ Target RejectNegative Joined UInteger Var(lvx_cms_claim_floor) Init(0) Optimizat
 mcms-exit-live-span
 Target Var(lvx_cms_exit_live_span) Init(1) Optimization
 Extend a live-out live range's interval to the end of the schedule, so the drain's replayed work cannot overwrite the register its reconciliation copy reads.  On by default; -mno-cms-exit-live-span restores the interval that ends at the last in-loop use, for measuring what the extension costs.
+
+mcms-tied-copy
+Target Var(lvx_cms_tied_copy) Init(0) Optimization
+Insert a copy after an instruction whose constraint group has a delayed read, so the group keeps one register while its downstream readers rotate.  Off by default: it mutates the loop body post-RA and needs a spare hard register.

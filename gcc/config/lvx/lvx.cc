@@ -17093,6 +17093,383 @@ static int lvx_cms_anode_of (const auto_vec<int> &, const auto_vec<int> &,
    has it set, and the index computation then hands them different names.
    Asked of the ROOT's whole union, because the register is the union's.  */
 
+/* THE COPY THAT MAKES A CONSTRAINT GROUP ROTATABLE.  §7tricies.140.
+
+   A group with a delayed read cannot rotate (§7tricies.139), so the range
+   holding it is capped at one name and the loop is refused whenever its life
+   exceeds II.  The life exceeds II because of DOWNSTREAM READERS, not because
+   of the group: the group's own read is the previous instance of its own
+   definition, dated sigma + II, so on its own it needs exactly one name.
+
+   SO ONE COPY IS ENOUGH, AND IT GOES AFTER.
+
+       acc = fma (a, b, acc)     the group, {o0, o3}, one register, p2 = 1
+       t   = acc                 the copy
+       ... later ... read t      t rotates freely, untied
+
+   There is no case needing a copy BEFORE it.  The group's read takes its
+   value from the group's own definition one period earlier, so the value is
+   already in the tied register and never has to be brought in from a rotating
+   name -- ranges are per-definition and the normalisation folds the cyclic
+   wrap into the one def-headed range (§7tricies.91), so a second definition
+   of that register is a different range and cannot feed this read.
+
+   WHAT THIS DECLINES, AND THE PLANNED SECOND HALF.  A reader BEFORE the group
+   in body order reads the PREVIOUS iteration's value, so it is not dominated
+   by the copy and is left alone today: the copy is only placed where it
+   dominates every reader it rewrites.
+
+   The extension is one more copy, in the PREHEADER, and it completes the
+   transformation rather than merely widening it:
+
+       preheader:  t = acc          once per loop ENTRY
+       body:       ... read t ...   the reader before the group
+		   acc = fma (a, b, acc)
+		   t = acc             once per ITERATION
+
+   At the top of iteration i, T already holds ACC as of iteration i - 1 --
+   written by the body copy at the end of i - 1 -- which is exactly what a
+   reader placed before the group wants.  The only instance that copy does not
+   cover is the first, and the preheader initialises T with ACC's loop-entry
+   value for it.  So the per-iteration cost does not change: the preheader copy
+   executes once.
+
+   With it, every reader can be rewritten and the group's range is split
+   unconditionally, so `tied AND delayed' stops costing a pipeline at all.
+   Not built yet: it needs the preheader CMS's phase A already creates
+   (create_preheader with CP_SIMPLE_PREHEADERS) and its own validation, and
+   mixing it with the dominated case would have left neither measured.
+
+   Post-RA, so T must be a hard register no part of the loop touches.
+
+   MEASURED AND NOT VIABLE AS WRITTEN -- default off, and these are the three
+   reasons, each of which has to be answered before it is turned on:
+
+     1. IT IS TOO EAGER.  The need is known only after colouring, so this
+	inserts syntactically -- every group with a downstream reader -- and
+	puts in 1352 copies over four suites where the groups that genuinely
+	cannot rotate number about five.  The gate has to be the real one
+	(tied, delayed, degree would exceed 1), which needs the schedule, so
+	the phase wants the bound-transform-re-bound retry the claim
+	negotiation and the live-out arc drop both use.  Inserting before the
+	graph is right; deciding before the schedule is not.
+     2. IT COSTS WHAT IT WAS MEANT TO SAVE.  emitted 949 -> 877 and
+	nstages>=3 293 -> 151, because 1352 extra instructions in the kernels
+	raise ResMII.
+     3. IT BREAKS DOWNSTREAM.  Seven files stop compiling, and the one looked
+	at ICEs in GCC's own regrename: "in scan_rtx_reg, at
+	regrename.cc:1145" on TSVC2's tsvc.c.  A copy emitted here with a hard
+	register the loop does not touch is evidently still not what
+	regrename's chain building expects, so the register choice or the
+	dataflow update after it is wrong.  */
+
+static int
+lvx_cms_free_hard_reg (class loop *loop, basic_block *body, machine_mode mode)
+{
+  HARD_REG_SET taken;
+  df_ref ref;
+  rtx_insn *insn;
+
+  CLEAR_HARD_REG_SET (taken);
+  for (unsigned b = 0; b < loop->num_nodes; b++)
+    {
+      bitmap_iterator bi;
+      unsigned r;
+
+      EXECUTE_IF_SET_IN_BITMAP (df_get_live_in (body[b]), 0, r, bi)
+	if (r < FIRST_PSEUDO_REGISTER)
+	  SET_HARD_REG_BIT (taken, r);
+      EXECUTE_IF_SET_IN_BITMAP (df_get_live_out (body[b]), 0, r, bi)
+	if (r < FIRST_PSEUDO_REGISTER)
+	  SET_HARD_REG_BIT (taken, r);
+      FOR_BB_INSNS (body[b], insn)
+	{
+	  if (!INSN_P (insn))
+	    continue;
+	  FOR_EACH_INSN_DEF (ref, insn)
+	    if (DF_REF_REGNO (ref) < FIRST_PSEUDO_REGISTER)
+	      SET_HARD_REG_BIT (taken, DF_REF_REGNO (ref));
+	  FOR_EACH_INSN_USE (ref, insn)
+	    if (DF_REF_REGNO (ref) < FIRST_PSEUDO_REGISTER)
+	      SET_HARD_REG_BIT (taken, DF_REF_REGNO (ref));
+	}
+    }
+  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    if (!TEST_HARD_REG_BIT (taken, r)
+	&& !fixed_regs[r] && !global_regs[r]
+	&& targetm.hard_regno_mode_ok (r, mode)
+	&& end_hard_regno (mode, r) <= FIRST_PSEUDO_REGISTER)
+      {
+	bool clash = false;
+
+	for (unsigned k = 1; k < hard_regno_nregs (r, mode); k++)
+	  if (TEST_HARD_REG_BIT (taken, r + k) || fixed_regs[r + k])
+	    clash = true;
+	if (!clash)
+	  return r;
+      }
+  return -1;
+}
+
+/* The group's output operand, or NULL: the operand some other operand's
+   matching constraint names.  §7tricies.139.  */
+
+static rtx *
+lvx_cms_group_output (rtx_insn *insn)
+{
+  if (!INSN_P (insn) || recog_memoized (insn) < 0)
+    return NULL;
+  extract_insn (insn);
+  for (int o = 0; o < recog_data.n_operands; o++)
+    {
+      const char *c = recog_data.constraints[o];
+
+      /* A matching constraint is a digit naming another operand.  Only
+	 single-digit ones occur here and `0' is the only one this port
+	 writes, but the digit is read rather than assumed.  */
+      for (; c && *c; c++)
+	if (ISDIGIT (*c))
+	  {
+	    int m = *c - '0';
+
+	    if (m >= 0 && m < recog_data.n_operands
+		&& recog_data.operand_loc[m]
+		&& *recog_data.operand_loc[m]
+		&& REG_P (*recog_data.operand_loc[m]))
+	      return recog_data.operand_loc[m];
+	  }
+    }
+  return NULL;
+}
+
+/* Insert the copies of §7tricies.140 into LOOP's body.  Returns how many went
+   in; the caller re-derives everything afterwards, since the body changed.  */
+
+static int
+lvx_cms_tied_copies (class loop *loop, basic_block *body)
+{
+  int ncopy = 0;
+
+  for (unsigned b = 0; b < loop->num_nodes; b++)
+    {
+      rtx_insn *insn, *next;
+
+      for (insn = BB_HEAD (body[b]); insn; insn = next)
+	{
+	  rtx *out;
+	  unsigned outreg;
+	  machine_mode mode;
+	  int t;
+	  bool before = false, after = false;
+	  rtx_insn *j;
+
+	  next = (insn == BB_END (body[b]) ? NULL : NEXT_INSN (insn));
+	  if (!NONJUMP_INSN_P (insn))
+	    continue;
+	  out = lvx_cms_group_output (insn);
+	  if (!out || !*out || !REG_P (*out)
+	      || REGNO (*out) >= FIRST_PSEUDO_REGISTER)
+	    continue;
+	  outreg = REGNO (*out);
+	  mode = GET_MODE (*out);
+
+	  /* READERS, AND WHICH SIDE THEY ARE ON.  A reader after the group is
+	     dominated by the copy and may be rewritten; one before it reads
+	     the previous iteration's value and would need the copy's register
+	     initialised in the preheader, so its presence declines the
+	     loop.  */
+	  for (unsigned b2 = 0; b2 < loop->num_nodes; b2++)
+	    FOR_BB_INSNS (body[b2], j)
+	      {
+		df_ref ref;
+
+		if (!INSN_P (j) || j == insn)
+		  continue;
+		FOR_EACH_INSN_USE (ref, j)
+		  if (DF_REF_REGNO (ref) == outreg)
+		    {
+		      if (b2 == b && DF_INSN_LUID (j) > DF_INSN_LUID (insn))
+			after = true;
+		      else
+			before = true;
+		    }
+	      }
+	  if (!after || before)
+	    continue;
+
+	  t = lvx_cms_free_hard_reg (loop, body, mode);
+	  if (t < 0)
+	    {
+	      if (dump_file && lvx_cms_probe)
+		lvx_cms_dump (";; lvx cms: fn=%s loop %d tied copy declined,"
+			      " no spare hard register for r%u\n",
+			      current_function_name (), loop->num, outreg);
+	      continue;
+	    }
+
+	  /* The copy, then the readers after it.  */
+	  emit_insn_after_noloc (gen_rtx_SET (gen_rtx_REG (mode, t),
+					      gen_rtx_REG (mode, outreg)),
+				 insn, body[b]);
+	  for (j = NEXT_INSN (insn); j && j != NEXT_INSN (BB_END (body[b]));
+	       j = NEXT_INSN (j))
+	    {
+	      df_ref ref;
+
+	      if (!INSN_P (j))
+		continue;
+	      FOR_EACH_INSN_USE (ref, j)
+		if (DF_REF_REGNO (ref) == outreg
+		    && DF_REF_LOC (ref) && *DF_REF_LOC (ref)
+		    && REG_P (*DF_REF_LOC (ref)))
+		  validate_change (j, DF_REF_LOC (ref),
+				   gen_rtx_REG (GET_MODE (*DF_REF_LOC (ref)),
+						t), 1);
+	    }
+	  if (!apply_change_group ())
+	    {
+	      if (dump_file && lvx_cms_probe)
+		lvx_cms_dump (";; lvx cms: fn=%s loop %d tied copy declined,"
+			      " a reader refuses r%d\n",
+			      current_function_name (), loop->num, t);
+	      continue;
+	    }
+	  ncopy++;
+	  lvx_cms_dump (";; lvx cms: fn=%s loop %d TIEDCOPY r%u -> r%d after"
+			" insn %d\n", current_function_name (), loop->num,
+			outreg, t, INSN_UID (insn));
+	}
+    }
+  if (ncopy)
+    df_analyze ();
+  return ncopy;
+}
+
+/* A CONSTRAINT GROUP, and the one shape of it that cannot rotate.
+   §7tricies.139.
+
+   A CONSTRAINT GROUP is the set of operands of one instruction that the
+   TARGET requires to hold the same register.  On this port it is always a
+   pair: an output and an input joined by a matching constraint, written `"0"'
+   on the input and naming operand 0 --
+
+     (set (match_operand:SF 0 "register_operand" "=r")          ; fmasf4
+          (fma:SF (match_operand:SF 1 "register_operand" "r")
+                  (match_operand:SF 2 "register_operand" "r")
+                  (match_operand:SF 3 "register_operand" "0")))
+
+   -- and the group is {o0, o3}.  The accumulating multiplies, the FMAs and
+   the conditional moves all have one; there are 36 matching constraints in
+   scalar.md, 43 in builtin.md, 15 in control.md and 9 in vector.md.  THE
+   GROUP IS THE RENAMING UNIT, not the operand: give its members different
+   registers and `constrain_operands' fails, so the rewritten insn does not
+   recognise and the whole loop is declined -- late, after a schedule was
+   built on a promise the target never accepts.
+
+   WHICH GROUPS CANNOT ROTATE IS A ONE-LINE CONSEQUENCE OF THE INDEX.  Both
+   members belong to the same live range -- a tied operand's read and write
+   are references to the same register in the same instruction -- and the
+   name each gets is
+
+       (iteration + use_first - delayed) & (p2unroll - 1)
+
+   so the DEF (delayed = false) and the read differ by exactly one name when
+   the read is DELAYED and p2unroll >= 2.  They then always disagree and the
+   group can never be satisfied.  A read that is NOT delayed lands on the
+   def's own index and is fine at any degree.
+
+   So the predicate is `tied AND delayed', not `tied'.
+
+   AND CAPPING ON IT IS STILL WRONG -- all three attempts were, and the
+   measurements say why.  Capping denies the range a second name, the
+   colouring then assigns one, `life <= p2unroll * ii' fails and the loop is
+   REFUSED; `capped' only silences the assert.  So the cap MANUFACTURES the
+   refusal it claims to prevent:
+
+     predicate                       fires   emitted (pushed default: 950)
+     tied                             2222     584
+     tied AND delayed                 1273     693
+     tied AND delayed, certain only   1281     568
+
+   while `recog' declines FIVE loops.  Those ~1280 ranges evidently do get
+   their names and the target accepts them, so there is nothing to prevent;
+   the predicate is kept as the correct STATEMENT of which groups cannot
+   rotate, and as the gate for the copy of §7tricies.140, not as a cap.  */
+
+/* TIED FOR CERTAIN, not tied for want of an answer.  §7tricies.141.
+
+   lvx_cms_operand_tied_p answers TRUE on every path where it cannot decide --
+   no operand index, no location, the insn does not recognise, the constraints
+   do not hold, no alternative chosen, the operand not in the constrained list.
+   That is the right default for its original caller, which withholds a
+   conservative claim, since not knowing must not license the claim.
+
+   It is the WRONG default for a cap.  Capping a range denies it a second name
+   and the capacity invariant then refuses the loop, so "undecidable" would
+   cost a pipeline: measured, the conservative predicate fires 2222 times over
+   four suites and 1273 even with the DELAYED filter, against the five loops
+   `recog' actually declines -- and capping those cost 366 and 257 pipelines
+   respectively.
+
+   So this variant answers FALSE when it cannot tell, and TRUE only where a
+   matching constraint was positively found on that operand.  A wrong FALSE
+   costs nothing: the substitution goes ahead and `recog' refuses it exactly
+   as before, which is the behaviour this is trying to improve on rather than
+   a regression from it.  */
+
+static bool
+lvx_cms_operand_tied_certain_p (rtx_insn *insn, int useidx)
+{
+  const operand_alternative *alt;
+  rtx *loc;
+
+  if (useidx < 0)
+    return false;
+  loc = lvx_cms_reg_at (&PATTERN (insn), useidx);
+  if (loc == NULL)
+    return false;
+  if (recog_memoized (insn) < 0)
+    return false;
+  extract_insn (insn);
+  if (!constrain_operands (1, get_enabled_alternatives (insn)))
+    return false;
+  if (which_alternative < 0)
+    return false;
+  alt = which_op_alt ();
+  if (alt == NULL)
+    return false;
+  for (int i = 0; i < recog_data.n_operands; i++)
+    if (recog_data.operand_loc[i] == loc)
+      return alt[i].matches >= 0 || alt[i].matched >= 0;
+  return false;
+}
+
+static bool
+lvx_cms_lrange_tied_delayed_p (const auto_vec<rtx_insn *> &seq,
+			       const auto_vec<lvx_cms_lrange_part *> &lr,
+			       int root)
+{
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      if (lr[k]->effects.is_empty ()
+	  || lvx_cms_lrange_root (lr, (int) k) != root)
+	continue;
+      for (unsigned e = 0; e < lr[k]->effects.length (); e++)
+	{
+	  unsigned i = lr[k]->effects[e].insn;
+
+	  if (lr[k]->effects[e].is_def
+	      || !lr[k]->effects[e].delayed
+	      || lr[k]->effects[e].slot == LVX_CMS_SLOT_INDIRECT
+	      || i >= seq.length ())
+	    continue;
+	  if (lvx_cms_operand_tied_p (seq[i], lr[k]->effects[e].slot))
+	    return true;
+	}
+    }
+  return false;
+}
+
 static bool
 lvx_cms_lrange_tied_p (const auto_vec<rtx_insn *> &seq,
 		       const auto_vec<lvx_cms_lrange_part *> &lr, int root)
@@ -18336,6 +18713,9 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
       g = lvx_cms_lrange_of (lr, self, idx, NULL, &off);
       if (!g)
 	{
+	  if (dump_file && lvx_cms_probe)
+	    lvx_cms_dump (";; lvx cms:   RENREFUSE norange-def insn=%u"
+			  " slot=%d\n", self, idx);
 	  ok = false;
 	  break;
 	}
@@ -18351,6 +18731,9 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 		      r, idx, g->p2unroll, g->use_first ? 1 : 0, neu);
       if (idx < 0)
 	{
+	  if (dump_file && lvx_cms_probe)
+	    lvx_cms_dump (";; lvx cms:   RENREFUSE noidx-def insn=%u\n",
+			  self);
 	  ok = false;
 	  break;
 	}
@@ -18379,6 +18762,9 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	    /* An operand no live range claims.  With the read-modify-write
 	       operand entered once, the only way here is a reference DF gave
 	       no location for, which cannot be rewritten precisely.  */
+	    if (dump_file && lvx_cms_probe)
+	      lvx_cms_dump (";; lvx cms:   RENREFUSE norange-use insn=%u"
+			    " slot=%d\n", self, idx);
 	    ok = false;
 	    break;
 	  }
@@ -18393,6 +18779,9 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 			g->use_first ? 1 : 0, dly ? 1 : 0, neu);
 	if (idx < 0)
 	  {
+	    if (dump_file && lvx_cms_probe)
+	      lvx_cms_dump (";; lvx cms:   RENREFUSE noidx-use insn=%u\n",
+			    self);
 	    ok = false;
 	    break;
 	  }
@@ -18434,6 +18823,9 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 
 	  if (!loc || !REG_P (*loc))
 	    {
+	      if (dump_file && lvx_cms_probe)
+		lvx_cms_dump (";; lvx cms:   RENREFUSE noloc insn=%u slot=%d\n",
+			      self, at[a]);
 	      ok = false;
 	      break;
 	    }
@@ -18449,7 +18841,49 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
     {
       ok = verify_changes (base);
       if (!ok && dump_file && lvx_cms_probe)
-	lvx_cms_dump (";; lvx cms:   RENREFUSE recog insn=%u\n", self);
+	{
+	  int code = INSN_CODE (target);
+
+	  lvx_cms_dump (";; lvx cms:   RENREFUSE recog insn=%u pat=%s subst=",
+			self,
+			(code >= 0 ? insn_data[code].name : "unrecognised"));
+	  for (unsigned a = 0; a < at.length (); a++)
+	    lvx_cms_dump ("%sslot%d->r%d", a ? "," : "", at[a], to[a]);
+
+	  /* THE CONSTRAINT GROUP, NAMED.  §7tricies.139.  A late `recog'
+	     decline is a renaming rule the upstream did not know, so the
+	     report has to say WHICH rule: for every operand, the register it
+	     holds, the matching constraint it is under, and the register this
+	     substitution would give it.  Reading the slot numbers and
+	     guessing at the tie is how the first three accounts of this went
+	     wrong -- the slot is a positional register index from
+	     lvx_cms_reg_index, not the match_operand number, and the two do
+	     not agree (fmasf4 ties operand 3 to 0, *cmov ties operand 4).  */
+	  if (code >= 0)
+	    {
+	      /* The STATIC constraints, not the chosen alternative: the
+		 substitution is what made `constrain_operands' fail, so
+		 asking it again answers nothing.  A `0' here is the matching
+		 constraint, and the operand it names must hold the same
+		 register.  */
+	      extract_insn (target);
+	      lvx_cms_dump (" ops=");
+	      for (int o = 0; o < recog_data.n_operands; o++)
+		{
+		  rtx x = *recog_data.operand_loc[o];
+
+		  lvx_cms_dump ("%so%d:", o ? " " : "", o);
+		  if (x && REG_P (x))
+		    lvx_cms_dump ("r%u", REGNO (x));
+		  else
+		    lvx_cms_dump ("-");
+		  lvx_cms_dump ("\"%s\"",
+				recog_data.constraints[o]
+				? recog_data.constraints[o] : "");
+		}
+	    }
+	  lvx_cms_dump ("\n");
+	}
       if (ok && apply)
 	{
 	  confirm_change_group ();
@@ -23288,6 +23722,19 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       lvx_cms_dump (";; lvx cms: fn=%s loop %d skipped by -mcms-only-loop\n",
 		    current_function_name (), loop->num);
       return;
+    }
+
+  /* THE TIED COPIES GO IN BEFORE THE GRAPH.  §7tricies.140.  Their resource
+     cost then sits inside the bounds the II search respects, which is the
+     same discipline as the live-out arc drop: bound, transform, re-bound --
+     and not a promise emission has to keep afterwards.  */
+  if (lvx_cms_tied_copy)
+    {
+      int nc = lvx_cms_tied_copies (loop, body);
+
+      if (nc && dump_file && lvx_cms_probe)
+	lvx_cms_dump (";; lvx cms: fn=%s loop %d %d tied copy(ies) inserted\n",
+		      current_function_name (), loop->num, nc);
     }
 
   auto_vec<rtx_insn *> seq;
