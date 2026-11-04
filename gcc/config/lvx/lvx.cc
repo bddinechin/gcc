@@ -17463,8 +17463,28 @@ lvx_cms_lrange_tied_delayed_p (const auto_vec<rtx_insn *> &seq,
 	      || lr[k]->effects[e].slot == LVX_CMS_SLOT_INDIRECT
 	      || i >= seq.length ())
 	    continue;
-	  if (lvx_cms_operand_tied_p (seq[i], lr[k]->effects[e].slot))
-	    return true;
+	  if (!lvx_cms_operand_tied_certain_p (seq[i], lr[k]->effects[e].slot))
+	    continue;
+	  /* AND THE SAME RANGE MUST DEF THAT INSTRUCTION.  §7tricies.144.
+	     The group's two members diverge only when BOTH resolve to this
+	     range: the def taking name[(iter + uf) & (p2 - 1)] and this
+	     delayed read name[(iter + uf - 1) & (p2 - 1)].  Where the def
+	     belongs to another range the two names are unrelated and may well
+	     agree -- which is why the weaker test also named build_tree,
+	     ct_init, _tr_init and _tr_flush_block, every one of which EMITS.
+	     Four predicates in, the lesson is that a condition merely
+	     CORRELATING with the failure is worth nothing here: it has to be
+	     the condition itself.  */
+	  for (unsigned k2 = 0; k2 < lr.length (); k2++)
+	    {
+	      if (lr[k2]->effects.is_empty ()
+		  || lvx_cms_lrange_root (lr, (int) k2) != root)
+		continue;
+	      for (unsigned e2 = 0; e2 < lr[k2]->effects.length (); e2++)
+		if (lr[k2]->effects[e2].is_def
+		    && lr[k2]->effects[e2].insn == i)
+		  return true;
+	    }
 	}
     }
   return false;
@@ -18859,6 +18879,77 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	     wrong -- the slot is a positional register index from
 	     lvx_cms_reg_index, not the match_operand number, and the two do
 	     not agree (fmasf4 ties operand 3 to 0, *cmov ties operand 4).  */
+	  /* EVERY OPERAND, INCLUDING THE SKIPPED ONES, WITH ITS RANGE.
+	     §7tricies.144.
+
+	     The substitution list above shows only the operands that MOVED.
+	     An operand is skipped when the name its range gives equals the
+	     register it already holds (`neu == r'), and for a constraint group
+	     that is exactly the interesting case: one member renamed, the
+	     other pinned, the group split across two registers.  So the report
+	     has to name, per DF reference, which live RANGE owns it and what
+	     that range would give it -- which is the question the slot numbers
+	     cannot answer.  */
+	  {
+	    df_ref r2;
+
+	    lvx_cms_dump (" refs=");
+	    FOR_EACH_INSN_DEF (r2, orig)
+	      {
+		int ix = lvx_cms_reg_index (PATTERN (orig), DF_REF_LOC (r2));
+		int off2 = 0;
+		lvx_cms_lrange_part *g2
+		  = lvx_cms_lrange_of (lr, self, ix, NULL, &off2);
+		int nm2 = g2 ? lvx_cms_lrange_reg (g2, iter, false) : -1;
+
+		lvx_cms_dump ("D%d:r%u", ix, DF_REF_REGNO (r2));
+		if (g2)
+		  {
+		    int k2 = -1;
+
+		    for (unsigned z = 0; z < lr.length (); z++)
+		      if (lr[z] == g2)
+			k2 = (int) z;
+		    lvx_cms_dump ("[lr%d root%d p2=%d uf=%d ren=%d ->r%d]", k2,
+				  k2 >= 0 ? lvx_cms_lrange_root (lr, k2) : -1,
+				  g2->p2unroll, g2->use_first ? 1 : 0,
+				  g2->renamed ? 1 : 0,
+				  nm2 >= 0 ? nm2 + off2 : -1);
+		  }
+		else
+		  lvx_cms_dump ("[norange]");
+		lvx_cms_dump (" ");
+	      }
+	    FOR_EACH_INSN_USE (r2, orig)
+	      {
+		int ix = lvx_cms_reg_index (PATTERN (orig), DF_REF_LOC (r2));
+		int off2 = 0;
+		bool dly2 = false;
+		lvx_cms_lrange_part *g2
+		  = lvx_cms_lrange_of (lr, self, ix, &dly2, &off2);
+		int nm2 = g2 ? lvx_cms_lrange_reg (g2, iter, dly2) : -1;
+
+		lvx_cms_dump ("U%d:r%u", ix, DF_REF_REGNO (r2));
+		if (g2)
+		  {
+		    int k2 = -1;
+
+		    for (unsigned z = 0; z < lr.length (); z++)
+		      if (lr[z] == g2)
+			k2 = (int) z;
+		    lvx_cms_dump ("[lr%d root%d p2=%d uf=%d ren=%d dly=%d"
+				  " ->r%d]", k2,
+				  k2 >= 0 ? lvx_cms_lrange_root (lr, k2) : -1,
+				  g2->p2unroll, g2->use_first ? 1 : 0,
+				  g2->renamed ? 1 : 0, dly2 ? 1 : 0,
+				  nm2 >= 0 ? nm2 + off2 : -1);
+		  }
+		else
+		  lvx_cms_dump ("[norange]");
+		lvx_cms_dump (" ");
+	      }
+	  }
+
 	  if (code >= 0)
 	    {
 	      /* The STATIC constraints, not the chosen alternative: the
@@ -22629,8 +22720,19 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		     auto_vec<lvx_cms_arc> &arcs,
 		     auto_vec<int> &height,
 		     int *dropped_safelen, int *lrdrop_out /* [4] */ = NULL,
-		    const auto_vec<lvx_cms_prop> *prop = NULL)
+		    const auto_vec<lvx_cms_prop> *prop = NULL,
+		    const char **why = NULL)
 {
+  /* EVERY EXIT NAMES ITSELF.  §7tricies.143.  The caller used to print one
+     blanket "body is not a chain the analysis can walk" for all of them,
+     which made two different declines indistinguishable and -- because two
+     exits ALSO printed their own reason -- double-counted them: `partial
+     definition of rN' and `body is not a chain' both read 55 over four
+     suites because they were the SAME 55 loops, once from here and once from
+     the caller.  A bucket that cannot be attributed cannot be sized, and that
+     one was sized twice.  */
+  if (why)
+    *why = "the body graph cannot be built";
   /* The weakest safelen of any memory arc dropped below, or 0 if none was.
      The caller must check it against the converged NSTAGES: dropping is sound
      only while safelen >= nstages.  */
@@ -22673,10 +22775,11 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
       if (nxt == NULL)
 	{
 	  /* Not a chain: measuring a prefix would be worse than refusing.
-	     The gate above should have caught this already.  */
-	  if (dump_file)
-	    lvx_cms_dump (";; lvx unfold: loop %d declined, body is not"
-			  " a chain\n", loop->num);
+	     The gate above should have caught this already.  The message used
+	     to carry the `lvx unfold:' prefix, copied from that pass, so it
+	     was attributed to a phase that had not run.  */
+	  if (why)
+	    *why = "a body block has no successor inside the loop";
 	  return false;
 	}
       walk = nxt;
@@ -22684,7 +22787,11 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 
   unsigned n = seq.length ();
   if (n == 0)
-    return false;
+    {
+      if (why)
+	*why = "the body holds no schedulable instruction";
+      return false;
+    }
 
   /* Addresses as affine functions of the iteration, for the stride test that
      the memory arcs below use to disprove what the alias oracle cannot.  */
@@ -22832,6 +22939,8 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    }
 	  else if (partial_def)
 	    {
+	      if (why)
+		*why = "a partial definition reaches a use";
 	      if (dump_file)
 		lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, partial"
 			      " definition of r%u reaches a use\n",
@@ -23801,14 +23910,17 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   int dropped_safelen = 0;
 
   int lrdropped[4] = { 0, 0, 0, 0 };
-  if (!lvx_cms_build_graph (loop, body, seq, arcs, height, &dropped_safelen,
-			    lrdropped))
-    {
-      lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, body is not a"
-		    " chain the analysis can walk\n", current_function_name (),
-		    loop->num);
-      return;
-    }
+  {
+    const char *gwhy = "the body graph cannot be built";
+
+    if (!lvx_cms_build_graph (loop, body, seq, arcs, height, &dropped_safelen,
+			      lrdropped, NULL, &gwhy))
+      {
+	lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, %s\n",
+		      current_function_name (), loop->num, gwhy);
+	return;
+      }
+  }
 
   /* COPY PROPAGATION, BETWEEN THE GRAPH AND THE BOUNDS.  §7tricies.106.
      Here because it changes RecMII and the bounds are computed next, and
