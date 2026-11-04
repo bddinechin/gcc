@@ -7771,6 +7771,63 @@ lvx_get_mask_mode (machine_mode mode)
 #undef TARGET_VECTORIZE_GET_MASK_MODE
 #define TARGET_VECTORIZE_GET_MASK_MODE lvx_get_mask_mode
 
+/* Implements TARGET_VECTORIZE_EMPTY_MASK_IS_EXPENSIVE.
+
+   AN ALL-ZERO MASK IS NOT EXPENSIVE ON LVX, AND SAYING OTHERWISE COSTS THE
+   SOFTWARE PIPELINE.  §7tricies.152.
+
+   The default hook answers TRUE for IFN_MASK_STORE, on which `optimize_mask_
+   stores' wraps every masked store in `if (mask != 0)' -- its own comment
+   calls the result a "semi-hammock".  That is a good trade where a masked
+   store with no active lane still costs a real access.  It is a bad one here:
+
+     - the store is one LSU instruction carrying the MASKM prefix, and with no
+       lane set it writes no bytes, so what the branch saves is one issue slot
+       and no memory traffic;
+     - what the branch costs is a BCU slot plus the whole reduction of the
+       lane mask to a scalar condition.  Measured on TSVC's s271 -- one masked
+       store in the body -- that is five instructions: two FCOMPV4SFQI, an
+       INSVSI to stitch the halves of the 8-lane mask, an EXTENDQIDI2, and the
+       CBSI itself;
+     - and the semi-hammock puts a JOIN inside the loop.  The guarded store's
+       block falls through to the latch while the guard branches to it, so the
+       latch has two in-loop predecessors.  A superblock is single-entry and
+       multiple-exit, so no layout of those blocks is one: the side entry is a
+       property of the predecessor count, not of the order, and rotation
+       cannot remove it.  Tail duplication could, but the side entry is AT the
+       latch, so duplicating it would give the loop two back edges and stop it
+       being a natural loop at all.
+
+   So the pipeliner refuses the loop -- "a jump has no exit out of the loop",
+   the largest late-decline bucket at 23 loops over the four suites, 13 of
+   them TSVC's control-flow family -- over a guard that is pure dynamic
+   optimisation.
+
+   MEASURED, AND OFF BY DEFAULT ANYWAY.  Switching it on recovers 11 of those
+   23 (every TSVC one but s277), emitted 977 -> 988, and is semantically
+   neutral: all 151 TSVC2 checksums are identical with it on and off.  But
+   `deep>=3' does not move at all -- 298 both ways -- so every loop it
+   recovers is a two-stage pipeline, and by the metric of
+   `cms-built-count-not-a-metric' that is no gain.  The one cycle figure
+   available is 0.13% AGAINST it (37,765,915 vs 37,715,882 over the suite),
+   and that figure was taken with the PIPELINE OFF, where removing the guard
+   can only lose -- the arm that would show the benefit cannot run until the
+   two-pipelines-per-function miscompile is fixed.  Text is 208 bytes smaller.
+
+   So the hook is here, correct, and the default stays with the generic answer
+   until the measurement that justifies it can be taken.  */
+
+static bool
+lvx_empty_mask_is_expensive (unsigned ifn)
+{
+  if (!lvx_vect_empty_mask_cheap)
+    return default_empty_mask_is_expensive (ifn);
+  return false;
+}
+
+#undef TARGET_VECTORIZE_EMPTY_MASK_IS_EXPENSIVE
+#define TARGET_VECTORIZE_EMPTY_MASK_IS_EXPENSIVE lvx_empty_mask_is_expensive
+
 /* Implements TARGET_VECTORIZE_AUTOVECTORIZE_VECTOR_MODES.
 
    The pair (128 bits) stays the preferred width: lvx-2's SIMD arithmetic
@@ -25907,6 +25964,12 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		int cnheld = 0, cninv = 0, cnocc = 0;
 		int pool = 0;
 		bool cok, vok, rok2, aok = true, lok = true, claimed = false;
+		/* §7tricies.151: LOSOK is the LIVE-OUT SPLIT's own verdict.  It
+		   used to be folded into AOK, so both failures printed "a
+		   dropped anti-dependence is not separated" -- two unrelated
+		   commitments under one name, which is the shape that made the
+		   two 55s of §7tricies.143 look like 110 loops.  */
+		bool losok = true;
 
 		for (unsigned z = 0; z < seq.length (); z++)
 		  if (JUMP_P (seq[z]))
@@ -25968,7 +26031,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 				      " architected register\n",
 				      current_function_name (), loop->num,
 				      losbad);
-			aok = false;
+			losok = false;
 		      }
 		  }
 		if (!aok && lvx_cms_probe && dump_file)
@@ -26025,6 +26088,12 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		  iwhy = "a cycle's reads and writes cannot be linearised";
 		else if (!aok)
 		  iwhy = "a dropped anti-dependence is not separated";
+		else if (!losok)
+		  /* §7tricies.151: the live-out split's own commitment, which
+		     is that every dropped CTRL_LIVEOUT arc's range got a name
+		     of its own.  A range that kept the architected register
+		     did not, and the drop promised it would.  */
+		  iwhy = "a live-out split range kept the architected register";
 		else if (!rok2)
 		  iwhy = "a slot's insn refuses the rename substitution";
 		else
@@ -26048,13 +26117,15 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		  }
 		lvx_cms_dump (";; lvx cms: fn=%s loop %d cgcolour %s nodes=%d"
 			      " maxreg=%d kunroll=%d subst=%d refused=%d"
-			      " linear=%d claimed=%d lrantidep=%s conf=%d"
+			      " linear=%d claimed=%d lrantidep=%s losplit=%s"
+			      " conf=%d"
 			      " held=%d inv=%d occ=%d"
 			      " pair=%d/%d/r%d@%d avail=%d savepool=%d\n",
 			      current_function_name (), loop->num,
 			      cok ? "ok" : "no", nn, mx, kun, subst, refused,
 			      lok ? 1 : 0, plclaimed,
-			      aok ? "ok" : "BAD", nconf,
+			      aok ? "ok" : "BAD",
+			      losok ? "ok" : "BAD", nconf,
 			      cnheld, cninv, cnocc, ca, cb, creg, ccyc,
 			      (int) popcount_hwi (cgavail), pool);
 		/* THE CODEGEN SET, TAGGED.  Only the probe set was dumped,

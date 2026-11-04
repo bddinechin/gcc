@@ -232,3 +232,7 @@ Insert a copy after an instruction whose constraint group has a delayed read, so
 mcms-partial-arcs
 Target Var(lvx_cms_partial_arcs) Init(1) Optimization
 Where a partial definition reaches a use, make an arc from every definition that contributes to the value instead of declining the loop.  -mno-cms-partial-arcs restores the refusal, for measuring what it costs.
+
+mvect-empty-mask-cheap
+Target Var(lvx_vect_empty_mask_cheap) Init(0) Optimization
+Tell the vectorizer an all-zero mask is cheap, so it does not branch around a masked store.  Recovers 11 pipelines whose bodies the guard splits with a join, but OFF by default until the cycle case is made: the only cycle measurement available costs 0.13% on TSVC2, because it was taken with the pipeline off, where removing the guard can only lose.  7tricies.152.
