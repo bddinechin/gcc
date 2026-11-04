@@ -25732,14 +25732,41 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	     is kept, which costs nothing here because none of this uses a loop
 	     helper -- create_basic_block, make_edge and redirect_edge_and_branch
 	     are raw CFG calls and do not consult the flag.  */
+	  /* THE SKELETON IS BUILT LAST, AFTER EVERY CHECK HAS PASSED.
+	     §7tricies.145.
+
+	     lvx_cms_make_nodes CREATES BASIC BLOCKS and redirects edges, and
+	     it used to run HERE -- before the colouring, the linearisation and
+	     the rename dry run, each of which can refuse.  A refusal then left
+	     the blocks behind: §7tricies.72's defect exactly, "a refusal that
+	     has already mutated the CFG", and the class that returned a wrong
+	     answer on the gate's own earlyexit.c when a late refusal left a
+	     half-built pipeline.
+
+	     Nothing between creating the skeleton and emitting into it reads
+	     it -- the checks want SEQ, PLSLOTS and CGLR, and CGBLOCKS appears
+	     only in make_nodes' own dump line and in emit_pipeline's
+	     arguments.  So the mutation moves to the last point before
+	     emission, and every refusal above it becomes non-mutating by
+	     construction rather than by review.
+
+	     WITHOUT -mcms-pipeline it stays where it was: -mcms-codegen alone
+	     exists to build the block skeleton and emit nothing (§7tricies.?),
+	     so there the skeleton IS the product and there is no later point
+	     to defer it to.  */
 	  const char *nwhy = NULL;
 	  auto_vec<basic_block> cgblocks;
-	  bool built = lvx_cms_make_nodes (&site, loop, &plnodes, &cgblocks,
-					   &nwhy);
-	  lvx_cms_dump (";; lvx cms: fn=%s loop %d make_nodes %s blocks=%u"
-			" nodes=%u\n", current_function_name (), loop->num,
-			built ? "built" : nwhy, cgblocks.length (),
-			plnodes.length ());
+	  bool built = true;
+
+	  if (!lvx_cms_pipeline)
+	    {
+	      built = lvx_cms_make_nodes (&site, loop, &plnodes, &cgblocks,
+					  &nwhy);
+	      lvx_cms_dump (";; lvx cms: fn=%s loop %d make_nodes %s blocks=%u"
+			    " nodes=%u\n", current_function_name (),
+			    loop->num, built ? "built" : nwhy,
+			    cgblocks.length (), plnodes.length ());
+	    }
 
 	  /* PHASE TWO.  -mcms-pipeline emits the pipeline itself; without it
 	     the body is only put into schedule order, which is verified
@@ -25902,9 +25929,24 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		else if (!rok2)
 		  iwhy = "a slot's insn refuses the rename substitution";
 		else
-		  emitted = lvx_cms_emit_pipeline (&site, seq, plslots,
-						   plnodes, cgblocks, cglr,
-						   cgavail, &nemit, &iwhy);
+		  {
+		    /* Every check has passed: now the CFG may be touched.
+		       §7tricies.145.  */
+		    built = lvx_cms_make_nodes (&site, loop, &plnodes,
+						&cgblocks, &nwhy);
+		    lvx_cms_dump (";; lvx cms: fn=%s loop %d make_nodes %s"
+				  " blocks=%u nodes=%u\n",
+				  current_function_name (), loop->num,
+				  built ? "built" : nwhy, cgblocks.length (),
+				  plnodes.length ());
+		    if (!built)
+		      iwhy = nwhy;
+		    else
+		      emitted = lvx_cms_emit_pipeline (&site, seq, plslots,
+						       plnodes, cgblocks,
+						       cglr, cgavail, &nemit,
+						       &iwhy);
+		  }
 		lvx_cms_dump (";; lvx cms: fn=%s loop %d cgcolour %s nodes=%d"
 			      " maxreg=%d kunroll=%d subst=%d refused=%d"
 			      " linear=%d claimed=%d lrantidep=%s conf=%d"
