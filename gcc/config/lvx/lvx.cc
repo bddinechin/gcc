@@ -15311,6 +15311,57 @@ lvx_cms_operand_tied_p (rtx_insn *insn, int useidx)
    write it.  Ranges do not exist when the arcs are built, so the test is on the
    instruction -- does it define a register live on entry to the loop header.  */
 
+/* WILL THE DRAIN RECONCILE WHAT THIS ARC PROTECTS?  §7tricies.154.
+
+   The drop and the reconciliation were decided from two different sets, and
+   that is the miscompile.  The drop asked only whether the defining
+   instruction writes a register live-in at the loop HEADER -- a value carried
+   across the back edge, which is pinned and keeps its arc.  Everything else
+   was dropped, on the expectation that the drain copies it back.
+
+   But the drain's copy loop and lvx_cms_verify_liveout_split both iterate
+   EXIT_LIVE ranges that are def-headed and not use-headed, which is a
+   strictly smaller set.  A definition outside it loses its arc and gains no
+   copy: the scheduler is then free to hoist the next iteration's write of a
+   live-out register above the exit branch, and the exit returns a value one
+   iteration too far.  That is exactly the unsoundness
+   -mcms-drop-liveout-arcs is documented to have and is refused with codegen
+   for -- reached here by a drop wider than its own promise.
+
+   Measured on TSVC2's initialise_arrays: the loop dropped FIVE arcs with ONE
+   exit-live range, and the reconciliation covered that one.  The remaining
+   four produced a wild store, because the register the exit read held the
+   next iteration's packed float data.
+
+   So the predicate becomes the drain's own: an arc is droppable only where
+   the range its definition HEADS is one the drain will copy back.  RENAMED
+   cannot be asked here -- the colouring has not run -- which is precisely
+   what lvx_cms_verify_liveout_split checks afterwards, so the pair is now
+   bound, transform, re-bound over ONE set instead of two.  */
+
+static bool
+lvx_cms_liveout_arc_reconciled_p (const auto_vec<lvx_cms_lrange_part *> &lr,
+				  unsigned q)
+{
+  bool found = false;
+
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      lvx_cms_lrange_part *g = lr[k];
+
+      if (g->effects.is_empty ()
+	  || lvx_cms_lrange_root (lr, (int) k) != (int) k
+	  || g->effects[0].insn != q)
+	continue;
+      /* A range this instruction heads but the drain will not copy: the arc
+	 is real and must stay.  */
+      if (!g->exit_live || !g->effects[0].is_def || g->use_first)
+	return false;
+      found = true;
+    }
+  return found;
+}
+
 static bool
 lvx_cms_liveout_arc_pinned_p (class loop *loop,
 			      const auto_vec<rtx_insn *> &seq, unsigned q)
@@ -21069,10 +21120,20 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 
       /* The fresh register a cycle would need: one the colouring did not
 	 take, and not itself a source or a destination here.  */
+      /* A RANGE OCCUPIES NREGS REGISTERS, NOT ONE.  §7tricies.154.
+
+	 This cleared only the BASE of each name, so a 2- or 4-register value
+	 at r24 left r25, r26 and r27 looking free and the scratch could be
+	 chosen INSIDE a live tuple.  Found as a wild store on TSVC2's
+	 initialise_arrays loop 58, a 256-bit vectorised body: the address
+	 register came out holding packed float data.  */
       for (unsigned g = 0; g < lr.length (); g++)
 	for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
 	  if (lr[g]->reg[x] >= 0 && lr[g]->reg[x] < 64)
-	    free_regs &= ~((unsigned HOST_WIDE_INT) 1 << lr[g]->reg[x]);
+	    for (int t = 0; t < MAX (lr[g]->nregs, 1)
+			    && lr[g]->reg[x] + t < 64; t++)
+	      free_regs
+		&= ~((unsigned HOST_WIDE_INT) 1 << (lr[g]->reg[x] + t));
       for (unsigned z = 0; z < psrc.length (); z++)
 	{
 	  free_regs &= ~((unsigned HOST_WIDE_INT) 1 << psrc[z]);
@@ -21173,7 +21234,9 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  lvx_cms_lrange_part *q = lr[g];
 	  for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
 	    if (q->reg[x] >= 0 && q->reg[x] < 64)
-	      free_regs &= ~((unsigned HOST_WIDE_INT) 1 << q->reg[x]);
+	      /* NREGS, not one -- §7tricies.154, as above.  */
+	      for (int t = 0; t < MAX (q->nregs, 1) && q->reg[x] + t < 64; t++)
+		free_regs &= ~((unsigned HOST_WIDE_INT) 1 << (q->reg[x] + t));
 	}
       for (int r = 0; r < 64; r++)
 	if ((free_regs >> r) & 1)
@@ -24145,18 +24208,30 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
     {
       auto_vec<lvx_cms_arc> kept;
       auto_vec<int> crit2;
+      auto_vec<lvx_cms_lrange_part *> dlr;
       int m2, r2, k2, ndrop = 0;
+
+      /* The same function on the same body, for the same reason
+	 §7tricies.110 gives: the drop must read the partition the drain
+	 will act on, not a different description of the program.  Only
+	 EXIT_LIVE, EFFECTS[0] and USE_FIRST are consulted, all of which
+	 lvx_cms_build_lranges settles without dates.  */
+      lvx_cms_build_lranges (seq, dlr, NULL, NULL, NULL, NULL, NULL, &prop);
 
       for (unsigned a = 0; a < arcs.length (); a++)
 	{
 	  if (arcs[a].kind == LVX_ARC_CTRL_LIVEOUT
-	      && !lvx_cms_liveout_arc_pinned_p (loop, seq, arcs[a].dst))
+	      && !lvx_cms_liveout_arc_pinned_p (loop, seq, arcs[a].dst)
+	      && lvx_cms_liveout_arc_reconciled_p (dlr, arcs[a].dst))
 	    {
 	      ndrop++;
 	      continue;
 	    }
 	  kept.safe_push (arcs[a]);
 	}
+      for (unsigned z = 0; z < dlr.length (); z++)
+	delete dlr[z];
+      dlr.truncate (0);
       if (ndrop
 	  && lvx_cms_bounds (loop, body, seq, kept, height, &m2, &r2, &k2,
 			     &crit2)
@@ -26896,6 +26971,12 @@ lvx_cms_probe_loops (void)
       const char *why = "";
 
       if (loop->latch == NULL)
+	continue;
+
+      /* §7tricies.153: the per-function companion to -mcms-only-loop, for
+	 bisecting a wrong answer down to the function that produces it.  */
+      if (lvx_cms_only_fn && lvx_cms_only_fn[0]
+	  && !strstr (current_function_name (), lvx_cms_only_fn))
 	continue;
 
       body = get_loop_body (loop);
