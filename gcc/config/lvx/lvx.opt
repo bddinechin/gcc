@@ -216,6 +216,14 @@ Target RejectNegative Joined UInteger Var(lvx_cms_only_loop) Init(0) Optimizatio
 -mcms-only-loop=N	Consider only loop N of each function, to bisect which pipelined loop a wrong answer comes from; 0 considers them all.  Measurement only.
 
 
+mcms-ph-parts=
+Target RejectNegative Joined UInteger Var(lvx_cms_ph_parts) Init(15) Optimization
+-mcms-ph-parts=N	Which consequences of -mcms-preheader-copy to take, as a bitmask, to bisect which one is unsound: 1 un-pin the colouring and emit the copy, 2 relax the register anti-dependences, 4 relax the live-out arc keeps, 8 extend the live-out verifier and its exclusion.  15 is all of them.  Measurement only.  7tricies.156.
+
+mcms-preheader-copy
+Target Var(lvx_cms_preheader_copy) Init(0) Optimization
+Free name 0 of a use-headed range by copying the incoming value into it in the preheader, instead of pinning name 0 to the register the preheader wrote.  Unlocks the register anti-dependences, the colouring and the live-out arc drop for every loop-carried value.  7tricies.156.
+
 mcms-usefirst-unpinned
 Target Var(lvx_cms_usefirst_unpinned) Init(0) Optimization
 Size what a PREHEADER COPY would be worth, by pretending name 0 of a use-headed range is not pinned to the register the preheader wrote.  Measurement only: requires -mcms-probe and refused with -mcms-codegen, because without the copy the body really does write the architected register.  7tricies.155.

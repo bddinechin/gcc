@@ -13442,7 +13442,8 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		const auto_vec<int> *vusefirst = NULL,
 		int *pinned_out = NULL, int *pinfail_out = NULL,
 		const auto_vec<int> *vnotown = NULL,
-		const auto_vec<int> *vprefer = NULL)
+		const auto_vec<int> *vprefer = NULL,
+		unsigned HOST_WIDE_INT entrybusy = 0)
 {
   int nn = 0, ne = 0, msq = 0, spl = 0, per = 0, kun = 1, maxreg = -1;
   int pinned = 0, pinfail = 0;
@@ -13751,6 +13752,14 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		 lifetime fits in one stage -- which is also why §7quater.5's
 		 reconciliation moves exist on the exit side, and why the entry
 		 side needs the same treatment rather than a pin.  */
+	      /* §7tricies.156: with the preheader copy there is no external
+		 constraint left to express -- the copy puts the incoming
+		 value into whatever register name 0 is given, so name 0 is
+		 an ordinary free choice like names 1..p2-1.  This is the
+		 "entry side needs the same treatment rather than a pin" the
+		 paragraph above asks for.  */
+	      if (lvx_cms_preheader_copy && (lvx_cms_ph_parts & 1))
+		continue;
 	      if (v >= (int) vusefirst->length () || !(*vusefirst)[v])
 		continue;
 	      int r = (*vregno)[v];
@@ -13803,6 +13812,29 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		for (int t = 0; t < nnreg[b2] && reg[b2] + t < 64; t++)
 		  busy |= (unsigned HOST_WIDE_INT) 1 << (reg[b2] + t);
 	      }
+	    /* AND NAME 0 OF A USE-HEADED RANGE MUST NOT TAKE A REGISTER WHOSE
+	       INCOMING VALUE THE PIPELINE STILL READS.  §7tricies.156.
+
+	       AVAIL is what the colouring may use in the KERNEL, where the
+	       values the preheader left behind are dead.  The entry copy runs
+	       BEFORE the prologue, where they are not: measured on zlib's
+	       inflate_blocks loop 5, name 0 of the range carried in r9 was
+	       given r3, so the entry copy `r3 <- r9' destroyed the incoming
+	       r3 that the prologue's very next instruction reads as the
+	       source of `addw $r40 = $r3, 8'.
+
+	       The pin hid this by construction -- name 0 WAS the architected
+	       register, so it never landed on another value's -- which is why
+	       freeing name 0 needs this constraint to replace it rather than
+	       simply removing one.  ENTRYBUSY is the live-in set at the loop
+	       header, and it binds only the name the entry copy writes: names
+	       1..p2-1 are written inside the kernel, after those values have
+	       been read for the last time.  */
+	    if (entrybusy && nname[a] == 0 && vusefirst
+		&& nval[a] < (int) vusefirst->length ()
+		&& (*vusefirst)[nval[a]])
+	      busy |= entrybusy;
+
 	    /* MUST NOT KEEP ITS OWN REGISTER.  §7tricies.113.
 
 	       A live-out range whose CTRL_LIVEOUT arc was dropped promised
@@ -15369,7 +15401,8 @@ lvx_cms_liveout_arc_reconciled_p (const auto_vec<lvx_cms_lrange_part *> &lr,
       /* §7tricies.155: the PIN is the only thing keeping this arc, so it is
 	 the one a preheader copy would remove.  The lever says what that
 	 would be worth; without the copy the pin is real.  */
-      if (g->use_first && !lvx_cms_usefirst_unpinned)
+      if (g->use_first && !lvx_cms_usefirst_unpinned
+	  && !(lvx_cms_preheader_copy && (lvx_cms_ph_parts & 4)))
 	return false;
       found = true;
     }
@@ -15426,7 +15459,11 @@ lvx_cms_verify_liveout_split (const auto_vec<lvx_cms_lrange_part *> &lr,
 	 verifier refused, on ranges whose arcs had correctly been kept.  A
 	 verifier stricter than the transformation it guards reports the
 	 transformation's successes as failures.  */
-      if (g->use_first)
+      /* §7tricies.156: with the preheader copy a use-headed range is
+	 renamed like any other and the drop admits it, so it must be IN the
+	 set this verifier checks -- the whole lesson of §7tricies.154.  */
+      if (g->use_first
+	  && !(lvx_cms_preheader_copy && (lvx_cms_ph_parts & 8)))
 	continue;
       if (!g->renamed)
 	{
@@ -16945,7 +16982,13 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 static bool
 lvx_cms_lrange_keeps_regno_p (const auto_vec<lvx_cms_lrange_part *> &lr, int root)
 {
-  return !lr[root]->renamed || lr[root]->use_first;
+  /* §7tricies.156: USE_FIRST keeps its register only because name 0 is
+     pinned to it.  The preheader copy removes the pin, so a renamed
+     use-headed range keeps no register and its anti-dependences are as
+     spurious as any other renamed range's.  */
+  return !lr[root]->renamed
+	 || (lr[root]->use_first
+	     && !(lvx_cms_preheader_copy && (lvx_cms_ph_parts & 2)));
 }
 
 static bool
@@ -17686,7 +17729,12 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 			int *stuck_out, int *maxreg_out, int *kun_out,
 			int *pin_out, int *pinfail_out, int *wide_out,
 			int claim_def_cycle = 0,
-			auto_vec<int> *stuck_lr = NULL)
+			auto_vec<int> *stuck_lr = NULL,
+			/* §7tricies.156: registers name 0 of a use-headed
+			   range may not take, because the entry copy would
+			   destroy an incoming value the pipeline still
+			   reads.  Zero where there is no entry copy.  */
+			unsigned HOST_WIDE_INT entrybusy = 0)
 {
   auto_vec<int> idx, def_, last_, deg, nregs_, ec_, vregno, vuf;
   auto_vec<int> av, an, ar, stuck;
@@ -17872,7 +17920,13 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	{
 	  lvx_cms_lrange_part *g = lr[idx[u]];
 
-	  vnotown[u] = (g->exit_live && !g->use_first
+	  /* §7tricies.156: and so must the exclusion that makes the promise
+	     satisfiable, or the colouring would hand a use-headed range its
+	     own register and the verifier would then refuse the loop.  */
+	  vnotown[u] = (g->exit_live
+			&& (!g->use_first
+			    || (lvx_cms_preheader_copy
+				&& (lvx_cms_ph_parts & 8)))
 			&& !g->effects.is_empty () && g->effects[0].is_def)
 		       ? (int) g->regno : -1;
 	  if (vnotown[u] >= 0)
@@ -17884,7 +17938,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 		  &spl, &per, &kun, &stuck, &av, &an, &ar, &maxreg, avail,
 		  &vregno, &vuf, &pinned, &pinfail,
 		  lvx_cms_liveout_split ? &vnotown : NULL,
-		  lvx_cms_copy_pref ? &vprefer : NULL);
+		  lvx_cms_copy_pref ? &vprefer : NULL, entrybusy);
 
   for (unsigned u = 0; u < idx.length (); u++)
     {
@@ -21087,8 +21141,33 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		best = slots[z].iter;
 	    }
 	  if (best < 0)
-	    continue;		/* no definition on this path: live-in wins */
-	  nm = lvx_cms_lrange_reg (q, best, q->effects[0].delayed);
+	    {
+	      /* "LIVE-IN WINS" WAS A CONSEQUENCE OF THE PIN.  §7tricies.156.
+
+		 On a path where no instance of the heading definition ran,
+		 the architected register still holds what the preheader put
+		 there -- so there was nothing to copy.  That is only true
+		 while name 0 IS the architected register.  Once the entry
+		 copy moves the incoming value into a name of its own, this
+		 path leaves the architected register STALE and no copy
+		 behind, which is the §7tricies.154 defect over again: a
+		 promise discharged on one set of paths and assumed on
+		 another.
+
+		 Such a path drains name 0 and nothing else, because name 0
+		 is what the entry copy wrote and no definition has advanced
+		 the rotation.  Measured on zlib's inflate_blocks loop 5,
+		 which has five use-headed ranges and seven exit paths out of
+		 a five-slot prologue, so most of its drains are exactly this
+		 case.  */
+	      if (!lvx_cms_preheader_copy || !(lvx_cms_ph_parts & 1)
+		  || !q->use_first || !q->renamed
+		  || q->reg[0] < 0 || q->reg[0] == (int) q->regno)
+		continue;
+	      nm = q->reg[0];
+	    }
+	  else
+	    nm = lvx_cms_lrange_reg (q, best, q->effects[0].delayed);
 	  if (nm < 0 || nm == (int) q->regno)
 	    continue;		/* already in the architectural register */
 	  nr = MAX (q->nregs, 1);
@@ -21196,6 +21275,151 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       lvx_cms_dump (";; lvx cms:   live-out node%u bb%d: %u parallel copies"
 		    " -> %u sequential, scratch r%d\n", k, blocks[k]->index,
 		    psrc.length (), osrc.length (), scratch);
+    }
+
+  /* THE ENTRY-SIDE RECONCILIATION.  §7tricies.156.
+
+     The exit side has had reconciliation moves since §7quater.5; the entry
+     side was a PIN instead, and the paragraph beside that pin says it should
+     not have been -- "register allocation's assignment is not valid for the
+     unrolled kernel ... which is also why §7quater.5's reconciliation moves
+     exist on the exit side, and why the entry side needs the same treatment
+     rather than a pin".  This is that treatment.
+
+     A use-headed range takes its name 0 from outside the kernel, so name 0
+     had to BE the register the preheader wrote.  One copy
+     `reg[0] <- regno' before the pipeline starts removes the constraint:
+     the incoming value is placed in whatever register the colouring chose,
+     and name 0 becomes an ordinary free choice.  The index arithmetic is
+     untouched -- `(iteration + use_first - delayed) & (p2unroll - 1)' still
+     puts the incoming value at index 0 and the first body definition at
+     index 1 -- so this adds no new naming rule, it only stops one register
+     being dictated from outside.
+
+     ONE COPY PER RANGE AND ONE EXECUTION PER LOOP ENTRY, which is what
+     separates it from -mcms-tied-copy: that phase put a copy in the BODY for
+     every constraint group and spent 1352 of them on about five needs,
+     taking emitted from 949 to 877.  The set is a PARALLEL copy -- two
+     use-headed ranges can want each other's registers -- so it goes through
+     lvx_cms_seq_pcopy and the scratch machinery the drain already uses,
+     including the tuple-span fix of §7tricies.154, since a loop-carried
+     value can be a register tuple.
+
+     IT MUST RUN ONCE, so it needs a block entered only from the preheader.
+     BLOCKS[0] is such a block when NODES[0] is a prologue stage, which is
+     the case the phase exists for; where the kernel comes first there is no
+     prologue to hide it in and the copy would execute every iteration, so
+     the loop is refused instead of being given a copy in the wrong place.  */
+  if (lvx_cms_preheader_copy && (lvx_cms_ph_parts & 1))
+    {
+      auto_vec<int> psrc, pdst, osrc, odst;
+      auto_vec<machine_mode> pmode, omode;
+      unsigned HOST_WIDE_INT free_regs = avail;
+      int scratch = -1;
+      rtx_insn *after;
+
+      for (unsigned g = 0; g < lr.length (); g++)
+	{
+	  lvx_cms_lrange_part *q = lr[g];
+	  rtx *uloc;
+	  int nr, nm;
+
+	  if (q->effects.is_empty ()
+	      || lvx_cms_lrange_root (lr, (int) g) != (int) g
+	      || !q->use_first || !q->renamed)
+	    continue;
+	  nm = q->reg[0];
+	  /* Nothing to do where the colouring took the architected register
+	     for name 0 anyway -- which VPREFER's copy-deleting preference
+	     (§7tricies.122) arranges wherever it is free.  */
+	  if (nm < 0 || nm == (int) q->regno)
+	    continue;
+	  if (q->effects[0].insn >= seq.length ()
+	      || q->effects[0].slot == LVX_CMS_SLOT_INDIRECT)
+	    {
+	      *why = "a use-headed range has no operand to copy through";
+	      return false;
+	    }
+	  uloc = lvx_cms_reg_at (&PATTERN (seq[q->effects[0].insn]),
+				 q->effects[0].slot);
+	  if (!uloc || !*uloc || !REG_P (*uloc))
+	    {
+	      *why = "a use-headed range's first reference is not a register";
+	      return false;
+	    }
+	  /* Componentwise, and DImode per component for a tuple, for the
+	     reasons §7tricies.73 gives on the exit side.  */
+	  nr = MAX (q->nregs, 1);
+	  for (int t = 0; t < nr; t++)
+	    {
+	      psrc.safe_push ((int) q->regno + t);
+	      pdst.safe_push (nm + t);
+	      pmode.safe_push (nr == 1 ? GET_MODE (*uloc) : DImode);
+	    }
+	}
+
+      if (!psrc.is_empty ())
+	{
+	  *why = "the first pipeline block is not entered from the preheader"
+		 " alone";
+	  if (!single_pred_p (blocks[0])
+	      || single_pred (blocks[0]) != site->preheader)
+	    return false;
+
+	  for (unsigned g = 0; g < lr.length (); g++)
+	    for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
+	      if (lr[g]->reg[x] >= 0 && lr[g]->reg[x] < 64)
+		for (int t = 0; t < MAX (lr[g]->nregs, 1)
+				&& lr[g]->reg[x] + t < 64; t++)
+		  free_regs
+		    &= ~((unsigned HOST_WIDE_INT) 1 << (lr[g]->reg[x] + t));
+	  for (unsigned z = 0; z < psrc.length (); z++)
+	    {
+	      free_regs &= ~((unsigned HOST_WIDE_INT) 1 << psrc[z]);
+	      free_regs &= ~((unsigned HOST_WIDE_INT) 1 << pdst[z]);
+	    }
+	  for (int r = 0; r < 64; r++)
+	    if ((free_regs >> r) & 1)
+	      {
+		scratch = r;
+		break;
+	      }
+
+	  *why = "an entry parallel copy cannot be sequentialised";
+	  if (!lvx_cms_seq_pcopy (psrc, pdst, pmode, scratch, &osrc, &odst,
+				  &omode))
+	    return false;
+
+	  after = BB_HEAD (blocks[0]);
+	  if (LABEL_P (after))
+	    after = NEXT_INSN (after);
+	  *why = "no NOTE_INSN_BASIC_BLOCK for an entry copy";
+	  if (!after || !NOTE_INSN_BASIC_BLOCK_P (after))
+	    return false;
+	  for (unsigned z = 0; z < osrc.length (); z++)
+	    {
+	      rtx_insn *mv
+		= emit_insn_after_noloc (gen_rtx_SET
+					   (gen_rtx_REG (omode[z], odst[z]),
+					    gen_rtx_REG (omode[z], osrc[z])),
+					 after, NULL);
+
+	      *why = "an entry copy does not recognise";
+	      if (recog_memoized (mv) < 0)
+		return false;
+	      after = mv;
+	      nemit++;
+	    }
+	  lvx_cms_dump (";; lvx cms:   entry bb%d: %u parallel copies -> %u"
+			" sequential, scratch r%d\n", blocks[0]->index,
+			psrc.length (), osrc.length (), scratch);
+	  for (unsigned z = 0; z < psrc.length (); z++)
+	    lvx_cms_dump (";; lvx cms:     ENTRYCOPY r%d <- r%d\n",
+			  pdst[z], psrc[z]);
+	  for (unsigned z = 0; z < osrc.length (); z++)
+	    lvx_cms_dump (";; lvx cms:     ENTRYSEQ  r%d <- r%d\n",
+			  odst[z], osrc[z]);
+	}
     }
 
   /* THE HARDWARE LOOP ITSELF: the exit-free copy of the kernel, and the two
@@ -24243,6 +24467,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	     measured identically.  */
 	  if (arcs[a].kind == LVX_ARC_CTRL_LIVEOUT
 	      && (lvx_cms_usefirst_unpinned
+		  || (lvx_cms_preheader_copy && (lvx_cms_ph_parts & 4))
 		  || !lvx_cms_liveout_arc_pinned_p (loop, seq, arcs[a].dst))
 	      && lvx_cms_liveout_arc_reconciled_p (dlr, arcs[a].dst))
 	    {
@@ -26051,7 +26276,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	      {
 		auto_vec<lvx_cms_lrange_part *> cglr;
 		HARD_REG_SET cgresv;
-		unsigned HOST_WIDE_INT cgavail = 0;
+		unsigned HOST_WIDE_INT cgavail = 0, cgentry = 0;
 		int nn = 0, nst = 0, mx = -1, kun = 1, pin = 0, pinf = 0;
 		int wide = 0, nr = 0, orph = 0, dupl = 0, nol = 0;
 		int subst = 0, refused = 0;
@@ -26084,9 +26309,30 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
 		  if (!TEST_HARD_REG_BIT (cgresv, r))
 		    cgavail |= (unsigned HOST_WIDE_INT) 1 << r;
+		/* §7tricies.156: what the entry copy may not overwrite.  A
+		   register live on entry to the header may still be holding
+		   an incoming value the prologue reads, even though AVAIL
+		   frees it because the body's writer of it gets renamed.  */
+		if (lvx_cms_preheader_copy)
+		  for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
+		    if (bitmap_bit_p (df_get_live_in (loop->header), r))
+		      cgentry |= (unsigned HOST_WIDE_INT) 1 << r;
 		cok = lvx_cms_colour_lranges (seq, cglr, found, lo, cgavail,
 					      &nn, &nst, &mx, &kun, &pin,
-					      &pinf, &wide);
+					      &pinf, &wide, 0, NULL, cgentry);
+		lvx_cms_dump (";; lvx cms: fn=%s loop %d ENTRYBUSY avail=%d"
+			      " entry=%d first8=%c%c%c%c%c%c%c%c\n",
+			      current_function_name (), loop->num,
+			      (int) popcount_hwi (cgavail),
+			      (int) popcount_hwi (cgentry),
+			      (cgentry >> 0) & 1 ? '1' : '0',
+			      (cgentry >> 1) & 1 ? '1' : '0',
+			      (cgentry >> 2) & 1 ? '1' : '0',
+			      (cgentry >> 3) & 1 ? '1' : '0',
+			      (cgentry >> 4) & 1 ? '1' : '0',
+			      (cgentry >> 5) & 1 ? '1' : '0',
+			      (cgentry >> 6) & 1 ? '1' : '0',
+			      (cgentry >> 7) & 1 ? '1' : '0');
 
 		/* THE CLAIM IS DECIDED, NOT RE-DECIDED.  §7tricies.51.  The
 		   negotiation before the plan already settled whether the
@@ -26101,7 +26347,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		    cok = lvx_cms_colour_lranges (seq, cglr, found, lo,
 						  cgavail, &nn, &nst, &mx,
 						  &kun, &pin, &pinf, &wide,
-						  plclaimed);
+						  plclaimed, NULL, cgentry);
 		  }
 		{
 		  auto_vec<int> probe_order;
