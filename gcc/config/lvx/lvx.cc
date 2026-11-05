@@ -15606,6 +15606,30 @@ lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange_part *> &, unsigned, unsign
 static lvx_cms_lrange_part *
 lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange_part *> &, unsigned, unsigned);
 
+/* A LOOP-INVARIANT RANGE: every reference is a read, so the body never writes
+   it and its value comes from outside the loop.  §7tricies.167.  */
+
+static bool
+lvx_cms_lrange_invariant_p (const auto_vec<lvx_cms_lrange_part *> &lr,
+			    int root)
+{
+  bool any = false;
+
+  for (unsigned k = 0; k < lr.length (); k++)
+    {
+      if (lr[k]->effects.is_empty ()
+	  || lvx_cms_lrange_root (lr, (int) k) != root)
+	continue;
+      for (unsigned e = 0; e < lr[k]->effects.length (); e++)
+	{
+	  if (lr[k]->effects[e].is_def)
+	    return false;
+	  any = true;
+	}
+    }
+  return any;
+}
+
 static void
 lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		       auto_vec<lvx_cms_lrange_part *> &lr, int *ntie_out,
@@ -16269,9 +16293,28 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
      would mean copying the incoming value into each of them.  So this is not
      a restriction to be lifted; it is the statement that there is nothing to
      expand.  Counted as `held' in the lranges dump.  */
+  /* §7tricies.167: NOTHING TO EXPAND IS NOT NOTHING TO RELOCATE.  The
+     paragraph above is right that P2UNROLL of 1 is the answer and that
+     kunroll names would mean copying the incoming value into each of them.
+     It does not follow that the one name has to be the register the value
+     ARRIVED in, and holding it there is what makes it collide with a tuple
+     that needs that register -- fourteen of the fifteen `a dropped
+     anti-dependence is not separated' refusals are a held narrow range
+     sitting inside a held wide one (§7tricies.165).
+
+     Relocating costs ONE copy in the preheader, not kunroll of them,
+     precisely because p2unroll stays 1.  So the range keeps its single name
+     and gives up only its address.  */
   for (unsigned k = 0; k < lr.length (); k++)
     if (!lr[k]->effects.is_empty () && !lr[k]->effects[0].is_def)
-      lr[lvx_cms_lrange_root (lr, (int) k)]->renamed = false;
+      {
+	int rt = lvx_cms_lrange_root (lr, (int) k);
+
+	if (lvx_cms_relocate_invariant
+	    && lvx_cms_lrange_invariant_p (lr, rt))
+	  continue;
+	lr[rt]->renamed = false;
+      }
 
   /* MULTI-REGISTER OPERANDS: THE FALLBACK.  §7tricies.33.
 
@@ -16343,8 +16386,29 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  bhi = blo + MAX (lr[b]->nregs, 1);
 	  if (alo < bhi && blo < ahi && !(alo == blo && ahi == bhi))
 	    {
-	      lr[ra]->renamed = false;
-	      lr[rb]->renamed = false;
+	      /* §7tricies.167: AN INVARIANT RANGE IS NOT A SUB-REGISTER VIEW.
+		 The reason above -- "renamed independently the pair moves to
+		 a fresh aligned pair while the half moves elsewhere, and the
+		 two stop naming the same storage" -- is about a reference
+		 that IS part of the wide value, where the aliasing carries a
+		 dependence.  A range whose every reference is a read has no
+		 definition anywhere in the body, so nothing in the body
+		 produced its value and it is not a view of the other's
+		 output: the two merely occupy overlapping storage, and
+		 separating them is the point rather than the hazard.
+
+		 Sound even when the other range stays held and keeps writing
+		 those registers, because the relocated range's copy is taken
+		 in the preheader FROM the original register, before the body
+		 writes anything -- and sound when both are invariant, for the
+		 same reason: each copy reads the incoming storage, so the two
+		 still agree about the value they came from.  */
+	      if (!(lvx_cms_relocate_invariant
+		    && lvx_cms_lrange_invariant_p (lr, ra)))
+		lr[ra]->renamed = false;
+	      if (!(lvx_cms_relocate_invariant
+		    && lvx_cms_lrange_invariant_p (lr, rb)))
+		lr[rb]->renamed = false;
 	    }
 	}
     }
@@ -17828,7 +17892,24 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	 stays on LIFE, so reserving the register longer costs no extra name.
 	 §7tricies.137.  */
       last_.safe_push (MAX (g->occ_last, g->last_date));
+      /* §7tricies.167: an invariant range keeps ONE name -- that is what
+	 §7tricies.91 established and relocation does not change it.  But one
+	 name only works while LIFE fits in it, so where it does not the
+	 range goes back to being held rather than silently asking the
+	 capacity invariant to fail.  */
+      if (lvx_cms_relocate_invariant && g->renamed && ii > 0
+	  && lvx_cms_lrange_invariant_p (lr, (int) k))
+	{
+	  if (life > ii)
+	    g->renamed = false;
+	  else
+	    {
+	      deg.safe_push (1);
+	      goto deg_done;
+	    }
+	}
       deg.safe_push (ii > 0 ? MAX ((life + ii - 1) / ii, 1) : 1);
+    deg_done:;
       /* §7tricies.147: the degree's own inputs, for ranges that will rotate.
 	 Deducing EC from the pattern and the claim mode got the wrong answer
 	 twice; this prints what the computation actually used.  */
@@ -21408,9 +21489,15 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  rtx *uloc;
 	  int nr, nm;
 
+	  /* §7tricies.167: the entry copy is for a value that arrives from
+	     OUTSIDE the loop, which is the use-headed case and equally the
+	     invariant one -- every reference a read, so nothing in the body
+	     ever writes it.  Keyed on use_first alone it missed the second.  */
 	  if (q->effects.is_empty ()
 	      || lvx_cms_lrange_root (lr, (int) g) != (int) g
-	      || !q->use_first || !q->renamed)
+	      || !q->renamed
+	      || !(q->use_first
+		   || lvx_cms_lrange_invariant_p (lr, (int) g)))
 	    continue;
 	  nm = q->reg[0];
 	  /* Nothing to do where the colouring took the architected register
@@ -21421,7 +21508,8 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  if (q->effects[0].insn >= seq.length ()
 	      || q->effects[0].slot == LVX_CMS_SLOT_INDIRECT)
 	    {
-	      *why = "a use-headed range has no operand to copy through";
+	      *why = "a range from outside the loop has no operand to copy"
+		     " through";
 	      return false;
 	    }
 	  uloc = lvx_cms_reg_at (&PATTERN (seq[q->effects[0].insn]),
