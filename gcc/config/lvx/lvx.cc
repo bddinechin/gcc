@@ -21438,6 +21438,55 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	      after = mv;
 	      nemit++;
 	    }
+	  /* IS THE ENTRY COPY ON EVERY PATH INTO THE PIPELINE?
+	     §7tricies.157.
+
+	     The copy is the only writer of name 0 before the first read, so a
+	     pipeline block reachable WITHOUT passing through BLOCKS[0] reads
+	     an undefined register -- which is the shape §7tricies.156's
+	     layout- and pressure-sensitivity points at.  SINGLE_PRED_P on
+	     BLOCKS[0] says the copy runs once; it does not say it runs
+	     always, because the emission retargets exits and the skeleton
+	     chain is broken up as it goes.
+
+	     Asked by reachability rather than by dominators, which are stale
+	     after the mutation: walk the CFG from the entry block, refusing
+	     to cross BLOCKS[0], and see whether any block holding a slot of
+	     this pipeline is reached.  */
+	  {
+	    auto_bitmap seen, pipe;
+	    auto_vec<basic_block> work;
+	    unsigned bad = 0;
+
+	    for (unsigned z = 0; z < nnode; z++)
+	      bitmap_set_bit (pipe, blocks[z]->index);
+	    bitmap_set_bit (seen, blocks[0]->index);	/* the barrier */
+	    bitmap_set_bit (seen, ENTRY_BLOCK_PTR_FOR_FN (cfun)->index);
+	    work.safe_push (ENTRY_BLOCK_PTR_FOR_FN (cfun));
+	    while (!work.is_empty ())
+	      {
+		basic_block bb = work.pop ();
+		edge e;
+		edge_iterator ei;
+
+		FOR_EACH_EDGE (e, ei, bb->succs)
+		  if (!bitmap_bit_p (seen, e->dest->index))
+		    {
+		      bitmap_set_bit (seen, e->dest->index);
+		      if (bitmap_bit_p (pipe, e->dest->index))
+			{
+			  lvx_cms_dump (";; lvx cms:   ENTRYBYPASS bb%d"
+					" reached without bb%d\n",
+					e->dest->index, blocks[0]->index);
+			  bad++;
+			}
+		      work.safe_push (e->dest);
+		    }
+	      }
+	    *why = "a pipeline block is reachable without the entry copy";
+	    if (bad)
+	      return false;
+	  }
 	  lvx_cms_dump (";; lvx cms:   entry bb%d: %u parallel copies -> %u"
 			" sequential, scratch r%d\n", blocks[0]->index,
 			psrc.length (), osrc.length (), scratch);
