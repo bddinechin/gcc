@@ -16761,9 +16761,18 @@ lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange_part *> &lr)
    WHAT IT MUST COVER THAT THE COLOURING DOES NOT.  A HELD live range is not in
    the interference graph at all -- lvx_cms_colour_lranges skips every root
    that is not renamed -- so its register is invisible there and is kept out of
-   AVAIL instead.  Here it is given an occupancy of the WHOLE PERIOD, which is
-   what holding a register means, so a renamed name landing on it is caught
-   rather than assumed away.
+   AVAIL instead.  Here it is given an occupancy of its own, so a renamed name
+   landing on it is caught rather than assumed away.
+
+   THAT OCCUPANCY IS ITS LIFE AT EVERY ITERATION OFFSET, NOT THE WHOLE PERIOD.
+   This paragraph used to say the period, and the code below has not done that
+   since §7tricies.93 -- the sentence outlived its own fix and is why the
+   fifteen "a dropped anti-dependence is not separated" refusals were first
+   read as the verifier over-claiming.  A held range has P2UNROLL 1 by
+   construction, so every iteration's instance reuses the one register: the
+   occupancy is LIFE cycles at each of the KUNROLL offsets, which is what the
+   loop below builds and which makes a held range whose life approaches II
+   overlap ITSELF across iterations.  §7tricies.165.
 
    A VIOLATING PAIR IS REPORTED, not just counted, because fixRelaxed needs to
    know which two live ranges to reinstate an arc between.  */
