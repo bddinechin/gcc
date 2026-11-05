@@ -27756,6 +27756,7 @@ lvx_superblock_inner_loops (void)
   if (lvx_cms_rotate_bottom_test)
     {
       auto_vec<class loop *> cand;
+      auto_vec<basic_block> mergea, mergeb;
 
       for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
 	{
@@ -27822,10 +27823,7 @@ lvx_superblock_inner_loops (void)
 	  /* FOUND, NOT ASKED FOR: loop_preheader_edge asserts on
 	     LOOPS_HAVE_PREHEADERS, which AVOID_CFG_MODIFICATIONS does not
 	     set -- Phase A creates the preheaders without setting the state.
-	     The same reason lvx_cms_probe_loop finds its entry edge by hand
-	     (§7tricies, "CMS runs loop_optimizer_init with
-	     AVOID_CFG_MODIFICATIONS, so there may be no preheader to ask
-	     for").  */
+	     The same reason lvx_cms_probe_loop finds its entry edge by hand.  */
 	  FOR_EACH_EDGE (e2, ei2, loop->header->preds)
 	    if (!flow_bb_inside_loop_p (loop, e2->src))
 	      pre = e2;
@@ -27836,59 +27834,70 @@ lvx_superblock_inner_loops (void)
 	  if (!duplicate_block (oldh, pre, pre->src))
 	    continue;
 	  changed = true;
-
-	  /* AND MERGE WHAT THE ROTATION LEAVES.  §7tricies.163.
-
-	     The rotated body is OLDL -> OLDH -> OLDL, and OLDL ends in the
-	     unconditional jump that used to be the loop-back.  Left alone
-	     that is a two-block body whose first block has one successor --
-	     a shape nothing downstream expects, since every loop that
-	     pipelines today has its exit on the block that closes it.
-	     Merged, the body is ONE block branching back to itself and out,
-	     which is exactly the 768-loop shape the emission is built for,
-	     and the unconditional jump disappears with the merge.
-
-	     The preheader edge has moved to the copy, so OLDH's only
-	     predecessor is OLDL and the two are mergeable by construction;
-	     asked anyway, because `can_merge_blocks_p' also knows about the
-	     things this code does not.  */
-	  if (single_succ_p (oldl) && single_succ (oldl) == oldh
-	      && single_pred_p (oldh) && single_pred (oldh) == oldl
-	      && can_merge_blocks_p (oldl, oldh))
-	    {
-	      merge_blocks (oldl, oldh);
-	      if (dump_file)
-		fprintf (dump_file, ";; lvx superblock: fn=%s loop %d rotated"
-			 " to a bottom test, body merged\n",
-			 current_function_name (), loop->num);
-	    }
-	  else if (dump_file)
-	    fprintf (dump_file, ";; lvx superblock: fn=%s loop %d rotated to a"
-		     " bottom test, NOT merged\n", current_function_name (),
-		     loop->num);
+	  if (dump_file)
+	    fprintf (dump_file, ";; lvx superblock: fn=%s loop %d rotated to"
+		     " a bottom test\n", current_function_name (), loop->num);
+	  /* The pair to merge, recorded rather than merged here -- see below
+	     for why the order matters.  */
+	  mergea.safe_push (oldl);
+	  mergeb.safe_push (oldh);
 	}
 
-      /* The structures describe the loop as it was: DUPLICATE_BLOCK put the
-	 copy in the loop's own father and the header has moved, so recompute
-	 rather than patch.  Phase C below reads loop->header.
+      /* NOW THE STRUCTURES, THEN THE MERGE, IN THAT ORDER.  §7tricies.164.
 
-	 DOMINATORS GO FIRST, and `dominator of 4 should be 8, not 4' is what
-	 skipping that costs: DUPLICATE_BLOCK maintains them only where they
-	 are already available, and the merge invalidates them either way.
-	 Dropped rather than recomputed here, because LOOP_OPTIMIZER_INIT
-	 computes what it needs and CMS asks for them again itself.  */
+	 The merge has to come AFTER the loop structures are torn down, and
+	 merging before them HANGS the compiler -- `jcphuff.c' compiles in
+	 0.39s without this phase and does not terminate in 60s with the
+	 merge done in place.  `cfg_layout_can_merge_blocks_p' protects a
+	 loop's latch with `b->loop_father->latch == b', and at that point the
+	 structures still describe the loop as it was: the test asks whether
+	 bb5 is the latch when the recorded latch is still bb11, so the guard
+	 is inert, the merge proceeds, and the loop bookkeeping it then
+	 updates no longer describes the CFG.
+
+	 Tearing the structures down first removes both problems at once --
+	 there is no stale description to corrupt and no latch to protect --
+	 and the merged block is a self-loop with one exit, which is the shape
+	 768 of the 962 pipelined loops already have.
+
+	 The merge is not optional: without it the body is two blocks whose
+	 first has a single successor, and `lvx_cms_codegen_feasible_p'
+	 refuses that with "block does not have exactly two successors".  */
       if (!cand.is_empty ())
 	{
 	  free_dominance_info (CDI_DOMINATORS);
 	  loop_optimizer_finalize ();
+
+	  for (unsigned c = 0; c < mergea.length (); c++)
+	    {
+	      basic_block a = mergea[c], b = mergeb[c];
+
+	      if (single_succ_p (a) && single_succ (a) == b
+		  && single_pred_p (b) && single_pred (b) == a
+		  && can_merge_blocks_p (a, b))
+		{
+		  merge_blocks (a, b);
+		  if (dump_file)
+		    fprintf (dump_file, ";; lvx superblock: fn=%s body merged"
+			     " into bb%d\n", current_function_name (),
+			     a->index);
+		}
+	      else if (dump_file)
+		fprintf (dump_file, ";; lvx superblock: fn=%s bb%d + bb%d NOT"
+			 " merged\n", current_function_name (), a->index,
+			 b->index);
+	    }
+
 	  loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
 	}
     }
 
   /* Phase C: the layout.  */
   for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
-    if (lvx_superblock_layout_loop (loop))
-      changed = true;
+    {
+      if (lvx_superblock_layout_loop (loop))
+	changed = true;
+    }
 
   loop_optimizer_finalize ();
 
