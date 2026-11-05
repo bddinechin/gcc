@@ -26208,6 +26208,24 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       }
       edge e;
       edge_iterator ei;
+      {
+	/* §7tricies.157: HOW MANY ENTRIES DOES THE HEADER HAVE?
+	   lvx_cms_eligible_loop_p never asks, and the loop below takes the
+	   LAST non-latch predecessor as the preheader with no uniqueness
+	   check -- so a two-entry loop would have one edge split by
+	   make_nodes and the other reaching the header with the whole
+	   prologue, and the entry copies, bypassed.  Counted before anything
+	   relies on it.  */
+	unsigned nent = 0;
+
+	FOR_EACH_EDGE (e, ei, loop->header->preds)
+	  if (!flow_bb_inside_loop_p (loop, e->src))
+	    nent++;
+	if (nent != 1)
+	  lvx_cms_dump (";; lvx cms: fn=%s loop %d ENTRIES=%u"
+			" *** NOT ONE ***\n", current_function_name (),
+			loop->num, nent);
+      }
       FOR_EACH_EDGE (e, ei, loop->header->preds)
 	if (e->src != loop->latch)
 	  site.preheader = e->src;
