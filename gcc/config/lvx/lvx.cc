@@ -23236,6 +23236,29 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	 itself displaced this pass keeps whatever delay its history earned,
 	 because withdrawing it is what closed the loop through the
 	 measurement.  */
+      /* THE MOVE'S MAGNITUDE.  §7tricies.169.  The release lever's amount has
+	 always been the ALAP: every moved task goes all the way to the wall.
+	 That is a BINARY move driven by a GRADED signal -- `when - earliest'
+	 is summed into BLAME and then used only to decide WHETHER a task
+	 moves, never HOW FAR.  An all-the-way move is the kind that
+	 overshoots, vacates the contended cycle and creates contention
+	 elsewhere, which is a candidate mechanism for the oscillation Kramer
+	 2008 documents and §7tricies.129 measured here.
+
+	 Policy 3 is the one arm that ever graded the amount
+	 (MIN (slack, guilt)) and it measured WORSE -- but it also RATCHETED,
+	 so what was refuted is graded-with-ratchet, and graded-without-ratchet
+	 is an untested cell.  See docs/schedule-search-diversity.md.
+
+	 DMAX is the worst delay any task suffered this pass: moving a task
+	 further than that cannot be needed to relieve the contention actually
+	 observed.  Grade 1 carries no magnitude at all, so the two arms
+	 separate `do not overshoot' from `use the measurement'.  */
+      int dmax = 0;
+      for (unsigned i = 0; i < n; i++)
+	if (blame[i] > dmax)
+	  dmax = blame[i];
+
       for (unsigned i = 0; i < n; i++)
 	{
 	  if (lvx_cms_release_policy == 3)
@@ -23331,7 +23354,22 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	     the persistent-base reading and to nothing under the pass-0 one. */
 	  int home = (mcrl_release == 2 && !mcrl.is_empty ()
 		      ? mcrl[i] : 0);
-	  release[i] = move ? height[i] + slack[i] : home;
+	  int amount = slack[i];
+	  switch (lvx_cms_release_grade)
+	    {
+	    /* Half the slack: a partial move carrying no magnitude.  */
+	    case 1: amount = (slack[i] + 1) / 2; break;
+	    /* The measurement.  DMAX == 0 means nothing was displaced during
+	       construction, and then this declines to move at all -- which is
+	       faithful to the signal but cannot make progress when the
+	       projection, not the construction, is what refused.  */
+	    case 2: amount = MIN (slack[i], dmax); break;
+	    /* The measurement with a floor, so a pass always moves something
+	       even when the construction reported no delay.  */
+	    case 3: amount = MIN (slack[i], MAX (dmax, 1)); break;
+	    default: break;			/* 0: the ALAP, as before.  */
+	    }
+	  release[i] = move ? height[i] + amount : home;
 	  if (culprit[i] > 0)
 	    {
 	      sqk_named++;
