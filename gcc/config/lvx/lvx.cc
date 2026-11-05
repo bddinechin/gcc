@@ -18953,6 +18953,11 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
    differing only by `delayed', so at p2unroll 1 they agree and the tie
    survives with nothing said about ties.  */
 
+/* Probe only (§7tricies.156): which node the emission is filling, so the
+   UFREAD trace can be read per path instead of per reference.  */
+static int lvx_cms_ufread_node = -1;
+static int lvx_cms_ufread_kind = -1;
+
 static bool
 lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 			  int iter, const auto_vec<lvx_cms_lrange_part *> &lr,
@@ -19040,6 +19045,11 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	neu = lvx_cms_lrange_reg (g, iter, dly);
 	if (neu >= 0)
 	  neu += off;
+	if (g->use_first && dly && lvx_cms_preheader_copy)
+	  lvx_cms_dump (";; lvx cms:     UFREAD node=%d kind=%d insn=%u"
+			" slot=%d iter=%d r%u p2=%d reg0=%d -> r%d\n",
+			lvx_cms_ufread_node, lvx_cms_ufread_kind, self, idx,
+			iter, r, g->p2unroll, g->reg[0], neu);
 	if (neu < 0 || neu == (int) r)
 	  continue;
 	if (trace)
@@ -20787,6 +20797,8 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       unsigned q = (unsigned) order[oq];
       int nd = slots[q].node;
       unsigned i = (unsigned) slots[q].insn;
+      lvx_cms_ufread_node = nd;
+      lvx_cms_ufread_kind = (nd >= 0 && nd < (int) nnode) ? nodes[nd].kind : -1;
       if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
 	continue;
       basic_block bb = blocks[nd];
@@ -21275,6 +21287,10 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       lvx_cms_dump (";; lvx cms:   live-out node%u bb%d: %u parallel copies"
 		    " -> %u sequential, scratch r%d\n", k, blocks[k]->index,
 		    psrc.length (), osrc.length (), scratch);
+      if (lvx_cms_preheader_copy)
+       for (unsigned z = 0; z < psrc.length (); z++)
+	lvx_cms_dump (";; lvx cms:     LOCOPY node%u kind=%d r%d <- r%d\n",
+		      k, (int) nodes[k].kind, pdst[z], psrc[z]);
     }
 
   /* THE ENTRY-SIDE RECONCILIATION.  §7tricies.156.
