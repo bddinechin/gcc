@@ -216,6 +216,10 @@ Target RejectNegative Joined UInteger Var(lvx_cms_only_loop) Init(0) Optimizatio
 -mcms-only-loop=N	Consider only loop N of each function, to bisect which pipelined loop a wrong answer comes from; 0 considers them all.  Measurement only.
 
 
+mcms-ph-mask=
+Target RejectNegative Joined UInteger Var(lvx_cms_ph_mask) Init(4294967295) Optimization
+-mcms-ph-mask=N	Un-pin only the use-headed ranges whose ordinal within the loop has its bit set in N, so which range's un-pinning breaks a program can be bisected one range at a time.  Measurement only.  7tricies.158.
+
 mcms-subst-trace
 Target Var(lvx_cms_subst_trace) Init(0) Optimization
 Trace every APPLIED rename substitution with the node it is emitted into, its slot, iteration and chosen register, so two arms can be diffed reference by reference.  Measurement only.  7tricies.156.

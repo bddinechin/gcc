@@ -13443,7 +13443,8 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		int *pinned_out = NULL, int *pinfail_out = NULL,
 		const auto_vec<int> *vnotown = NULL,
 		const auto_vec<int> *vprefer = NULL,
-		unsigned HOST_WIDE_INT entrybusy = 0)
+		unsigned HOST_WIDE_INT entrybusy = 0,
+		const auto_vec<int> *vunpin = NULL)
 {
   int nn = 0, ne = 0, msq = 0, spl = 0, per = 0, kun = 1, maxreg = -1;
   int pinned = 0, pinfail = 0;
@@ -13757,8 +13758,15 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		 value into whatever register name 0 is given, so name 0 is
 		 an ordinary free choice like names 1..p2-1.  This is the
 		 "entry side needs the same treatment rather than a pin" the
-		 paragraph above asks for.  */
-	      if (lvx_cms_preheader_copy && (lvx_cms_ph_parts & 1))
+		 paragraph above asks for.
+
+		 §7tricies.158: per value rather than for all of them, so
+		 -mcms-ph-mask can keep the pin on every range but one and
+		 ask which one's un-pinning is unsound.  A range left pinned
+		 gets reg[0] == regno and so no entry copy, the emission
+		 keying on exactly that.  */
+	      if (lvx_cms_preheader_copy && (lvx_cms_ph_parts & 1)
+		  && vunpin && v < (int) vunpin->length () && (*vunpin)[v])
 		continue;
 	      if (v >= (int) vusefirst->length () || !(*vusefirst)[v])
 		continue;
@@ -17912,6 +17920,22 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 		   ? (int) g->regno : -1;
     }
 
+  /* §7tricies.158: which use-headed ranges may lose their pin, by ordinal
+     within this loop, so one can be held back at a time.  */
+  auto_vec<int> vunpin;
+  vunpin.safe_grow_cleared (idx.length ());
+  {
+    int ord = 0;
+
+    for (unsigned u = 0; u < idx.length (); u++)
+      if (lr[idx[u]]->use_first)
+	{
+	  vunpin[u] = (ord < 32
+		       && (lvx_cms_ph_mask >> ord) & 1) ? 1 : 0;
+	  ord++;
+	}
+  }
+
   auto_vec<int> vnotown;
   if (lvx_cms_liveout_split)
     {
@@ -17938,7 +17962,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 		  &spl, &per, &kun, &stuck, &av, &an, &ar, &maxreg, avail,
 		  &vregno, &vuf, &pinned, &pinfail,
 		  lvx_cms_liveout_split ? &vnotown : NULL,
-		  lvx_cms_copy_pref ? &vprefer : NULL, entrybusy);
+		  lvx_cms_copy_pref ? &vprefer : NULL, entrybusy, &vunpin);
 
   for (unsigned u = 0; u < idx.length (); u++)
     {
@@ -26415,6 +26439,34 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		cok = lvx_cms_colour_lranges (seq, cglr, found, lo, cgavail,
 					      &nn, &nst, &mx, &kun, &pin,
 					      &pinf, &wide, 0, NULL, cgentry);
+		/* §7tricies.158: AND NO ASSIGNED REGISTER MAY LIE OUTSIDE
+		   AVAIL.  The colouring is handed AVAIL and picks within it
+		   by construction -- `(busy & want) || (~avail & want)' --
+		   so this can only fail if a name was filled from somewhere
+		   other than the first-fit scan.  Asked because the
+		   remaining suspicion for §7tricies.156 is precisely that
+		   the assignment hands out a register that is not free, and
+		   because the bisect shows the failure needs the wholly
+		   unconstrained colouring.  */
+		if (dump_file)
+		  for (unsigned g = 0; g < cglr.length (); g++)
+		    for (int x = 0;
+			 x < cglr[g]->p2unroll && x < LVX_CMS_MAX_KUNROLL; x++)
+		      {
+			int rg = cglr[g]->reg[x];
+
+			if (rg < 0 || cglr[g]->effects.is_empty ()
+			    || lvx_cms_lrange_root (cglr, (int) g) != (int) g
+			    || !cglr[g]->renamed)
+			  continue;
+			for (int w = 0; w < MAX (cglr[g]->nregs, 1); w++)
+			  if (rg + w >= 64
+			      || !((cgavail >> (rg + w)) & 1))
+			    lvx_cms_dump (";; lvx cms:   REGNOTAVAIL lr%u"
+					  " name%d r%d (+%d) OUTSIDE"
+					  " AVAIL\n", g, x, rg, w);
+		      }
+
 		/* §7tricies.157: NO ASSIGNED REGISTER MAY BE LIVE ACROSS THE
 		   LOOP WITHOUT THE BODY REFERENCING IT.
 
