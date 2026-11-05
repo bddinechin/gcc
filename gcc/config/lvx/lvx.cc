@@ -21299,6 +21299,10 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
        for (unsigned z = 0; z < psrc.length (); z++)
 	lvx_cms_dump (";; lvx cms:     LOCOPY node%u kind=%d r%d <- r%d\n",
 		      k, (int) nodes[k].kind, pdst[z], psrc[z]);
+      if (lvx_cms_preheader_copy)
+       for (unsigned z = 0; z < osrc.length (); z++)
+	lvx_cms_dump (";; lvx cms:     LOSEQ  node%u kind=%d r%d <- r%d\n",
+		      k, (int) nodes[k].kind, odst[z], osrc[z]);
     }
 
   /* THE ENTRY-SIDE RECONCILIATION.  §7tricies.156.
