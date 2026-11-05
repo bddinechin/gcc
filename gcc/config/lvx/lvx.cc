@@ -17829,6 +17829,29 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 		      g->first_date, g->last_date, ec, life, ii, deg.last (),
 		      claim_def_cycle,
 		      ec_tied_dbg ? 1 : 0, ec_ecp_dbg ? 1 : 0);
+      /* §7tricies.160: WHICH REMEDY WOULD THIS RANGE NEED?
+
+	 A range that cannot rotate is forced to one name, and then the
+	 capacity invariant demands LIFE <= II.  Over-long means LIFE > II
+	 with no rotation available, and WHICH SIDE of the definition the
+	 excess lies on decides the remedy (§7tricies.148):
+
+	   LIFE = LAST_DATE - FIRST_DATE, and for a DEF-HEADED range
+	   FIRST_DATE *is* the definition's date -- so the excess can only be
+	   at the far end, a reader later than def + II.  That is remedy 1,
+	   the copy AFTER, and remedy 2 cannot apply to such a range at all.
+
+	 So remedy 2 -- the copy BEFORE, which is what needs a preheader
+	 instance to seed iteration 0 -- is specifically for USE-HEADED
+	 ranges, where the value arrives from outside the iteration and the
+	 excess sits between its arrival and its consumption.  Counted here
+	 so the population is measured rather than asserted.  */
+      if (dump_file && lvx_cms_probe && ii > 0 && life > ii
+	  && !g->renamed)
+	lvx_cms_dump (";; lvx cms:   REMEDY lr%u r%u uf=%d life=%d ii=%d"
+		      " excess=%d want=%d\n", k, g->regno,
+		      g->use_first ? 1 : 0, life, ii, life - ii,
+		      g->use_first ? 2 : 1);
       nregs_.safe_push (MAX (g->nregs, 1));
       ec_.safe_push (ec);
       vregno.safe_push ((int) g->regno);
