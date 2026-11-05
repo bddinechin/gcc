@@ -26321,6 +26321,32 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	  lvx_cms_dump (";; lvx cms: fn=%s loop %d ENTRIES=%u"
 			" *** NOT ONE ***\n", current_function_name (),
 			loop->num, nent);
+	/* §7tricies.162: IS THE BODY A TRACE AT ALL?  A superblock is
+	   single-entry and multiple-exit, so a body block with two IN-LOOP
+	   predecessors is a side entry and the body is not one.  Counted per
+	   loop, with the header excluded because its second predecessor is
+	   the back edge by construction.  */
+	{
+	  unsigned njoin = 0;
+
+	  for (unsigned b = 0; b < loop->num_nodes; b++)
+	    {
+	      edge e2;
+	      edge_iterator ei2;
+	      unsigned inpred = 0;
+
+	      if (body[b] == loop->header)
+		continue;
+	      FOR_EACH_EDGE (e2, ei2, body[b]->preds)
+		if (flow_bb_inside_loop_p (loop, e2->src))
+		  inpred++;
+	      if (inpred > 1)
+		njoin++;
+	    }
+	  lvx_cms_dump (";; lvx cms: fn=%s loop %d JOINS=%u blocks=%u\n",
+			current_function_name (), loop->num, njoin,
+			(unsigned) loop->num_nodes);
+	}
       }
       FOR_EACH_EDGE (e, ei, loop->header->preds)
 	if (e->src != loop->latch)
@@ -26334,6 +26360,55 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	    site.exit_src = loop->latch;
 	    site.exit_dest = e->dest;
 	  }
+      /* AND WHERE THE LATCH HAS NONE, THE LATEST EXIT IN BODY ORDER.
+	 §7tricies.162.
+
+	 49 loops decline here with their whole pipeline already computed --
+	 `build_tree' loop 8 reaches II=4, nstages=3 and 86 slots, every
+	 check ok, and is then thrown away.  All 49 are one shape: the back
+	 edge comes from a latch that only jumps back, so the latch has no
+	 out-of-loop successor, while the exit test sits earlier in the body:
+
+	     bb31 HDR  *ccbsi -> {35 in, 32 in}
+	     bb32      *ccbsi -> {33 in, 34 in}
+	     bb34      *cbdi  -> {35 in, 36 OUT}   <- the only exit
+	     bb35 LATCH  adddi3; *goto -> {31 in}  <- no exit edge
+
+	 The criterion itself is right -- it replaced a COUNTING test that
+	 rejected every multi-block body, and the drain does need the edge the
+	 kernel leaves by.  What is wrong is asking only the latch for it.  So
+	 where the latch offers none, take the exit whose source is LATEST in
+	 SEQ, the body order the schedule is built in: among the exits that
+	 exist, that is the one the kernel reaches last, which is what "falls
+	 out" means in a body with no bottom test.
+
+	 SEQ order rather than block order, because the body is a DAG here and
+	 not the chain the unfold cost model assumes -- bb31 and bb32 both
+	 branch two ways inside the loop -- so there is no layout order to
+	 appeal to, while SEQ is exactly what the slots and the plan were
+	 built from.  */
+      if (!site.exit_dest && lvx_cms_drain_from_exit)
+	{
+	  for (unsigned z = 0; z < seq.length (); z++)
+	    {
+	      basic_block zb = BLOCK_FOR_INSN (seq[z]);
+
+	      if (!zb)
+		continue;
+	      FOR_EACH_EDGE (e, ei, zb->succs)
+		if (!flow_bb_inside_loop_p (loop, e->dest))
+		  {
+		    site.exit_src = zb;
+		    site.exit_dest = e->dest;
+		  }
+	    }
+	  if (site.exit_dest)
+	    lvx_cms_dump (";; lvx cms: fn=%s loop %d drain from exit bb%d ->"
+			  " bb%d (latch bb%d has none)\n",
+			  current_function_name (), loop->num,
+			  site.exit_src->index, site.exit_dest->index,
+			  loop->latch->index);
+	}
       if (site.preheader && site.exit_dest)
 	{
 	  /* BUILD HERE, with the loop structures still live.  The previous
@@ -27294,6 +27369,37 @@ lvx_cms_eligible_loop_p (class loop *loop, basic_block *body, unsigned insns,
 	  if (e->flags & EDGE_COMPLEX)
 	    return false;
 	}
+
+      /* THE BODY MUST BE A TRACE, AND NOTHING SAID SO.  §7tricies.162.
+
+	 A superblock is single-entry and multiple-exit, so a body block with
+	 two IN-LOOP predecessors is a side entry and the body is not one.
+	 Rotation cannot remove a side entry -- §7tricies.152 established that
+	 for the masked-store hammock -- so such a loop is not pipelineable by
+	 this emission at all.
+
+	 CMS never asked.  Measured: all 962 loops that emit are join-free, so
+	 the requirement has always held in fact, and what enforced it was an
+	 unrelated test -- "latch has no exit edge", which 22 of its 49
+	 refusals owe to the body having joins rather than to the latch.  An
+	 invariant held by accident is one that breaks when the accident is
+	 fixed, which is exactly what relaxing the latch test would have done.
+
+	 The header is excluded: its second predecessor is the back edge by
+	 construction.  */
+      {
+	unsigned inpred = 0;
+
+	if (bb != loop->header)
+	  {
+	    FOR_EACH_EDGE (e, ei, bb->preds)
+	      if (flow_bb_inside_loop_p (loop, e->src))
+		inpred++;
+	    *why = "a body block has two in-loop predecessors";
+	    if (inpred > 1)
+	      return false;
+	  }
+      }
     }
   *why = NULL;
   return true;
@@ -27617,6 +27723,167 @@ lvx_superblock_inner_loops (void)
      Software pipelining is what pays on the loops unfold was reaching for:
      CMS 0.9551, and 0.9459 with renaming.  Straightening (Phase A) and the
      renaming stay; only the duplication goes.  */
+
+  /* Phase B': ROTATE A LOOP WHOSE LATCH CARRIES NO EXIT.  §7tricies.163.
+
+     26 join-free loops reach code generation with everything computed and are
+     refused because the drain needs the edge the kernel leaves by and the
+     latch has none.  `adpcm_coder' loop 1 is the shape:
+
+         bb4 HDR  47 insns, *ccbdi -> {5 in, 6 OUT}   the exit test
+         bb5 LATCH  xorsi3_zx; *goto -> {4 in}        no exit edge
+
+     Duplicating the header onto the preheader edge rotates it: the copy runs
+     the first header instance and jumps around the loop on the exit test,
+     while what remains is entered at the old latch and closed by the old
+     header --
+
+         preheader -> bb4' (copy)  -> bb6 OUT        jumps around
+                         | continue
+                         v
+                       bb5 -> bb4 -> bb5             bb4 now closes the loop
+
+     -- so the latch carries the exit the drain wants, with no change to the
+     drain's criterion.  It also makes NELSE zero with the last jump the
+     latch's terminator, which is exactly what ENTRY_ADMITS asks, so the
+     "prologue would speculate iteration N's side effect" refusal goes with
+     it.  That is the point of doing this instead of loosening either test:
+     the rotation makes the loop satisfy them rather than weakening them.
+
+     Only where the body is a TRACE, which §7tricies.162 made an explicit
+     requirement: a block with two in-loop predecessors is a side entry, and
+     rotation cannot remove one.  */
+  if (lvx_cms_rotate_bottom_test)
+    {
+      auto_vec<class loop *> cand;
+
+      for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
+	{
+	  edge e, ex = NULL, cont = NULL;
+	  edge_iterator ei;
+	  basic_block *bodyv;
+	  bool trace = true;
+
+	  if (!loop->latch || loop->header == loop->latch
+	      || loop->num_nodes < 2)
+	    continue;
+	  /* Already bottom-tested: nothing to do.  */
+	  FOR_EACH_EDGE (e, ei, loop->latch->succs)
+	    if (!flow_bb_inside_loop_p (loop, e->dest))
+	      ex = e;
+	  if (ex)
+	    continue;
+	  /* The header must carry an exit, or rotating moves nothing.  */
+	  ex = NULL;
+	  FOR_EACH_EDGE (e, ei, loop->header->succs)
+	    if (!flow_bb_inside_loop_p (loop, e->dest))
+	      ex = e;
+	    else
+	      cont = e;
+	  if (!ex || !cont)
+	    continue;
+	  if (!can_duplicate_block_p (loop->header))
+	    continue;
+	  /* A trace, and single-entry.  */
+	  bodyv = get_loop_body (loop);
+	  for (unsigned b = 0; b < loop->num_nodes; b++)
+	    {
+	      unsigned inpred = 0;
+
+	      if (bodyv[b] == loop->header)
+		continue;
+	      FOR_EACH_EDGE (e, ei, bodyv[b]->preds)
+		if (flow_bb_inside_loop_p (loop, e->src))
+		  inpred++;
+	      if (inpred > 1)
+		trace = false;
+	    }
+	  free (bodyv);
+	  {
+	    unsigned nent = 0;
+
+	    FOR_EACH_EDGE (e, ei, loop->header->preds)
+	      if (!flow_bb_inside_loop_p (loop, e->src))
+		nent++;
+	    if (nent != 1)
+	      trace = false;
+	  }
+	  if (trace)
+	    cand.safe_push (loop);
+	}
+
+      for (unsigned c = 0; c < cand.length (); c++)
+	{
+	  class loop *loop = cand[c];
+	  basic_block oldh, oldl;
+	  edge pre = NULL, e2;
+	  edge_iterator ei2;
+
+	  /* FOUND, NOT ASKED FOR: loop_preheader_edge asserts on
+	     LOOPS_HAVE_PREHEADERS, which AVOID_CFG_MODIFICATIONS does not
+	     set -- Phase A creates the preheaders without setting the state.
+	     The same reason lvx_cms_probe_loop finds its entry edge by hand
+	     (§7tricies, "CMS runs loop_optimizer_init with
+	     AVOID_CFG_MODIFICATIONS, so there may be no preheader to ask
+	     for").  */
+	  FOR_EACH_EDGE (e2, ei2, loop->header->preds)
+	    if (!flow_bb_inside_loop_p (loop, e2->src))
+	      pre = e2;
+	  if (!pre)
+	    continue;
+	  oldh = loop->header;
+	  oldl = loop->latch;
+	  if (!duplicate_block (oldh, pre, pre->src))
+	    continue;
+	  changed = true;
+
+	  /* AND MERGE WHAT THE ROTATION LEAVES.  §7tricies.163.
+
+	     The rotated body is OLDL -> OLDH -> OLDL, and OLDL ends in the
+	     unconditional jump that used to be the loop-back.  Left alone
+	     that is a two-block body whose first block has one successor --
+	     a shape nothing downstream expects, since every loop that
+	     pipelines today has its exit on the block that closes it.
+	     Merged, the body is ONE block branching back to itself and out,
+	     which is exactly the 768-loop shape the emission is built for,
+	     and the unconditional jump disappears with the merge.
+
+	     The preheader edge has moved to the copy, so OLDH's only
+	     predecessor is OLDL and the two are mergeable by construction;
+	     asked anyway, because `can_merge_blocks_p' also knows about the
+	     things this code does not.  */
+	  if (single_succ_p (oldl) && single_succ (oldl) == oldh
+	      && single_pred_p (oldh) && single_pred (oldh) == oldl
+	      && can_merge_blocks_p (oldl, oldh))
+	    {
+	      merge_blocks (oldl, oldh);
+	      if (dump_file)
+		fprintf (dump_file, ";; lvx superblock: fn=%s loop %d rotated"
+			 " to a bottom test, body merged\n",
+			 current_function_name (), loop->num);
+	    }
+	  else if (dump_file)
+	    fprintf (dump_file, ";; lvx superblock: fn=%s loop %d rotated to a"
+		     " bottom test, NOT merged\n", current_function_name (),
+		     loop->num);
+	}
+
+      /* The structures describe the loop as it was: DUPLICATE_BLOCK put the
+	 copy in the loop's own father and the header has moved, so recompute
+	 rather than patch.  Phase C below reads loop->header.
+
+	 DOMINATORS GO FIRST, and `dominator of 4 should be 8, not 4' is what
+	 skipping that costs: DUPLICATE_BLOCK maintains them only where they
+	 are already available, and the merge invalidates them either way.
+	 Dropped rather than recomputed here, because LOOP_OPTIMIZER_INIT
+	 computes what it needs and CMS asks for them again itself.  */
+      if (!cand.is_empty ())
+	{
+	  free_dominance_info (CDI_DOMINATORS);
+	  loop_optimizer_finalize ();
+	  loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
+	}
+    }
 
   /* Phase C: the layout.  */
   for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))

@@ -216,6 +216,14 @@ Target RejectNegative Joined UInteger Var(lvx_cms_only_loop) Init(0) Optimizatio
 -mcms-only-loop=N	Consider only loop N of each function, to bisect which pipelined loop a wrong answer comes from; 0 considers them all.  Measurement only.
 
 
+mcms-rotate-bottom-test
+Target Var(lvx_cms_rotate_bottom_test) Init(0) Optimization
+Rotate an innermost loop whose latch carries no exit by duplicating the header onto the preheader edge, so the copy jumps around the loop and the remaining body is bottom-tested.  Makes the latch carry the exit the drain needs, and makes entering the loop run the body unconditionally.  7tricies.163.
+
+mcms-drain-from-exit
+Target Var(lvx_cms_drain_from_exit) Init(0) Optimization
+Where the latch has no edge leaving the loop, put the drain on the latest exit in body order instead of declining.  Recovers the loops whose back edge comes from a latch that only jumps back, with the exit test earlier in the body.  7tricies.162.
+
 mcms-ph-mask=
 Target RejectNegative Joined UInteger Var(lvx_cms_ph_mask) Init(4294967295) Optimization
 -mcms-ph-mask=N	Un-pin only the use-headed ranges whose ordinal within the loop has its bit set in N, so which range's un-pinning breaks a program can be bisected one range at a time.  Measurement only.  7tricies.158.
