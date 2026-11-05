@@ -217,8 +217,8 @@ Target RejectNegative Joined UInteger Var(lvx_cms_only_loop) Init(0) Optimizatio
 
 
 mcms-rotate-bottom-test
-Target Var(lvx_cms_rotate_bottom_test) Init(0) Optimization
-Rotate an innermost loop whose latch carries no exit by duplicating the header onto the preheader edge, so the copy jumps around the loop and the remaining body is bottom-tested.  Makes the latch carry the exit the drain needs, and makes entering the loop run the body unconditionally.  7tricies.163.
+Target Var(lvx_cms_rotate_bottom_test) Init(1) Optimization
+Rotate an innermost loop whose latch carries no exit by duplicating the header onto the preheader edge, so the copy jumps around the loop and the remaining body is bottom-tested, then merge the two remaining blocks.  Makes the latch carry the exit the drain needs and entering the loop run the body unconditionally, so the loop satisfies both gates rather than either being weakened.  Worth 962 -> 1000 emitted, 286 -> 291 at nstages>=3, and 1.21x on adpcm; costs 3.46% text on the files that rotate.  7tricies.164.
 
 mcms-drain-from-exit
 Target Var(lvx_cms_drain_from_exit) Init(0) Optimization
