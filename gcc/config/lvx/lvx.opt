@@ -216,6 +216,10 @@ Target RejectNegative Joined UInteger Var(lvx_cms_only_loop) Init(0) Optimizatio
 -mcms-only-loop=N	Consider only loop N of each function, to bisect which pipelined loop a wrong answer comes from; 0 considers them all.  Measurement only.
 
 
+mcms-usefirst-unpinned
+Target Var(lvx_cms_usefirst_unpinned) Init(0) Optimization
+Size what a PREHEADER COPY would be worth, by pretending name 0 of a use-headed range is not pinned to the register the preheader wrote.  Measurement only: requires -mcms-probe and refused with -mcms-codegen, because without the copy the body really does write the architected register.  7tricies.155.
+
 mcms-only-fn=
 Target RejectNegative Joined Var(lvx_cms_only_fn) Optimization
 -mcms-only-fn=NAME	Pipeline only loops in the function whose name contains NAME, to bisect which function a wrong answer comes from; empty considers them all.  Measurement only.  7tricies.153.

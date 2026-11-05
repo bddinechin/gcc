@@ -10513,6 +10513,15 @@ lvx_option_override (void)
 	   "analysis is reached twice for a loop and may choose a different "
 	   "propagation each time; it is incompatible with %<-mcms-codegen%>");
 
+  if (lvx_cms_usefirst_unpinned && !lvx_cms_probe)
+    error ("%<-mcms-usefirst-unpinned%> is for measurement only; it requires "
+	   "%<-mcms-probe%>");
+  if (lvx_cms_usefirst_unpinned && (lvx_cms_codegen || lvx_cms_pipeline))
+    error ("%<-mcms-usefirst-unpinned%> assumes a preheader copy that is not "
+	   "emitted, so name 0 of a use-headed range really is the register "
+	   "the preheader wrote and the body really does write it; it sizes "
+	   "the opportunity and is incompatible with %<-mcms-codegen%>");
+
   if (lvx_cms_drop_liveout_arcs && !lvx_cms_probe)
     error ("%<-mcms-drop-liveout-arcs%> is for measurement only; it requires "
 	   "%<-mcms-probe%>");
@@ -15355,7 +15364,12 @@ lvx_cms_liveout_arc_reconciled_p (const auto_vec<lvx_cms_lrange_part *> &lr,
 	continue;
       /* A range this instruction heads but the drain will not copy: the arc
 	 is real and must stay.  */
-      if (!g->exit_live || !g->effects[0].is_def || g->use_first)
+      if (!g->exit_live || !g->effects[0].is_def)
+	return false;
+      /* §7tricies.155: the PIN is the only thing keeping this arc, so it is
+	 the one a preheader copy would remove.  The lever says what that
+	 would be worth; without the copy the pin is real.  */
+      if (g->use_first && !lvx_cms_usefirst_unpinned)
 	return false;
       found = true;
     }
@@ -24220,8 +24234,16 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
       for (unsigned a = 0; a < arcs.length (); a++)
 	{
+	  /* §7tricies.155: BOTH keeps express the same pin, so the lever has
+	     to lift both or it measures nothing.  LVX_CMS_LIVEOUT_ARC_PINNED_P
+	     keeps the arc of an insn defining a register live-in at the loop
+	     HEADER -- the loop-carried case, which is the use-headed case --
+	     so a lever that only relaxed RECONCILED_P's USE_FIRST clause was
+	     unreachable for exactly the arcs it meant to free, and both arms
+	     measured identically.  */
 	  if (arcs[a].kind == LVX_ARC_CTRL_LIVEOUT
-	      && !lvx_cms_liveout_arc_pinned_p (loop, seq, arcs[a].dst)
+	      && (lvx_cms_usefirst_unpinned
+		  || !lvx_cms_liveout_arc_pinned_p (loop, seq, arcs[a].dst))
 	      && lvx_cms_liveout_arc_reconciled_p (dlr, arcs[a].dst))
 	    {
 	      ndrop++;
