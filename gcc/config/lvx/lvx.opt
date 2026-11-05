@@ -230,7 +230,7 @@ Target RejectNegative Joined UInteger Var(lvx_cms_ph_parts) Init(15) Optimizatio
 
 mcms-preheader-copy
 Target Var(lvx_cms_preheader_copy) Init(0) Optimization
-Free name 0 of a use-headed range by copying the incoming value into it in the preheader, instead of pinning name 0 to the register the preheader wrote.  Unlocks the register anti-dependences, the colouring and the live-out arc drop for every loop-carried value.  7tricies.156.
+MEASURED AND REJECTED, kept for the record and for the probes it drives: free name 0 of a use-headed range by copying the incoming value into it in the preheader instead of pinning it.  The copy and the anti-dependence relaxation are worth nothing (emitted 962 -> 959, nstages>=3 unchanged at 286); the whole gain came from also dropping the use-headed live-out arcs, which is unsound because the drain identifies its iteration by `best' and the drop lets a later iteration's definition precede the exit.  7tricies.159.
 
 mcms-usefirst-unpinned
 Target Var(lvx_cms_usefirst_unpinned) Init(0) Optimization
