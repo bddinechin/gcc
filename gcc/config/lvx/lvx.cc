@@ -18961,8 +18961,12 @@ static int lvx_cms_ufread_kind = -1;
 static bool
 lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 			  int iter, const auto_vec<lvx_cms_lrange_part *> &lr,
-			  int *nsubst, bool apply, bool trace = false)
+			  int *nsubst, bool apply, bool trace0 = false)
 {
+  /* §7tricies.156: the option enables the same trace from every call site,
+     so the emission's substitutions can be diffed between two arms without
+     threading a flag through each caller.  */
+  bool trace = trace0 || lvx_cms_subst_trace;
   int base = num_validated_changes ();
   auto_vec<int> at, to;
   bool ok = true;
@@ -19001,8 +19005,10 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
       if (neu < 0 || neu == (int) r)
 	continue;
       if (trace)
-	lvx_cms_dump (";; lvx cms:     def r%u slot=%d p2=%d uf=%d -> r%d\n",
-		      r, idx, g->p2unroll, g->use_first ? 1 : 0, neu);
+	lvx_cms_dump (";; lvx cms:     SUBST node=%d kind=%d insn=%u iter=%d"
+		      " D slot=%d dly=0 r%u p2=%d uf=%d -> r%d\n",
+		      lvx_cms_ufread_node, lvx_cms_ufread_kind, self, iter,
+		      idx, r, g->p2unroll, g->use_first ? 1 : 0, neu);
       if (idx < 0)
 	{
 	  if (dump_file && lvx_cms_probe)
@@ -19053,9 +19059,11 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	if (neu < 0 || neu == (int) r)
 	  continue;
 	if (trace)
-	  lvx_cms_dump (";; lvx cms:     use r%u slot=%d p2=%d uf=%d dly=%d"
-			" -> r%d\n", r, idx, g->p2unroll,
-			g->use_first ? 1 : 0, dly ? 1 : 0, neu);
+	  lvx_cms_dump (";; lvx cms:     SUBST node=%d kind=%d insn=%u iter=%d"
+			" U slot=%d dly=%d r%u p2=%d uf=%d -> r%d\n",
+			lvx_cms_ufread_node, lvx_cms_ufread_kind, self, iter,
+			idx, dly ? 1 : 0, r, g->p2unroll,
+			g->use_first ? 1 : 0, neu);
 	if (idx < 0)
 	  {
 	    if (dump_file && lvx_cms_probe)

@@ -216,6 +216,10 @@ Target RejectNegative Joined UInteger Var(lvx_cms_only_loop) Init(0) Optimizatio
 -mcms-only-loop=N	Consider only loop N of each function, to bisect which pipelined loop a wrong answer comes from; 0 considers them all.  Measurement only.
 
 
+mcms-subst-trace
+Target Var(lvx_cms_subst_trace) Init(0) Optimization
+Trace every APPLIED rename substitution with the node it is emitted into, its slot, iteration and chosen register, so two arms can be diffed reference by reference.  Measurement only.  7tricies.156.
+
 mcms-ph-parts=
 Target RejectNegative Joined UInteger Var(lvx_cms_ph_parts) Init(15) Optimization
 -mcms-ph-parts=N	Which consequences of -mcms-preheader-copy to take, as a bitmask, to bisect which one is unsound: 1 un-pin the colouring and emit the copy, 2 relax the register anti-dependences, 4 relax the live-out arc keeps, 8 extend the live-out verifier and its exclusion.  15 is all of them.  Measurement only.  7tricies.156.
