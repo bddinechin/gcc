@@ -26344,6 +26344,80 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 		cok = lvx_cms_colour_lranges (seq, cglr, found, lo, cgavail,
 					      &nn, &nst, &mx, &kun, &pin,
 					      &pinf, &wide, 0, NULL, cgentry);
+		/* §7tricies.157: NO ASSIGNED REGISTER MAY BE LIVE ACROSS THE
+		   LOOP WITHOUT THE BODY REFERENCING IT.
+
+		   lvx_cms_lrange_reserved is supposed to make this impossible
+		   twice over -- a live-in register goes into HARD and HARD is
+		   re-applied after the freeing, and the freeing itself needs
+		   `nrange[r] > 0' so a register with no range on it is never
+		   freed.  Asserted here rather than trusted, because both
+		   arguments rest on df_get_live_in being accurate at this
+		   point and the whole phase of §7tricies.156 turns on which
+		   registers are really free.  */
+		if (dump_file)
+		  {
+		    bitmap li = df_get_live_in (loop->header);
+		    HARD_REG_SET refd;
+
+		    CLEAR_HARD_REG_SET (refd);
+		    for (unsigned z = 0; z < seq.length (); z++)
+		      {
+			df_ref rr;
+			FOR_EACH_INSN_DEF (rr, seq[z])
+			  if (DF_REF_REGNO (rr) < FIRST_PSEUDO_REGISTER)
+			    SET_HARD_REG_BIT (refd, DF_REF_REGNO (rr));
+			FOR_EACH_INSN_USE (rr, seq[z])
+			  if (DF_REF_REGNO (rr) < FIRST_PSEUDO_REGISTER)
+			    SET_HARD_REG_BIT (refd, DF_REF_REGNO (rr));
+		      }
+		    for (unsigned g = 0; g < cglr.length (); g++)
+		      for (int x = 0;
+			   x < cglr[g]->p2unroll && x < LVX_CMS_MAX_KUNROLL;
+			   x++)
+			{
+			  int rg = cglr[g]->reg[x];
+
+			  /* Only the names that EXIST: reg[] beyond p2unroll
+			     is never assigned, and reading it made the first
+			     version of this check report 1920 violations in
+			     both arms.  */
+			  if (rg < 0 || rg >= 64
+			      || cglr[g]->effects.is_empty ()
+			      || lvx_cms_lrange_root (cglr, (int) g) != (int) g
+			      || !cglr[g]->renamed)
+			    continue;
+			  for (int w = 0; w < MAX (cglr[g]->nregs, 1); w++)
+			    {
+			      int rr2 = rg + w;
+
+			      if (rr2 >= 64)
+				break;
+			      if (li && bitmap_bit_p (li, rr2))
+				{
+				  lvx_cms_dump (";; lvx cms:   REGLIVEIN lr%u"
+						" name%d r%d LIVE-IN%s\n", g,
+						x, rr2,
+						TEST_HARD_REG_BIT (refd, rr2)
+						? "" : " AND UNREFERENCED");
+				  /* With the pin this is CORRECT and fires 24
+				     times on infblock: name 0 of a use-headed
+				     range IS the live-in register, which is
+				     what the pin says.  With the preheader
+				     copy it must never happen -- name 0 is a
+				     free register and the copy puts the
+				     incoming value there -- and measures 0.
+				     So it is a refusal only under the phase,
+				     where a hit would mean the colouring had
+				     handed out a register that is not free
+				     and the entry copy would destroy a live
+				     value.  */
+				  if (lvx_cms_preheader_copy)
+				    cok = false;
+				}
+			    }
+			}
+		  }
 		lvx_cms_dump (";; lvx cms: fn=%s loop %d ENTRYBUSY avail=%d"
 			      " entry=%d first8=%c%c%c%c%c%c%c%c\n",
 			      current_function_name (), loop->num,
