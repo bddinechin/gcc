@@ -15627,8 +15627,71 @@ lvx_cms_lrange_invariant_p (const auto_vec<lvx_cms_lrange_part *> &lr,
 	  any = true;
 	}
     }
-  return any;
+  if (!any)
+    return false;
+
+  /* AND NO WIDE DEFINITION MAY REACH THIS SPAN.  §7tricies.168.
+
+     "No definition among its own effects" is not "not written in the body",
+     and §7tricies.80 says exactly why: DF reports a tuple reference once at
+     its BASE register, so the other words of a wide definition are accounted
+     NOWHERE.  A range sitting on one of those words sees no definition of its
+     own and looks invariant while its value is produced by that write.
+
+     Measured on TSVC2: every one of the 34 ranges this predicate called
+     invariant is reached by a wide DEF as well as a wide read -- `s291's
+     lr0 r3+1' by `lr4's quad definition at insn 1, nregs 4'.  Relocating it
+     to a preheader copy would have fed it the INCOMING value while its real
+     producer was inside the loop.  So the predicate has to ask, and asking
+     leaves it with no population until the non-base words of a wide
+     reference are accounted somewhere -- which is the structural fix
+     §7tricies.80 already names and neither a copy nor an exemption
+     substitutes for.  */
+  {
+    unsigned rlo = lr[root]->regno;
+    unsigned rhi = rlo + MAX (lr[root]->nregs, 1);
+
+    for (unsigned k = 0; k < lr.length (); k++)
+      {
+	if (lr[k]->effects.is_empty ()
+	    || lvx_cms_lrange_root (lr, (int) k) == root)
+	  continue;
+	for (unsigned e = 0; e < lr[k]->effects.length (); e++)
+	  {
+	    unsigned base, top;
+
+	    if (!lr[k]->effects[e].is_def
+		|| lr[k]->effects[e].slot == LVX_CMS_SLOT_INDIRECT
+		|| MAX (lr[k]->effects[e].nregs, 1) <= 1)
+	      continue;
+	    base = lr[k]->regno + lr[k]->effects[e].offset;
+	    top = base + MAX (lr[k]->effects[e].nregs, 1);
+	    if (rlo < top && base < rhi)
+	      return false;
+	  }
+      }
+  }
+  return true;
 }
+
+/* PROBE (§7tricies.168): clear RENAMED and say which guard did it, for the
+   ranges whose holding is under investigation.  Every guard between the
+   optimistic reset and the colouring is silent, so a range that comes out
+   held names no reason; this makes the first one that clears it say so.  */
+
+static void
+lvx_cms_hold_range (const auto_vec<lvx_cms_lrange_part *> &lr, int root,
+		    int guard)
+{
+  if (root < 0 || root >= (int) lr.length ())
+    return;
+  if (lr[root]->renamed && dump_file && lvx_cms_probe
+      && lvx_cms_lrange_invariant_p (lr, root))
+    lvx_cms_dump (";; lvx cms:   HELDBY guard=%d lr%d r%u+%d\n", guard, root,
+		  lr[root]->regno, lr[root]->nregs);
+  lr[root]->renamed = false;
+}
+
 
 static void
 lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
@@ -16313,7 +16376,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	if (lvx_cms_relocate_invariant
 	    && lvx_cms_lrange_invariant_p (lr, rt))
 	  continue;
-	lr[rt]->renamed = false;
+	lvx_cms_hold_range (lr, rt, 3);
       }
 
   /* MULTI-REGISTER OPERANDS: THE FALLBACK.  §7tricies.33.
@@ -16360,7 +16423,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	    continue;		/* no operand, nothing to substitute */
 	  if (off < 0 || off + w > MAX (lr[root]->nregs, 1) || off % w != 0)
 	    {
-	      lr[root]->renamed = false;
+	      lvx_cms_hold_range (lr, root, 4);
 	      break;
 	    }
 	}
@@ -16405,10 +16468,10 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		 still agree about the value they came from.  */
 	      if (!(lvx_cms_relocate_invariant
 		    && lvx_cms_lrange_invariant_p (lr, ra)))
-		lr[ra]->renamed = false;
+		lvx_cms_hold_range (lr, ra, 5);
 	      if (!(lvx_cms_relocate_invariant
 		    && lvx_cms_lrange_invariant_p (lr, rb)))
-		lr[rb]->renamed = false;
+		lvx_cms_hold_range (lr, rb, 5);
 	    }
 	}
     }
@@ -16466,8 +16529,16 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	      jhi = jlo + MAX (lr[j]->nregs, 1);
 	      if (jlo < top && base < jhi)
 		{
-		  lr[rj]->renamed = false;
-		  lr[rk]->renamed = false;
+		  if (dump_file && lvx_cms_probe
+		      && lvx_cms_lrange_invariant_p (lr, rj))
+		    lvx_cms_dump (";; lvx cms:   WIDEREACH lr%d r%u+%d held by"
+				  " lr%u's effect insn=%u nregs=%d %s\n", rj,
+				  lr[rj]->regno, lr[rj]->nregs, k,
+				  lr[k]->effects[e].insn,
+				  lr[k]->effects[e].nregs,
+				  lr[k]->effects[e].is_def ? "DEF" : "read");
+		  lvx_cms_hold_range (lr, rj, 6);
+		  lvx_cms_hold_range (lr, rk, 6);
 		}
 	    }
 	}
@@ -16511,7 +16582,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  for (unsigned e = 0; e < lr[k]->effects.length (); e++)
 	    if (lr[k]->effects[e].insn == i)
 	      {
-		lr[lvx_cms_lrange_root (lr, (int) k)]->renamed = false;
+		lvx_cms_hold_range (lr, lvx_cms_lrange_root (lr, (int) k), 7);
 		break;
 	      }
 	}
