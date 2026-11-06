@@ -20222,8 +20222,18 @@ static bool
 lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 		    const auto_vec<lvx_cms_slot> &slots,
 		    const auto_vec<lvx_cms_lrange_part *> &lr, int loopback,
-		    auto_vec<int> &order)
+		    auto_vec<int> &order, bool *any_rw = NULL)
 {
+  /* ANY_RW: did ANY cycle hold a reader-writer pair on one register, cyclic
+     or not?  §7tricies.182.  The return value answers the CYCLIC question --
+     do those pairs form a circuit, so that no sequential order exists -- and
+     the colouring escalates CLAIM on it.  But the allocation fact is the PAIR:
+     one instance reads a register another instance writes in the same cycle,
+     which is what says the current KUNROLL has them sharing a name.  A single
+     non-mutual pair linearises, so the circuit test does not see it.  This
+     out-parameter is how the two are compared without changing either.  */
+  if (any_rw)
+    *any_rw = false;
   auto_vec<unsigned HOST_WIDE_INT> srd, swr;
 
   order.truncate (0);
@@ -20350,9 +20360,13 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 
 	      if (x == y)
 		continue;
-	      if ((srd[a + x] & swr[a + y]) != 0
-		  && !(lvx_cms_jump_last_on_node && jx && same))
-		e = true;			/* 1 */
+	      if ((srd[a + x] & swr[a + y]) != 0)
+		{
+		  if (any_rw)
+		    *any_rw = true;
+		  if (!(lvx_cms_jump_last_on_node && jx && same))
+		    e = true;			/* 1 */
+		}
 	      if ((int) uy == loopback)
 		e = true;			/* 2 */
 	      if (lvx_cms_jump_last_on_node && jy && !jx && same)
@@ -26279,7 +26293,19 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 
 	  lvx_cms_build_plan (seq, sigma, found, kkun > 0 ? kkun : 1, nstages,
 			      loop->num_nodes, &tp, &tslots, &tnodes);
-	  if (lvx_cms_slot_order (seq, tslots, klr, klb, torder)
+	  bool torw = false;
+	  bool tlin = lvx_cms_slot_order (seq, tslots, klr, klb, torder,
+					  &torw);
+	  /* THE TWO TESTS SIDE BY SIDE.  §7tricies.182.  CYCLIC is what
+	     decides today; PAIR is the direct allocation condition.  Reported
+	     per attempt so the two sets can be compared loop by loop before
+	     either replaces the other.  */
+	  if (dump_file && lvx_cms_probe)
+	    lvx_cms_dump (";; lvx cms: CLAIMTEST fn=%s loop %d claim=%d"
+			  " kunroll=%d cyclic=%d pair=%d\n",
+			  current_function_name (), loop->num, claim,
+			  kkun > 0 ? kkun : 1, tlin ? 0 : 1, torw ? 1 : 0);
+	  if (tlin
 	      && lvx_cms_rename_lr_dryrun (seq, tslots, klr, &tsubst,
 					   &trefused))
 	    {
