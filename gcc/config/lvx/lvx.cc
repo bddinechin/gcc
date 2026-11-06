@@ -24634,10 +24634,13 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
      "may be speculated" while the whole purpose of the arc is to say it may
      not.  Theta of one makes it strictly later.
 
-     The exception is branch-to-branch, where zero is deliberate: LVX has two
-     BCU slots and keeping their relative order does not require separating
-     them, so (3) and the back edge stay at zero and two branches can be
-     bundled.
+     BRANCH-TO-BRANCH IS ALSO ONE, since §7tricies.180.  Zero was deliberate
+     -- LVX has two BCU slots, so keeping two branches in relative order does
+     not require separating them -- but a BLOCK holds one terminator, so two
+     jump instances at one date are split across two plan nodes and repaired
+     late.  Expressing the separation here instead is what makes "one date in
+     one node" mean "one bundle", which §7tricies.179 needed and did not
+     have.
 
      Found from the emitted code, not from the graph: a pipelined
      initialisation loop stored past the end of its array, because the
@@ -24657,9 +24660,47 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
       if (!JUMP_P (seq[p]))
 	continue;
 
-      /* (3) */
+      /* (3), AT THETA ONE.  §7tricies.180 (author).
+
+	 This was zero, on the argument that LVX has two BCU slots so keeping
+	 two branches in relative order does not require separating them, and
+	 two branches may therefore be bundled.  They may not, and the cost of
+	 pretending otherwise is paid LATE: a block holds one terminator, so
+	 two jump instances at one date and iteration are split across two
+	 plan nodes, each inverted and redirected to its own drain
+	 (§7tricies.45).  That late fix is the only thing that can make "one
+	 date in one node" fail to mean "one bundle" -- and that premise is
+	 what §7tricies.179's jump-last ordering rule rested on, which
+	 miscompiled zlib's Huffman tables into a Z_DATA_ERROR.
+
+	 AND THE DESIGN FORBIDS IT OUTRIGHT (author): on LVX an instruction
+	 schedule group must always fit in a bundle, and bundling must never
+	 break a parallel group the scheduler assembled -- if it does, that is
+	 an irrecoverable error, not a thing to repair.  Two jumps at one date
+	 fit a bundle as far as RESOURCES go, BCU availability being 2; what
+	 they do not fit is a basic BLOCK, which holds one terminator.  So the
+	 late fix split the group across two blocks, and a group split across
+	 blocks is not one bundle: the repair was itself the violation.
+
+	 So the separation belongs in the dependence graph, where the scheduler
+	 can honour it, rather than in a repair after the fact.  At theta one
+	 two branches can never share a cycle, every cycle has at most one
+	 terminator, a cycle's slots in one node really are one bundle, and no
+	 schedule group is ever handed to bundling that cannot be bundled.
+
+	 INTERIM, AND THE PLANNED RECOVERY IS NOT THIS (author).  Theta one
+	 forbids the dual-jump bundle outright, which costs schedules: 6 loops
+	 of the four-suite census (MiBench emitted 537 -> 531).  The intended
+	 fix is a COMPOSITE INSTRUCTION combining two jumps that presents to
+	 GCC as a SINGLE terminator -- then the pair occupies one block, the
+	 schedule group is bundleable as the design requires, and the two BCU
+	 slots are usable again.  Deferred.  Until it exists this arc is the
+	 only thing keeping the scheduler from emitting a group that cannot be
+	 bundled, so it should not be relaxed back to zero on the grounds that
+	 it costs loops -- the loops it costs are the ones whose groups were
+	 being split.  */
       if (prev_branch >= 0)
-	lvx_cms_push_arc (arcs, prev_branch, p, 0, 0, LVX_ARC_CTRL_ORDER);
+	lvx_cms_push_arc (arcs, prev_branch, p, 1, 0, LVX_ARC_CTRL_ORDER);
       else
 	first_branch = (int) p;
       prev_branch = (int) p;
