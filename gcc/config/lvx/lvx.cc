@@ -20382,6 +20382,32 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 		   an unlucky colouring from a forced one.  */
 		if (lvx_cms_probe)
 		  {
+		    /* WHETHER THE CIRCUIT IS CONFINED TO ONE NODE.
+		       §7tricies.181.  A circuit whose members all share a
+		       node is one BLOCK, hence one bundle by the design's
+		       invariant, where a read precedes a write whatever the
+		       textual order -- so it needs no extra names and this
+		       failure is too strong.  A circuit spanning nodes really
+		       is a sequential stream and the names are needed.  The
+		       colouring's model search escalates CLAIM on this
+		       failure (§7tricies.180), so which kind it is decides
+		       whether that escalation is necessary or waste.  */
+		    {
+		      int n0 = -1;
+		      bool onenode = true;
+
+		      for (unsigned x = 0; x < n; x++)
+			if (!done[x])
+			  {
+			    if (n0 < 0)
+			      n0 = slots[a + x].node;
+			    else if (slots[a + x].node != n0)
+			      onenode = false;
+			  }
+		      lvx_cms_dump (";; lvx cms:   LINEARSPAN %s nodes"
+				    " date=%d\n",
+				    onenode ? "ONE" : "MANY", slots[a].date);
+		    }
 		    lvx_cms_dump (";; lvx cms:   LINEAR node%d date%d: circuit",
 				  slots[a].node, slots[a].date);
 		    for (unsigned x = 0; x < n; x++)
