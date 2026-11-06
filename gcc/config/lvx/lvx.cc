@@ -22453,6 +22453,39 @@ static const char *lvx_cms_verify (const auto_vec<rtx_insn *> &,
 				   const auto_vec<int> &,
 				   auto_vec<int> * = NULL);
 
+/* VALUE-BIASED STOCHASTIC SAMPLING.  §7tricies.170.
+
+   Bresina's HBSS and Cicirello's VBSS keep a greedy constructor's heuristic
+   but make the SELECTION stochastic: score the ready candidates, turn the
+   scores into weights through a bias function, and sample proportionally
+   instead of taking the argmax.  HBSS biases on a candidate's RANK, VBSS on
+   its VALUE -- and the value form is the one that matters here, because
+   ranking discards exactly the information we need, that two candidates are
+   nearly equal rather than merely first and second (Lihu & Holban 2009:
+   "Choices are only sorted, so heuristic values are not used to their full
+   potential").
+
+   Why this axis and not another: -mcms-priority=, -mcms-select= and
+   -mcms-release= all swap one DETERMINISTIC rule for another, and eight such
+   configurations produced the identical answer for saxpy.  Improving SWO's
+   signal (§7tricies.129) and grading its move (§7tricies.169) both measured
+   flat, and both changed an argmax's INPUTS.  This changes the argmax itself.
+
+   xorshift32, and the seed is derived from the loop's SHAPE (task count, II,
+   pass) rather than from any address, so a build is reproducible and two
+   compilations of the same function draw the same sequence.  */
+
+static inline unsigned
+lvx_cms_rnd (unsigned *state)
+{
+  unsigned x = *state;
+  x ^= x << 13;
+  x ^= x >> 17;
+  x ^= x << 5;
+  *state = x ? x : 0x9e3779b9u;		/* xorshift32 dies at zero */
+  return *state;
+}
+
 static bool
 lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		  const auto_vec<lvx_cms_arc> &arcs,
@@ -22460,11 +22493,16 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		  const auto_vec<int> &release,
 		  int ii, int delta, auto_vec<int> &sigma,
 		  auto_vec<int> *blame, auto_vec<int> *culprit,
-		  int *resblame)
+		  int *resblame, unsigned vseed = 0)
 {
   unsigned n = seq.length ();
   if (n == 0 || ii <= 0)
     return false;
+  /* VSEED == 0 means take the argmax, which is what pass 0 always does: the
+     deterministic draw is kept so that budget 1 reproduces the pre-VBSS
+     scheduler exactly and sampling can only ADD attempts, never replace the
+     one that was there.  */
+  unsigned vstate = vseed;
 
   /* COPIES ARE A SEARCH BUDGET, AND THE ORACLE DECIDES.  §7tricies.128.
 
@@ -22553,6 +22591,115 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 sink tends to be early in the dependence order and so to land early,
 	 so coincidence is plausible -- but plausible is not measured.  */
       int best = -1, bestwhen = -1, bestprio = -1;
+
+      /* VBSS: SAMPLE THE READY SET INSTEAD OF TAKING ITS ARGMAX.
+	 §7tricies.170.  Same copy discipline as the deterministic rule below
+	 -- lowest copy first, and a copy with any ready cell settles it -- so
+	 the only thing that changes is WHICH of that copy's ready cells is
+	 taken.
+
+	 The heuristic's own number is a COST (ascending prio, and for
+	 select != 0 the clock advance W), so the bias is applied to the
+	 EXCESS over the best candidate: weight = SCALE / (1 + excess)^gamma.
+	 Two candidates the heuristic rates equally get equal weight, one
+	 rated far worse gets a small one, and as gamma grows this collapses
+	 back to the argmax -- which is the property that makes gamma a
+	 single interpretable knob rather than a mode switch.
+
+	 For select != 0 the deterministic order is lexicographic in
+	 (W, prio), so the cost scalarises it exactly: cost = W * span + prio
+	 with span wider than any prio difference.  Biasing on W alone would
+	 throw away the secondary key and flatten the near-ties this exists
+	 to exploit.  */
+      bool vbss_done = false;
+      if (vstate != 0 && lvx_cms_vbss > 0)
+	{
+	  auto_vec<unsigned> cand;
+	  auto_vec<int> cost, cwhen;
+	  for (int c = 0; c < ncopy && !vbss_done; c++)
+	    {
+	      cand.truncate (0); cost.truncate (0); cwhen.truncate (0);
+	      int pmin = 0, pmax = 0;
+	      bool first = true;
+	      for (unsigned i = 0; i < n; i++)
+		{
+		  unsigned k = (unsigned) c * n + i;
+		  if (date[k] >= 0 || pred[k] > 0)
+		    continue;
+		  if (first || prio[i] < pmin) pmin = prio[i];
+		  if (first || prio[i] > pmax) pmax = prio[i];
+		  first = false;
+		}
+	      if (first)
+		continue;			/* no ready cell in this copy */
+	      int pspan = pmax - pmin + 1;
+	      for (unsigned i = 0; i < n; i++)
+		{
+		  unsigned k = (unsigned) c * n + i;
+		  if (date[k] >= 0 || pred[k] > 0)
+		    continue;
+		  int w = -1;
+		  if (lvx_cms_select_policy != 0)
+		    {
+		      w = lvx_cms_place_cycle (seq, arcs, release, date, cyc,
+					       n, ncopy, ii, i, c, NULL, NULL,
+					       NULL, NULL);
+		      if (w < 0)
+			continue;
+		    }
+		  cand.safe_push (k);
+		  cwhen.safe_push (w);
+		  cost.safe_push (lvx_cms_select_policy != 0
+				  ? w * pspan + (prio[i] - pmin)
+				  : prio[i] - pmin);
+		}
+	      if (cand.is_empty ())
+		continue;
+	      int cmin = cost[0];
+	      for (unsigned j = 1; j < cost.length (); j++)
+		if (cost[j] < cmin)
+		  cmin = cost[j];
+	      /* Weights, and the argmax's own identity recorded for DISAGREE. */
+	      unsigned total = 0;
+	      auto_vec<unsigned> wgt;
+	      int argmin = -1;
+	      for (unsigned j = 0; j < cand.length (); j++)
+		{
+		  unsigned excess = (unsigned) (cost[j] - cmin);
+		  unsigned den = 1;
+		  for (int g = 0; g < lvx_cms_vbss && den < (1u << 18); g++)
+		    den *= (excess + 1);
+		  unsigned v = (1u << 18) / den;
+		  if (v == 0)
+		    v = 1;		/* never exclude a legal candidate */
+		  wgt.safe_push (v);
+		  total += v;
+		  if (argmin < 0 || cost[j] < cost[argmin])
+		    argmin = (int) j;
+		}
+	      unsigned r = total ? lvx_cms_rnd (&vstate) % total : 0;
+	      unsigned pick = 0;
+	      for (unsigned j = 0; j < wgt.length (); j++)
+		{
+		  if (r < wgt[j])
+		    { pick = j; break; }
+		  r -= wgt[j];
+		  pick = j;
+		}
+	      best = (int) cand[pick];
+	      bestwhen = cwhen[pick];
+	      bestprio = (int) cand[argmin >= 0 ? (unsigned) argmin : pick];
+	      if (lvx_cms_vbss_probe && dump_file && lvx_cms_probe
+		  && cand.length () > 1)
+		lvx_cms_dump (";; lvx cms: VBSS ii=%d ready=%u picked=%u"
+			      " argmin=%u excess=%d\n", ii, cand.length (),
+			      pick, (unsigned) (argmin >= 0 ? argmin : 0),
+			      cost[pick] - cmin);
+	      vbss_done = true;
+	    }
+	}
+
+      if (!vbss_done)
       for (int c = 0; c < ncopy; c++)
 	{
 	  for (unsigned i = 0; i < n; i++)
@@ -23069,8 +23216,23 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
       culprit.safe_grow_cleared (n);
 
       (*passes)++;
+      /* PASS 0 IS THE DETERMINISTIC DRAW, every later pass a VBSS sample.
+	 Keeping pass 0 exact means budget 1 reproduces the pre-VBSS scheduler
+	 and sampling can only add attempts.  The seed is a function of the
+	 loop's SHAPE and the pass index -- never an address, so the same
+	 function compiles to the same code twice, which a stochastic scheduler
+	 has to guarantee before it can be a default.  */
+      unsigned vseed = 0;
+      if (lvx_cms_vbss > 0 && pass > 0)
+	{
+	  vseed = 0x9e3779b9u ^ (n * 2654435761u)
+		  ^ ((unsigned) ii * 40503u) ^ ((unsigned) pass * 2246822519u)
+		  ^ ((unsigned) lvx_cms_vbss_seed * 0x85ebca6bu);
+	  if (vseed == 0)
+	    vseed = 0x9e3779b9u;
+	}
       if (lvx_cms_converge (seq, arcs, prio, release, ii, delta, sigma,
-			    &blame, &culprit, resblame))
+			    &blame, &culprit, resblame, vseed))
 	{
 	  const char *bad = lvx_cms_verify (seq, arcs, ii, sigma);
 	  if (!bad)

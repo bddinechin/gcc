@@ -207,6 +207,18 @@ mcms-liveout-split
 Target Var(lvx_cms_liveout_split) Init(1) Optimization
 Omit the CTRL_LIVEOUT control arcs for live-out ranges the renaming gives a name of their own, the drain reconciling that name to the architected register on the way out.  The commitment is verified before emission and the loop refused if a range kept its architected register.  On by default since the drain reconciliation it rests on was fixed (7tricies.135); -mno-cms-liveout-split restores the arcs.
 
+mcms-vbss=
+Target RejectNegative Joined UInteger Var(lvx_cms_vbss) Init(1) Optimization
+-mcms-vbss=N	Value-biased stochastic sampling of the ready set instead of its argmax, N being the bias exponent: 0 off, 1 gentle, higher collapses back towards the argmax.  Pass 0 of each initiation interval stays deterministic, so -mcms-swo-budget bounds the sample count.
+
+mcms-vbss-seed=
+Target RejectNegative Joined UInteger Var(lvx_cms_vbss_seed) Init(0) Optimization
+-mcms-vbss-seed=N	Salt VBSS's seed.  Changes only which schedules are sampled, not the distribution, so it is the control that measures how much of a VBSS result is sampling variance.
+
+mcms-vbss-probe
+Target Var(lvx_cms_vbss_probe) Init(0) Optimization
+-mcms-vbss-probe	Report each VBSS draw: the ready-set size, which candidate was taken, and how far its heuristic value sat above the best.
+
 mcms-release-grade=
 Target RejectNegative Joined UInteger Var(lvx_cms_release_grade) Init(0) Optimization
 -mcms-release-grade=N	How far SWO's release lever moves a task it decides to move: 0 all the way to its ALAP, as before, 1 half its slack, 2 by the worst construction delay observed in the pass, 3 the same with a floor of one cycle.
