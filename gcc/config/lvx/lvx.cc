@@ -20298,34 +20298,71 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 	    deg.safe_push (0);
 	    done.safe_push (false);
 	  }
-	/* Edge reader -> writer, and the terminator last of all.  */
+	/* THE EDGE SET, BUILT ONCE AND USED FOR BOTH THE IN-DEGREES AND THE
+	   DECREMENTS.  §7tricies.179.
+
+	   These were two expressions of the same relation -- the in-degree
+	   loop incremented on one condition and the selection loop
+	   decremented on a RE-DERIVED copy of it -- so a new edge kind had to
+	   be added in both places or a slot's in-degree never drained.  That
+	   is exactly what happened on the first attempt here: the jump's
+	   in-degree was raised and never lowered, and the circuit report
+	   named a single slot, `circuit 2/0'.  One matrix, two readers.
+
+	   EDGE[x * n + y] means x must be emitted before y.  Three kinds:
+
+	   1 reader -> writer, so a read of a register another slot in this
+	     cycle writes is emitted first;
+	   2 everything -> the loopback, which closes the kernel;
+	   Kinds 1's exemption and 3 are behind -mcms-jump-last-on-node, which
+	   is Init(0) BECAUSE IT HANGS: with them on, the four suites' census
+	   improves (both terminator-class refusals cleared, emitted 1008 ->
+	   1014, gate 8/8) and then BOTH zlib round trips run for the full
+	   5400-second timeout without producing a checksum -- an infinite
+	   loop in the emitted code.  §7tricies.179.  The matrix below is
+	   unconditional and changes nothing on its own.
+
+	   3 every non-jump -> a jump SHARING ITS NODE, because the plan walk
+	     closes a node at each jump and §7tricies.130 refuses a slot
+	     following its node's jump.
+
+	   Kind 1 is dropped where the reader is a jump on the writer's own
+	   node: same date and same node is the same BLOCK, hence one bundle,
+	   and a bundle reads every operand before writing any -- so the jump
+	   sees the old value whatever the textual order, and read-before-write
+	   has nothing to enforce.  Keeping both is the deadlock §7tricies.178
+	   measured.  The exemption stays inside one node deliberately: a
+	   cycle's slots are spread over skeleton blocks (§7tricies.136), and
+	   across two blocks the pair is a sequential stream where order is
+	   the semantics.  */
+	auto_vec<bool> edge;
+
+	edge.safe_grow_cleared (n * n);
 	for (unsigned x = 0; x < n; x++)
 	  for (unsigned y = 0; y < n; y++)
-	    if (x != y && (srd[a + x] & swr[a + y]) != 0)
-	      deg[y]++;
-	/* THE LOOPBACK WAITS FOR EVERYTHING; AN EARLY EXIT DOES NOT, AND
-	   CANNOT.  §7tricies.178.
+	    {
+	      unsigned ux = (unsigned) slots[a + x].insn;
+	      unsigned uy = (unsigned) slots[a + y].insn;
+	      bool jx = ux < seq.length () && JUMP_P (seq[ux]);
+	      bool jy = uy < seq.length () && JUMP_P (seq[uy]);
+	      bool same = slots[a + x].node == slots[a + y].node;
+	      bool e = false;
 
-	   Extending this to every JUMP_P was tried, to match the plan walk,
-	   which closes a node at every jump, and §7tricies.130's check, which
-	   refuses a slot following its node's jump.  It DEADLOCKS against the
-	   reader-to-writer edge above: where a branch READS a register another
-	   slot in the same cycle WRITES, that edge already orders the branch
-	   first, and `the branch waits for everything' orders it last.  Both
-	   `f' and `h' of the iteration-0 reproducer then failed with "a
-	   cycle's reads and writes cannot be linearised", `h' having
-	   pipelined before.
-
-	   So the disagreement is not fixable here.  The node boundaries are
-	   assigned by the plan walk in (date, iter) order while emission walks
-	   THIS order, and the fix is to assign them in emission order --
-	   slot_order needs only insn, iter and date, so it can run first.
-	   That is a change to the plan builder, not to the ordering.  */
-	for (unsigned x = 0; x < n; x++)
-	  if ((int) slots[a + x].insn == loopback)
-	    for (unsigned y = 0; y < n; y++)
-	      if (y != x)
-		deg[x]++;		/* the branch waits for everything */
+	      if (x == y)
+		continue;
+	      if ((srd[a + x] & swr[a + y]) != 0
+		  && !(lvx_cms_jump_last_on_node && jx && same))
+		e = true;			/* 1 */
+	      if ((int) uy == loopback)
+		e = true;			/* 2 */
+	      if (lvx_cms_jump_last_on_node && jy && !jx && same)
+		e = true;			/* 3 */
+	      if (e)
+		{
+		  edge[x * n + y] = true;
+		  deg[y]++;
+		}
+	    }
 
 	for (unsigned step = 0; step < n; step++)
 	  {
@@ -20375,9 +20412,7 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 	    done[take] = true;
 	    pick.safe_push (a + take);
 	    for (unsigned y = 0; y < n; y++)
-	      if (!done[y]
-		  && ((srd[a + take] & swr[a + y]) != 0
-		      || (int) slots[a + y].insn == loopback))
+	      if (!done[y] && edge[(unsigned) take * n + y])
 		deg[y]--;
 	  }
 	for (unsigned x = 0; x < n; x++)
