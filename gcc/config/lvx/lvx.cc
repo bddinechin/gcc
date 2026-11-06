@@ -22776,7 +22776,10 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 
       unsigned bi = (unsigned) best % n;
       int bc = best / (int) n;
-
+      /* PLACEMENT ORDER AGAINST ASSIGNED DATE.  Asks whether the dates come
+	 out monotone, which decides whether this construction could drive an
+	 automaton resource model -- one can be advanced but never reversed
+	 (docs/dfa-resource-interfaces.md).  Trace only; decides nothing.  */
       /* Where it lands, from the same function the selection used, so the two
 	 cannot disagree.  The release-date rationale that used to sit here is
 	 kept below; the arithmetic itself moved into lvx_cms_place_cycle.  */
@@ -22811,6 +22814,13 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
       if (!lvx_doloop_end_p (seq[bi]))
 	lvx_cms_resources_add (&cyc_nodl[when], seq[bi]);
       date[(unsigned) best] = when;
+      /* PLACEMENT ORDER AGAINST ASSIGNED DATE.  Asks whether the dates come
+	 out monotone, which decides whether this construction could drive an
+	 automaton resource model -- one can be advanced but never reversed
+	 (docs/dfa-resource-interfaces.md).  Trace only; decides nothing.  */
+      if (lvx_cms_place_trace && dump_file && lvx_cms_probe)
+	lvx_cms_dump (";; lvx cms: PLACE ii=%d step=%d insn=%u copy=%d"
+		      " date=%d\n", ii, placed, bi, bc, when);
       placed++;
 
       /* BLAME, for SWO's analysis phase: how far resource contention pushed
