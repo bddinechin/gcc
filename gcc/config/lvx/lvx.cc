@@ -23268,6 +23268,25 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	 loop's SHAPE and the pass index -- never an address, so the same
 	 function compiles to the same code twice, which a stochastic scheduler
 	 has to guarantee before it can be a default.  */
+      /* RANDOMISED DELAY RELATIVE TO THE READY DATE.  §7tricies.172.
+	 The diversification belongs on the DELAY, not on the priority: under a
+	 time-monotonic constructor (-mcms-select=1) the schedule class is
+	 decided by which tasks are held back past their ready date, because
+	 that is the only way a unit is left idle while something is eligible
+	 -- the non-delay restriction of Kolisch & Hartmann's parallel SGS.
+	 So SWO's analysis chooses WHICH tasks are delayed, exactly as its
+	 blame and culprit arrays already do, and the draw chooses HOW LONG.
+	 Seeded from the loop's shape and the pass, like VBSS.  */
+      unsigned rstate = 0;
+      if (lvx_cms_release_rand > 0 && pass > 0)
+	{
+	  rstate = 0x7f4a7c15u ^ (n * 0x9e3779b9u)
+		   ^ ((unsigned) ii * 0x85ebca6bu)
+		   ^ ((unsigned) pass * 0xc2b2ae35u)
+		   ^ ((unsigned) lvx_cms_vbss_seed * 27644437u);
+	  if (rstate == 0)
+	    rstate = 0x7f4a7c15u;
+	}
       unsigned vseed = 0;
       if (lvx_cms_vbss > 0 && pass > 0)
 	{
@@ -23563,6 +23582,28 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	  int home = (mcrl_release == 2 && !mcrl.is_empty ()
 		      ? mcrl[i] : 0);
 	  int amount = slack[i];
+	  /* The draw, when asked for: uniform over [0, slack], so a task may
+	     be held anywhere between its ready date and its ALAP.  Zero is a
+	     legal outcome and means this pass declines to delay it, which is
+	     what makes the search cover both schedule classes rather than
+	     replacing one restriction with another.  */
+	  if (rstate != 0 && lvx_cms_release_rand > 0 && slack[i] > 0)
+	    {
+	      unsigned span = (unsigned) slack[i] + 1;
+	      unsigned draw = lvx_cms_rnd (&rstate) % span;
+	      if (lvx_cms_release_rand >= 2)
+		{
+		  /* Biased towards the ALAP: the best deterministic policy
+		     measured is `every slack task to its ALAP' (release=4
+		     under select=1), so the draw should sit near that end and
+		     sample away from it, not around the middle.  */
+		  unsigned d2 = lvx_cms_rnd (&rstate) % span;
+		  if (d2 > draw)
+		    draw = d2;
+		}
+	      amount = (int) draw;
+	      goto grade_done;
+	    }
 	  switch (lvx_cms_release_grade)
 	    {
 	    /* Half the slack: a partial move carrying no magnitude.  */
@@ -23577,6 +23618,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	    case 3: amount = MIN (slack[i], MAX (dmax, 1)); break;
 	    default: break;			/* 0: the ALAP, as before.  */
 	    }
+	grade_done:
 	  release[i] = move ? height[i] + amount : home;
 	  if (culprit[i] > 0)
 	    {

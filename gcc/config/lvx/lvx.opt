@@ -223,6 +223,10 @@ mcms-vbss-probe
 Target Var(lvx_cms_vbss_probe) Init(0) Optimization
 -mcms-vbss-probe	Report each VBSS draw: the ready-set size, which candidate was taken, and how far its heuristic value sat above the best.
 
+mcms-release-rand=
+Target RejectNegative Joined UInteger Var(lvx_cms_release_rand) Init(0) Optimization
+-mcms-release-rand=N	Randomise how long a released task is held past its ready date rather than sending it to its ALAP: 0 off, 1 uniform over its slack, 2 biased towards the ALAP.  SWO's analysis still chooses which tasks are released; this chooses how long.
+
 mcms-release-grade=
 Target RejectNegative Joined UInteger Var(lvx_cms_release_grade) Init(0) Optimization
 -mcms-release-grade=N	How far SWO's release lever moves a task it decides to move: 0 all the way to its ALAP, as before, 1 half its slack, 2 by the worst construction delay observed in the pass, 3 the same with a floor of one cycle.
