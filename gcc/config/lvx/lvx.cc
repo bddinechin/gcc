@@ -22542,6 +22542,30 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
   for (unsigned k = 0; k < cells; k++)
     date[k] = -1;
 
+  /* WHEN EACH CELL BECAME READY, for the monotonicity hunt: a backward step
+     whose chosen cell became ready on the PREVIOUS step is a fresh successor
+     (so a non-positive theta explains it); one that was ready earlier refutes
+     the claim that an already-ready candidate's clock advance can only rise.  */
+  auto_vec<int> ready_at;
+  ready_at.safe_grow_cleared (cells);
+  for (unsigned k = 0; k < cells; k++)
+    ready_at[k] = -1;
+  if (lvx_cms_place_trace && dump_file && lvx_cms_probe)
+    {
+      HOST_WIDE_INT tmin = 0, tmax = 0;
+      unsigned nneg = 0, nzero = 0;
+      for (unsigned a2 = 0; a2 < arcs.length (); a2++)
+	{
+	  if (a2 == 0 || arcs[a2].theta < tmin) tmin = arcs[a2].theta;
+	  if (a2 == 0 || arcs[a2].theta > tmax) tmax = arcs[a2].theta;
+	  if (arcs[a2].theta < 0) nneg++;
+	  else if (arcs[a2].theta == 0) nzero++;
+	}
+      lvx_cms_dump (";; lvx cms: PLACEARCS ii=%d narcs=%u thetamin=" HOST_WIDE_INT_PRINT_DEC
+		    " thetamax=" HOST_WIDE_INT_PRINT_DEC " nneg=%u nzero=%u\n",
+		    ii, arcs.length (), tmin, tmax, nneg, nzero);
+    }
+
   /* Entering-arc counts per copy.  A source copy below zero is a prologue
      instance, already issued before the kernel, so the arc is satisfied; the
      self modulo constraint accounts for the extra predecessor of every copy
@@ -22556,6 +22580,9 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
   for (int c = 1; c < ncopy; c++)
     for (unsigned i = 0; i < n; i++)
       pred[(unsigned) c * n + i]++;
+  for (unsigned k = 0; k < cells; k++)
+    if (pred[k] == 0)
+      ready_at[k] = 0;
 
   auto_vec<struct lvx_sched_resources> cyc;
   /* THE SAME TABLE WITH THE DOLOOP_END UNCHARGED.  §7tricies.87.
@@ -22820,7 +22847,8 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 (docs/dfa-resource-interfaces.md).  Trace only; decides nothing.  */
       if (lvx_cms_place_trace && dump_file && lvx_cms_probe)
 	lvx_cms_dump (";; lvx cms: PLACE ii=%d step=%d insn=%u copy=%d"
-		      " date=%d\n", ii, placed, bi, bc, when);
+		      " date=%d rdy=%d\n", ii, placed, bi, bc, when,
+		      ready_at[(unsigned) best]);
       placed++;
 
       /* BLAME, for SWO's analysis phase: how far resource contention pushed
@@ -22857,10 +22885,18 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	  {
 	    int dc = bc + (int) arcs[a].omega;
 	    if (dc >= 0 && dc < ncopy)
-	      pred[(unsigned) dc * n + arcs[a].dst]--;
+	      {
+		unsigned dk = (unsigned) dc * n + arcs[a].dst;
+		if (--pred[dk] == 0 && ready_at[dk] < 0)
+		  ready_at[dk] = placed;
+	      }
 	  }
       if (bc + 1 < ncopy)
-	pred[(unsigned) (bc + 1) * n + bi]--;
+	{
+	  unsigned sk = (unsigned) (bc + 1) * n + bi;
+	  if (--pred[sk] == 0 && ready_at[sk] < 0)
+	    ready_at[sk] = placed;
+	}
 
       /* Stationarity: a copy that repeats its predecessor exactly II cycles
 	 later IS the kernel.  */
