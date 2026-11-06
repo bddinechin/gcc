@@ -23253,6 +23253,29 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
   for (unsigned i = 0; i < n; i++)
     prio[i] = base[i];
 
+  /* BEST-OF-N RATHER THAN FIRST-SUCCESS.  §7tricies.174.
+
+     SWO's budget was a budget for FAILURE: the first pass whose projection
+     verified returned, and the rest went unspent.  But VBSS is `run I times
+     and keep the best' (Lihu & Holban: "After a given number of runs, the best
+     solution is extracted"), so CMS implemented the sampling and not the
+     selection -- and §7tricies.173 measured a seed band of 368-376 at s.d. 3.1
+     under the cycle-based scheme, which is a band a selection can exploit.
+
+     THE CRITERION, BESIDES II, IS THE LOCAL SCHEDULE LENGTH (author).  II is
+     already settled by the search, which is bottom-up and takes the first
+     feasible one; among schedules AT that II the span is what decides the stage
+     count, hence the prologue and epilogue code, the number of values in
+     flight, and the modulo expansion degree.  Note it pulls AGAINST the
+     `nstages>=3' census figure by construction -- fewer stages follow from a
+     shorter span -- so that metric is expected to FALL here while the code
+     improves, and must not be read as a regression.  */
+  auto_vec<int> bestsig;
+  int bestspan = -1;
+  int bestresblame[LVX_CMS_NRESOURCES];
+  bool have_best = false;
+
+  memset (bestresblame, 0, sizeof (bestresblame));
   for (int pass = 0; pass < budget; pass++)
     {
       unsigned sqk_named = 0, sqk_movable = 0;
@@ -23383,9 +23406,28 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 
 	      if (allocates)
 		{
-		  if (resblame_out)
-		    memcpy (resblame_out, resblame, sizeof (resblame));
-		  return true;
+		  if (!lvx_cms_best_of_n)
+		    {
+		      if (resblame_out)
+			memcpy (resblame_out, resblame, sizeof (resblame));
+		      return true;
+		    }
+		  /* Keep the shortest local schedule seen, and carry on
+		     spending the budget.  SIGMA is overwritten by every later
+		     construction, so the winner has to be copied out.  */
+		  int sp = lvx_cms_sigma_span (sigma);
+		  if (!have_best || sp < bestspan)
+		    {
+		      bestspan = sp;
+		      have_best = true;
+		      bestsig.truncate (0);
+		      for (unsigned q = 0; q < sigma.length (); q++)
+			bestsig.safe_push (sigma[q]);
+		      memcpy (bestresblame, resblame, sizeof (resblame));
+		    }
+		  if (dump_file && lvx_cms_probe)
+		    lvx_cms_dump (";; lvx cms: BESTOFN ii=%d pass=%d span=%d"
+				  " best=%d\n", ii, pass, sp, bestspan);
 		}
 	    }
 	  else
@@ -23400,9 +23442,26 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	  squeaked = true;
       if (!squeaked)
 	{
-	  if (resblame_out)
-	    memcpy (resblame_out, resblame, sizeof (resblame));
-	  return false;
+	  /* THE PREMISE IS DETERMINISM, and VBSS breaks it.  §7tricies.174.
+	     "Another pass would reconstruct the same schedule" holds only
+	     while the constructor is a function of its parameters; under
+	     value-biased sampling a fresh draw differs at identical
+	     parameters, so with selection enabled the search must continue.
+	     This exit is also why VBSS saturated at budget 4 (§7tricies.170):
+	     on a loop that never squeaked it was taking exactly one draw.  */
+	  if (!(lvx_cms_best_of_n && lvx_cms_vbss > 0))
+	    {
+	      /* BREAK rather than RETURN FALSE: a recorded best is a success,
+		 and this exit means `no more worth sampling', not `failed'.
+		 Returning false here discarded it -- measured as 132 loops of
+		 tsvc.c losing their schedule entirely, because on a winning
+		 pass nothing squeaks by construction.  */
+	      if (have_best)
+		break;
+	      if (resblame_out)
+		memcpy (resblame_out, resblame, sizeof (resblame));
+	      return false;
+	    }
 	}
 
       /* PRIORITIZE, first lever: escalate, cumulatively.  */
@@ -23645,6 +23704,16 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	 pass that blames the branch.  */
       if (branch_i >= 0 && release[branch_i] < branch_floor)
 	release[branch_i] = branch_floor;
+    }
+
+  if (have_best)
+    {
+      sigma.truncate (0);
+      for (unsigned q = 0; q < bestsig.length (); q++)
+	sigma.safe_push (bestsig[q]);
+      if (resblame_out)
+	memcpy (resblame_out, bestresblame, sizeof (bestresblame));
+      return true;
     }
 
   if (resblame_out)
