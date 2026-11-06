@@ -23290,12 +23290,25 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
   auto_vec<bool> oncrit;
   oncrit.safe_grow_cleared (n);
   unsigned ncrit = 0;
+  /* CRIT HOLDS ARC INDICES, NOT TASK INDICES.  lvx_cms_bounds maps the PLC
+     critical circuit back onto ARCS -- "PLC arc N + J is ARCS[J], and a root
+     arc, which cannot be part of a circuit, maps to -1" -- so an entry is an
+     index into ARCS and a task is ON the recurrence when it is an ENDPOINT of
+     one of those arcs.  Reading the entries as task indices (the first version
+     of this) silently dropped every arc index >= n on the bounds test and
+     marked unrelated tasks with the rest, which made the measured set 9% of
+     the body and the policy indistinguishable from release=4.  */
   if (crit != NULL)
     for (unsigned q = 0; q < crit->length (); q++)
       {
-	int c = (*crit)[q];
-	if (c >= 0 && (unsigned) c < n && !oncrit[c])
-	  oncrit[c] = true, ncrit++;
+	int a = (*crit)[q];
+	if (a < 0 || (unsigned) a >= arcs.length ())
+	  continue;
+	unsigned sr = arcs[a].src, ds = arcs[a].dst;
+	if (sr < n && !oncrit[sr])
+	  oncrit[sr] = true, ncrit++;
+	if (ds < n && !oncrit[ds])
+	  oncrit[ds] = true, ncrit++;
       }
 
   auto_vec<int> bestsig;
