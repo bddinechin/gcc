@@ -23082,7 +23082,8 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		   int ii, int delta, auto_vec<int> &sigma,
 		   int budget, int *passes, const char **last_bad,
 		   int *resblame_out, int pin, int mcrl_release = -1,
-		   bitmap livein = NULL)
+		   bitmap livein = NULL,
+		   const auto_vec<int> *crit = NULL)
 {
   /* -1 means `whatever the option says'; the gate below passes an explicit
      setting so it can try a II both ways.  */
@@ -23270,12 +23271,43 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
      `nstages>=3' census figure by construction -- fewer stages follow from a
      shorter span -- so that metric is expected to FALL here while the code
      improves, and must not be read as a regression.  */
+  /* WHICH TASKS SIT ON THE CRITICAL RECURRENCE.  §7tricies.176.
+
+     The release lever trades II against span (§7tricies.175): holding every
+     task with slack to its ALAP reaches the lowest II but stretches the
+     schedule, while holding selectively keeps the span tight and gives II
+     back.  The author's reading of why: a task ON the critical recurrence is
+     on the longest cycle, so delaying it lengthens the schedule directly,
+     whereas delaying a task OFF it frees issue slots for free.  So hold
+     exactly the off-recurrence tasks.
+
+     CRIT comes from lvx_cms_bounds, which already computes the critical
+     circuit for the RecMII bound and reports it in the `RecMII circuit' dump;
+     entries are task indices, with -1 where a circuit node is not a task.
+     When it is unavailable the set is empty, so policy 6 degenerates to
+     policy 4 -- hold everything with slack -- which is the right fallback: an
+     unknown recurrence should not stop the lever working.  */
+  auto_vec<bool> oncrit;
+  oncrit.safe_grow_cleared (n);
+  unsigned ncrit = 0;
+  if (crit != NULL)
+    for (unsigned q = 0; q < crit->length (); q++)
+      {
+	int c = (*crit)[q];
+	if (c >= 0 && (unsigned) c < n && !oncrit[c])
+	  oncrit[c] = true, ncrit++;
+      }
+
   auto_vec<int> bestsig;
   int bestspan = -1;
   int bestresblame[LVX_CMS_NRESOURCES];
   bool have_best = false;
 
   memset (bestresblame, 0, sizeof (bestresblame));
+  if (dump_file && lvx_cms_probe && lvx_cms_release_policy == 6)
+    lvx_cms_dump (";; lvx cms: ONCRIT ii=%d n=%u oncrit=%u holdable=%u\n",
+		  ii, n, ncrit, n - ncrit);
+
   for (int pass = 0; pass < budget; pass++)
     {
       unsigned sqk_named = 0, sqk_movable = 0;
@@ -23617,6 +23649,10 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	    case 2:  move = (culprit[i] > 0 && blame[i] == 0 && slack[i] > 0);
 		     break;
 	    case 4:  move = (slack[i] > 0); break;	/* no selectivity at all */
+	    /* OFF THE CRITICAL RECURRENCE ONLY.  §7tricies.176.  Delaying a
+	       task on the longest cycle lengthens the schedule; delaying one
+	       off it buys issue slots without that cost.  */
+	    case 6:  move = (slack[i] > 0 && !oncrit[i]); break;
 	    default: move = (blame[i] == 0 && slack[i] > 0); break;
 	    }
 
@@ -25217,13 +25253,13 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
       if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
 			     budget, &passes, &last_bad, resblame,
 			     pin == 3 ? 1 : pin, lvx_cms_mcrl_release,
-			     df_get_live_in (loop->header)))
+			     df_get_live_in (loop->header), &crit))
 	found = try_ii;
       else if (pin == 3
 	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
 				     budget, &passes, &last_bad, resblame, 0,
 				     lvx_cms_mcrl_release,
-				     df_get_live_in (loop->header)))
+				     df_get_live_in (loop->header), &crit))
 	found = try_ii;
       /* Arm A: this II refused an un-seeded construction.  Before raising it,
 	 ask MCRL where the tasks want to go.
@@ -25242,7 +25278,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
 				     budget, &passes, &last_bad, resblame,
 				     pin == 3 ? 1 : pin, 2,
-				     df_get_live_in (loop->header)))
+				     df_get_live_in (loop->header), &crit))
 	found = try_ii, mcrl_used = 1, mcrl_arm = 1;
     }
 
@@ -25266,7 +25302,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	  const char *b2 = NULL;
 	  if (lvx_cms_swo_at_ii (seq, arcs, height, found, delta, alt, budget,
 				 &p2, &b2, NULL, pin == 3 ? 1 : pin, 2,
-				 df_get_live_in (loop->header))
+				 df_get_live_in (loop->header), &crit)
 	      && lvx_cms_sigma_span (alt) < have)
 	    {
 	      sigma.truncate (0);
