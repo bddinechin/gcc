@@ -20303,6 +20303,24 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 	  for (unsigned y = 0; y < n; y++)
 	    if (x != y && (srd[a + x] & swr[a + y]) != 0)
 	      deg[y]++;
+	/* THE LOOPBACK WAITS FOR EVERYTHING; AN EARLY EXIT DOES NOT, AND
+	   CANNOT.  §7tricies.178.
+
+	   Extending this to every JUMP_P was tried, to match the plan walk,
+	   which closes a node at every jump, and §7tricies.130's check, which
+	   refuses a slot following its node's jump.  It DEADLOCKS against the
+	   reader-to-writer edge above: where a branch READS a register another
+	   slot in the same cycle WRITES, that edge already orders the branch
+	   first, and `the branch waits for everything' orders it last.  Both
+	   `f' and `h' of the iteration-0 reproducer then failed with "a
+	   cycle's reads and writes cannot be linearised", `h' having
+	   pipelined before.
+
+	   So the disagreement is not fixable here.  The node boundaries are
+	   assigned by the plan walk in (date, iter) order while emission walks
+	   THIS order, and the fix is to assign them in emission order --
+	   slot_order needs only insn, iter and date, so it can run first.
+	   That is a change to the plan builder, not to the ordering.  */
 	for (unsigned x = 0; x < n; x++)
 	  if ((int) slots[a + x].insn == loopback)
 	    for (unsigned y = 0; y < n; y++)
@@ -20764,7 +20782,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      cheap, is decided on the plan, and refuses the loop if the arc is ever
      absent or the dates disagree -- rather than trusting that it is there.  */
   *why = "a prologue side effect precedes the branch that admits it";
-  int nse0 = 0, nsel = 0;
+  int nse0 = 0, nsel = 0, nse0g = 0;
   for (unsigned q = 0; q < slots.length (); q++)
     {
       int nd = slots[q].node;
@@ -20812,6 +20830,58 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	 speculation the blanket refusal was named for, and it is refused.  */
       if (slots[q].iter <= 0)
 	{
+	  /* GUARDED BY AN EARLIER EXIT OF ITS OWN ITERATION.  §7tricies.177.
+
+	     ENTRY_ADMITS is sufficient, not necessary, and it is the only
+	     thing this case used to consult -- where the iteration >= 1 case
+	     below asks the sharper question, whether the admitting branch is
+	     actually emitted ahead of the side effect.  Asked here too, the
+	     answer is often yes: a side effect downstream of an early exit of
+	     the SAME iteration is guarded by that exit exactly as the original
+	     program guarded it.
+
+	     That rests on the emission, which was read rather than assumed.
+	     `prev_exit = JUMP_P (seq[i])' ends a plan node at every jump
+	     instance, so the exit and anything after it land in DIFFERENT
+	     blocks; each early exit is paired with its own epilogue node by
+	     (exit_date, exit_iter, exit_insn); and that epilogue's block is
+	     redirected with `redirect_edge_and_branch_force' to
+	     `lvx_cms_jump_exit_dest', the destination the original jump had.
+	     So the branch really is emitted as a branch out, and a later node
+	     is on its fall-through path.
+
+	     The epilogue pairing is required rather than JUMP_P alone: a jump
+	     with no early-exit epilogue is not emitted as an exit here (the
+	     drain emits it as the straight line it is), and would guard
+	     nothing.  */
+	  bool guarded = false;
+
+	  for (unsigned r = 0; r < q && !guarded; r++)
+	    {
+	      unsigned j = (unsigned) slots[r].insn;
+
+	      if (slots[r].iter != slots[q].iter
+		  || j >= seq.length () || !JUMP_P (seq[j]))
+		continue;
+	      for (unsigned e = 0; e < nnode; e++)
+		if (nodes[e].kind == LVX_CMS_NODE_EPILOGUE
+		    && !nodes[e].main_epilogue
+		    && nodes[e].exit_date == slots[r].date
+		    && nodes[e].exit_iter == slots[r].iter
+		    && nodes[e].exit_insn == (int) j)
+		  {
+		    guarded = true;
+		    break;
+		  }
+	    }
+	  if (guarded)
+	    {
+	      nse0g++;
+	      lvx_cms_dump (";; lvx cms:   prologue iter0 side effect insn=%u"
+			    " date=%d guarded by an earlier exit\n", i,
+			    slots[q].date);
+	      continue;
+	    }
 	  if (!site->entry_admits)
 	    {
 	      *why = "the prologue would speculate iteration 0's side effect";
@@ -20848,8 +20918,8 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   /* How many prologue side effects each kind of admission covered.  A zero
      NSEL would mean the iteration >= 1 case is unexercised by the corpus,
      which is worth knowing about a path that is trusted to the arc.  */
-  lvx_cms_dump (";; lvx cms:   prologue sideeffects iter0=%d iterN=%d\n",
-		nse0, nsel);
+  lvx_cms_dump (";; lvx cms:   prologue sideeffects iter0=%d iter0guarded=%d"
+		" iterN=%d\n", nse0, nse0g, nsel);
 
   /* THE EPILOGUES LEAVE THE CHAIN FIRST, before any insn is emitted: once
      they are redirected the chain no longer reaches the header, so nothing
@@ -20944,7 +21014,13 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
     if (!lvx_cms_slot_order (seq, slots, lr, loopback, probe_order))
       return false;
 
+    auto_vec<int> closedby, closedat;
+
     closed.safe_grow_cleared (nnode);
+    closedby.safe_grow_cleared (nnode);
+    closedat.safe_grow_cleared (nnode);
+    for (unsigned k = 0; k < nnode; k++)
+      closedby[k] = closedat[k] = -1;
     for (unsigned oq = 0; oq < probe_order.length (); oq++)
       {
 	unsigned q = (unsigned) probe_order[oq];
@@ -20955,9 +21031,25 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  continue;
 	*why = "a slot follows its own path's terminator";
 	if (closed[nd])
-	  return false;
+	  {
+	    /* WHICH slot followed WHICH terminator, and on what node.  The
+	       node boundaries were assigned by the plan walk in (date, iter)
+	       order; this check walks lvx_cms_slot_order, the order emission
+	       uses.  Where the two disagree a slot can land after its own
+	       node's jump, and only the pair tells which it was.  */
+	    lvx_cms_dump (";; lvx cms:   TWOTERM node=%d kind=%d blocked"
+			  " insn=%u date=%d iter=%d jmp=%d, closed by insn=%d"
+			  " date=%d\n", nd, (int) nodes[nd].kind, i,
+			  slots[q].date, slots[q].iter,
+			  JUMP_P (seq[i]) ? 1 : 0, closedby[nd], closedat[nd]);
+	    return false;
+	  }
 	if (JUMP_P (seq[i]))
-	  closed[nd] = true;
+	  {
+	    closed[nd] = true;
+	    closedby[nd] = (int) i;
+	    closedat[nd] = slots[q].date;
+	  }
       }
   }
 
