@@ -11997,7 +11997,7 @@ lvx_insns_may_alias_p (rtx_insn *insn1, rtx_insn *insn2)
 
    The CMS probe was written when `-fdump-rtl-mach' was its only entry, so
    DUMP_FILE could be assumed non-null after the one early return at the top
-   of lvx_cms_probe_loops.  `-mcms-codegen' broke that assumption: it runs the
+   of lvx_cms_pipeline_loops.  `-mcms-codegen' broke that assumption: it runs the
    probe for its side effect -- the schedule -- with no dump requested, and
    the first unguarded fprintf then takes a null FILE * into vfprintf and
    segfaults.  The compiler died at pipe.c:10 that way while trmm stayed
@@ -25671,7 +25671,7 @@ lvx_cms_count_copy_prop (const auto_vec<rtx_insn *> &seq,
 }
 
 static void
-lvx_cms_probe_loop (class loop *loop, basic_block *body)
+lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 {
   /* BISECTING A WRONG ANSWER DOWN TO ONE LOOP.  §7tricies.133.  Scoping CMS
      to one translation unit is as fine as the flags went, and a function with
@@ -27452,12 +27452,12 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      susan_smoothing at 0.4880 -- and then withdrawn, because compiling libgcc
      with it segfaults the compiler in two separate places:
 
-       lvx_cms_probe_loop   a resource walk over the caller's BODY array,
-			    whose blocks emission had replaced (fixed:
-			    §7tricies.103 computes it before emission)
+       lvx_cms_pipeline_loop  a resource walk over the caller's BODY array,
+			      whose blocks emission had replaced (fixed:
+			      §7tricies.103 computes it before emission)
        lvx_cms_build_lranges  df_get_live_in (e->dest) on an exit edge whose
-			    destination make_nodes had just created, so the
-			    block has no DF info at all -- NULL dereference
+			      destination make_nodes had just created, so the
+			      block has no DF info at all -- NULL dereference
 
      Both are the hazard §VI of mlir-pipeliner-design.md names: state captured
      before emission, used after it.  That note says to enforce the boundary
@@ -28560,7 +28560,7 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
 
    - Hardware loops are ALLOWED.  The unfold refuses them because halving a
      trip count means peeling; a pipeliner has to adjust the trip count
-     anyway, and an implicit loopback branch is a help.  lvx_cms_probe_loop
+     anyway, and an implicit loopback branch is a help.  lvx_cms_pipeline_loop
      reports which loops have one so the measurement can separate them.
 
    What CMS genuinely requires, and this gate establishes: a single latch, so
@@ -28804,7 +28804,7 @@ lvx_cms_codegen_feasible_p (class loop *loop, basic_block *body,
    is how the PolyBench run first came back with 10 loops instead of 380.  */
 
 static void
-lvx_cms_probe_loops (void)
+lvx_cms_pipeline_loops (void)
 {
   /* The dump is one consumer and codegen is the other, so the walk runs for
      either.  Reporting below goes through lvx_cms_dump, which is null-safe:
@@ -28835,7 +28835,7 @@ lvx_cms_probe_loops (void)
 
      So the transformation is deferred instead: the walk below only ANALYSES,
      records what each pipelineable loop needs as raw basic blocks, and
-     lvx_cms_probe_loops finalizes the loop structures before building
+     lvx_cms_pipeline_loops finalizes the loop structures before building
      anything.  §7quinquies.10.  */
   loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
   /* lvx_cms_build_graph reads df_get_live_in to find what a branch implicitly
@@ -28883,7 +28883,7 @@ lvx_cms_probe_loops (void)
 	  lvx_cms_dump (";; lvx cms: fn=%s loop %d codegen %s\n",
 			current_function_name (), loop->num,
 			cfeas ? "feasible" : cwhy);
-	  lvx_cms_probe_loop (loop, body);
+	  lvx_cms_pipeline_loop (loop, body);
 	}
 
       free (body);
@@ -29086,7 +29086,7 @@ lvx_superblock_inner_loops (void)
 	  /* FOUND, NOT ASKED FOR: loop_preheader_edge asserts on
 	     LOOPS_HAVE_PREHEADERS, which AVOID_CFG_MODIFICATIONS does not
 	     set -- Phase A creates the preheaders without setting the state.
-	     The same reason lvx_cms_probe_loop finds its entry edge by hand.  */
+	     The same reason lvx_cms_pipeline_loop finds its entry edge by hand.  */
 	  FOR_EACH_EDGE (e2, ei2, loop->header->preds)
 	    if (!flow_bb_inside_loop_p (loop, e2->src))
 	      pre = e2;
@@ -29589,7 +29589,7 @@ lvx_machine_dependent_reorg (void)
      a wrong answer looks like a measurement.  */
   if (optimize && (lvx_cms_probe || lvx_cms_codegen)
       && optimize_function_for_speed_p (cfun))
-    lvx_cms_probe_loops ();
+    lvx_cms_pipeline_loops ();
 
   /* Doloop optimization. */
   if (optimize)
