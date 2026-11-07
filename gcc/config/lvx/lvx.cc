@@ -25881,7 +25881,22 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
   const char *tight_name = "none";
   int tight_dem = 0, tight_cap = 0;
   double tight_frac = 0.0;
-#define LVX_CMS_TIGHT(R)						  {									    unsigned avail = lvx_issue_availability.R;				    if (avail > 0 && rdem.R##_count > 0)				      {										double f = (double) rdem.R##_count / ((double) lower * avail);		if (f > tight_frac)							  {									    tight_frac = f; tight_name = #R;					    tight_dem = (int) rdem.R##_count;					    tight_cap = (int) (lower * avail);					  }								      }									  }
+#define LVX_CMS_TIGHT(R)						\
+  {									\
+    unsigned avail = lvx_issue_availability.R;				\
+    if (avail > 0 && rdem.R##_count > 0)				\
+      {									\
+	double f = (double) rdem.R##_count					\
+		   / ((double) lower * avail);				\
+	if (f > tight_frac)						\
+	  {								\
+	    tight_frac = f;						\
+	    tight_name = #R;						\
+	    tight_dem = (int) rdem.R##_count;				\
+	    tight_cap = (int) (lower * avail);				\
+	  }								\
+      }									\
+  }
   LVX_ISSUE_RESOURCES (LVX_CMS_TIGHT)
 #undef LVX_CMS_TIGHT
   auto_vec<int> sigma;
