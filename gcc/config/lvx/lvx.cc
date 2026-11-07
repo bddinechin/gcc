@@ -22856,6 +22856,21 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
      instruction i's latest instance occupies, -1 before it has one.  */
   auto_vec<struct lvx_sched_resources> mrt;
   auto_vec<int> mrow;
+  /* THE MONOTONE CLOCK.  §7tricies.185 (author): CMS is cycle-based by
+     foundation, and the operation-driven walk was a drift from it.  Time only
+     advances; at each cycle the eligible cells are those whose dependences and
+     release allow them AT OR BEFORE it and that fit its resources, and a
+     placement is always AT the clock -- never at `the first cycle that fits
+     from earliest', which is what let dates run backward (§7tricies.171
+     measured 1.83%, all at copy transitions).
+
+     STALL counts consecutive advances that placed nothing, and bounds the
+     residue policy below: residues repeat with period II, so after II idle
+     advances a candidate that overflows everywhere must be forced through
+     rather than deferred forever.  */
+  int clock = 0;
+  unsigned stall = 0;
+  int clockcap = (ncopy + 2) * ii + (int) n + 64;
   unsigned mrt_first_zero = 0;	/* placement step at which it first fit */
   bool mrt_saw_zero = false;
   unsigned mrt_prev = 0, mrt_rises = 0, mrt_falls = 0, mrt_placed = 0;
@@ -22888,6 +22903,159 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 sink tends to be early in the dependence order and so to land early,
 	 so coincidence is plausible -- but plausible is not measured.  */
       int best = -1, bestwhen = -1, bestprio = -1;
+      bool byclock = false;
+
+      /* CYCLE-BASED SELECTION AT THE MONOTONE CLOCK.  §7tricies.185.
+
+	 The eligible set at CLOCK, then the author's residue policy over it:
+	 a candidate whose placement would push the rolling MRT above a
+	 resource bound is DEPRIORITISED FOR THIS CYCLE -- but issues anyway
+	 if it is the only candidate.  When several are eligible and all would
+	 overflow, none issues and the clock advances: that leaves a unit idle
+	 while something was eligible, which is exactly the escape from the
+	 parallel SGS's non-delay restriction (§7tricies.172), and the residues
+	 differ at the next cycle so the deferral is not idle waiting.
+
+	 §7tricies.184 measured the precondition: 3.8 of 5.3 ready candidates
+	 avoid the overflow, so there is usually something better to issue, and
+	 least-clock-advance was systematically taking the one that did not.  */
+      while (lvx_cms_cycle_clock && best < 0)
+	{
+	  unsigned cur = mrt.is_empty () ? 0 : lvx_cms_mrt_violations (mrt);
+	  auto_vec<unsigned> elig;
+	  auto_vec<bool> ovf;
+	  unsigned nok = 0;
+
+	  if (clock > clockcap)
+	    return false;
+	  while ((int) cyc.length () <= clock)
+	    {
+	      struct lvx_sched_resources empty;
+
+	      memset (&empty, 0, sizeof (empty));
+	      cyc.safe_push (empty);
+	      cyc_nodl.safe_push (empty);
+	    }
+	  for (int c = 0; c < ncopy; c++)
+	    for (unsigned i = 0; i < n; i++)
+	      {
+		unsigned k = (unsigned) c * n + i;
+		int e0 = 0;
+
+		if (date[k] >= 0 || pred[k] > 0)
+		  continue;
+		if (lvx_cms_place_cycle (seq, arcs, release, date, cyc, n,
+					 ncopy, ii, i, c, &e0, NULL, NULL,
+					 NULL) < 0)
+		  continue;
+		if (e0 > clock)
+		  continue;			/* not released yet */
+		if (!lvx_cms_slot_fits_p (&cyc[clock], seq[i]))
+		  continue;			/* no room in this cycle */
+		{
+		  bool bad = false;
+
+		  if (!mrt.is_empty ())
+		    bad = lvx_cms_mrt_trial (mrt, mrow, seq[i], i,
+					     ((clock % ii) + ii) % ii) > cur;
+		  elig.safe_push (k);
+		  ovf.safe_push (bad);
+		  if (!bad)
+		    nok++;
+		}
+	      }
+	  if (elig.is_empty ())
+	    {
+	      clock++, stall++;
+	      continue;
+	    }
+	  /* The policy: the rolling MRT REORDERS PREFERENCE WITHIN A CYCLE AND
+	     NEVER PREVENTS ISSUE (author).  Prefer a candidate that does not
+	     push a counter over its bound; when every eligible candidate
+	     would, issue one anyway rather than leave the cycle idle.
+
+	     AND IDLING IS FORBIDDEN BY THE DESIGN, not merely expensive
+	     (author): CMS approaches what an out-of-order superscalar's
+	     hardware scheduler does, so it is WORK-CONSERVING -- it never
+	     declines available work.  Schedule diversity comes from tuning
+	     PRIORITIES and RELEASE DATES instead, and that is also how the
+	     parallel SGS's non-delay restriction is escaped (§7tricies.172): a
+	     release date defers a task BEFORE it becomes eligible, so a unit
+	     can end up idle without the scheduler ever having idled it.
+
+	     The first version here deferred overflowers -- advancing with an
+	     empty cycle unless the overflower was alone or II advances had
+	     passed.  That is a different machine, and it also measured worse:
+	     same sum(II) as the clock alone and +102 sum(makespan), which is
+	     what deliberate idling costs.  Deprioritising decides WHICH of
+	     several eligible candidates goes now, never whether anything
+	     goes.  */
+	  bool take_bad = (nok == 0);
+	  /* Among the admissible, the existing criterion: priority then
+	     program order, sampled by VBSS on later passes.  Least clock
+	     advance has nothing left to say -- every candidate is at CLOCK,
+	     which is the point.  */
+	  {
+	    auto_vec<unsigned> cand;
+
+	    for (unsigned q = 0; q < elig.length (); q++)
+	      if (take_bad || !ovf[q])
+		cand.safe_push (elig[q]);
+	    if (vstate != 0 && lvx_cms_vbss > 0 && cand.length () > 1)
+	      {
+		int pmin = prio[cand[0] % n];
+		unsigned total = 0;
+		auto_vec<unsigned> wgt;
+
+		for (unsigned q = 1; q < cand.length (); q++)
+		  if (prio[cand[q] % n] < pmin)
+		    pmin = prio[cand[q] % n];
+		for (unsigned q = 0; q < cand.length (); q++)
+		  {
+		    unsigned excess = (unsigned) (prio[cand[q] % n] - pmin);
+		    unsigned den = 1;
+
+		    for (int g = 0; g < lvx_cms_vbss && den < (1u << 18); g++)
+		      den *= (excess + 1);
+		    unsigned v = (1u << 18) / den;
+
+		    if (v == 0)
+		      v = 1;
+		    wgt.safe_push (v);
+		    total += v;
+		  }
+		unsigned r = total ? lvx_cms_rnd (&vstate) % total : 0;
+		unsigned pick = 0;
+
+		for (unsigned q = 0; q < wgt.length (); q++)
+		  {
+		    if (r < wgt[q])
+		      { pick = q; break; }
+		    r -= wgt[q];
+		    pick = q;
+		  }
+		best = (int) cand[pick];
+	      }
+	    else
+	      for (unsigned q = 0; q < cand.length (); q++)
+		{
+		  unsigned kk = cand[q];
+
+		  if (best < 0
+		      || prio[kk % n] < prio[(unsigned) best % n]
+		      || (prio[kk % n] == prio[(unsigned) best % n]
+			  && kk < (unsigned) best))
+		    best = (int) kk;
+		}
+	  }
+	  bestprio = best;
+	  byclock = true;
+	  stall = 0;
+	  if (lvx_cms_cycle_clock > 1 && dump_file && lvx_cms_probe)
+	    lvx_cms_dump (";; lvx cms:   CLOCKPICK ii=%d clock=%d elig=%u"
+			  " ok=%u forced=%d insn=%d\n", ii, clock,
+			  elig.length (), nok, take_bad ? 1 : 0, best % (int) n);
+	}
 
       /* VBSS: SAMPLE THE READY SET INSTEAD OF TAKING ITS ARGMAX.
 	 §7tricies.170.  Same copy discipline as the deterministic rule below
@@ -22908,8 +23076,8 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 with span wider than any prio difference.  Biasing on W alone would
 	 throw away the secondary key and flatten the near-ties this exists
 	 to exploit.  */
-      bool vbss_done = false;
-      if (vstate != 0 && lvx_cms_vbss > 0)
+      bool vbss_done = byclock;
+      if (!byclock && vstate != 0 && lvx_cms_vbss > 0)
 	{
 	  auto_vec<unsigned> cand;
 	  auto_vec<int> cost, cwhen;
@@ -23100,6 +23268,15 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 				      &blocked_by, &cyc_nodl, &ndlblock);
       if (when < 0)
 	return false;
+      /* AT THE CLOCK, NOT AT THE FIRST CYCLE THAT FITS.  §7tricies.185.
+	 place_cycle walks forward from EARLIEST and stops at the first cycle
+	 with room, which can be BEFORE the clock -- and taking it is what made
+	 the date series non-monotone.  Under the clock the cell was admitted
+	 because its earliest is at or before CLOCK and CLOCK has room, so
+	 placing it there is legal; that it may be later than strictly
+	 necessary is the deliberate idling the residue policy asks for.  */
+      if (byclock)
+	when = clock;
       while ((int) cyc.length () <= when)
 	{
 	  struct lvx_sched_resources empty;
