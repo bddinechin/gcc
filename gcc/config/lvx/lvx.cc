@@ -12996,6 +12996,31 @@ lvx_cms_mrt_trial (auto_vec<struct lvx_sched_resources> &mrt,
   return v;
 }
 
+/* INSN'S OWN RESOURCE DEMAND, WEIGHTED BY SCARCITY.  §7tricies.186.
+
+   The scarcity of a counter is DEM / (II * AVAIL): what the body demands of
+   it against what the whole initiation interval supplies.  That is the same
+   quantity the `tight=' report already computes and then discards -- it was
+   measured, printed and never fed to a decision.  Scaled by 256, so an
+   integer priority can carry a fraction of a cycle.  */
+
+static int
+lvx_cms_rwc_weight (rtx_insn *insn, const struct lvx_sched_resources *dem,
+		    int ii)
+{
+  struct lvx_sched_resources u;
+  int w = 0;
+
+  if (ii <= 0)
+    return 0;
+  memset (&u, 0, sizeof (u));
+  lvx_cms_resources_add (&u, insn);
+#define LVX_CMS_RWCW(R)							  {									    unsigned avail = lvx_issue_availability.R;				    if (avail > 0 && u.R##_count > 0 && dem->R##_count > 0)		      w += (int) ((256u * dem->R##_count * u.R##_count)					  / ((unsigned) ii * avail));				  }
+  LVX_ISSUE_RESOURCES (LVX_CMS_RWCW)
+#undef LVX_CMS_RWCW
+  return w;
+}
+
 /* Whether INSN reserves anything of the counter at index WANT.  Used to find
    the tasks holding the resource that displaced another -- the culprits a
    release date should move out of the way.  */
@@ -23790,6 +23815,62 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	   byte-identical, as they had to be.  §7vicies.  */
       default: base[i] = height[i];  break;
       }
+
+  /* THE RESOURCE-WEIGHTED COST TERM.  §7tricies.186.
+
+     Priority (n) = alpha * CriticalPath (n) + beta * RWC (n), the shape of
+     Fisher 1981's height heuristic extended by a resource term.  BASE is a
+     COST and ascending, and -TOSINK is how the critical path enters it, so
+     RWC is SUBTRACTED: a node above a long chain of contended-resource users
+     becomes more urgent, not less.
+
+     ACCUMULATED LIKE TOSINK, over omega = 0 arcs by reverse relaxation, so
+     the term is the heaviest downstream CHAIN of weighted demand rather than
+     a sum over immediate successors.  That is deliberate: the rule this
+     implements is "a node blocking a long chain of instructions that require
+     a contended resource", and an immediate-successor sum does not express a
+     chain -- nor does it share a scale with TOSINK, which is itself a
+     longest path.  The published form of this idea is Russell 2006's
+     resource-based distance, whose r2 (i, t) = |desc (i, t)| / k_t is a
+     whole-cone measure; a longest weighted path is the O(arcs) proxy for it
+     and matches the traversal already here.
+
+     The three measurements that point at this term: §7octies found every
+     latency-shaped priority variant landing on the same answer for saxpy
+     while `blamed=tiny' reported the real obstacle; §7tricies.184 found
+     least-clock-advance taking an overflowing candidate where 3.8 of 5.3
+     alternatives avoided it; and `tight=' has been computing the scarcity
+     weights all along without anything reading them.  */
+  if (lvx_cms_rwc > 0)
+    {
+      struct lvx_sched_resources dem;
+      auto_vec<int> own, rwc;
+
+      memset (&dem, 0, sizeof (dem));
+      for (unsigned i = 0; i < n; i++)
+	lvx_cms_resources_add (&dem, seq[i]);
+      own.safe_grow_cleared (n);
+      rwc.safe_grow_cleared (n);
+      for (unsigned i = 0; i < n; i++)
+	own[i] = rwc[i] = lvx_cms_rwc_weight (seq[i], &dem, ii);
+      for (unsigned round = 0; round < 2; round++)
+	for (int i = (int) n - 1; i >= 0; i--)
+	  for (unsigned a = 0; a < arcs.length (); a++)
+	    if (arcs[a].omega == 0 && arcs[a].src == (unsigned) i)
+	      {
+		int cand = own[i] + rwc[arcs[a].dst];
+
+		if (rwc[i] < cand)
+		  rwc[i] = cand;
+	      }
+      for (unsigned i = 0; i < n; i++)
+	base[i] -= (lvx_cms_rwc * rwc[i]) / 256;
+      if (lvx_cms_rwc_probe && dump_file && lvx_cms_probe)
+	for (unsigned i = 0; i < n; i++)
+	  lvx_cms_dump (";; lvx cms:   RWC ii=%d insn=%u own=%d chain=%d"
+			" tosink=%d base=%d\n", ii, i, own[i], rwc[i],
+			tosink[i], base[i]);
+    }
 
   for (unsigned i = 0; i < n; i++)
     prio[i] = base[i];

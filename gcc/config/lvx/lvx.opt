@@ -211,6 +211,14 @@ mcms-vbss=
 Target RejectNegative Joined UInteger Var(lvx_cms_vbss) Init(1) Optimization
 -mcms-vbss=N	Value-biased stochastic sampling of the ready set instead of its argmax, N being the bias exponent: 0 off, 1 gentle, higher collapses back towards the argmax.  Pass 0 of each initiation interval stays deterministic, so -mcms-swo-budget bounds the sample count.
 
+mcms-rwc=
+Target RejectNegative Joined UInteger Var(lvx_cms_rwc) Init(0) Optimization
+-mcms-rwc=N	Add N times the resource-weighted cost to the list-scheduling priority: the heaviest downstream chain of resource demand, each instruction's demand weighted by that counter's scarcity over the initiation interval.  0 disables it.
+
+mcms-rwc-probe
+Target Var(lvx_cms_rwc_probe) Init(0) Optimization
+-mcms-rwc-probe	Report each instruction's own and chain resource-weighted cost beside its critical-path priority.
+
 mcms-cycle-clock=
 Target RejectNegative Joined UInteger Var(lvx_cms_cycle_clock) Init(0) Optimization
 -mcms-cycle-clock=N	Drive the construction from a monotone clock: time only advances, every placement is at the current cycle, and a candidate that would push the rolling modulo reservation table over a resource bound is deprioritised for that cycle.  0 off, 1 on, 2 with a per-pick trace.
