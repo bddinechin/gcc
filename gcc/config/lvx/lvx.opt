@@ -312,3 +312,7 @@ Where a partial definition reaches a use, make an arc from every definition that
 mvect-empty-mask-cheap
 Target Var(lvx_vect_empty_mask_cheap) Init(0) Optimization
 Tell the vectorizer an all-zero mask is cheap, so it does not branch around a masked store.  Recovers 11 pipelines whose bodies the guard splits with a join, but OFF by default until the cycle case is made: the only cycle measurement available costs 0.13% on TSVC2, because it was taken with the pipeline off, where removing the guard can only lose.  7tricies.152.
+
+mcms-assert-groups
+Target Var(lvx_cms_assert_groups) Init(0) Optimization
+ICE when bundling splits a parallel instruction group across a write: one slot writes a register a slot EARLIER IN PROGRAM ORDER reads, and a bundle boundary lands between them, so the reader sees the new value where one bundle would have given it the old one.  OFF BY DEFAULT BECAUSE THE INVARIANT IS ALREADY VIOLATED: 77 of 276 corpus files and 5 of 8 gate tests report it while computing correct answers, the clobbered value happening to be dead.  A detector until those are fixed, a hard assert afterwards.  7tricies.191.

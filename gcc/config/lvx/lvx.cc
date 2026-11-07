@@ -209,6 +209,226 @@ static struct lvx_sched2
 #define LVX_SYLLABLE_SIZE 4
 #define LVX_SCHED2_BUNDLE_SIZE 32
 
+/* THE PARALLEL GROUP AN EMITTED SLOT BELONGS TO, so that bundling can be
+   CHECKED against the schedule rather than trusted.  §7tricies.191.
+
+   THE INVARIANT: an instruction schedule group always fits in a bundle, and
+   bundling must never break a parallel group the scheduler assembled.  It is
+   architectural rather than a hope -- bundling is bounded by the ten issue
+   slots and the resource counters, while scheduling adds the
+   micro-architectural resources on top, so a valid schedule is always
+   bundleable and a violation is an authoring error upstream, never a thing to
+   repair late.
+
+   IT HAS BEEN VIOLATED SILENTLY MORE THAN ONCE, and the symptom is never a
+   bundle: it is a wrong answer a long way away.  A bundle reads every operand
+   before it writes any, so two slots of one group may legitimately read and
+   write the same register; split across two bundles that pair becomes a
+   sequential clobber.  huft_build loop 6 of zlib's inftrees.c lost its array
+   base exactly so -- `addw $r2 = $r5, 1' and `addx4d $r6 = $r11, $r2' are both
+   slots of node 0's date-8 group, emitted into different bundles, so $r6 took
+   1 + 4*4 = 17 instead of the base and the store faulted 1336 bytes below it.
+   Hence an ICE: a split group has no correct code to emit.
+
+   ONE INSN PER SLOT IS TAGGED, the first emitted for it.  A slot can expand
+   into a DEPENDENT sequence -- a doloop early exit becomes a decrement and
+   then a branch reading what it wrote -- which cannot share a bundle by
+   construction.  Tagging only the first insn keeps this check about GROUPS and
+   not about expansions.  That such a slot needs two bundles is a separate
+   modelling gap (it reserves the doloop_end's resources, correctly nothing),
+   and conflating the two would fire this assert on code that works.
+
+   Keyed by INSN_UID, which restarts per function, so the table is freed with
+   the rest of the per-function scheduling state and LVX_CMS_GROUP_PREV with
+   it -- otherwise a uid reused by the next function could match a stale
+   group.  */
+static int *lvx_cms_group;
+static int *lvx_cms_key;
+static int lvx_cms_group_max;
+static int lvx_cms_group_prev;
+static rtx_insn *lvx_cms_group_prev_insn;
+
+/* Where each tagged slot ended up: its group, the bundle it landed in, and
+   the insn.  Collected during final and checked once per function, because
+   the two slots of a split group need not be ADJACENT across the boundary --
+   in huft_build loop 6 the insn that closed the bundle was a third slot and
+   the hwkern setup sat between -- so an adjacency test sees nothing.  */
+struct lvx_cms_group_rec
+{
+  int group;
+  int bundle;
+  int key;		/* program order of the slot: iteration, then index. */
+  rtx_insn *insn;
+};
+static struct lvx_cms_group_rec *lvx_cms_group_recs;
+static int lvx_cms_group_nrecs;
+static int lvx_cms_group_recs_max;
+static int lvx_cms_bundle_index;
+
+static int
+lvx_cms_group_of_uid (int uid)
+{
+  if (lvx_cms_group == NULL || uid < 0 || uid >= lvx_cms_group_max)
+    return 0;
+  return lvx_cms_group[uid];
+}
+
+static int
+lvx_cms_key_of_uid (int uid)
+{
+  if (lvx_cms_key == NULL || uid < 0 || uid >= lvx_cms_group_max)
+    return 0;
+  return lvx_cms_key[uid];
+}
+
+/* Tag the first insn emitted after AFTER as belonging to (NODE, DATE), with
+   KEY its place in the program's own order -- iteration first, then index in
+   SEQ.  The key is what separates a WAR pair from a RAW one, and only the WAR
+   pair is at risk from a split.  */
+static void
+lvx_cms_group_tag (rtx_insn *after, int node, int date, int key)
+{
+  rtx_insn *first = after ? NEXT_INSN (after) : NULL;
+  int uid;
+
+  if (first == NULL || node < 0 || date < 0)
+    return;
+  uid = INSN_UID (first);
+  if (uid < 0)
+    return;
+  if (uid >= lvx_cms_group_max)
+    {
+      int old = lvx_cms_group_max;
+
+      lvx_cms_group_max = uid + 256;
+      lvx_cms_group = (int *) xrealloc (lvx_cms_group,
+					lvx_cms_group_max * sizeof (int));
+      lvx_cms_key = (int *) xrealloc (lvx_cms_key,
+				      lvx_cms_group_max * sizeof (int));
+      memset (lvx_cms_group + old, 0,
+	      (lvx_cms_group_max - old) * sizeof (int));
+      memset (lvx_cms_key + old, 0, (lvx_cms_group_max - old) * sizeof (int));
+    }
+  /* Non-zero marks "tagged", so node 0 date 0 is distinguishable from
+     untagged.  */
+  lvx_cms_group[uid] = 1 + (node << 16) + (date & 0xffff);
+  lvx_cms_key[uid] = key;
+}
+
+static void
+lvx_cms_group_free (void)
+{
+  free (lvx_cms_group);
+  lvx_cms_group = NULL;
+  free (lvx_cms_key);
+  lvx_cms_key = NULL;
+  lvx_cms_group_max = 0;
+  lvx_cms_group_prev = 0;
+  lvx_cms_group_prev_insn = NULL;
+  free (lvx_cms_group_recs);
+  lvx_cms_group_recs = NULL;
+  lvx_cms_group_nrecs = 0;
+  lvx_cms_group_recs_max = 0;
+  lvx_cms_bundle_index = 0;
+}
+
+/* EVERY SPLIT GROUP THAT CHANGES THE ANSWER, checked once the function's
+   bundles are all decided.  §7tricies.191.
+
+   A split group is not by itself a wrong answer: SCHED2 re-schedules and
+   re-bundles every block CMS emitted, so CMS's cycles are ADVISORY and its
+   groups are separated routinely in code that is correct.  What a bundle gives
+   and a split takes away is READ-BEFORE-WRITE -- inside one bundle every
+   operand is read before any is written, so a slot may read the register
+   another slot of its group writes and see the OLD value.  Split, it sees the
+   new one.
+
+   So the error is exactly: one slot WRITES a register that a LATER slot of the
+   same group READS, with a bundle boundary between them.  The other direction
+   is harmless, the reader having already read before the writer runs, which is
+   what the bundle would have done anyway.
+
+   This is the shape that lost huft_build loop 6 of zlib's inftrees.c its array
+   base: `addw $r2 = $r5, 1' and `addx4d $r6 = $r11, $r2' are both slots of
+   node 0's date-8 group, so $r6 took 1 + 4*4 = 17 instead of the base and the
+   store faulted 1336 bytes below it.  An ICE rather than a diagnostic because
+   there is no correct code to emit -- the requirement belongs in the
+   dependence graph, and reaching here means it was not expressed there.  */
+static void
+lvx_cms_group_check (FILE *file)
+{
+  for (int a = 0; a < lvx_cms_group_nrecs; a++)
+    for (int b = a + 1; b < lvx_cms_group_nrecs; b++)
+      {
+	rtx set;
+
+	if (lvx_cms_group_recs[a].group != lvx_cms_group_recs[b].group
+	    || lvx_cms_group_recs[a].bundle == lvx_cms_group_recs[b].bundle)
+	  continue;
+	/* A IS THE WRITER AND B THE READER IN EMISSION ORDER.  That is only a
+	   LOST value if B came FIRST in the program's own order, so that B
+	   must see what was there before A -- which one bundle would have
+	   given it and two bundles do not.  The other way round is a RAW pair
+	   and emission order is its semantics: B is SUPPOSED to see A's new
+	   value, and a boundary between them changes nothing.  Without this
+	   test the check fired on 87 files of the corpus that compile and run
+	   correctly, which is how the distinction was found.  */
+	if (lvx_cms_group_recs[b].key >= lvx_cms_group_recs[a].key)
+	  continue;
+	set = single_set (lvx_cms_group_recs[a].insn);
+	if (set == NULL_RTX || !REG_P (SET_DEST (set)))
+	  continue;
+	if (!reg_referenced_p (SET_DEST (set),
+			       PATTERN (lvx_cms_group_recs[b].insn)))
+	  continue;
+	if (!lvx_cms_assert_groups)
+	  {
+	    /* Reported rather than fatal at the default, so the sites can be
+	       counted and fixed before the assert becomes the gate.  INTO THE
+	       ASSEMBLY, not the dump: this runs from the function epilogue
+	       during output, by which time the RTL pass's DUMP_FILE is closed
+	       -- which is why the first version of this reported nothing at
+	       all on a corpus that has 77 files' worth of sites.  */
+	    if (file)
+	      fprintf (file, "\t;; lvx cms: GROUPSPLIT insn %d writes %s,"
+		       " insn %d reads it, node %d cycle %d\n",
+		       INSN_UID (lvx_cms_group_recs[a].insn),
+		       reg_names[REGNO (SET_DEST (set))],
+		       INSN_UID (lvx_cms_group_recs[b].insn),
+		       (lvx_cms_group_recs[a].group - 1) >> 16,
+		       (lvx_cms_group_recs[a].group - 1) & 0xffff);
+	    continue;
+	  }
+	internal_error ("LVX: bundling split a parallel instruction group "
+			"across a write: insn %d writes %s and insn %d reads "
+			"it, both slots of node %d at cycle %d, and they "
+			"landed in different bundles",
+			INSN_UID (lvx_cms_group_recs[a].insn),
+			reg_names[REGNO (SET_DEST (set))],
+			INSN_UID (lvx_cms_group_recs[b].insn),
+			(lvx_cms_group_recs[a].group - 1) >> 16,
+			(lvx_cms_group_recs[a].group - 1) & 0xffff);
+      }
+}
+
+static void
+lvx_cms_group_record (rtx_insn *insn, int g)
+{
+  if (lvx_cms_group_nrecs >= lvx_cms_group_recs_max)
+    {
+      lvx_cms_group_recs_max = lvx_cms_group_recs_max * 2 + 64;
+      lvx_cms_group_recs
+	= (struct lvx_cms_group_rec *) xrealloc (lvx_cms_group_recs,
+						 lvx_cms_group_recs_max
+						 * sizeof (*lvx_cms_group_recs));
+    }
+  lvx_cms_group_recs[lvx_cms_group_nrecs].group = g;
+  lvx_cms_group_recs[lvx_cms_group_nrecs].bundle = lvx_cms_bundle_index;
+  lvx_cms_group_recs[lvx_cms_group_nrecs].key = lvx_cms_key_of_uid (INSN_UID (insn));
+  lvx_cms_group_recs[lvx_cms_group_nrecs].insn = insn;
+  lvx_cms_group_nrecs++;
+}
+
 struct lvx_sched_resources
 {
   const char *message;
@@ -6152,8 +6372,9 @@ lvx_function_prologue (FILE *)
 
 /* Implements TARGET_ASM_FUNCTION_EPILOGUE.  */
 static void
-lvx_function_epilogue (FILE *)
+lvx_function_epilogue (FILE *file)
 {
+  lvx_cms_group_check (file);
   lvx_sched2_dtor ();
   if (lvx_ifcvt->ce_level > LVX_IFCVT_)
     lvx_ifcvt_dtor ();
@@ -8603,6 +8824,7 @@ lvx_sched2_dtor (void)
   lvx_sched2->insn_flags = 0;
   free (lvx_sched2->bundle_state);
   lvx_sched2->bundle_state = 0;
+  lvx_cms_group_free ();
 }
 
 static void
@@ -9692,6 +9914,29 @@ lvx_final_prescan_insn (rtx_insn *insn)
 	    sprintf (lvx_final_end_bundle,
 		     ";;\t# (end cycle %d)\t(fixup)\n\t", prev_cycle);
 	  }
+
+      /* A PARALLEL GROUP MUST FIT ONE BUNDLE -- CHECKED, NOT TRUSTED.
+	 §7tricies.191.  By here the boundaries are final: the fixup above is
+	 the last thing that can add a STOP, so reading the live flags rather
+	 than PREV_FLAGS sees it.  If the previous insn closed a bundle and
+	 this insn carries the SAME group tag, a group the scheduler assembled
+	 in one cycle has been split, which is the irrecoverable error -- a
+	 bundle reads before it writes, so the split silently turns a legal
+	 same-cycle read-and-write pair into a sequential clobber.  There is no
+	 correct code to emit, so this is an ICE and not a diagnostic.  */
+      {
+	int g = lvx_cms_group_of_uid (uid);
+
+	/* A new bundle begins wherever the previous insn carries STOP -- read
+	   live, because the fixup above is the last thing that can add one. */
+	if ((unsigned) prev_uid < (unsigned) lvx_sched2->max_uid
+	    && (lvx_sched2->insn_flags[prev_uid] & LVX_SCHED2_INSN_STOP))
+	  lvx_cms_bundle_index++;
+	if (g != 0)
+	  lvx_cms_group_record (insn, g);
+	lvx_cms_group_prev = g;
+	lvx_cms_group_prev_insn = insn;
+      }
 
       prev_flags = flags;
       prev_cycle = cycle;
@@ -21515,6 +21760,8 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		    if (fe)
 		      fe->probability = profile_probability::even ();
 		  }
+		lvx_cms_group_tag (after, nd, slots[q].date,
+			     slots[q].iter * 65536 + (int) i);
 		tail[nd] = cj;
 		nemit++;
 		lvx_cms_dump (";; lvx cms:   doloop early exit insn=%u iter=%d"
@@ -21599,6 +21846,8 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	      if (fe)
 		fe->probability = profile_probability::even ();
 	    }
+	  lvx_cms_group_tag (after, nd, slots[q].date,
+			     slots[q].iter * 65536 + (int) i);
 	  tail[nd] = j;
 	  nemit++;
 	  continue;
@@ -21617,6 +21866,8 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  *why = "the renamed copy does not recognise";
 	  return false;
 	}
+      lvx_cms_group_tag (after, nd, slots[q].date,
+			     slots[q].iter * 65536 + (int) i);
       tail[nd] = c;
       nemit++;
     }
@@ -29192,6 +29443,74 @@ lvx_run_selftests (void)
 #define TARGET_RUN_TARGET_SELFTESTS selftest::lvx_run_selftests
 #endif /* CHECKING_P */
 
+/* EVERY doloop_end MUST BE DISCOVERABLE, ASKED THE WAY discover_loops ASKS.
+   §7tricies.192.
+
+   WHAT GOES WRONG IF IT IS NOT.  reorg_loops maps a hardware loop or, failing
+   that, replaces the doloop_end with an explicit decrement and branch --
+   optimize_loop (hw-doloop.cc) falls through to `hooks->fail' on EVERY refusal
+   path, loop->bad included, so a loop whose counter is live after it, or whose
+   body is past LOOPDO's pc-relative reach, or which mentions the counter
+   inside (ITER_REG_USED), degrades to a software loop with the same trip count
+   and stays CORRECT.
+
+   But all of that happens only for a doloop_end hw-doloop actually FINDS, and
+   discover_loops looks in exactly one place:
+
+       tail = BB_END (bb);
+       while (tail && NOTE_P (tail) && tail != BB_HEAD (bb))
+	 tail = PREV_INSN (tail);
+       if (!JUMP_P (tail)) continue;
+       reg = hooks->end_pattern_reg (tail);
+
+   -- the last non-note insn of a block, and a jump.  A doloop_end anywhere
+   else is never turned into an hwloop_info, so `fail' is never called for it,
+   and doloop_end_<mode>'s register alternative prints "# loopdo end" and
+   NOTHING ELSE: no branch and no decrement.  The loop then falls straight
+   through after one pass, which is a silent wrong answer rather than a
+   diagnostic.
+
+   AND CMS MAKES THE CONSEQUENCE WORSE.  Its hardware-loop kernel is built by
+   hand -- split_edge for the block, then slots emitted into it and a
+   doloop_end appended -- so §7tricies.130's "nothing may follow a path's
+   terminator", which guards the plan's own nodes, does not cover it.  The
+   trip count there has already been divided by KUNROLL (§7tricies.62), so
+   losing the back edge loses T * KUNROLL iterations, not a few.
+
+   Asked here because this is the instant before the only consumer looks.  */
+static void
+lvx_check_doloop_discoverable (void)
+{
+  basic_block bb;
+
+  FOR_EACH_BB_FN (bb, cfun)
+    {
+      rtx_insn *insn;
+      rtx_insn *tail = BB_END (bb);
+
+      while (tail && NOTE_P (tail) && tail != BB_HEAD (bb))
+	tail = PREV_INSN (tail);
+
+      FOR_BB_INSNS (bb, insn)
+	{
+	  if (!NONDEBUG_INSN_P (insn))
+	    continue;
+	  /* The hook discovery itself uses, so this cannot drift from it.  */
+	  if (lvx_hwloop_pattern_reg (insn) == NULL_RTX)
+	    continue;
+	  if (insn == tail && JUMP_P (insn))
+	    continue;
+	  internal_error ("LVX: doloop_end insn %d in bb%d is not the block's "
+			  "last insn (%s insn %d is), so reorg_loops cannot "
+			  "find it: it would emit neither a branch nor a "
+			  "decrement and the loop would fall through",
+			  INSN_UID (insn), bb->index,
+			  tail == NULL ? "no" : JUMP_P (tail) ? "jump" : "non-jump",
+			  tail == NULL ? -1 : INSN_UID (tail));
+	}
+    }
+}
+
 /* Implements TARGET_MACHINE_DEPENDENT_REORG.  */
 static void
 lvx_machine_dependent_reorg (void)
@@ -29259,7 +29578,10 @@ lvx_machine_dependent_reorg (void)
 
   /* Doloop optimization. */
   if (optimize)
-    reorg_loops (true, &lvx_doloop_hooks);
+    {
+      lvx_check_doloop_discoverable ();
+      reorg_loops (true, &lvx_doloop_hooks);
+    }
 
   lvx_fix_pcreljump_ranges ();
 
