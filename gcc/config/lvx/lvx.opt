@@ -101,7 +101,7 @@ Dump the convergent-modulo-scheduling probe for each measured inner loop.
 
 mcms-release=
 Target RejectNegative Joined UInteger Var(lvx_cms_release_policy) Init(1) Optimization
--mcms-release=N	SWO release-date policy: 0 none, 1 every unblamed task with slack to its ALAP, 2 only culprits of resource contention, 3 culprits damped by accumulated guilt, 4 every task with slack, 5 Huff's stretchable-side decision, which releases an operation only when it has more values to stretch forward than backward, 6 every task with slack that is NOT on the critical recurrence.
+-mcms-release=N	SWO release-date policy: 0 none, 1 every unblamed task with slack to its ALAP, 2 only culprits of resource contention, 4 every task with slack, 5 Huff's stretchable-side decision, which releases an operation only when it has more values to stretch forward than backward, 6 every task with slack that is NOT on the critical recurrence.
 
 mcms-split-wide=
 Target RejectNegative Joined UInteger Var(lvx_cms_split_wide) Init(0) Optimization
@@ -154,10 +154,6 @@ Target RejectNegative Joined UInteger Var(lvx_cms_max_insns) Init(256) Optimizat
 mcms-force-speculative-loads
 Target Var(lvx_cms_force_spec_loads) Init(0) Optimization
 Emit loop-variant-address loads in pipelined inner loops as their dismissible variant.
-
-mcms-select=
-Target RejectNegative Joined UInteger Var(lvx_cms_select_policy) Init(0) Optimization
--mcms-select=N	Cycle-scheduler candidate selection: 0 priority first then program order, 1 least clock advance first then priority.
 
 mcms-free-doloop-end
 Target Var(lvx_cms_free_doloop_end) Init(0) Optimization
@@ -219,9 +215,9 @@ mcms-rwc-probe
 Target Var(lvx_cms_rwc_probe) Init(0) Optimization
 -mcms-rwc-probe	Report each instruction's own and chain resource-weighted cost beside its critical-path priority.
 
-mcms-cycle-clock=
-Target RejectNegative Joined UInteger Var(lvx_cms_cycle_clock) Init(0) Optimization
--mcms-cycle-clock=N	Drive the construction from a monotone clock: time only advances, every placement is at the current cycle, and a candidate that would push the rolling modulo reservation table over a resource bound is deprioritised for that cycle.  0 off, 1 on, 2 with a per-pick trace.
+mcms-clock-trace
+Target Var(lvx_cms_clock_trace) Init(0) Optimization
+-mcms-clock-trace	Report each pick the cycle-based constructor makes: the clock, the eligible set, how many of them avoid a residue overflow, and whether an overflower was forced.
 
 mcms-rolling-mrt=
 Target RejectNegative Joined UInteger Var(lvx_cms_rolling_mrt) Init(0) Optimization
@@ -263,10 +259,6 @@ mcms-only-loop=
 Target RejectNegative Joined UInteger Var(lvx_cms_only_loop) Init(0) Optimization
 -mcms-only-loop=N	Consider only loop N of each function, to bisect which pipelined loop a wrong answer comes from; 0 considers them all.  Measurement only.
 
-
-mcms-relocate-invariant
-Target Var(lvx_cms_relocate_invariant) Init(0) Optimization
-Give a loop-invariant live range -- one whose every reference is a read, so the body never writes it -- a register of its own and one copy in the preheader, instead of holding it at the register it arrived in.  Keeps p2unroll at 1; only the location changes.  Frees the register for a tuple that needs it.  7tricies.167.
 
 mcms-rotate-bottom-test
 Target Var(lvx_cms_rotate_bottom_test) Init(1) Optimization

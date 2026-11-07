@@ -16482,9 +16482,6 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       {
 	int rt = lvx_cms_lrange_root (lr, (int) k);
 
-	if (lvx_cms_relocate_invariant
-	    && lvx_cms_lrange_invariant_p (lr, rt))
-	  continue;
 	lvx_cms_hold_range (lr, rt, 3);
       }
 
@@ -16575,12 +16572,8 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		 writes anything -- and sound when both are invariant, for the
 		 same reason: each copy reads the incoming storage, so the two
 		 still agree about the value they came from.  */
-	      if (!(lvx_cms_relocate_invariant
-		    && lvx_cms_lrange_invariant_p (lr, ra)))
-		lvx_cms_hold_range (lr, ra, 5);
-	      if (!(lvx_cms_relocate_invariant
-		    && lvx_cms_lrange_invariant_p (lr, rb)))
-		lvx_cms_hold_range (lr, rb, 5);
+	      lvx_cms_hold_range (lr, ra, 5);
+	      lvx_cms_hold_range (lr, rb, 5);
 	    }
 	}
     }
@@ -18077,19 +18070,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	 name only works while LIFE fits in it, so where it does not the
 	 range goes back to being held rather than silently asking the
 	 capacity invariant to fail.  */
-      if (lvx_cms_relocate_invariant && g->renamed && ii > 0
-	  && lvx_cms_lrange_invariant_p (lr, (int) k))
-	{
-	  if (life > ii)
-	    g->renamed = false;
-	  else
-	    {
-	      deg.safe_push (1);
-	      goto deg_done;
-	    }
-	}
       deg.safe_push (ii > 0 ? MAX ((life + ii - 1) / ii, 1) : 1);
-    deg_done:;
       /* §7tricies.147: the degree's own inputs, for ranges that will rotate.
 	 Deducing EC from the pattern and the claim mode got the wrong answer
 	 twice; this prints what the computation actually used.  */
@@ -22646,8 +22627,7 @@ lvx_cms_place_cycle (const auto_vec<rtx_insn *> &seq,
 		     const auto_vec<struct lvx_sched_resources> &cyc,
 		     unsigned n, int ncopy, int ii, unsigned bi, int bc,
 		     int *earliest_out, int *blocked_by,
-		     const auto_vec<struct lvx_sched_resources> *cyc_nodl,
-		     unsigned *ndlblock)
+		     int *unused_shadow ATTRIBUTE_UNUSED)
 {
   int earliest = 0;
 
@@ -22691,9 +22671,6 @@ lvx_cms_place_cycle (const auto_vec<rtx_insn *> &seq,
   while (when < (int) cyc.length ()
 	 && !lvx_cms_slot_fits_p (&cyc[when], seq[bi]))
     {
-      if (cyc_nodl && ndlblock && when < (int) cyc_nodl->length ()
-	  && lvx_cms_slot_fits_p (&(*cyc_nodl)[when], seq[bi]))
-	(*ndlblock)++;
       if (blocked_by && *blocked_by < 0)
 	*blocked_by = lvx_cms_blocking_resource (&cyc[when], seq[bi]);
       when++;
@@ -22873,9 +22850,6 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
      everything except the doloop_end, and every refusal is retried against it:
      NDLBLOCK counts the placements the charge alone pushed out of a cycle.
      Read-only -- the shadow never decides anything.  */
-  auto_vec<struct lvx_sched_resources> cyc_nodl;
-  unsigned ndlblock = 0;
-  unsigned nseldiff = 0;
 
   /* THE ROLLING MRT, read-only.  §7tricies.183.  MROW[i] is the residue row
      instruction i's latest instance occupies, -1 before it has one.  */
@@ -22927,8 +22901,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 priority is longest-path-to-sink, and a task with a long path to the
 	 sink tends to be early in the dependence order and so to land early,
 	 so coincidence is plausible -- but plausible is not measured.  */
-      int best = -1, bestwhen = -1, bestprio = -1;
-      bool byclock = false;
+      int best = -1;
 
       /* CYCLE-BASED SELECTION AT THE MONOTONE CLOCK.  §7tricies.185.
 
@@ -22944,7 +22917,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 §7tricies.184 measured the precondition: 3.8 of 5.3 ready candidates
 	 avoid the overflow, so there is usually something better to issue, and
 	 least-clock-advance was systematically taking the one that did not.  */
-      while (lvx_cms_cycle_clock && best < 0)
+      while (best < 0)
 	{
 	  unsigned cur = mrt.is_empty () ? 0 : lvx_cms_mrt_violations (mrt);
 	  auto_vec<unsigned> elig;
@@ -22959,7 +22932,6 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 
 	      memset (&empty, 0, sizeof (empty));
 	      cyc.safe_push (empty);
-	      cyc_nodl.safe_push (empty);
 	    }
 	  for (int c = 0; c < ncopy; c++)
 	    for (unsigned i = 0; i < n; i++)
@@ -22970,7 +22942,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		if (date[k] >= 0 || pred[k] > 0)
 		  continue;
 		if (lvx_cms_place_cycle (seq, arcs, release, date, cyc, n,
-					 ncopy, ii, i, c, &e0, NULL, NULL,
+					 ncopy, ii, i, c, &e0, NULL,
 					 NULL) < 0)
 		  continue;
 		if (e0 > clock)
@@ -23073,197 +23045,19 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		    best = (int) kk;
 		}
 	  }
-	  bestprio = best;
-	  byclock = true;
 	  stall = 0;
-	  if (lvx_cms_cycle_clock > 1 && dump_file && lvx_cms_probe)
+	  if (lvx_cms_clock_trace && dump_file && lvx_cms_probe)
 	    lvx_cms_dump (";; lvx cms:   CLOCKPICK ii=%d clock=%d elig=%u"
 			  " ok=%u forced=%d insn=%d\n", ii, clock,
 			  elig.length (), nok, take_bad ? 1 : 0, best % (int) n);
 	}
 
-      /* VBSS: SAMPLE THE READY SET INSTEAD OF TAKING ITS ARGMAX.
-	 §7tricies.170.  Same copy discipline as the deterministic rule below
-	 -- lowest copy first, and a copy with any ready cell settles it -- so
-	 the only thing that changes is WHICH of that copy's ready cells is
-	 taken.
-
-	 The heuristic's own number is a COST (ascending prio, and for
-	 select != 0 the clock advance W), so the bias is applied to the
-	 EXCESS over the best candidate: weight = SCALE / (1 + excess)^gamma.
-	 Two candidates the heuristic rates equally get equal weight, one
-	 rated far worse gets a small one, and as gamma grows this collapses
-	 back to the argmax -- which is the property that makes gamma a
-	 single interpretable knob rather than a mode switch.
-
-	 For select != 0 the deterministic order is lexicographic in
-	 (W, prio), so the cost scalarises it exactly: cost = W * span + prio
-	 with span wider than any prio difference.  Biasing on W alone would
-	 throw away the secondary key and flatten the near-ties this exists
-	 to exploit.  */
-      bool vbss_done = byclock;
-      if (!byclock && vstate != 0 && lvx_cms_vbss > 0)
-	{
-	  auto_vec<unsigned> cand;
-	  auto_vec<int> cost, cwhen;
-	  for (int c = 0; c < ncopy && !vbss_done; c++)
-	    {
-	      cand.truncate (0); cost.truncate (0); cwhen.truncate (0);
-	      int pmin = 0, pmax = 0;
-	      bool first = true;
-	      for (unsigned i = 0; i < n; i++)
-		{
-		  unsigned k = (unsigned) c * n + i;
-		  if (date[k] >= 0 || pred[k] > 0)
-		    continue;
-		  if (first || prio[i] < pmin) pmin = prio[i];
-		  if (first || prio[i] > pmax) pmax = prio[i];
-		  first = false;
-		}
-	      if (first)
-		continue;			/* no ready cell in this copy */
-	      int pspan = pmax - pmin + 1;
-	      for (unsigned i = 0; i < n; i++)
-		{
-		  unsigned k = (unsigned) c * n + i;
-		  if (date[k] >= 0 || pred[k] > 0)
-		    continue;
-		  int w = -1;
-		  if (lvx_cms_select_policy != 0)
-		    {
-		      w = lvx_cms_place_cycle (seq, arcs, release, date, cyc,
-					       n, ncopy, ii, i, c, NULL, NULL,
-					       NULL, NULL);
-		      if (w < 0)
-			continue;
-		    }
-		  cand.safe_push (k);
-		  cwhen.safe_push (w);
-		  cost.safe_push (lvx_cms_select_policy != 0
-				  ? w * pspan + (prio[i] - pmin)
-				  : prio[i] - pmin);
-		}
-	      if (cand.is_empty ())
-		continue;
-	      int cmin = cost[0];
-	      for (unsigned j = 1; j < cost.length (); j++)
-		if (cost[j] < cmin)
-		  cmin = cost[j];
-	      /* Weights, and the argmax's own identity recorded for DISAGREE. */
-	      unsigned total = 0;
-	      auto_vec<unsigned> wgt;
-	      int argmin = -1;
-	      for (unsigned j = 0; j < cand.length (); j++)
-		{
-		  unsigned excess = (unsigned) (cost[j] - cmin);
-		  unsigned den = 1;
-		  for (int g = 0; g < lvx_cms_vbss && den < (1u << 18); g++)
-		    den *= (excess + 1);
-		  unsigned v = (1u << 18) / den;
-		  if (v == 0)
-		    v = 1;		/* never exclude a legal candidate */
-		  wgt.safe_push (v);
-		  total += v;
-		  if (argmin < 0 || cost[j] < cost[argmin])
-		    argmin = (int) j;
-		}
-	      unsigned r = total ? lvx_cms_rnd (&vstate) % total : 0;
-	      unsigned pick = 0;
-	      for (unsigned j = 0; j < wgt.length (); j++)
-		{
-		  if (r < wgt[j])
-		    { pick = j; break; }
-		  r -= wgt[j];
-		  pick = j;
-		}
-	      best = (int) cand[pick];
-	      bestwhen = cwhen[pick];
-	      bestprio = (int) cand[argmin >= 0 ? (unsigned) argmin : pick];
-	      if (lvx_cms_vbss_probe && dump_file && lvx_cms_probe
-		  && cand.length () > 1)
-		lvx_cms_dump (";; lvx cms: VBSS ii=%d ready=%u picked=%u"
-			      " argmin=%u excess=%d\n", ii, cand.length (),
-			      pick, (unsigned) (argmin >= 0 ? argmin : 0),
-			      cost[pick] - cmin);
-	      vbss_done = true;
-	    }
-	}
-
-      if (!vbss_done)
-      for (int c = 0; c < ncopy; c++)
-	{
-	  for (unsigned i = 0; i < n; i++)
-	    {
-	      unsigned k = (unsigned) c * n + i;
-	      if (date[k] >= 0 || pred[k] > 0)
-		continue;
-	      /* The priority rule's answer, always.  */
-	      if (bestprio < 0
-		  || prio[i] < prio[(unsigned) bestprio % n]
-		  || (prio[i] == prio[(unsigned) bestprio % n]
-		      && i < (unsigned) bestprio % n))
-		bestprio = (int) k;
-	      if (lvx_cms_select_policy == 0)
-		{
-		  best = bestprio;
-		}
-	      else
-		{
-		  /* LEAST CLOCK ADVANCE FIRST, then priority, then program
-		     order.  §7tricies.89.
-
-		     The original rule commits to a candidate BEFORE knowing how
-		     far it will have to walk: if the cheapest-priority ready
-		     task is blocked for five cycles while another would fit in
-		     the current one, it still takes the first, and the cycle it
-		     could have filled stays empty.  Filling the current cycle
-		     before advancing is the ordinary list-scheduling discipline
-		     for a wide-issue machine, and at a FIXED II a denser packing
-		     is exactly what lets the schedule fit.
-
-		     Measured headroom when this was added: 25 of 149 TSVC2
-		     loops ended at an II above BOTH bounds (17 at +1, 5 at +2,
-		     2 at +4, one at +8), and those are the loops where the
-		     placement, not a bound, is what forced II up.  CMS repairs
-		     such a commitment by ITERATION instead -- SWO moves release
-		     dates and re-places, and 12 loops took 13 passes and 2 took
-		     25 -- which this rule avoids by construction.
-
-		     The trade, stated because it is real: selecting a filler
-		     ahead of a critical-path task can lengthen the SPAN, so
-		     more stages and more registers live, while lowering II.
-		     The arcs still enforce the path and the modulo table's
-		     capacity is what binds at fixed II, so this costs depth and
-		     pressure, never feasibility.  */
-		  int w = lvx_cms_place_cycle (seq, arcs, release, date, cyc,
-					       n, ncopy, ii, i, c, NULL, NULL,
-					       NULL, NULL);
-		  if (w < 0)
-		    continue;
-		  if (best < 0
-		      || w < bestwhen
-		      || (w == bestwhen
-			  && (prio[i] < prio[(unsigned) best % n]
-			      || (prio[i] == prio[(unsigned) best % n]
-				  && i < (unsigned) best % n))))
-		    {
-		      best = (int) k;
-		      bestwhen = w;
-		    }
-		}
-	    }
-	  if (best >= 0)
-	    break;
-	}
       if (best < 0)
 	/* Nothing ready and cells remain.  This gives up at this II; it does
 	   NOT establish that no schedule exists there.  Deciding modulo
 	   schedulability at a fixed II under resource constraints is
 	   NP-complete, so no search licenses that claim.  §7tricies.127.  */
 	return false;
-      if (bestprio >= 0 && best != bestprio)
-	nseldiff++;
-
       unsigned bi = (unsigned) best % n;
       int bc = best / (int) n;
       /* PLACEMENT ORDER AGAINST ASSIGNED DATE.  Asks whether the dates come
@@ -23290,7 +23084,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
       int blocked_by = -1, earliest = 0;
       int when = lvx_cms_place_cycle (seq, arcs, release, date, cyc,
 				      n, ncopy, ii, bi, bc, &earliest,
-				      &blocked_by, &cyc_nodl, &ndlblock);
+				      &blocked_by, NULL);
       if (when < 0)
 	return false;
       /* AT THE CLOCK, NOT AT THE FIRST CYCLE THAT FITS.  §7tricies.185.
@@ -23300,64 +23094,17 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 because its earliest is at or before CLOCK and CLOCK has room, so
 	 placing it there is legal; that it may be later than strictly
 	 necessary is the deliberate idling the residue policy asks for.  */
-      if (byclock)
-	when = clock;
+      /* AT THE CLOCK.  §7tricies.187: the clock is the single path, so this is
+	 not a variant of place_cycle's answer -- it IS the placement.  */
+      when = clock;
       while ((int) cyc.length () <= when)
 	{
 	  struct lvx_sched_resources empty;
 	  memset (&empty, 0, sizeof (empty));
 	  cyc.safe_push (empty);
-	  cyc_nodl.safe_push (empty);
 	}
       lvx_cms_resources_add (&cyc[when], seq[bi]);
-      if (!lvx_doloop_end_p (seq[bi]))
-	lvx_cms_resources_add (&cyc_nodl[when], seq[bi]);
       date[(unsigned) best] = when;
-
-      /* DOES THE CHOSEN CANDIDATE RAISE THE COUNT, AND COULD ANOTHER HAVE
-	 AVOIDED IT?  §7tricies.184.  This is the precondition of the author's
-	 policy -- deprioritise a candidate that would overflow a residue --
-	 and it is a different question from whether the count is a gradient
-	 (§7tricies.183, which measured: it is not).  Evaluated BEFORE the
-	 update below, so MRT still holds the pre-placement state, and over
-	 the chosen cell's own copy, which is the only one the selection
-	 considered.  */
-      if (lvx_cms_rolling_mrt >= 3 && ii > 0 && !mrt.is_empty ())
-	{
-	  unsigned cur = lvx_cms_mrt_violations (mrt);
-	  int crow = ((when % ii) + ii) % ii;
-	  unsigned vch = lvx_cms_mrt_trial (mrt, mrow, seq[bi], bi, crow);
-
-	  if (vch > cur)
-	    {
-	      unsigned nready = 0, nalt = 0;
-
-	      for (unsigned i2 = 0; i2 < n; i2++)
-		{
-		  unsigned k2 = (unsigned) bc * n + i2;
-		  int w2;
-
-		  if (date[k2] >= 0 || pred[k2] > 0)
-		    continue;
-		  w2 = lvx_cms_place_cycle (seq, arcs, release, date, cyc, n,
-					    ncopy, ii, i2, bc, NULL, NULL,
-					    NULL, NULL);
-		  if (w2 < 0)
-		    continue;
-		  nready++;
-		  if (i2 == bi)
-		    continue;
-		  if (lvx_cms_mrt_trial (mrt, mrow, seq[i2], i2,
-					 ((w2 % ii) + ii) % ii) <= cur)
-		    nalt++;
-		}
-	      if (dump_file && lvx_cms_probe)
-		lvx_cms_dump (";; lvx cms:   MRTALT fn=%s ii=%d step=%d"
-			      " insn=%u raise=%u ready=%u alt=%u\n",
-			      current_function_name (), ii, placed, bi,
-			      vch - cur, nready, nalt);
-	    }
-	}
 
       /* ROLLING MRT: retire this task's previous instance, install the new
 	 one, and measure the distance to resource feasibility.  §7tricies.183. */
@@ -23512,14 +23259,6 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	      /* Reported only on the converged II, and only when non-zero: the
 		 question is whether the doloop_end's charge ever actually moved
 		 a placement in the schedule that was kept.  §7tricies.87.  */
-	      if (nseldiff && dump_file && lvx_cms_probe)
-		lvx_cms_dump (";; lvx cms: fn=%s II=%d seldiff=%u the two"
-			      " selection rules disagreed\n",
-			      current_function_name (), ii, nseldiff);
-	      if (ndlblock && dump_file && lvx_cms_probe)
-		lvx_cms_dump (";; lvx cms: fn=%s II=%d dlblock=%u placements"
-			      " pushed on by the doloop_end charge alone\n",
-			      current_function_name (), ii, ndlblock);
 	      return true;
 	    }
 	}
@@ -23656,14 +23395,12 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
     mcrl_release = lvx_cms_mcrl_release;
   unsigned n = seq.length ();
   auto_vec<int> prio, release, blame, culprit, cumulative, tosink, slack, base;
-  auto_vec<int> guilt;
   int resblame[LVX_CMS_NRESOURCES];
 
   memset (resblame, 0, sizeof (resblame));
   prio.safe_grow_cleared (n);
   release.safe_grow_cleared (n);
   cumulative.safe_grow_cleared (n);
-  guilt.safe_grow_cleared (n);
   base.safe_grow_cleared (n);
   lvx_cms_path_metrics (seq, arcs, height, tosink, slack);
 
@@ -24213,17 +23950,6 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 
       for (unsigned i = 0; i < n; i++)
 	{
-	  if (lvx_cms_release_policy == 3)
-	    {
-	      guilt[i] += culprit[i];
-	      int want = height[i] + MIN (slack[i], guilt[i]);
-	      if (slack[i] <= 0)
-		want = 0;
-	      if (release[i] < want)		/* ratchet */
-		release[i] = want;
-	      continue;
-	    }
-
 	  bool move = false;
 	  switch (lvx_cms_release_policy)
 	    {
