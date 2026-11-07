@@ -12974,6 +12974,28 @@ lvx_cms_mrt_violations (const auto_vec<struct lvx_sched_resources> &mrt)
   return v;
 }
 
+/* The violation count the rolling MRT WOULD have if task I's latest instance
+   moved to ROW.  Mutate and undo: exact, and cheaper than a copy of the whole
+   table.  §7tricies.184.  */
+
+static unsigned
+lvx_cms_mrt_trial (auto_vec<struct lvx_sched_resources> &mrt,
+		   const auto_vec<int> &mrow, rtx_insn *insn, unsigned i,
+		   int row)
+{
+  int old = mrow[i];
+  unsigned v;
+
+  if (old >= 0)
+    lvx_cms_resources_sub (&mrt[(unsigned) old], insn);
+  lvx_cms_resources_add (&mrt[(unsigned) row], insn);
+  v = lvx_cms_mrt_violations (mrt);
+  lvx_cms_resources_sub (&mrt[(unsigned) row], insn);
+  if (old >= 0)
+    lvx_cms_resources_add (&mrt[(unsigned) old], insn);
+  return v;
+}
+
 /* Whether INSN reserves anything of the counter at index WANT.  Used to find
    the tasks holding the resource that displaced another -- the culprits a
    release date should move out of the way.  */
@@ -23089,6 +23111,51 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
       if (!lvx_doloop_end_p (seq[bi]))
 	lvx_cms_resources_add (&cyc_nodl[when], seq[bi]);
       date[(unsigned) best] = when;
+
+      /* DOES THE CHOSEN CANDIDATE RAISE THE COUNT, AND COULD ANOTHER HAVE
+	 AVOIDED IT?  §7tricies.184.  This is the precondition of the author's
+	 policy -- deprioritise a candidate that would overflow a residue --
+	 and it is a different question from whether the count is a gradient
+	 (§7tricies.183, which measured: it is not).  Evaluated BEFORE the
+	 update below, so MRT still holds the pre-placement state, and over
+	 the chosen cell's own copy, which is the only one the selection
+	 considered.  */
+      if (lvx_cms_rolling_mrt >= 3 && ii > 0 && !mrt.is_empty ())
+	{
+	  unsigned cur = lvx_cms_mrt_violations (mrt);
+	  int crow = ((when % ii) + ii) % ii;
+	  unsigned vch = lvx_cms_mrt_trial (mrt, mrow, seq[bi], bi, crow);
+
+	  if (vch > cur)
+	    {
+	      unsigned nready = 0, nalt = 0;
+
+	      for (unsigned i2 = 0; i2 < n; i2++)
+		{
+		  unsigned k2 = (unsigned) bc * n + i2;
+		  int w2;
+
+		  if (date[k2] >= 0 || pred[k2] > 0)
+		    continue;
+		  w2 = lvx_cms_place_cycle (seq, arcs, release, date, cyc, n,
+					    ncopy, ii, i2, bc, NULL, NULL,
+					    NULL, NULL);
+		  if (w2 < 0)
+		    continue;
+		  nready++;
+		  if (i2 == bi)
+		    continue;
+		  if (lvx_cms_mrt_trial (mrt, mrow, seq[i2], i2,
+					 ((w2 % ii) + ii) % ii) <= cur)
+		    nalt++;
+		}
+	      if (dump_file && lvx_cms_probe)
+		lvx_cms_dump (";; lvx cms:   MRTALT fn=%s ii=%d step=%d"
+			      " insn=%u raise=%u ready=%u alt=%u\n",
+			      current_function_name (), ii, placed, bi,
+			      vch - cur, nready, nalt);
+	    }
+	}
 
       /* ROLLING MRT: retire this task's previous instance, install the new
 	 one, and measure the distance to resource feasibility.  §7tricies.183. */
