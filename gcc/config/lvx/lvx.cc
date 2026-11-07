@@ -20947,7 +20947,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      cheap, is decided on the plan, and refuses the loop if the arc is ever
      absent or the dates disagree -- rather than trusting that it is there.  */
   *why = "a prologue side effect precedes the branch that admits it";
-  int nse0 = 0, nsel = 0, nse0g = 0;
+  int nse0 = 0, nsel = 0, nse0g = 0, nse0u = 0;
   for (unsigned q = 0; q < slots.length (); q++)
     {
       int nd = slots[q].node;
@@ -21047,6 +21047,63 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 			    slots[q].date);
 	      continue;
 	    }
+
+	  /* NO BRANCH OF ITS ITERATION PRECEDES IT, SO ENTERING IS THE GUARD.
+	     §7tricies.189.
+
+	     ENTRY_ADMITS asks whether the body runs TO COMPLETION once per
+	     entry.  That is the right question for a side effect some branch of
+	     the body governs, and it is the WRONG one -- strictly too strong --
+	     for one that no branch governs: a slot with no jump before it in the
+	     body's program order is performed by every iteration that BEGINS,
+	     and iteration 0 begins exactly when the loop is entered.
+
+	     The prologue is where that becomes exact rather than plausible.
+	     lvx_cms_make_nodes puts every prologue block on
+	     `split_edge (find_edge (preheader, header))', so control reaches the
+	     prologue on precisely the paths that reached the header.  Performing
+	     iteration 0's ungoverned side effect there is therefore not
+	     speculation: it is the same unconditional execution loop entry
+	     already performed.
+
+	     PROGRAM ORDER IS THE TEST, not the schedule's.  SEQ is ONE body copy
+	     -- lvx_cms_build_plan replicates it for KUNROLL -- so `no jump below
+	     I' is a per-iteration statement, and an insn in a later unrolled copy
+	     still has the earlier copy's jumps before it and is refused.  With
+	     JOINS refused at admission the body is a chain with exits off it, so
+	     program order IS dominance order and no earlier branch means no
+	     branch at all.
+
+	     AND THE SKIP DIRECTION NEEDS NO SEPARATE TEST, because the scan above
+	     has already consumed it.  The worry is the mirror of speculation: an
+	     exit emitted BEFORE a store the original performed unconditionally
+	     would LOSE the effect rather than speculate it.  But an earlier
+	     same-iteration jump paired with its own epilogue is exactly what
+	     GUARDED matched, so reaching here means every earlier jump of this
+	     iteration is unpaired -- and §7tricies.177 records that an unpaired
+	     jump is emitted as the straight line it is, which guards nothing and
+	     therefore skips nothing.
+
+	     The corpus' two are jpeg_calc_output_dimensions loop 1 (insn 0, the
+	     body's first insn) and LZWDecode loop 5 (insn 1, preceded only by an
+	     add).  Both print ENTRYADMITS=0 for NOTLATCH=1 alone -- an early exit
+	     AFTER the side effect, which cannot make it conditional.  */
+	  {
+	    bool governed = false;
+
+	    for (unsigned j = 0; j < i && !governed; j++)
+	      if (JUMP_P (seq[j]))
+		governed = true;
+	    if (!governed)
+	      {
+		nse0u++;
+		lvx_cms_dump (";; lvx cms:   prologue iter0 side effect insn=%u"
+			      " date=%d ungoverned, entering performs it\n", i,
+			      slots[q].date);
+		continue;
+	      }
+	  }
+
 	  if (!site->entry_admits)
 	    {
 	      *why = "the prologue would speculate iteration 0's side effect";
@@ -21084,7 +21141,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      NSEL would mean the iteration >= 1 case is unexercised by the corpus,
      which is worth knowing about a path that is trusted to the arc.  */
   lvx_cms_dump (";; lvx cms:   prologue sideeffects iter0=%d iter0guarded=%d"
-		" iterN=%d\n", nse0, nse0g, nsel);
+		" iter0ungoverned=%d iterN=%d\n", nse0, nse0g, nse0u, nsel);
 
   /* THE EPILOGUES LEAVE THE CHAIN FIRST, before any insn is emitted: once
      they are redirected the chain no longer reaches the header, so nothing
