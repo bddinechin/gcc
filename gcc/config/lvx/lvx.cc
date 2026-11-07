@@ -20838,9 +20838,19 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      exits that end them.  The leftover is never zero, so that copy needs no
      guard:
 
-       M        iterations still to start when the kernel is reached, which is
-		what the counter holds -- every remaining loopback instance
-		decrements it and the one that sees 1 exits,
+       M        REMAINING LOOPBACK INSTANCES when the kernel is reached, which
+		is what the counter holds -- every remaining instance decrements
+		it and the one that sees 1 exits.  This used to read "iterations
+		still to start", and that is WRONG BY NSTAGES - 2: the prologue
+		starts NSTAGES - 1 iterations but executes only the loopback
+		instances whose dates fall inside it.  huft_build loop 6 of
+		zlib's inftrees.c (nstages = 3, II = 5, sigma (loopback) = 8) has
+		TWO iterations started in its prologue and ONE instance executed,
+		so the counter holds N - 1 while iterations still to start is
+		N - 2.  The code is right because it reads the counter and the
+		consumers are instances -- KUNROLL per hardware trip, R in the
+		remainder -- but the gloss sent one investigation looking for an
+		off-by-one that is not there,
        T        = (M - 1) / KUNROLL, the complete trips: a trip is complete
 		when all KUNROLL of its instances see a count above 1, so the
 		exit always falls in the trip after the last complete one,
