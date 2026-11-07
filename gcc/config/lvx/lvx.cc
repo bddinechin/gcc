@@ -22602,32 +22602,24 @@ lvx_cms_slot_fits_p (const struct lvx_sched_resources *slot, rtx_insn *insn)
   return true;
 }
 
-/* THE CYCLE AT WHICH COPY BC OF TASK BI WOULD LAND: the earliest date its
-   dependences and its release date allow, advanced to the first cycle whose
-   resources admit it.  §7tricies.89.
+/* THE EARLIEST CYCLE A CELL MAY ISSUE IN: the modulo constraint from its own
+   previous copy, the incoming arcs at their omega distance, and its release
+   date, II-periodically.  -1 if a predecessor is unscheduled, which a ready
+   cell cannot have.
 
-   Pure with respect to CYC, which is read and never written, so the SELECTION
-   can ask exactly the question the PLACEMENT will answer.  That matters more
-   than it saves: the alternative is to compute the landing cycle twice, and two
-   derivations of one quantity drift -- which is how a sub-register offset came
-   to be applied in the masks and not in the substitution.
+   IT NO LONGER WALKS FORWARD.  §7tricies.188.  It used to continue from
+   EARLIEST to the first cycle whose resources admitted the instruction, and
+   report which counter refused the first cycle tried.  Under a monotone clock
+   neither is wanted: the placement is AT the clock, and taking the walk's
+   answer is what let dates run backward.  The refusal it reported paid for the
+   whole flat cycle table, which is gone with it -- see the blame below.  */
 
-   BLOCKED_BY, when non-null, receives the counter that refused the first cycle
-   tried, which is what a release date should move.  CYC_NODL and NDLBLOCK are
-   the doloop_end overcharge instrumentation (§7tricies.87) and are passed only
-   by the real placement, so the dry runs do not double-count.
-
-   Returns -1 if a predecessor is unscheduled, which a ready task cannot have.  */
 
 static int
-lvx_cms_place_cycle (const auto_vec<rtx_insn *> &seq,
-		     const auto_vec<lvx_cms_arc> &arcs,
-		     const auto_vec<int> &release,
-		     const auto_vec<int> &date,
-		     const auto_vec<struct lvx_sched_resources> &cyc,
-		     unsigned n, int ncopy, int ii, unsigned bi, int bc,
-		     int *earliest_out, int *blocked_by,
-		     int *unused_shadow ATTRIBUTE_UNUSED)
+lvx_cms_earliest_cycle (const auto_vec<lvx_cms_arc> &arcs,
+			const auto_vec<int> &release,
+			const auto_vec<int> &date,
+			unsigned n, int ncopy, int ii, unsigned bi, int bc)
 {
   int earliest = 0;
 
@@ -22656,26 +22648,7 @@ lvx_cms_place_cycle (const auto_vec<rtx_insn *> &seq,
       if (earliest < r)
 	earliest = r;
     }
-
-  /* Reported out because the BLAME machinery measures displacement as
-     WHEN - EARLIEST: how far the resources pushed this task past the date its
-     dependences and release date allowed.  */
-  if (earliest_out)
-    *earliest_out = earliest;
-
-  /* Past the end of the table every cycle is empty, so the first one there
-     fits and the walk stops.  */
-  int when = earliest;
-  if (blocked_by)
-    *blocked_by = -1;
-  while (when < (int) cyc.length ()
-	 && !lvx_cms_slot_fits_p (&cyc[when], seq[bi]))
-    {
-      if (blocked_by && *blocked_by < 0)
-	*blocked_by = lvx_cms_blocking_resource (&cyc[when], seq[bi]);
-      when++;
-    }
-  return when;
+  return earliest;
 }
 
 /* Convergent modulo scheduling of the body SEQ at initiation interval II.
@@ -22746,7 +22719,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		  const auto_vec<int> &release,
 		  int ii, int delta, auto_vec<int> &sigma,
 		  auto_vec<int> *blame, auto_vec<int> *culprit,
-		  int *resblame, unsigned vseed = 0)
+		  unsigned vseed = 0)
 {
   unsigned n = seq.length ();
   if (n == 0 || ii <= 0)
@@ -22837,7 +22810,14 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
     if (pred[k] == 0)
       ready_at[k] = 0;
 
-  auto_vec<struct lvx_sched_resources> cyc;
+  /* ONE CYCLE'S RESOURCES, NOT A TABLE.  §7tricies.188.  A monotone clock
+     never revisits a cycle, so the only reservation state a placement needs is
+     the cycle it is in; CUR is reset when the clock advances.  The table this
+     replaces averaged 75.7 rows against a mean II of 13.7 -- 5.5 times an MRT
+     -- and existed to be indexed away from the clock by the forward walk.  */
+  struct lvx_sched_resources curcyc;
+
+  memset (&curcyc, 0, sizeof (curcyc));
   /* THE SAME TABLE WITH THE DOLOOP_END UNCHARGED.  §7tricies.87.
      lvx_cms_resources_add charges a doloop_end as a decrement plus a branch,
      and on a loop that gets mapped it occupies no slot (it emits
@@ -22926,13 +22906,6 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 
 	  if (clock > clockcap)
 	    return false;
-	  while ((int) cyc.length () <= clock)
-	    {
-	      struct lvx_sched_resources empty;
-
-	      memset (&empty, 0, sizeof (empty));
-	      cyc.safe_push (empty);
-	    }
 	  for (int c = 0; c < ncopy; c++)
 	    for (unsigned i = 0; i < n; i++)
 	      {
@@ -22941,13 +22914,11 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 
 		if (date[k] >= 0 || pred[k] > 0)
 		  continue;
-		if (lvx_cms_place_cycle (seq, arcs, release, date, cyc, n,
-					 ncopy, ii, i, c, &e0, NULL,
-					 NULL) < 0)
-		  continue;
-		if (e0 > clock)
-		  continue;			/* not released yet */
-		if (!lvx_cms_slot_fits_p (&cyc[clock], seq[i]))
+		e0 = lvx_cms_earliest_cycle (arcs, release, date, n, ncopy, ii,
+					     i, c);
+		if (e0 < 0 || e0 > clock)
+		  continue;			/* unready, or not released */
+		if (!lvx_cms_slot_fits_p (&curcyc, seq[i]))
 		  continue;			/* no room in this cycle */
 		{
 		  bool bad = false;
@@ -22964,6 +22935,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	  if (elig.is_empty ())
 	    {
 	      clock++, stall++;
+	      memset (&curcyc, 0, sizeof (curcyc));
 	      continue;
 	    }
 	  /* The policy: the rolling MRT REORDERS PREFERENCE WITHIN A CYCLE AND
@@ -23081,29 +23053,17 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
       	 A release only ever delays a task that is already dependence-ready; it
       	 never removes it from the ready set, so the construction still
       	 terminates.  */
-      int blocked_by = -1, earliest = 0;
-      int when = lvx_cms_place_cycle (seq, arcs, release, date, cyc,
-				      n, ncopy, ii, bi, bc, &earliest,
-				      &blocked_by, NULL);
-      if (when < 0)
+      int earliest = lvx_cms_earliest_cycle (arcs, release, date, n, ncopy, ii,
+					     bi, bc);
+      int when;
+
+      if (earliest < 0)
 	return false;
-      /* AT THE CLOCK, NOT AT THE FIRST CYCLE THAT FITS.  §7tricies.185.
-	 place_cycle walks forward from EARLIEST and stops at the first cycle
-	 with room, which can be BEFORE the clock -- and taking it is what made
-	 the date series non-monotone.  Under the clock the cell was admitted
-	 because its earliest is at or before CLOCK and CLOCK has room, so
-	 placing it there is legal; that it may be later than strictly
-	 necessary is the deliberate idling the residue policy asks for.  */
-      /* AT THE CLOCK.  §7tricies.187: the clock is the single path, so this is
-	 not a variant of place_cycle's answer -- it IS the placement.  */
+      /* AT THE CLOCK -- not a variant of anything, it IS the placement.
+	 §7tricies.187.  The cell was admitted because its earliest is at or
+	 before CLOCK and CLOCK had room for it.  */
       when = clock;
-      while ((int) cyc.length () <= when)
-	{
-	  struct lvx_sched_resources empty;
-	  memset (&empty, 0, sizeof (empty));
-	  cyc.safe_push (empty);
-	}
-      lvx_cms_resources_add (&cyc[when], seq[bi]);
+      lvx_cms_resources_add (&curcyc, seq[bi]);
       date[(unsigned) best] = when;
 
       /* ROLLING MRT: retire this task's previous instance, install the new
@@ -23164,22 +23124,31 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 release date should move out of the way -- where the previous rule
 	 delayed every slack task indiscriminately, whether or not it was ever
 	 in anyone's way.  */
+      /* BLAME: THE WAIT, AND ONLY THE WAIT.  §7tricies.188.
+
+	 CLOCK - EARLIEST is how long resource contention held this cell past
+	 the date its dependences and release allowed, and under a monotone
+	 WORK-CONSERVING clock that is a sound resource statement by
+	 construction: the loop places every eligible cell before advancing, so
+	 a cell that waited did not FIT -- losing a selection reorders within a
+	 cycle and cannot delay anything.  Measured at 100%: of 33371 delayed
+	 placements, every one had a refusing counter.
+
+	 WHICH counter is no longer recorded.  RESBLAME and the culprit window
+	 scan were the only readers of the forward walk, and the walk was the
+	 only thing indexing a cycle other than the clock -- so they were what
+	 the 75-row table was for.  The attribution was sound and never paid:
+	 §7octies measured every release policy conditioned on it as worse than
+	 ignoring it (policy 2 indistinguishable from no lever at all over 176
+	 extra passes, policy 3 at 89 against 79), and §7tricies.129's
+	 oracle-sourced version measured flat.  The lever that did pay reads
+	 the residue table, not this.
+
+	 CULPRIT survives, from the oracle (§7tricies.129): a projection that
+	 fails names the instructions responsible directly, which is a better
+	 signal than a window scan inferred from a resource.  */
       if (blame != NULL && when > earliest)
-	{
-	  (*blame)[bi] += when - earliest;
-
-	  if (blocked_by >= 0)
-	    {
-	      if (resblame != NULL)
-		resblame[blocked_by] += when - earliest;
-
-	      if (culprit != NULL && lvx_cms_squeak != 2)
-		for (unsigned ck = 0; ck < cells; ck++)
-		  if (date[ck] >= earliest && date[ck] < when
-		      && lvx_cms_insn_uses_resource_p (seq[ck % n], blocked_by))
-		    (*culprit)[ck % n]++;
-	    }
-	}
+	(*blame)[bi] += when - earliest;
 
       /* Release the successors of this cell.  */
       for (unsigned a = 0; a < arcs.length (); a++)
@@ -23385,7 +23354,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		   const auto_vec<int> &height,
 		   int ii, int delta, auto_vec<int> &sigma,
 		   int budget, int *passes, const char **last_bad,
-		   int *resblame_out, int pin, int mcrl_release = -1,
+		   int pin, int mcrl_release = -1,
 		   bitmap livein = NULL,
 		   const auto_vec<int> *crit = NULL)
 {
@@ -23395,9 +23364,6 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
     mcrl_release = lvx_cms_mcrl_release;
   unsigned n = seq.length ();
   auto_vec<int> prio, release, blame, culprit, cumulative, tosink, slack, base;
-  int resblame[LVX_CMS_NRESOURCES];
-
-  memset (resblame, 0, sizeof (resblame));
   prio.safe_grow_cleared (n);
   release.safe_grow_cleared (n);
   cumulative.safe_grow_cleared (n);
@@ -23671,10 +23637,8 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 
   auto_vec<int> bestsig;
   int bestspan = -1;
-  int bestresblame[LVX_CMS_NRESOURCES];
   bool have_best = false;
 
-  memset (bestresblame, 0, sizeof (bestresblame));
   if (dump_file && lvx_cms_probe && lvx_cms_release_policy == 6)
     lvx_cms_dump (";; lvx cms: ONCRIT ii=%d n=%u oncrit=%u holdable=%u\n",
 		  ii, n, ncrit, n - ncrit);
@@ -23723,7 +23687,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	    vseed = 0x9e3779b9u;
 	}
       if (lvx_cms_converge (seq, arcs, prio, release, ii, delta, sigma,
-			    &blame, &culprit, resblame, vseed))
+			    &blame, &culprit, vseed))
 	{
 	  const char *bad = lvx_cms_verify (seq, arcs, ii, sigma);
 	  if (!bad)
@@ -23811,8 +23775,6 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		{
 		  if (!lvx_cms_best_of_n)
 		    {
-		      if (resblame_out)
-			memcpy (resblame_out, resblame, sizeof (resblame));
 		      return true;
 		    }
 		  /* Keep the shortest local schedule seen, and carry on
@@ -23826,7 +23788,6 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		      bestsig.truncate (0);
 		      for (unsigned q = 0; q < sigma.length (); q++)
 			bestsig.safe_push (sigma[q]);
-		      memcpy (bestresblame, resblame, sizeof (resblame));
 		    }
 		  if (dump_file && lvx_cms_probe)
 		    lvx_cms_dump (";; lvx cms: BESTOFN ii=%d pass=%d span=%d"
@@ -23861,8 +23822,6 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		 pass nothing squeaks by construction.  */
 	      if (have_best)
 		break;
-	      if (resblame_out)
-		memcpy (resblame_out, resblame, sizeof (resblame));
 	      return false;
 	    }
 	}
@@ -24006,6 +23965,11 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		move = (nout > nin && slack[i] > 0);
 	      }
 	      break;
+	    /* VACUOUS UNLESS -mcms-squeak IS 1 OR 2.  §7tricies.188: CULPRIT
+	       was filled from two sources, the window scan over the blocking
+	       resource and the oracle's named instructions.  The scan is
+	       retired with the forward walk it read, so at squeak=0 CULPRIT
+	       is always empty and this policy never moves anything.  */
 	    case 2:  move = (culprit[i] > 0 && blame[i] == 0 && slack[i] > 0);
 		     break;
 	    case 4:  move = (slack[i] > 0); break;	/* no selectivity at all */
@@ -24107,13 +24071,9 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
       sigma.truncate (0);
       for (unsigned q = 0; q < bestsig.length (); q++)
 	sigma.safe_push (bestsig[q]);
-      if (resblame_out)
-	memcpy (resblame_out, bestresblame, sizeof (bestresblame));
       return true;
     }
 
-  if (resblame_out)
-    memcpy (resblame_out, resblame, sizeof (resblame));
   return false;
 }
 
@@ -25615,8 +25575,6 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
      cycle existed, so the baseline is reproducible with -mcms-swo-budget=1.  */
   int passes = 0;
   int budget = MAX (1, lvx_cms_swo_budget);
-  int resblame[LVX_CMS_NRESOURCES];
-  memset (resblame, 0, sizeof (resblame));
   /* The branch pin can raise II -- it is a release floor, so it cannot make the
      problem infeasible, but it can make this II infeasible and push the search
      on.  Measured on PolyBench it improves 17 loops and costs one (syr2k's
@@ -25652,13 +25610,13 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	 sweep caught by reading it as bit-identical to the baseline in every
 	 column (§7octovicies.4).  */
       if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
-			     budget, &passes, &last_bad, resblame,
+			     budget, &passes, &last_bad,
 			     pin == 3 ? 1 : pin, lvx_cms_mcrl_release,
 			     df_get_live_in (loop->header), &crit))
 	found = try_ii;
       else if (pin == 3
 	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
-				     budget, &passes, &last_bad, resblame, 0,
+				     budget, &passes, &last_bad, 0,
 				     lvx_cms_mcrl_release,
 				     df_get_live_in (loop->header), &crit))
 	found = try_ii;
@@ -25677,7 +25635,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	 §7septvicies.5.  */
       else if (lvx_cms_mcrl_gate
 	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
-				     budget, &passes, &last_bad, resblame,
+				     budget, &passes, &last_bad,
 				     pin == 3 ? 1 : pin, 2,
 				     df_get_live_in (loop->header), &crit))
 	found = try_ii, mcrl_used = 1, mcrl_arm = 1;
@@ -25702,7 +25660,7 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	  int p2 = 0;
 	  const char *b2 = NULL;
 	  if (lvx_cms_swo_at_ii (seq, arcs, height, found, delta, alt, budget,
-				 &p2, &b2, NULL, pin == 3 ? 1 : pin, 2,
+				 &p2, &b2, pin == 3 ? 1 : pin, 2,
 				 df_get_live_in (loop->header), &crit)
 	      && lvx_cms_sigma_span (alt) < have)
 	    {
@@ -25716,16 +25674,14 @@ lvx_cms_probe_loop (class loop *loop, basic_block *body)
 	}
     }
 
-  /* The counter that cost the most displacement across the whole search: what
-     SWO was fighting, as opposed to what merely bounded ResMII.  */
-  const char *blamed = "none";
+  /* BLAMED= IS RETIRED.  §7tricies.188.  It named the counter that cost the
+     most displacement across the search, which required the per-resource
+     attribution the forward walk produced -- and that walk was the only thing
+     that indexed a cycle other than the clock, so it was what the 75-row table
+     paid for.  The static pressure `tight=' remains, computed from the body's
+     own demand and independent of any schedule.  */
+  const char *blamed = "retired";
   int blamed_cost = 0;
-  for (int i = 0; i < LVX_CMS_NRESOURCES; i++)
-    if (resblame[i] > blamed_cost)
-      {
-	blamed_cost = resblame[i];
-	blamed = lvx_cms_resource_name[i];
-      }
 
   /* Whether reorg_loops will put a LOOPDO on this loop.  Reported rather than
      refused: a hardware loop is a HELP to a pipeliner, not an obstacle --
@@ -28216,7 +28172,7 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
 
   for (int try_ii = lower; try_ii <= lower + 8 && !found; try_ii++)
     if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
-			   budget, &passes, &last_bad, NULL,
+			   budget, &passes, &last_bad,
 			   lvx_cms_branch_stage == 3 ? 1
 			   : lvx_cms_branch_stage))
       found = try_ii;

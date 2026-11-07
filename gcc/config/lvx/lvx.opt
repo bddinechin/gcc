@@ -253,7 +253,7 @@ Target RejectNegative Joined UInteger Var(lvx_cms_release_grade) Init(0) Optimiz
 
 mcms-squeak=
 Target RejectNegative Joined UInteger Var(lvx_cms_squeak) Init(0) Optimization
--mcms-squeak=N	Where SWO's failure signal comes from: 0 construction delay alone, as before, 1 delay plus the convergence oracle's named culprits, 2 the oracle alone.
+-mcms-squeak=N	Where SWO's per-instruction failure signal comes from: 0 none, 1 the convergence oracle's named culprits, 2 the same with the delay path's writes suppressed.  The construction delay itself always drives the priority escalation and the release policies that read it; only the per-instruction attribution is selected here, the resource window scan having been retired with the forward walk.
 
 mcms-only-loop=
 Target RejectNegative Joined UInteger Var(lvx_cms_only_loop) Init(0) Optimization
