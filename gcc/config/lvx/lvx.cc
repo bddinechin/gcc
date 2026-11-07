@@ -12912,6 +12912,68 @@ lvx_cms_blocking_resource (const struct lvx_sched_resources *slot,
   return -1;
 }
 
+/* THE ROLLING MRT.  §7tricies.183 (author).
+
+   An II-row residue table carrying exactly ONE instance per instruction -- the
+   latest placed.  When instance i of X is scheduled, X's instance i-1 is
+   subtracted from the row it occupied and instance i added at its new row.  So
+   the table always holds the n latest instances folded by residue, which is
+   exactly the candidate SIGMA the oracle would verify: the residues of a
+   periodic schedule are instance-invariant, instance q of task i sitting at
+   sigma_i + (q-1) II, so the latest instance's residue IS sigma_i mod II.
+
+   Transient overflow is expected during ramp-up and is not an error.  When no
+   counter is violated, the latest-instance set is resource-feasible at this
+   II -- the resource half of lvx_cms_verify, maintained incrementally instead
+   of rebuilt per call.
+
+   READ-ONLY HERE.  This probe answers two questions before any policy reads
+   it: does the violation count FALL as a schedule converges, so that it is a
+   usable gradient, and does it reach zero EARLIER than the copy-completion
+   checkpoint the oracle fires on.  The intended use -- deprioritising a
+   candidate whose placement would overflow a residue, a hybrid with classic
+   modulo scheduling -- is only worth building if both answers are yes.
+
+   The subtraction must use the row the previous instance ACTUALLY occupied,
+   not one derived from the new date: the two coincide only once the schedule
+   is stationary for that task, which is the property being converged to.  */
+
+static void
+lvx_cms_resources_sub (struct lvx_sched_resources *resources, rtx_insn *insn)
+{
+  struct lvx_sched_resources zero, one;
+
+  memset (&zero, 0, sizeof (zero));
+  one = zero;
+  lvx_cms_resources_add (&one, insn);
+  resources->insn_count -= one.insn_count;
+  resources->ninsns_count -= one.ninsns_count;
+#define LVX_CMS_SUB(R) resources->R##_count -= one.R##_count;
+  LVX_ISSUE_RESOURCES (LVX_CMS_SUB)
+#undef LVX_CMS_SUB
+}
+
+/* How many counters are over their availability across the whole table: the
+   distance to resource feasibility, zero meaning feasible.  */
+
+static unsigned
+lvx_cms_mrt_violations (const auto_vec<struct lvx_sched_resources> &mrt)
+{
+  unsigned v = 0;
+
+  for (unsigned r = 0; r < mrt.length (); r++)
+    {
+      const struct lvx_sched_resources *slot = &mrt[r];
+
+#define LVX_CMS_MRTV(R)							      if (slot->R##_count > (unsigned) lvx_issue_availability.R)			v += slot->R##_count - (unsigned) lvx_issue_availability.R;
+      LVX_ISSUE_RESOURCES (LVX_CMS_MRTV)
+#undef LVX_CMS_MRTV
+      if (slot->ninsns_count > (unsigned) lvx_sched_issue_rate ())
+	v += slot->ninsns_count - (unsigned) lvx_sched_issue_rate ();
+    }
+  return v;
+}
+
 /* Whether INSN reserves anything of the counter at index WANT.  Used to find
    the tasks holding the resource that displaced another -- the culprits a
    release date should move out of the way.  */
@@ -22768,6 +22830,25 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
   unsigned ndlblock = 0;
   unsigned nseldiff = 0;
 
+  /* THE ROLLING MRT, read-only.  §7tricies.183.  MROW[i] is the residue row
+     instruction i's latest instance occupies, -1 before it has one.  */
+  auto_vec<struct lvx_sched_resources> mrt;
+  auto_vec<int> mrow;
+  unsigned mrt_first_zero = 0;	/* placement step at which it first fit */
+  bool mrt_saw_zero = false;
+  unsigned mrt_prev = 0, mrt_rises = 0, mrt_falls = 0, mrt_placed = 0;
+
+  if (lvx_cms_rolling_mrt)
+    {
+      struct lvx_sched_resources empty;
+
+      memset (&empty, 0, sizeof (empty));
+      for (int r = 0; r < ii; r++)
+	mrt.safe_push (empty);
+      for (unsigned i = 0; i < n; i++)
+	mrow.safe_push (-1);
+    }
+
   int placed = 0;
   while (placed < (int) cells)
     {
@@ -23008,6 +23089,44 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
       if (!lvx_doloop_end_p (seq[bi]))
 	lvx_cms_resources_add (&cyc_nodl[when], seq[bi]);
       date[(unsigned) best] = when;
+
+      /* ROLLING MRT: retire this task's previous instance, install the new
+	 one, and measure the distance to resource feasibility.  §7tricies.183. */
+      if (lvx_cms_rolling_mrt && ii > 0)
+	{
+	  int row = ((when % ii) + ii) % ii;
+
+	  if (mrow[bi] >= 0)
+	    lvx_cms_resources_sub (&mrt[(unsigned) mrow[bi]], seq[bi]);
+	  lvx_cms_resources_add (&mrt[(unsigned) row], seq[bi]);
+	  mrow[bi] = row;
+
+	  {
+	    unsigned v = lvx_cms_mrt_violations (mrt);
+	    bool full = true;
+
+	    for (unsigned i = 0; i < n && full; i++)
+	      if (mrow[i] < 0)
+		full = false;
+	    mrt_placed++;
+	    if (mrt_placed > 1)
+	      {
+		if (v > mrt_prev)
+		  mrt_rises++;
+		else if (v < mrt_prev)
+		  mrt_falls++;
+	      }
+	    mrt_prev = v;
+	    /* Only meaningful once every task has an instance: before that the
+	       table describes a partial sigma.  */
+	    if (full && v == 0 && !mrt_saw_zero)
+	      mrt_saw_zero = true, mrt_first_zero = (unsigned) placed;
+	    if (lvx_cms_rolling_mrt > 1 && dump_file && lvx_cms_probe)
+	      lvx_cms_dump (";; lvx cms:   MRTROLL ii=%d step=%d insn=%u"
+			    " row=%d viol=%u full=%d\n", ii, placed, bi, row,
+			    v, full ? 1 : 0);
+	  }
+	}
       /* PLACEMENT ORDER AGAINST ASSIGNED DATE.  Asks whether the dates come
 	 out monotone, which decides whether this construction could drive an
 	 automaton resource model -- one can be advanced but never reversed
@@ -23106,6 +23225,16 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		settled = lvx_cms_verify (seq, arcs, ii, cand, &guilty) == NULL;
 	      }
 	  }
+	  if (settled && lvx_cms_rolling_mrt && dump_file && lvx_cms_probe)
+	    lvx_cms_dump (";; lvx cms: MRTFIT fn=%s ii=%d oracle_at=%d"
+			  " mrt_zero_at=%s rises=%u falls=%u steps=%u\n",
+			  current_function_name (), ii, placed,
+			  mrt_saw_zero ? "yes" : "never", mrt_rises, mrt_falls,
+			  mrt_placed);
+	  if (mrt_saw_zero && dump_file && lvx_cms_probe && settled)
+	    lvx_cms_dump (";; lvx cms: MRTZERO fn=%s ii=%d first_zero=%u"
+			  " oracle=%d\n", current_function_name (), ii,
+			  mrt_first_zero, placed);
 	  if (settled)
 	    {
 	      sigma.truncate (0);

@@ -211,6 +211,10 @@ mcms-vbss=
 Target RejectNegative Joined UInteger Var(lvx_cms_vbss) Init(1) Optimization
 -mcms-vbss=N	Value-biased stochastic sampling of the ready set instead of its argmax, N being the bias exponent: 0 off, 1 gentle, higher collapses back towards the argmax.  Pass 0 of each initiation interval stays deterministic, so -mcms-swo-budget bounds the sample count.
 
+mcms-rolling-mrt=
+Target RejectNegative Joined UInteger Var(lvx_cms_rolling_mrt) Init(0) Optimization
+-mcms-rolling-mrt=N	Maintain a residue table of each instruction's latest instance while scheduling, and report its distance to resource feasibility: 0 off, 1 per-construction summary, 2 per placement.  Read-only probe.
+
 mcms-place-trace
 Target Var(lvx_cms_place_trace) Init(0) Optimization
 -mcms-place-trace	Report each placement in the order the constructor makes it, to see whether the assigned dates are monotone.
