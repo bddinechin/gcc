@@ -99,6 +99,10 @@ mcms-probe
 Target Var(lvx_cms_probe) Init(0) Optimization
 Dump the convergent-modulo-scheduling probe for each measured inner loop.
 
+mcms-probe-groups
+Target Var(lvx_cms_probe_groups) Init(0) Optimization
+Report EVERY same-group write/read pair that landed in different bundles, including the ones lvx_cms_group_check's key filter skips as read-after-write.  The filter assumes a reader later in program order wants that writer's value, which is false when a third insn writes the same register after renaming -- the shape of 7tricies.190.  Needs the report to reach the assembly, so it prints with `#'.
+
 mcms-probe-cfg
 Target Var(lvx_cms_probe_cfg) Init(0) Optimization
 Dump every block's successors, by edge kind and with verify_flow_info's own branch-edge count, around the hardware-loop mapping.  Needs a dump file (-fdump-rtl-mach); the instrument that located the illegal CFG of 7tricies.197.

@@ -618,6 +618,35 @@ lvx_cms_group_free (void)
 static void
 lvx_cms_group_check (FILE *file)
 {
+  /* IS THE TABLE EVEN POPULATED?  "Zero splits" is only evidence when there
+     were pairs to test: with -mcms-own-bundles the default, CMS places its own
+     boundaries and a group should never span two, so a vacuous check and a
+     clean one look identical from the outside.  §7tricies.200.  */
+  if (lvx_cms_probe_groups && file)
+    {
+      int ngroups = 0, nbundles = 0, npair = 0;
+      for (int a = 0; a < lvx_cms_group_nrecs; a++)
+	{
+	  int k;
+	  for (k = 0; k < a; k++)
+	    if (lvx_cms_group_recs[k].group == lvx_cms_group_recs[a].group)
+	      break;
+	  if (k == a)
+	    ngroups++;
+	  for (k = 0; k < a; k++)
+	    if (lvx_cms_group_recs[k].bundle == lvx_cms_group_recs[a].bundle)
+	      break;
+	  if (k == a)
+	    nbundles++;
+	  for (k = a + 1; k < lvx_cms_group_nrecs; k++)
+	    if (lvx_cms_group_recs[k].group == lvx_cms_group_recs[a].group
+		&& lvx_cms_group_recs[k].bundle != lvx_cms_group_recs[a].bundle)
+	      npair++;
+	}
+      fprintf (file, "\t# lvx cms: GROUPTAB recs=%d groups=%d bundles=%d"
+	       " cross-bundle-pairs=%d\n", lvx_cms_group_nrecs, ngroups,
+	       nbundles, npair);
+    }
   for (int a = 0; a < lvx_cms_group_nrecs; a++)
     for (int b = a + 1; b < lvx_cms_group_nrecs; b++)
       {
@@ -635,7 +664,33 @@ lvx_cms_group_check (FILE *file)
 	   test the check fired on 87 files of the corpus that compile and run
 	   correctly, which is how the distinction was found.  */
 	if (lvx_cms_group_recs[b].key >= lvx_cms_group_recs[a].key)
-	  continue;
+	  {
+	    /* REPORTED, NOT SILENT, UNDER -mcms-probe-groups.  The filter's
+	       premise is that a reader later in program order WANTS this
+	       writer's value, so a boundary between them changes nothing.
+	       That is false when a THIRD insn writes the same register
+	       between them after renaming, which is exactly §7tricies.190:
+	       insn 243 `addw $r2 = $r5, 1' precedes insn 246's addx4d, but
+	       246's base comes from insn 906 `r8 = r12 + 0x680', renamed to
+	       the SAME r2.  Program order therefore says nothing, and the
+	       pair the comment above cites as the known failure is the pair
+	       this test drops.  §7tricies.200.  */
+	    rtx s2 = single_set (lvx_cms_group_recs[a].insn);
+	    if (lvx_cms_probe_groups && file && s2 != NULL_RTX
+		&& REG_P (SET_DEST (s2))
+		&& reg_referenced_p (SET_DEST (s2),
+				     PATTERN (lvx_cms_group_recs[b].insn)))
+	      fprintf (file, "\t# lvx cms: GROUPRAW insn %d writes %s,"
+		       " insn %d reads it LATER in program order,"
+		       " node %d cycle %d, keys %d then %d\n",
+		       INSN_UID (lvx_cms_group_recs[a].insn),
+		       reg_names[REGNO (SET_DEST (s2))],
+		       INSN_UID (lvx_cms_group_recs[b].insn),
+		       (lvx_cms_group_recs[a].group - 1) >> 16,
+		       (lvx_cms_group_recs[a].group - 1) & 0xffff,
+		       lvx_cms_group_recs[a].key, lvx_cms_group_recs[b].key);
+	    continue;
+	  }
 	set = single_set (lvx_cms_group_recs[a].insn);
 	if (set == NULL_RTX || !REG_P (SET_DEST (set)))
 	  continue;
