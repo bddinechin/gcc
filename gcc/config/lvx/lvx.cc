@@ -21667,7 +21667,19 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      Two registers are in play and they must be different ones: the hardware
      loop's own counter, which nothing but its doloop_end may mention, and the
      pipeline's counter live range, which the remainder copy's tests read.  */
-  bool hwkern = (doloop && site->kunroll > 1);
+  /* GATED, BECAUSE THE STRUCTURE BELOW IS KNOWN TO MISCOMPILE.  §7tricies.199.
+     The note further down says it plainly -- "REACHABLE ONLY FOR TRACING at
+     the moment: §7tricies.65 showed the loops this admits are miscompiled" --
+     and nothing enforced it: the only thing keeping it out of the shipped
+     configuration was that `doloop' is false under -fno-hwloop, which every
+     development arm passed.  Remove that flag, as §7tricies.189 did, and the
+     path emits at -O2.  §7tricies.190's zlib miscompile carries hwkern=1.
+
+     Refusing it is not a loss of correctness anywhere: the loop falls back to
+     the counted kernel the plan already built, whose KUNROLL - 1 counter
+     tests make reorg_loops decline the mapping (ITER_REG_USED) so
+     lvx_hwloop_fail turns it into a branch loop.  That is slower and right.  */
+  bool hwkern = (doloop && site->kunroll > 1 && lvx_cms_hwkern);
   /* Every jump must have a destination outside the loop to drain to, or it is
      an intra-loop branch this emission does not model.  */
   *why = "a jump has no exit out of the loop";
