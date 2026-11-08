@@ -10175,7 +10175,23 @@ lvx_final_prescan_insn (rtx_insn *insn)
       int cycle = lvx_sched2->insn_cycle[uid];
       unsigned flags = lvx_sched2->insn_flags[uid];
 
-      /* A BUNDLE NEVER LEAVES A BLOCK THE PIPELINER OWNS.  §7tricies.193.
+      /* A BUNDLE NEVER LEAVES A BASIC BLOCK.  §7tricies.195 generally,
+	 §7tricies.193 for the pipeliner's own blocks.
+
+	 STOP is placed only at scheduling-region boundaries
+	 (lvx_sched_init/lvx_sched_finish) and on a clock advance, never at a
+	 block boundary INSIDE a region -- and schedule_ebbs pulls a block and
+	 its fall-through successor into one region.  So the successor's first
+	 insn can carry VOIDmode and share the branch's bundle.  On a
+	 superscalar that is harmless, the machine squashing what follows a
+	 taken branch; in an LVX bundle every instruction issues and the branch
+	 redirects only at bundle end, so the insn executes on a path that
+	 never enters its block.  accum.c: `cb.deqz $r2? .L6' with the next
+	 block's `addd $r0 = $r0, 32' beside it, correct only because that
+	 increment is dead on the exit.
+
+	 Asked of the PREVIOUS insn's block, which is the one whose bundle is
+	 still open, and which survives a deletion inside it.
 
 	 The seeding puts STOP on the last insn of each owned block, and that
 	 insn can be DELETED afterwards -- a self copy removed after reorg --
@@ -10192,12 +10208,13 @@ lvx_final_prescan_insn (rtx_insn *insn)
 	 TARGET_SCHED_INIT already.  */
       if (lvx_final_prev_bb != NULL
 	  && lvx_final_prev_bb != BLOCK_FOR_INSN (insn)
-	  && (lvx_final_prev_bb->flags & BB_DISABLE_SCHEDULE) != 0
+	  && (lvx_bundle_per_block
+	      || (lvx_final_prev_bb->flags & BB_DISABLE_SCHEDULE) != 0)
 	  && (unsigned) prev_uid < (unsigned) lvx_sched2->max_uid
 	  && !(lvx_sched2->insn_flags[prev_uid] & LVX_SCHED2_INSN_STOP))
 	{
 	  lvx_sched2->insn_flags[prev_uid] |= LVX_SCHED2_INSN_STOP;
-	  sprintf (lvx_final_end_bundle, ";;\t# (end owned block)\t(fixup)\n\t");
+	  sprintf (lvx_final_end_bundle, ";;\t# (end block)\t(fixup)\n\t");
 	}
 
       if (!(flags & LVX_SCHED2_INSN_HEAD) && prev_cycle < cycle)
@@ -13380,12 +13397,69 @@ lvx_cms_delta (const auto_vec<lvx_cms_arc> &arcs)
    charging every iteration in full overstates by 1/K -- which is the right
    direction for a bound, and vanishes as K grows.  */
 
+/* THE PREFIX A GUARDED OR MASKED OP CARRIES, CHARGED ONE PER OP.
+   §7tricies.194.
+
+   WHAT WAS MISSING.  lvx_sched_dfa_new_cycle accounts for GUARD, MASKS and
+   MASKM exactly -- get_attr_bcu_used says whether an op needs a BCU slot, a
+   COND_EXEC's guard condition is the key and a mask register with its lanetodo
+   is the key for the masked form, and lvx_bcu_prefix_shared_p makes a prefix
+   already in the bundle cost nothing more, so every op under ONE GUARD spends
+   one BCU slot between them.  None of that reaches CMS, whose
+   lvx_sched_resources_add charges only get_attr_issue, the bare insn.  So CMS
+   could build a cycle the bundler then had to split -- invisible while SCHED2
+   owns the bundles, and an assembler error the moment a CMS cycle IS one:
+   mad's libz inftrees.c wanted 3 BRRP of 2 from a guarded store plus a ccb.
+
+   DELIBERATELY CONSERVATIVE: one BCU_BRRP per prefixed op, with no sharing.
+   That OVER-charges where the bundler would have shared -- two ops under the
+   same guard pay twice here and once there -- which costs II and never
+   legality.  Under-charging is the direction that cannot be allowed: it lets
+   CMS emit a cycle that does not fit a bundle, and splitting a parallel group
+   is the irrecoverable error (§7tricies.191).  Modelling the sharing properly
+   means keying on the guard condition across a whole cycle, which is the
+   bundler's bookkeeping and not a resource count.
+
+   Charged only when CMS owns the bundles.  Otherwise SCHED2 still decides
+   them and enforces the real rule, so the charge would buy nothing and cost
+   II on every pipelined loop.  */
+static void
+lvx_cms_resources_add_prefix (struct lvx_sched_resources *resources,
+			      rtx_insn *insn)
+{
+  enum lvx_bcu_kind kind;
+  rtx key;
+  int lanetodo;
+
+  if (!lvx_cms_own_bundles)
+    return;
+  if (!NONDEBUG_INSN_P (insn) || INSN_CODE (insn) < 0)
+    return;
+  if (get_attr_bcu_used (insn) != BCU_USED_YES)
+    return;
+  /* A plain BCU op -- branch, jump, sysget -- is the BCU op itself and its own
+     reservation already says so; only a PREFIX is uncounted.  */
+  if (GET_CODE (PATTERN (insn)) != COND_EXEC
+      && !lvx_masked_prefix (insn, &kind, &key, &lanetodo))
+    return;
+
+  {
+    const struct lvx_issue_resources *br = &lvx_issue_table[ISSUE_BCU_BRRP];
+
+    resources->ninsns_count += br->ninsns;
+#define LVX_CMS_PREFIX_ADD(R) resources->R##_count += br->R;
+    LVX_ISSUE_RESOURCES (LVX_CMS_PREFIX_ADD)
+#undef LVX_CMS_PREFIX_ADD
+  }
+}
+
 static void
 lvx_cms_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
 {
   if (!lvx_doloop_end_p (insn))
     {
       lvx_sched_resources_add (resources, insn);
+      lvx_cms_resources_add_prefix (resources, insn);
       return;
     }
 
