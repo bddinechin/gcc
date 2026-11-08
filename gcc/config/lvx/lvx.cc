@@ -5705,18 +5705,31 @@ lvx_hwloop_optimize (hwloop_info loop)
      reasons that had nothing to do with this insn.  */
   if (loop->end_label != NULL_RTX && LABEL_P (loop->end_label))
     {
-      LABEL_NUSES (loop->end_label)++;
-      add_reg_note (loopdo, REG_LABEL_OPERAND, loop->end_label);
-      /* AND PRESERVED, which the note and the use count together are not
-	 enough for.  Block merging deletes the label heading the second
-	 block, and the CFG has no edge standing for "the hardware takes the
-	 back edge when the next bundle's address reaches this label" -- so
-	 from the CFG's point of view nothing refers to it.  LABEL_PRESERVE_P
-	 is the flag cfgrtl honours for a label whose use it cannot see.
+      /* LABEL_PRESERVE_P, AND DELIBERATELY NOT REG_LABEL_OPERAND.
+	 §7tricies.201.
 
-	 Measured on validation/cms/unroll.c: the body came out as
-	 `loopdo $r1, .L12' ... `# loopdo end' with .L12 nowhere in the file,
-	 which is a LINK failure and not a compile one.  */
+	 The label has to be kept alive by hand: lvx_loopdo is a plain
+	 define_insn -- an unspec_volatile, not a jump -- and the CFG has no
+	 edge standing for "the hardware takes the back edge when the next
+	 bundle's address reaches this label", so nothing the CFG can see
+	 refers to it.  `rtl_merge_blocks' then deletes the label heading the
+	 successor block UNCONDITIONALLY, which LABEL_NUSES does not prevent,
+	 and validation/cms/unroll.c came out as `loopdo $r1, .L12' ...
+	 `# loopdo end' with .L12 nowhere in the file -- a LINK failure, not a
+	 compile one, so the census could never see it.
+
+	 LABEL_PRESERVE_P is what survives that: `delete_insn' converts a
+	 preserved label into NOTE_INSN_DELETED_LABEL instead of removing it,
+	 and that note still emits the label.
+
+	 A REG_LABEL_OPERAND note was the obvious companion and is WRONG here.
+	 The label rtx is already inside the unspec, and once it becomes a
+	 NOTE_INSN_DELETED_LABEL the note is reachable BOTH from the pattern
+	 and from the insn's own REG_NOTES, which is exactly what
+	 `verify_rtl_sharing' rejects: "invalid rtl sharing found in the insn",
+	 39 corpus files, none of them caught by the 8 gate tests or the 72
+	 validation programs.  */
+      LABEL_NUSES (loop->end_label)++;
       LABEL_PRESERVE_P (loop->end_label) = 1;
     }
   rtx_insn *seq = get_insns ();
@@ -11229,12 +11242,38 @@ lvx_option_override (void)
      same `hw = M - 1' range shift the before-mapping order already computes.
      Note it cannot be fixed by declining mapped loops: that was measured at
      emitted 743 -> 230.  */
-  /* THE REFUSAL IS LIFTED, THE CAUSE BEING FIXED.  §7tricies.201: the stale
-     LOOPDO is deleted when the pipeline replaces its loop, and a second
-     reorg_loops maps the kernel.  Kept as a comment because the reasoning for
-     having refused it is the reasoning for re-refusing it if the gate's
-     hardware-loop arm ever regresses: Init(0) is not a safety property, and
-     documenting a wrong-code combination in the option help is not either.  */
+  /* THE REFUSAL IS BACK, FOR A DIFFERENT REASON THAN BEFORE.  §7tricies.202.
+
+     §7tricies.201 fixed the WRONG CODE: the second reorg_loops maps the
+     kernels CMS builds, and the gate's hardware-loop arm went from 0/8 wrong
+     answers to 8/8 PASS.  That part stands.
+
+     What it did not fix is LABEL LIFETIME, and the corpus says so where the
+     gate cannot: 39 files that compiled now fail with "invalid rtl sharing
+     found in the insn", TOTAL 265/925 against the default order's 304/886.
+     Neither the 8 gate tests nor the 72 validation programs covered it.
+
+     The chain is: lvx_loopdo holds a BARE CODE_LABEL in its unspec_volatile,
+     `rtl_merge_blocks' deletes the label heading a merged successor block
+     unconditionally, LABEL_PRESERVE_P therefore turns it into a
+     NOTE_INSN_DELETED_LABEL rather than keeping a CODE_LABEL -- and
+     verify_rtx_sharing whitelists CODE_LABEL but NOT NOTE, so the note inside
+     the pattern is rejected.  28 such notes appear in tsvc2's common.c in this
+     order and none in the other two.
+
+     The fix is for the label to be the loop's OWN, emitted at the end of its
+     body and never a block head that merging can claim -- not
+     `block_label (loop->successor)', which several loops can share and which
+     belongs to a block whose lifetime the hardware back-edge has no say in.
+     Until then the combination is refused rather than left reachable: a
+     compile failure is better than a miscompile, and both are worse than an
+     error.  */
+  if (lvx_cms_after_hwloop && (lvx_cms_codegen || lvx_cms_pipeline)
+      && TARGET_HWLOOP)
+    error ("%<-mcms-after-hwloop%> maps the pipelined kernel correctly but "
+	   "cannot yet keep the %<loopdo%> end label alive through block "
+	   "merging, which is invalid RTL on 39 corpus files; it is for "
+	   "measurement only and requires %<-fno-hwloop%>");
 
   /* §7tricies.107: the propagation's arcs are not the ones construction
      measured the heights from, so the two go together.  */
