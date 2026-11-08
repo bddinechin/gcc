@@ -44,6 +44,7 @@
 #include "builtins.h"
 #include "calls.h"
 #include "cfganal.h"
+#include "cfgcleanup.h"
 #include "cfghooks.h"
 #include "cfgloop.h"
 #include "cfgrtl.h"
@@ -12194,6 +12195,45 @@ lvx_cms_doloop_trip_count (class loop *loop, basic_block *body)
   return -1;
 }
 
+/* The LOOPDO reorg_loops has ALREADY put on LOOP, or NULL.  §7tricies.196.
+
+   Only non-NULL when CMS runs second (-mcms-after-hwloop), and then it is the
+   whole of the hardware-loop decision: an insn here means the loop IS mapped,
+   its doloop_end survives as a decoration over an intact software loop
+   (§7tricies.85) and emits no instruction, so charging it is wrong; its
+   absence means either the loop never was a doloop or lvx_hwloop_fail has
+   already converted it to decrement-test-branch, and then the latch is real.
+
+   Searched in the block the loop is entered from, which is where
+   lvx_hwloop_optimize emits it -- and the entry is found by hand for the same
+   reason lvx_cms_pipeline_loop finds its own: CMS runs loop_optimizer_init
+   with AVOID_CFG_MODIFICATIONS, so there may be no preheader to ask for.  */
+static rtx_insn *
+lvx_cms_find_loopdo (class loop *loop)
+{
+  basic_block entry = NULL;
+  rtx_insn *insn;
+  edge e;
+  edge_iterator ei;
+
+  if (loop->header == NULL)
+    return NULL;
+  FOR_EACH_EDGE (e, ei, loop->header->preds)
+    if (!flow_bb_inside_loop_p (loop, e->src))
+      {
+	if (entry != NULL)
+	  return NULL;		/* two entries: not a hardware loop's shape */
+	entry = e->src;
+      }
+  if (entry == NULL)
+    return NULL;
+  FOR_BB_INSNS_REVERSE (entry, insn)
+    if (NONDEBUG_INSN_P (insn)
+	&& recog_memoized (insn) == CODE_FOR_lvx_loopdo)
+      return insn;
+  return NULL;
+}
+
 /* True if LOOP is already a hardware loop, which reorg_loops will put a
    LOOPDO on.  Unfolding one of those would mean halving the trip count and
    peeling the odd iteration; a loop without one needs neither, because the
@@ -20507,6 +20547,12 @@ struct lvx_cms_site
      admits iteration 0" is only an improvement if that sentence is known to
      be true of the loop in hand.  */
   bool entry_admits;
+  /* The lvx_loopdo reorg_loops had already put on this loop, or NULL.
+     RECORDED HERE because it must be found BEFORE make_nodes splits the
+     preheader edge: after that the header's non-loop predecessor is CMS's own
+     prologue block and the LOOPDO is no longer reachable from it.
+     §7tricies.196.  */
+  rtx_insn *loopdo;
 };
 
 /* THE BLOCK A JUMP LEAVES THE LOOP FOR, or null if it has none.  A multi-exit
@@ -21430,6 +21476,15 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      The two refusals below are NOT staging and stay: a power-of-two unroll
      factor is what makes the trip-count division a shift, and a kunroll > 1
      kernel needs a prologue to set the count up from.  */
+  /* AN ALREADY-MAPPED LOOP IS HANDLED, AND MEASURABLY SO.  §7tricies.196.
+     Declining one was tried and is not the answer: 498 of them, taking
+     emitted from 743 to 230, and the two files that fail under the new order
+     kept failing -- so the mapped loops are the bulk, CMS copes with them,
+     and those two failures are a different shape.  The LOOPDO they inherit
+     still wants maintaining, which is why site->loopdo is recorded before
+     make_nodes splits the preheader edge and the stats line reports
+     `hwloop mapped'.  */
+
   *why = "a doloop kernel's unroll factor is not a power of two";
   if (doloop && (site->kunroll < 1
 		 || (site->kunroll & (site->kunroll - 1)) != 0))
@@ -26391,6 +26446,9 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      justification and the exit test costs no issue slot.  What it does cost is
      codegen, which has to adjust the trip count for the stages in flight.  */
   bool hw = lvx_loop_has_doloop_p (loop);
+  /* §7tricies.196: and whether the mapping has ALREADY happened, which is what
+     decides whether the doloop_end costs anything.  */
+  rtx_insn *loopdo = lvx_cms_find_loopdo (loop);
 
   if (!found)
     {
@@ -27851,6 +27909,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
       site.antidep_ok = adok;
       site.classocc_ok = cgocc;
       site.loop = loop;
+      site.loopdo = loopdo;
       site.kunroll = plkun;
       /* §7tricies.43: all exits from the loopback's own block, so the body
 	 runs to completion once per entry.  */
@@ -28690,7 +28749,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		delta, (int) loop->safelen, passes, tight_name, tight_dem, tight_cap,
 		blamed, blamed_cost, seq.length (), arcs.length (),
 		spec < 0 ? -spec : spec, spec < 0 ? "forced to" : "need",
-		hw ? " hwloop" : "",
+		hw ? (loopdo ? " hwloop mapped" : " hwloop") : "",
 		!drop_ok ? "UNSOUND: dropped safelen below nstages"
 		: nstages > 1 ? "PIPELINES" : "no gain");
 
@@ -29260,6 +29319,53 @@ lvx_cms_pipeline_loops (void)
 
   dfa_finish ();
   loop_optimizer_finalize ();
+
+  /* THE TIDY-UP reorg_loops USED TO PROVIDE.  §7tricies.196.
+
+     CMS's emission creates blocks and redirects edges, leaving a stale
+     dominator tree and -- the part that actually bites -- blocks no longer
+     reachable.  While CMS ran BEFORE reorg_loops, that pass's own cleanup_cfg
+     swept both; running after, nothing does, and the first symptom was
+     verify_dominators ("dominator of 10 should be 7, not 9"), then
+     calc_dfs_tree asserting outright on the unreachable blocks, across 127 of
+     276 corpus files.
+
+     After loop_optimizer_finalize, not before: it verifies the loop structure
+     under checking and reads the tree, so the tree must still exist -- stale
+     is survivable there, absent is not, which is the order CMS already relied
+     on when it ran first.  */
+  if (lvx_cms_after_hwloop)
+    {
+      basic_block bb;
+
+      /* AND THE BRANCH PROBABILITIES, RECONCILED.  The surgery redirects
+	 edges, and an edge created or retargeted here has no probability while
+	 the jump that controls it still carries its REG_BR_PROB note -- which
+	 verify_flow_info rejects outright, "REG_BR_PROB is set but cfg
+	 probability is not", on eight PolyBench files.  The note is the
+	 stale half: CMS sets the edges it creates to `even', so the profile is
+	 already approximate, and dropping a note it cannot honour says so
+	 rather than inventing a figure.  */
+      FOR_EACH_BB_FN (bb, cfun)
+	{
+	  rtx_insn *j = BB_END (bb);
+	  bool unknown = false;
+	  edge e;
+	  edge_iterator ei;
+
+	  if (j == NULL || !JUMP_P (j)
+	      || find_reg_note (j, REG_BR_PROB, NULL_RTX) == NULL_RTX)
+	    continue;
+	  FOR_EACH_EDGE (e, ei, bb->succs)
+	    if (!e->probability.initialized_p ())
+	      unknown = true;
+	  if (unknown)
+	    remove_note (j, find_reg_note (j, REG_BR_PROB, NULL_RTX));
+	}
+
+      free_dominance_info (CDI_DOMINATORS);
+      cleanup_cfg (0);
+    }
 
 }
 
@@ -29908,7 +30014,10 @@ lvx_machine_dependent_reorg (void)
   /* Superblock formation for inner loops.  Speed only: it trades layout and
      a forwarder block or two for scheduling freedom, which is not what -Os
      is asking for.  */
-  if (optimize && lvx_superblock_loops && optimize_function_for_speed_p (cfun))
+  bool sb_ok = (optimize && lvx_superblock_loops
+		&& optimize_function_for_speed_p (cfun));
+
+  if (sb_ok && !lvx_cms_after_hwloop)
     lvx_superblock_inner_loops ();
 
   /* The CMS measurement, on its own walk.  Before reorg_loops, and the reason
@@ -29960,8 +30069,18 @@ lvx_machine_dependent_reorg (void)
      This is the mirror of the guards above.  Those refuse combinations that
      are UNSOUND; this one was silently INERT, which is worse to debug because
      a wrong answer looks like a measurement.  */
-  if (optimize && (lvx_cms_probe || lvx_cms_codegen)
-      && optimize_function_for_speed_p (cfun))
+  /* THE ORDER OF THESE TWO IS THE QUESTION §7tricies.196 asks.  Before:
+     CMS must PREDICT whether reorg_loops will map the loop, because it has to
+     pre-arrange a kernel the mapping will accept, and it charges a doloop_end
+     resources it may not cost.  After: the decision is already made -- a
+     mapped loop carries an lvx_loopdo over an intact software loop
+     (§7tricies.85), an unmappable one has been converted by lvx_hwloop_fail --
+     so the charge is exact and no prediction is needed, at the price of
+     maintaining the LOOPDO that CMS inherits.  */
+  bool cms_ok = (optimize && (lvx_cms_probe || lvx_cms_codegen)
+		 && optimize_function_for_speed_p (cfun));
+
+  if (cms_ok && !lvx_cms_after_hwloop)
     lvx_cms_pipeline_loops ();
 
   /* Doloop optimization. */
@@ -29970,6 +30089,19 @@ lvx_machine_dependent_reorg (void)
       lvx_check_doloop_discoverable ();
       reorg_loops (true, &lvx_doloop_hooks);
     }
+
+  /* THE CONDITIONING GOES WITH THE PIPELINER, not ahead of reorg_loops.
+     §7tricies.196.  Superblock formation shapes the loop CMS wants -- the
+     rotation, the forwarder blocks, the trace layout -- and reorg_loops then
+     calls reorder_loops and cleanup_cfg, which rearrange the blocks
+     underneath that conditioning.  CMS afterwards meets a shape neither pass
+     left, which is what "too many outgoing branch edges" was.  Run second,
+     the conditioning is the last thing before CMS and nothing disturbs it.  */
+  if (sb_ok && lvx_cms_after_hwloop)
+    lvx_superblock_inner_loops ();
+
+  if (cms_ok && lvx_cms_after_hwloop)
+    lvx_cms_pipeline_loops ();
 
   /* AFTER reorg_loops, because its cleanup_cfg renumbers and merges blocks:
      the mark is derived from the tagged insns, which survive that, and not

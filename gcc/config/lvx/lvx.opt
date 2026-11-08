@@ -324,3 +324,7 @@ Let the pipeliner own the bundles of the blocks it emits: mark them BB_DISABLE_S
 mbundle-per-block
 Target Var(lvx_bundle_per_block) Init(1) Optimization
 Never let a bundle span a basic-block boundary.  STOP is otherwise placed only at scheduling-region boundaries and on a clock advance, so schedule_ebbs -- which pulls a block and its fall-through successor into ONE region -- can leave the successor's first insn sharing the branch's bundle.  Every instruction in an LVX bundle issues and the branch redirects only at bundle end, so that insn executes on the taken path which never enters its block: accum.c emits `cb.deqz $r2? .L6' with the next block's `addd $r0 = $r0, 32' beside it.  Correct only when the insn happens to be dead there.  -mno-bundle-per-block restores the old packing.  7tricies.195.
+
+mcms-after-hwloop
+Target Var(lvx_cms_after_hwloop) Init(0) Optimization
+Run the pipeliner AFTER reorg_loops instead of before it, so that the hardware-loop decision is already made when CMS sees the loop: a mapped loop carries an lvx_loopdo over an intact software loop, and an unmappable one has already been converted to decrement-test-branch by lvx_hwloop_fail.  CMS then needs no prediction of the mapping and can charge a doloop_end exactly -- nothing when it is mapped and emits no instruction.  In exchange CMS must MAINTAIN the LOOPDO it inherits, re-pointing its end label and its count at the kernel it builds.  7tricies.196.
