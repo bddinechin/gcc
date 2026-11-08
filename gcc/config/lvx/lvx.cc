@@ -11067,6 +11067,33 @@ lvx_option_override (void)
 	   "dependences on an assumption nothing verifies; it is for "
 	   "measurement only and is incompatible with %<-mcms-codegen%>");
 
+  /* THE SAME HOLE AGAIN, AND THIS ONE IS REACHABLE FROM THE SHIPPED FLAGS.
+     §7tricies.198.  -mcms-after-hwloop lets CMS pipeline a loop that
+     reorg_loops has ALREADY mapped, and CMS does not maintain the LOOPDO it
+     then inherits: site->loopdo is recorded and never read, so the kernel is
+     unrolled by KUNROLL and overlapped by NSTAGES while the LOOPDO still
+     holds the ORIGINAL trip count.  1134 loops in the corpus are in that
+     state, and the gate's hardware-loop arm fails ALL EIGHT tests for it
+     while base, codegen and pipeline agree -- the arm that had never been run
+     for this order, the earlier "8/8 PASS" having been taken without HW=1.
+
+     A census could not see it, which is why it was believed handled: a census
+     stops at `-S' and a wrong trip count is a run-time fact.
+
+     So the combination is refused rather than merely documented.  The order
+     remains measurable where it is CORRECT -- with -fno-hwloop there is no
+     LOOPDO to go stale, and the zlib round trip passes there -- and the
+     refusal goes away by itself once CMS maintains the count, which is the
+     same `hw = M - 1' range shift the before-mapping order already computes.
+     Note it cannot be fixed by declining mapped loops: that was measured at
+     emitted 743 -> 230.  */
+  if (lvx_cms_after_hwloop && (lvx_cms_codegen || lvx_cms_pipeline)
+      && TARGET_HWLOOP)
+    error ("%<-mcms-after-hwloop%> lets the pipeliner rewrite a loop whose "
+	   "%<loopdo%> still carries the original trip count, which is wrong "
+	   "code wherever a hardware loop forms; it is for measurement only "
+	   "and requires %<-fno-hwloop%>");
+
   /* §7tricies.107: the propagation's arcs are not the ones construction
      measured the heights from, so the two go together.  */
   if (lvx_cms_copy_prop)
