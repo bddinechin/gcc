@@ -5690,7 +5690,14 @@ lvx_hwloop_optimize (hwloop_info loop)
       emit_insn (gen_rtx_SET (gen_raw_REG (DImode, REGNO (iter_reg)),
 			      gen_rtx_ZERO_EXTEND (DImode, iter_reg)));
 
-  rtx_insn *loopdo = emit_insn (gen_lvx_loopdo (iter_reg, loop->end_label));
+  /* BY NUMBER, NOT BY RTX.  §7tricies.203 -- see lvx_loopdo in lvx.md for why
+     the label must not appear in the pattern.  CODE_LABEL_NUMBER is what
+     final prints the label under, for a surviving CODE_LABEL and for the
+     NOTE_INSN_DELETED_LABEL that LABEL_PRESERVE_P leaves behind alike, so the
+     two names agree by construction.  */
+  rtx_insn *loopdo
+    = emit_insn (gen_lvx_loopdo (iter_reg,
+				 GEN_INT (CODE_LABEL_NUMBER (loop->end_label))));
   /* THE LABEL HAS TO BE KEPT ALIVE BY HAND.  §7tricies.201.  lvx_loopdo is a
      plain define_insn -- an unspec_volatile -- not a jump, and a label
      referenced only from a non-jump insn survives only through a
@@ -11268,12 +11275,12 @@ lvx_option_override (void)
      Until then the combination is refused rather than left reachable: a
      compile failure is better than a miscompile, and both are worse than an
      error.  */
-  if (lvx_cms_after_hwloop && (lvx_cms_codegen || lvx_cms_pipeline)
-      && TARGET_HWLOOP)
-    error ("%<-mcms-after-hwloop%> maps the pipelined kernel correctly but "
-	   "cannot yet keep the %<loopdo%> end label alive through block "
-	   "merging, which is invalid RTL on 39 corpus files; it is for "
-	   "measurement only and requires %<-fno-hwloop%>");
+  /* LIFTED AGAIN, and this time at the root rather than at the symptom.
+     §7tricies.203: the LOOPDO carries the end label's NUMBER and prints the
+     name, so no RTL refers to the label at all -- there is nothing to share,
+     nothing for block merging to claim, and no collision between two loops.
+     The two earlier refusals are kept in the history for the reason they were
+     right at the time: Init(0) is not a safety property.  */
 
   /* §7tricies.107: the propagation's arcs are not the ones construction
      measured the heights from, so the two go together.  */

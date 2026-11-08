@@ -1195,9 +1195,32 @@
 ;; FIXME AUTO: we should let gcc know operand 0 is unused after insn.
 (define_insn "lvx_loopdo"
   [(unspec_volatile [(match_operand 0 "register_operand" "r")
-                     (match_operand 1 "" "")] UNSPEC_DOLOOP)]
+                     (match_operand 1 "const_int_operand" "")] UNSPEC_DOLOOP)]
   ""
-  "loopdo %0, %1"
+  {
+    /* THE END LABEL BY NAME, NOT BY RTX.  §7tricies.203.
+
+       Operand 1 used to be the CODE_LABEL itself, and a bare label inside a
+       pattern is what made the end label unmaintainable: `rtl_merge_blocks'
+       deletes the label heading a merged successor block unconditionally, so
+       LABEL_PRESERVE_P turns it into a NOTE_INSN_DELETED_LABEL -- which still
+       EMITS, but which `verify_rtx_sharing' rejects inside a pattern, because
+       it whitelists CODE_LABEL and not NOTE.  39 corpus files failed with
+       "invalid rtl sharing found in the insn" (§7tricies.202).
+
+       So the pattern carries the label's NUMBER and prints the name the label
+       will emit under.  Nothing in the RTL refers to the label any more:
+       there is no sharing to violate, nothing for block merging to claim, and
+       no second loop can collide with it the way one successor block's label
+       could be shared by two.  The label itself stays in the insn stream,
+       which is what keeps its PLACEMENT right -- outside the bundle, after
+       the body's last one -- and LABEL_PRESERVE_P is what keeps it emitted.  */
+    static char tmpl[64];
+
+    snprintf (tmpl, sizeof tmpl, "loopdo %%0, .L" HOST_WIDE_INT_PRINT_DEC,
+	      INTVAL (operands[1]));
+    return tmpl;
+  }
   [(set_attr "type" "all")
    (set_attr "issue" "all")
    (set_attr "length" "4")
