@@ -5537,6 +5537,47 @@ lvx_hwloop_pattern_reg (rtx_insn *insn)
   return reg;
 }
 
+/* THE doloop_end INSNS THE MAPPING HAS ALREADY CONSUMED.  §7tricies.201.
+
+   -mcms-after-hwloop runs the pipeliner AFTER reorg_loops, so the kernels it
+   builds carry doloop_end copies that NOTHING HAS MAPPED -- and
+   doloop_end_<mode>'s register alternative prints `# loopdo end'
+   unconditionally, with no test for whether a mapping happened, so an
+   unmapped one emits no loop-back at all.  The fix is to map them: run
+   reorg_loops a SECOND time after the pipeliner.
+
+   Which needs a way to leave the already-mapped loops alone, and the obvious
+   place is wrong.  Declining in (lvx_hwloop_optimize) calls `fail', and
+   lvx_hwloop_fail REWRITES the doloop_end into a decrement and a branch --
+   destroying the working hardware loop it was asked to preserve.  So the
+   second pass must not DISCOVER them at all, which is `end_pattern_reg''s
+   job: a marked doloop_end is reported as not being one.
+
+   And the mark cannot live in lvx_hwloop_pattern_reg itself, because
+   lvx_cms_doloop_trip_count calls that same function to find the counter --
+   in the after order the loop IS mapped, so blinding it there would blind
+   CMS's own trip-count detection.  Hence a second hooks struct, used only by
+   the second pass.  */
+static bitmap lvx_hwloop_mapped_ends;
+
+static void
+lvx_hwloop_mark_mapped (rtx_insn *insn)
+{
+  if (insn == NULL)
+    return;
+  if (lvx_hwloop_mapped_ends == NULL)
+    lvx_hwloop_mapped_ends = BITMAP_ALLOC (NULL);
+  bitmap_set_bit (lvx_hwloop_mapped_ends, INSN_UID (insn));
+}
+
+static bool
+lvx_hwloop_mapped_p (rtx_insn *insn)
+{
+  return (insn != NULL
+	  && lvx_hwloop_mapped_ends != NULL
+	  && bitmap_bit_p (lvx_hwloop_mapped_ends, INSN_UID (insn)));
+}
+
 static bool
 lvx_hwloop_optimize (hwloop_info loop)
 {
@@ -5650,6 +5691,34 @@ lvx_hwloop_optimize (hwloop_info loop)
 			      gen_rtx_ZERO_EXTEND (DImode, iter_reg)));
 
   rtx_insn *loopdo = emit_insn (gen_lvx_loopdo (iter_reg, loop->end_label));
+  /* THE LABEL HAS TO BE KEPT ALIVE BY HAND.  §7tricies.201.  lvx_loopdo is a
+     plain define_insn -- an unspec_volatile -- not a jump, and a label
+     referenced only from a non-jump insn survives only through a
+     REG_LABEL_OPERAND note and its use count.  Without them nothing stops
+     cleanup from deleting the label while the LOOPDO still names it, and the
+     result is a link failure rather than a diagnostic:
+     "undefined reference to .L12".
+
+     LATENT IN THE MAPPING ALL ALONG, and it only bit once the pipeliner
+     removed the label's other users: `block_label (loop->successor)' usually
+     names a block some branch also targets, so the count was non-zero for
+     reasons that had nothing to do with this insn.  */
+  if (loop->end_label != NULL_RTX && LABEL_P (loop->end_label))
+    {
+      LABEL_NUSES (loop->end_label)++;
+      add_reg_note (loopdo, REG_LABEL_OPERAND, loop->end_label);
+      /* AND PRESERVED, which the note and the use count together are not
+	 enough for.  Block merging deletes the label heading the second
+	 block, and the CFG has no edge standing for "the hardware takes the
+	 back edge when the next bundle's address reaches this label" -- so
+	 from the CFG's point of view nothing refers to it.  LABEL_PRESERVE_P
+	 is the flag cfgrtl honours for a label whose use it cannot see.
+
+	 Measured on validation/cms/unroll.c: the body came out as
+	 `loopdo $r1, .L12' ... `# loopdo end' with .L12 nowhere in the file,
+	 which is a LINK failure and not a compile one.  */
+      LABEL_PRESERVE_P (loop->end_label) = 1;
+    }
   rtx_insn *seq = get_insns ();
 
   end_sequence ();
@@ -5774,11 +5843,29 @@ lvx_hwloop_optimize (hwloop_info loop)
 				 (ENTRY_BLOCK_PTR_FOR_FN (cfun)));
     }
 
+  /* TAKEN.  Recorded so a second reorg_loops does not map it again -- and
+     recorded on loop_end rather than on the loop, because that insn is what
+     `end_pattern_reg' is handed.  §7tricies.201.  */
+  lvx_hwloop_mark_mapped (loop->loop_end);
   return true;
 }
 
 static struct hw_doloop_hooks lvx_doloop_hooks
   = { lvx_hwloop_pattern_reg, lvx_hwloop_optimize, lvx_hwloop_fail };
+
+/* THE SECOND PASS'S VIEW: a doloop_end the first pass already mapped is not a
+   doloop_end.  Reported here rather than refused in `opt', because a refusal
+   there would call `fail' and rewrite it.  §7tricies.201.  */
+static rtx
+lvx_hwloop_pattern_reg_unmapped (rtx_insn *insn)
+{
+  if (lvx_hwloop_mapped_p (insn))
+    return NULL_RTX;
+  return lvx_hwloop_pattern_reg (insn);
+}
+
+static struct hw_doloop_hooks lvx_doloop_hooks_pass2
+  = { lvx_hwloop_pattern_reg_unmapped, lvx_hwloop_optimize, lvx_hwloop_fail };
 
 /* Handling of Hardware Loops }}} */
 
@@ -11142,12 +11229,12 @@ lvx_option_override (void)
      same `hw = M - 1' range shift the before-mapping order already computes.
      Note it cannot be fixed by declining mapped loops: that was measured at
      emitted 743 -> 230.  */
-  if (lvx_cms_after_hwloop && (lvx_cms_codegen || lvx_cms_pipeline)
-      && TARGET_HWLOOP)
-    error ("%<-mcms-after-hwloop%> lets the pipeliner rewrite a loop whose "
-	   "%<loopdo%> still carries the original trip count, which is wrong "
-	   "code wherever a hardware loop forms; it is for measurement only "
-	   "and requires %<-fno-hwloop%>");
+  /* THE REFUSAL IS LIFTED, THE CAUSE BEING FIXED.  §7tricies.201: the stale
+     LOOPDO is deleted when the pipeline replaces its loop, and a second
+     reorg_loops maps the kernel.  Kept as a comment because the reasoning for
+     having refused it is the reasoning for re-refusing it if the gate's
+     hardware-loop arm ever regresses: Init(0) is not a safety property, and
+     documenting a wrong-code combination in the option help is not either.  */
 
   /* §7tricies.107: the propagation's arcs are not the ones construction
      measured the heights from, so the two go together.  */
@@ -28713,6 +28800,30 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		for (unsigned k = 0; k < cglr.length (); k++)
 		  delete cglr[k];
 	      }
+	      /* THE INHERITED LOOPDO IS NOW STALE, SO IT GOES.  §7tricies.201.
+		 In the after-mapping order a mapped loop arrives with an
+		 lvx_loopdo in its preheader, and the pipeline has just
+		 replaced the loop that LOOPDO described: its count is the
+		 original trip count, its end label the original loop's, and
+		 its POSITION is before the prologue -- so the hardware loop
+		 would span the prologue as well.  All three are wrong and
+		 none is worth patching, because the second reorg_loops will
+		 map the kernel properly from the final CFG.  Deleting it is
+		 what makes room for that.
+
+		 It is the whole of 7tricies.196's wrong code: site->loopdo
+		 was recorded and never read, so the kernel ran unrolled and
+		 overlapped against the original count, and the gate's
+		 hardware-loop arm failed all eight tests.  */
+	      if (emitted && site.loopdo != NULL && lvx_cms_after_hwloop)
+		{
+		  lvx_cms_dump (";; lvx cms: fn=%s loop %d LOOPDODROP uid=%d,"
+				" the second mapping will remap the kernel\n",
+				current_function_name (), loop->num,
+				INSN_UID (site.loopdo));
+		  delete_insn (site.loopdo);
+		  site.loopdo = NULL;
+		}
 	      lvx_cms_dump (";; lvx cms: fn=%s loop %d pipeline %s emitted=%d"
 			    " slots=%u\n", current_function_name (),
 			    loop->num, emitted ? "built" : iwhy, nemit,
@@ -30234,6 +30345,14 @@ lvx_machine_dependent_reorg (void)
 {
   compute_bb_for_insn ();
 
+  /* PER FUNCTION, because the mark is keyed on INSN_UID -- and ALLOCATED
+     FRESH rather than cleared.  §7tricies.201.  The default bitmap obstack is
+     released between functions, so the static pointer from the previous
+     function names freed memory: `bitmap_clear' on it segfaulted inside
+     bitmap_elt_clear_from, five of the gate's eight tests.  Dropping the old
+     pointer unread is the whole fix; the storage goes with its obstack.  */
+  lvx_hwloop_mapped_ends = BITMAP_ALLOC (NULL);
+
   /* Superblock formation for inner loops.  Speed only: it trades layout and
      a forwarder block or two for scheduling freedom, which is not what -Os
      is asking for.  */
@@ -30358,7 +30477,41 @@ lvx_machine_dependent_reorg (void)
      and that is a second bug rather than a fix for the first.  */
 
   if (cms_ok && lvx_cms_after_hwloop)
-    lvx_cms_pipeline_loops ();
+    {
+      lvx_cms_pipeline_loops ();
+
+      /* AND MAP WHAT THE PIPELINER JUST BUILT.  §7tricies.201.  This is the
+	 whole of what the after-mapping order was missing, and the reason it
+	 produced wrong code rather than merely slower code.
+
+	 In the BEFORE order reorg_loops runs after CMS and maps the kernels
+	 as a matter of course -- measured, 932 of the corpus's 1120 loopdo
+	 instructions survive pipelining.  In the AFTER order nothing did, so
+	 every kernel's doloop_end copy printed `# loopdo end' and emitted no
+	 loop-back whatsoever.
+
+	 A SECOND reorg_loops is the fix, and it is the fix precisely because
+	 it reuses the tested path: discover_loops recomputes from the final
+	 CFG, (lvx_hwloop_optimize) places the LOOPDO and its end label where
+	 the kernel actually is, and lvx_hwloop_fail converts what it refuses
+	 into a decrement and a branch -- which the later schedule_ebbs
+	 absorbs, this running well before it.  No hand-maintained trip count
+	 is involved, which is what made the alternative designs large: the
+	 arithmetic for that lives in `hwkern' and stays gated.
+
+	 The hooks differ from the first pass's in one callback: a doloop_end
+	 the first pass already mapped must not be DISCOVERED here, or the
+	 loops CMS left alone would be mapped twice.  */
+      if (optimize)
+	{
+	  lvx_check_doloop_discoverable ();
+	  if (lvx_cms_probe_cfg)
+	    lvx_cms_dump_cfg ("reorg: before the second reorg_loops");
+	  reorg_loops (true, &lvx_doloop_hooks_pass2);
+	  if (lvx_cms_probe_cfg)
+	    lvx_cms_dump_cfg ("reorg: after the second reorg_loops");
+	}
+    }
 
   /* AFTER reorg_loops, because its cleanup_cfg renumbers and merges blocks:
      the mark is derived from the tagged insns, which survive that, and not
