@@ -5658,10 +5658,52 @@ lvx_hwloop_optimize (hwloop_info loop)
 	    redirect_edge_succ (e, hwloop_header);
 	}
 
-      e = find_edge (hwloop_body, hwloop_header);
-      if (e != NULL)
-	remove_edge (e);
-      make_edge (hwloop_body, hwloop_body, 0);
+      /* EVERY BACK EDGE ENTERED THE OLD HEAD, WHICH IS NOW THE HEADER -- the
+	 block the loopdo has just been emitted into.  They must land on the
+	 BODY instead, or the loopdo sits inside the cycle.  The hardware
+	 performs the loop-back, so the mapped doloop_end emits nothing and
+	 there is no jump to retarget: the surgery is edge-only.
+
+	 THE OLD CODE HANDLED ONE SHAPE AND FABRICATED THE OTHER.  It looked
+	 for a back edge out of the BODY -- which is the single-block loop,
+	 where head == tail, so after the split the doloop_end is in the body
+	 and its self-edge reads `body -> header'.  For a multi-block loop the
+	 back edge comes from `loop->tail', a different block, so the find
+	 returned NULL, nothing was redirected -- leaving the loopdo inside the
+	 cycle -- and `make_edge (hwloop_body, hwloop_body, 0)' ran anyway,
+	 giving the body a successor that NOTHING BRANCHES TO.  When the body
+	 ended in a conditional jump of its own that is two branch edges on one
+	 condjump, which is exactly the `too many outgoing branch edges'
+	 verify_flow_info refuses.
+
+	 It went unseen because NOTHING BETWEEN HERE AND THE END OF COMPILATION
+	 VERIFIES THE CFG: the illegal graph was carried silently to the end of
+	 reorg.  It surfaced only when -mcms-after-hwloop made the pipeliner's
+	 `loop_optimizer_init' the first reader of it -- so CMS reported a bug
+	 it did not create.  Proven in the SHIPPED order with no CMS work at
+	 all, on takehiro.c's `count_bits' and infblock.c's `inflate_blocks'.
+	 §7tricies.198.
+
+	 A back-edge source is in the loop: either a block of `loop->blocks'
+	 (whose bitmap predates the split, so the header's index is in it and
+	 the body's is not) or the BODY itself, which is the half of the old
+	 head that the bitmap cannot name.  */
+      auto_vec<edge, 4> backs;
+      FOR_EACH_EDGE (e, ei, hwloop_header->preds)
+	if (e->src == hwloop_body
+	    || (e->src != hwloop_header
+		&& bitmap_bit_p (loop->block_bitmap, e->src->index)))
+	  backs.safe_push (e);
+      for (unsigned bk = 0; bk < backs.length (); bk++)
+	{
+	  basic_block src = backs[bk]->src;
+	  /* Not a fall-through any more: the body does not follow the back
+	     edge's source in the layout, and the hardware, not a jump, is
+	     what transfers control.  */
+	  int flags = backs[bk]->flags & ~EDGE_FALLTHRU;
+	  remove_edge (backs[bk]);
+	  make_edge (src, hwloop_body, flags);
+	}
     }
   else if (entry_bb != ENTRY_BLOCK_PTR_FOR_FN (cfun))
     {
@@ -20678,7 +20720,7 @@ lvx_cms_dump_cfg (const char *when)
 {
   basic_block bb;
 
-  if (!lvx_cms_probe || !dump_file)
+  if (!dump_file)
     return;
   fprintf (dump_file, ";; lvx cms: CFGALL %s:\n", when);
   FOR_EACH_BB_FN (bb, cfun)
@@ -21521,14 +21563,29 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      The two refusals below are NOT staging and stay: a power-of-two unroll
      factor is what makes the trip-count division a shift, and a kunroll > 1
      kernel needs a prologue to set the count up from.  */
-  /* AN ALREADY-MAPPED LOOP IS HANDLED, AND MEASURABLY SO.  §7tricies.196.
-     Declining one was tried and is not the answer: 498 of them, taking
-     emitted from 743 to 230, and the two files that fail under the new order
-     kept failing -- so the mapped loops are the bulk, CMS copes with them,
-     and those two failures are a different shape.  The LOOPDO they inherit
-     still wants maintaining, which is why site->loopdo is recorded before
-     make_nodes splits the preheader edge and the stats line reports
-     `hwloop mapped'.  */
+  /* AN ALREADY-MAPPED LOOP IS *NOT* HANDLED, AND THE CLAIM THAT IT WAS CAME
+     FROM A COMPILE-TIME COUNT.  §7tricies.196 said "handled, and measurably
+     so" on the strength of 1134 such loops reaching emission; that is a
+     CENSUS number, and a census stops at `-S'.  It cannot see a wrong trip
+     count.  The gate's hardware-loop arm can, and with hardware loops enabled
+     -mcms-after-hwloop FAILS ALL EIGHT TESTS -- `base', `codegen' and
+     `pipeline' all agreeing, only `hwloop' wrong -- while the zlib
+     hardware-loop round trip does not even link.  That arm had never been run
+     for this order: the earlier "8/8 PASS" was taken without HW=1.
+     §7tricies.198.
+
+     THE REASON IS STRUCTURAL.  site->loopdo is RECORDED AND NEVER READ, so
+     the kernel is unrolled by KUNROLL and overlapped by NSTAGES while the
+     LOOPDO in the preheader still holds the ORIGINAL loop's trip count, and
+     the hardware iterates the wrong number of times.  Maintaining it means
+     the same `hw = M - 1' range shift the before-mapping order already
+     computes for the doloop; until that exists, -mcms-after-hwloop is
+     MEASUREMENT ONLY and must not become the default.
+
+     Declining mapped loops instead was measured and is not a way out: 498 of
+     them, taking emitted from 743 to 230.  The record is kept because
+     site->loopdo is where the maintenance will hook, found before make_nodes
+     splits the preheader edge, and the stats line reports `hwloop mapped'.  */
 
   *why = "a doloop kernel's unroll factor is not a power of two";
   if (doloop && (site->kunroll < 1
@@ -30156,33 +30213,42 @@ lvx_machine_dependent_reorg (void)
   if (optimize)
     {
       lvx_check_doloop_discoverable ();
-      if (lvx_cms_probe > 1)
+      if (lvx_cms_probe_cfg)
 	lvx_cms_dump_cfg ("reorg: before reorg_loops");
       reorg_loops (true, &lvx_doloop_hooks);
-      if (lvx_cms_probe > 1)
+      if (lvx_cms_probe_cfg)
 	lvx_cms_dump_cfg ("reorg: after reorg_loops");
 
-      /* THE MAPPING LEAVES AN ILLEGAL CFG, AND NOTHING VERIFIED IT.
-	 §7tricies.197.  THE ROOT CAUSE OF BOTH REMAINING FAILURES, proven
-	 with NO CMS WORK AT ALL and in the SHIPPED ORDER: after reorg_loops,
-	 infblock.c's bb113 is the single insn `if (r11 == 0) goto 913', and
-	 it has THREE successors -- a fall-through to bb55, the branch to bb22
-	 where label 913 actually lives, and A SPURIOUS EDGE TO ITSELF.
-	 verify_flow_info calls that "too many outgoing branch edges".
+      /* THE MAPPING USED TO LEAVE AN ILLEGAL CFG HERE, AND NOTHING VERIFIED
+	 IT.  §7tricies.197-198.  FIXED IN lvx_hwloop_optimize, which is where
+	 the edge was created; kept as a note because the shape of the bug is
+	 the argument for the pass order.
 
-	 It has gone unnoticed because NOTHING BETWEEN THE MAPPING AND THE END
-	 OF COMPILATION LOOKS.  It surfaces only when something does, which is
-	 why it appeared as two files failing under -mcms-after-hwloop: CMS's
-	 own loop_optimizer_init verifies, and CMS is then the first reader.
+	 After reorg_loops, infblock.c's bb113 was the single insn
+	 `if (r11 == 0) goto 913' with THREE successors -- a fall-through to
+	 bb55, the branch to bb22 where label 913 actually lives, and A
+	 SPURIOUS EDGE TO ITSELF; takehiro.c's count_bits had the same shape.
+	 verify_flow_info calls that "too many outgoing branch edges".  Both
+	 were reproducible with NO CMS WORK AT ALL and in the SHIPPED ORDER,
+	 and both came from `make_edge (hwloop_body, hwloop_body, 0)' firing
+	 for a multi-block loop, whose back edge is the TAIL's and not the
+	 body's -- see the surgery for the full account.
 
-	 A SWEEP HERE IS NOT THE FIX, and both were tried.  cleanup_cfg leaves
-	 the edge alone -- it is neither unreachable nor mergeable.
+	 It went unnoticed because NOTHING BETWEEN THE MAPPING AND THE END OF
+	 COMPILATION LOOKS.  It surfaced only when something did, which is why
+	 it appeared as two files failing under -mcms-after-hwloop: CMS's own
+	 loop_optimizer_init verifies, and CMS was then the first reader of a
+	 bug it did not create.  THE LESSON IS THE MISSING CHECK, not the
+	 edge: a mapping that rewrites the CFG and is never verified again can
+	 carry anything, so -mcms-after-hwloop is worth having as much for
+	 putting a verifier behind the mapping as for the schedules it buys.
+
+	 A SWEEP HERE WAS NOT THE FIX, and both were tried.  cleanup_cfg
+	 leaves the edge alone -- it is neither unreachable nor mergeable.
 	 purge_all_dead_edges does remove it and infblock.c then compiles, but
-	 it also removes edges it should not: takehiro.c moves on to "wrong
+	 it also removes edges it should not: takehiro.c moved on to "wrong
 	 amount of branch edges", a conditional jump left with NO branch edge,
-	 and the corpus drops from 743 emitted to 392.  So the edge has to be
-	 fixed where it is created, in lvx_hwloop_optimize's own surgery, and
-	 that is the next piece of work rather than a blanket purge.  */
+	 and the corpus dropped from 743 emitted to 392.  */
     }
 
   /* THE CONDITIONING STAYS AHEAD OF reorg_loops, MEASURED.  §7tricies.196.

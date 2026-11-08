@@ -99,6 +99,10 @@ mcms-probe
 Target Var(lvx_cms_probe) Init(0) Optimization
 Dump the convergent-modulo-scheduling probe for each measured inner loop.
 
+mcms-probe-cfg
+Target Var(lvx_cms_probe_cfg) Init(0) Optimization
+Dump every block's successors, by edge kind and with verify_flow_info's own branch-edge count, around the hardware-loop mapping.  Needs a dump file (-fdump-rtl-mach); the instrument that located the illegal CFG of 7tricies.197.
+
 mcms-release=
 Target RejectNegative Joined UInteger Var(lvx_cms_release_policy) Init(1) Optimization
 -mcms-release=N	SWO release-date policy: 0 none, 1 every unblamed task with slack to its ALAP, 2 only culprits of resource contention, 4 every task with slack, 5 Huff's stretchable-side decision, which releases an operation only when it has more values to stretch forward than backward, 6 every task with slack that is NOT on the critical recurrence.
@@ -327,4 +331,4 @@ Never let a bundle span a basic-block boundary.  STOP is otherwise placed only a
 
 mcms-after-hwloop
 Target Var(lvx_cms_after_hwloop) Init(0) Optimization
-Run the pipeliner AFTER reorg_loops instead of before it, so that the hardware-loop decision is already made when CMS sees the loop: a mapped loop carries an lvx_loopdo over an intact software loop, and an unmappable one has already been converted to decrement-test-branch by lvx_hwloop_fail.  CMS then needs no prediction of the mapping and can charge a doloop_end exactly -- nothing when it is mapped and emits no instruction.  In exchange CMS must MAINTAIN the LOOPDO it inherits, re-pointing its end label and its count at the kernel it builds.  7tricies.196.
+Run the pipeliner AFTER reorg_loops instead of before it, so that the hardware-loop decision is already made when CMS sees the loop: a mapped loop carries an lvx_loopdo over an intact software loop, and an unmappable one has already been converted to decrement-test-branch by lvx_hwloop_fail.  CMS then needs no prediction of the mapping and can charge a doloop_end exactly -- nothing when it is mapped and emits no instruction.  In exchange CMS must MAINTAIN the LOOPDO it inherits, re-pointing its end label and its count at the kernel it builds -- AND IT DOES NOT YET, so this option is MEASUREMENT ONLY and produces WRONG CODE wherever a hardware loop forms: site->loopdo is recorded and never read, so the kernel is unrolled and overlapped while the LOOPDO still holds the original trip count, and the gate's hardware-loop arm fails all eight tests.  Correct only together with -fno-hwloop.  7tricies.196, 7tricies.198.
