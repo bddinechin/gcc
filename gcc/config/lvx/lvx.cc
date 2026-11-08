@@ -20671,6 +20671,47 @@ lvx_cms_jump_taken_stays_p (const struct lvx_cms_site *site, rtx_insn *jmp)
    to the exit, so the back edge is the branch and the loop's exit is the
    fall-through.  */
 
+/* EVERY BLOCK'S SUCCESSORS, so a verify_flow_info failure can be READ rather
+   than guessed at.  §7tricies.196.  */
+static void
+lvx_cms_dump_cfg (const char *when)
+{
+  basic_block bb;
+
+  if (!lvx_cms_probe || !dump_file)
+    return;
+  fprintf (dump_file, ";; lvx cms: CFGALL %s:\n", when);
+  FOR_EACH_BB_FN (bb, cfun)
+    {
+      edge e;
+      edge_iterator ei;
+
+      fprintf (dump_file, ";;   bb%d%s ->", bb->index,
+	       (BB_END (bb) && JUMP_P (BB_END (bb)))
+	       ? (any_condjump_p (BB_END (bb)) ? " C" : " J") : "");
+      /* Counted the way verify_flow_info counts: n_branch excludes
+	 fall-through, EH and abnormal edges.  */
+      int nbr = 0;
+
+      FOR_EACH_EDGE (e, ei, bb->succs)
+	{
+	  const char *k = ((e->flags & EDGE_EH) ? "e"
+			   : (e->flags & EDGE_ABNORMAL_CALL) ? "c"
+			   : (e->flags & EDGE_SIBCALL) ? "s"
+			   : (e->flags & EDGE_FALLTHRU) ? "f"
+			   : (e->flags & EDGE_ABNORMAL) ? "a" : "b");
+
+	  if (*k == 'b')
+	    nbr++;
+	  fprintf (dump_file, " bb%d%s", e->dest->index, k);
+	}
+      fprintf (dump_file, "  nbranch=%d%s\n", nbr,
+	       (nbr > 1 && BB_END (bb) && JUMP_P (BB_END (bb))
+		&& (any_condjump_p (BB_END (bb))
+		    || any_uncondjump_p (BB_END (bb)))) ? "  ILLEGAL" : "");
+    }
+}
+
 static bool
 lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
 		    const auto_vec<lvx_cms_node> *nodes,
@@ -20684,8 +20725,11 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
   /* Both edges are re-derived from the recorded blocks rather than stored:
      an edge pointer is CFG state and survives, but re-finding it is cheap and
      cannot go stale against a redirect somewhere else.  */
-  edge pre = find_edge (site->preheader, site->header);
-  *why = "preheader edge is gone";
+  /* NULL when the header had no single out-of-loop predecessor
+     (§7tricies.197); find_edge would dereference it.  */
+  edge pre = (site->preheader != NULL
+	      ? find_edge (site->preheader, site->header) : NULL);
+  *why = "no single preheader outside the loop";
   if (!pre)
     return false;
 
@@ -20699,6 +20743,7 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
   *why = "latch exit edge is gone";
   if (!exit_e)
     return false;
+
 
   /* PROLOGUE and DRAIN, both by `split_edge'.
 
@@ -28039,9 +28084,36 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 			(unsigned) loop->num_nodes);
 	}
       }
+      /* THE PREHEADER IS A PREDECESSOR OUTSIDE THE LOOP, and this used to
+	 ask only `e->src != loop->latch'.  §7tricies.197.
+
+	 Those are not the same thing: a header may have an IN-LOOP
+	 predecessor that is not the latch -- a join, which the JOINS count
+	 just above exists to report -- and then the preheader came out INSIDE
+	 the loop, make_nodes split an in-loop edge, and its prologue chain was
+	 inserted into the loop body.  The shape that produces is a conditional
+	 jump with an edge to its own block, `bb113 C -> bb55f bb22 bb113',
+	 which verify_flow_info rejects as "too many outgoing branch edges".
+	 There was also no `break', so with several candidates the last one won
+	 arbitrarily.
+
+	 Latent in the shipped order and exposed by -mcms-after-hwloop, where
+	 reorg_loops' process_incoming_edges has restructured the header's
+	 incoming edges to give the LOOPDO a dedicated preheader.  Two entries
+	 leave it NULL and the loop is declined, which is what
+	 lvx_cms_pipeline_loop's own entry search already does for the same
+	 reason.  */
+      site.preheader = NULL;
       FOR_EACH_EDGE (e, ei, loop->header->preds)
-	if (e->src != loop->latch)
-	  site.preheader = e->src;
+	if (!flow_bb_inside_loop_p (loop, e->src))
+	  {
+	    if (site.preheader != NULL)
+	      {
+		site.preheader = NULL;	/* two entries: no single preheader */
+		break;
+	      }
+	    site.preheader = e->src;
+	  }
       /* The drain goes on the LATCH's exit -- the edge the kernel falls out
 	 of.  See lvx_cms_make_nodes on why "the loop's single exit" was the
 	 wrong criterion.  */
@@ -30014,10 +30086,7 @@ lvx_machine_dependent_reorg (void)
   /* Superblock formation for inner loops.  Speed only: it trades layout and
      a forwarder block or two for scheduling freedom, which is not what -Os
      is asking for.  */
-  bool sb_ok = (optimize && lvx_superblock_loops
-		&& optimize_function_for_speed_p (cfun));
-
-  if (sb_ok && !lvx_cms_after_hwloop)
+  if (optimize && lvx_superblock_loops && optimize_function_for_speed_p (cfun))
     lvx_superblock_inner_loops ();
 
   /* The CMS measurement, on its own walk.  Before reorg_loops, and the reason
@@ -30087,18 +30156,46 @@ lvx_machine_dependent_reorg (void)
   if (optimize)
     {
       lvx_check_doloop_discoverable ();
+      if (lvx_cms_probe > 1)
+	lvx_cms_dump_cfg ("reorg: before reorg_loops");
       reorg_loops (true, &lvx_doloop_hooks);
+      if (lvx_cms_probe > 1)
+	lvx_cms_dump_cfg ("reorg: after reorg_loops");
+
+      /* THE MAPPING LEAVES AN ILLEGAL CFG, AND NOTHING VERIFIED IT.
+	 §7tricies.197.  THE ROOT CAUSE OF BOTH REMAINING FAILURES, proven
+	 with NO CMS WORK AT ALL and in the SHIPPED ORDER: after reorg_loops,
+	 infblock.c's bb113 is the single insn `if (r11 == 0) goto 913', and
+	 it has THREE successors -- a fall-through to bb55, the branch to bb22
+	 where label 913 actually lives, and A SPURIOUS EDGE TO ITSELF.
+	 verify_flow_info calls that "too many outgoing branch edges".
+
+	 It has gone unnoticed because NOTHING BETWEEN THE MAPPING AND THE END
+	 OF COMPILATION LOOKS.  It surfaces only when something does, which is
+	 why it appeared as two files failing under -mcms-after-hwloop: CMS's
+	 own loop_optimizer_init verifies, and CMS is then the first reader.
+
+	 A SWEEP HERE IS NOT THE FIX, and both were tried.  cleanup_cfg leaves
+	 the edge alone -- it is neither unreachable nor mergeable.
+	 purge_all_dead_edges does remove it and infblock.c then compiles, but
+	 it also removes edges it should not: takehiro.c moves on to "wrong
+	 amount of branch edges", a conditional jump left with NO branch edge,
+	 and the corpus drops from 743 emitted to 392.  So the edge has to be
+	 fixed where it is created, in lvx_hwloop_optimize's own surgery, and
+	 that is the next piece of work rather than a blanket purge.  */
     }
 
-  /* THE CONDITIONING GOES WITH THE PIPELINER, not ahead of reorg_loops.
-     §7tricies.196.  Superblock formation shapes the loop CMS wants -- the
-     rotation, the forwarder blocks, the trace layout -- and reorg_loops then
-     calls reorder_loops and cleanup_cfg, which rearrange the blocks
-     underneath that conditioning.  CMS afterwards meets a shape neither pass
-     left, which is what "too many outgoing branch edges" was.  Run second,
-     the conditioning is the last thing before CMS and nothing disturbs it.  */
-  if (sb_ok && lvx_cms_after_hwloop)
-    lvx_superblock_inner_loops ();
+  /* THE CONDITIONING STAYS AHEAD OF reorg_loops, MEASURED.  §7tricies.196.
+     Moving superblock formation after the mapping as well is the natural
+     companion change -- reorg_loops calls reorder_loops and cleanup_cfg, which
+     rearrange the blocks it had just conditioned -- and it was tried and makes
+     things WORSE: it adds a failure mode of its own.  With the pass in its
+     original place the new order fails 2 of 276 files; moving it too, the pass
+     fails on its own account with no CMS work at all, leaving bb55 of
+     infblock.c carrying a stale second branch edge off an ordinary `cbdi'
+     whose fall-through block had insns deleted from its head.  So the
+     superblock pass's edge surgery depends on the layout reorg_loops changes,
+     and that is a second bug rather than a fix for the first.  */
 
   if (cms_ok && lvx_cms_after_hwloop)
     lvx_cms_pipeline_loops ();
