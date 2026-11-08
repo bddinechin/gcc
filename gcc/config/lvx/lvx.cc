@@ -209,6 +209,10 @@ static struct lvx_sched2
 #define LVX_SYLLABLE_SIZE 4
 #define LVX_SCHED2_BUNDLE_SIZE 32
 
+/* The block of the last insn the emission scanned, so that a bundle can be
+   closed when it would otherwise leave a block the pipeliner owns.  */
+static basic_block lvx_final_prev_bb;
+
 /* THE PARALLEL GROUP AN EMITTED SLOT BELONGS TO, so that bundling can be
    CHECKED against the schedule rather than trusted.  §7tricies.191.
 
@@ -315,9 +319,265 @@ lvx_cms_group_tag (rtx_insn *after, int node, int date, int key)
   lvx_cms_key[uid] = key;
 }
 
+/* THE BLOCKS THE PIPELINER OWNS, AND THE BUNDLES IT WANTS IN THEM.
+   §7tricies.193.
+
+   WHY CMS HAS TO OWN THEM.  Its cycles are otherwise advisory: SCHED2 is
+   LVX's own late schedule_ebbs call (TARGET_DELAY_SCHED2 disables the generic
+   pass), it rebuilds the dependence graph from the RTL and reschedules, and
+   only its hooks write insn_cycle/insn_flags.  So "these two slots share a
+   cycle, therefore a bundle, therefore the reader sees the old value" was
+   never guaranteed -- §7tricies.191 measured 77 corpus files where it does
+   not hold.  Marking the blocks BB_DISABLE_SCHEDULE keeps SCHED2 out
+   (sched-ebb.cc) and regrename out (regrename.cc, given include_all_block_p
+   false at the call), after which a CMS cycle IS a bundle.
+
+   THE MARK IS DERIVED FROM THE INSNS, NOT FROM THE PLAN'S BLOCK ARRAY,
+   because reorg_loops runs cleanup_cfg in between: it renumbers and merges,
+   and accum.c's pipeline prologue ends up merged into the function's entry
+   block.  A block list captured during emission goes stale; BLOCK_FOR_INSN of
+   a tagged insn cannot.
+
+   TIMODE IS THE CARRIER.  haifa's own convention (haifa-sched.cc: "TImode
+   indicates that the instruction is expected not to be able to issue on the
+   same cycle as the previous insn") lives on the insn, so it survives the
+   passes between here and final with no side table to keep in step.  Three
+   things start a bundle:
+
+     the first insn of an owned block -- a bundle cannot be entered in the
+       middle, and after this nothing else will annotate these blocks;
+     a new (node, date) group -- the group IS the parallel set, and slots of
+       one cycle lying in DIFFERENT nodes are already a sequential stream by
+       §7tricies.182, which is why the key is the pair and not the date;
+     an untagged insn -- only a slot's first insn carries a tag, and the rest
+       are dependent sequences that must not share a bundle: a doloop early
+       exit is a decrement and then a branch reading what it wrote, and the
+       hardware-loop setup is four insns chained through two registers.  */
+
+static bool lvx_cms_owns_blocks;
+
+static void
+lvx_cms_own_blocks (void)
+{
+  basic_block bb;
+
+  if (!lvx_cms_own_bundles || lvx_cms_group == NULL)
+    return;
+
+  /* Mark first, from the insns, so a merge cannot lose a block.  */
+  FOR_EACH_BB_FN (bb, cfun)
+    {
+      rtx_insn *insn;
+
+      FOR_BB_INSNS (bb, insn)
+	if (NONDEBUG_INSN_P (insn)
+	    && lvx_cms_group_of_uid (INSN_UID (insn)) != 0)
+	  {
+	    bb->flags |= BB_DISABLE_SCHEDULE;
+	    lvx_cms_owns_blocks = true;
+	    break;
+	  }
+    }
+  if (!lvx_cms_owns_blocks)
+    return;
+
+  if (dump_file && lvx_cms_probe)
+    {
+      fprintf (dump_file, ";; lvx cms: OWNED blocks:");
+      FOR_EACH_BB_FN (bb, cfun)
+	if (bb->flags & BB_DISABLE_SCHEDULE)
+	  fprintf (dump_file, " bb%d", bb->index);
+      fprintf (dump_file, "\n");
+    }
+
+  FOR_EACH_BB_FN (bb, cfun)
+    {
+      rtx_insn *insn;
+      int prev_group = -1;
+      bool first = true;
+
+      if (!(bb->flags & BB_DISABLE_SCHEDULE))
+	continue;
+      FOR_BB_INSNS (bb, insn)
+	{
+	  int g;
+
+	  /* The modes haifa never annotates, and nor do we.  */
+	  if (!NONDEBUG_INSN_P (insn)
+	      || GET_CODE (PATTERN (insn)) == USE
+	      || GET_CODE (PATTERN (insn)) == CLOBBER)
+	    continue;
+	  g = lvx_cms_group_of_uid (INSN_UID (insn));
+	  if (first || g == 0 || g != prev_group)
+	    PUT_MODE (insn, TImode);
+	  else
+	    PUT_MODE (insn, VOIDmode);
+	  prev_group = g;
+	  first = false;
+	}
+      /* The invariant the emission relies on: an owned block starts a
+	 bundle.  True by construction above, asserted because everything
+	 downstream reads it as given.  */
+      FOR_BB_INSNS (bb, insn)
+	if (NONDEBUG_INSN_P (insn)
+	    && GET_CODE (PATTERN (insn)) != USE
+	    && GET_CODE (PATTERN (insn)) != CLOBBER)
+	  {
+	    gcc_assert (GET_MODE (insn) == TImode);
+	    break;
+	  }
+    }
+}
+
+/* Does BB start one of the pipeliner's scheduling regions?  §7tricies.193.
+
+   The regions are the prologue, the unrolled kernel, and each epilogue, and
+   each is a maximal EBB of the emitted code.  So this asks schedule_ebbs' own
+   question (sched-ebb.cc): an EBB runs on from one block to the next while the
+   next carries no label and a fall-through edge joins them.  A block therefore
+   begins a region when it is the first owned one, or carries a label, or is
+   not its predecessor's fall-through successor.  */
+static bool
+lvx_cms_region_start_p (basic_block bb)
+{
+  basic_block prev = bb->prev_bb;
+  edge e;
+
+  if (!(bb->flags & BB_DISABLE_SCHEDULE))
+    return false;
+  if (prev == NULL || prev == ENTRY_BLOCK_PTR_FOR_FN (cfun))
+    return true;
+  if (!(prev->flags & BB_DISABLE_SCHEDULE))
+    return true;
+  if (LABEL_P (BB_HEAD (bb)))
+    return true;
+  e = find_fallthru_edge (prev->succs);
+  return e == NULL || e->dest != bb;
+}
+
+/* Seed insn_cycle and the HEAD/START/STOP flags for the owned blocks from the
+   modes, so that NOTHING downstream needs a special case: the emission's STOP
+   path keeps its doloop_end nop, its (stalled) note and its
+   jump_cycle/prev_cycle tracking, and lvx_fix_debug_for_bundles keeps the
+   non-selective path it already has.  A parallel mode-reading path in the
+   emission would have to duplicate all of that and could disagree with it.
+
+   THE CYCLE IS RELATIVE TO ITS REGION, counting from zero at the region's
+   first insn, which is what the rest of the back end means by a cycle: it is
+   what SCHED2 produces, and lvx_final_prescan_insn repairs a STOP lost to an
+   insn deleted after this -- a self copy removed after reorg -- by noticing
+   `prev_cycle < cycle' with no STOP between, a test it SKIPS at a HEAD
+   precisely because the count restarts there.  So HEAD has to be set on each
+   region's first insn or that repair would compare across regions.
+
+   AND IT IS THE PLAN'S OWN DATE, not a bundle index, so that the
+   `# (end cycle N)' the emission prints names the cycle CMS scheduled and the
+   plan can be read off the assembly.  The group carries it, `(g - 1) &
+   0xffff', rebased on the region's first tagged group since a date is
+   absolute across the plan.  Two cases cannot take their date, and take one
+   past the previous instead: an UNTAGGED bundle has none of its own (a slot
+   tail, or the hardware-loop setup), and a tagged group whose date untagged
+   bundles ahead of it have already passed.  Monotonic and distinct either
+   way, which is all the three readers compare.  */
+static void
+lvx_cms_seed_bundles (void)
+{
+  basic_block bb;
+  int cycle = -1, base = -1;
+
+  if (!lvx_cms_owns_blocks)
+    return;
+
+  FOR_EACH_BB_FN (bb, cfun)
+    {
+      rtx_insn *insn;
+      int prev_uid = -1;
+      bool head = lvx_cms_region_start_p (bb);
+
+      if (!(bb->flags & BB_DISABLE_SCHEDULE))
+	continue;
+      if (head)
+	{
+	  cycle = -1;
+	  base = -1;
+	  /* CLOSE THE BUNDLE IN FRONT OF US.  schedule_ebbs skips an owned
+	     block outright, so TARGET_SCHED_INIT is never called for it --
+	     and that call is what would have stamped STOP on the last insn of
+	     the region BEFORE it.  Marking a block therefore loses the
+	     bundle-close ahead of it, and the preceding region's tail runs
+	     into ours: inftrees.c's `sw -1152[$r1]' merged with the four ALU
+	     insns after the label and the assembler refused the bundle with
+	     "too many ALU instructions".  Nothing else will place it, so we
+	     do.  */
+	  rtx_insn *first = NULL, *before;
+
+	  FOR_BB_INSNS (bb, first)
+	    if (NONDEBUG_INSN_P (first)
+		&& GET_CODE (PATTERN (first)) != USE
+		&& GET_CODE (PATTERN (first)) != CLOBBER)
+	      break;
+	  before = first ? prev_nonnote_nondebug_insn (first) : NULL;
+	  if (before != NULL && INSN_P (before)
+	      && (unsigned) INSN_UID (before) < (unsigned) lvx_sched2->max_uid)
+	    lvx_sched2->insn_flags[INSN_UID (before)] |= LVX_SCHED2_INSN_STOP;
+	}
+      FOR_BB_INSNS (bb, insn)
+	{
+	  int uid, g;
+
+	  if (!NONDEBUG_INSN_P (insn)
+	      || GET_CODE (PATTERN (insn)) == USE
+	      || GET_CODE (PATTERN (insn)) == CLOBBER)
+	    continue;
+	  uid = INSN_UID (insn);
+	  if ((unsigned) uid >= (unsigned) lvx_sched2->max_uid)
+	    continue;
+	  g = lvx_cms_group_of_uid (uid);
+	  if (GET_MODE (insn) == TImode)
+	    {
+	      int want = cycle + 1;
+
+	      if (cycle >= SHRT_MAX - 1)
+		return;
+	      if (g != 0)
+		{
+		  int date = (g - 1) & 0xffff;
+
+		  if (base < 0)
+		    base = date;
+		  want = MAX (want, date - base);
+		}
+	      if (prev_uid >= 0)
+		lvx_sched2->insn_flags[prev_uid] |= LVX_SCHED2_INSN_STOP;
+	      lvx_sched2->insn_flags[uid] |= LVX_SCHED2_INSN_START;
+	      cycle = want;
+	    }
+	  if (head)
+	    {
+	      lvx_sched2->insn_flags[uid] |= LVX_SCHED2_INSN_HEAD;
+	      head = false;
+	    }
+	  lvx_sched2->insn_cycle[uid] = cycle;
+	  prev_uid = uid;
+	}
+      if (dump_file && lvx_cms_probe)
+	fprintf (dump_file, ";; lvx cms: SEED bb%d head=%d lastuid=%d"
+		 " cycle=%d\n", bb->index,
+		 lvx_cms_region_start_p (bb) ? 1 : 0, prev_uid, cycle);
+      /* A bundle never spans a block here: a group carries its node, so the
+	 first slot of the next block is always a new group and therefore
+	 TImode.  Closing explicitly anyway, because an owned block can end in
+	 insns that carry no group at all -- a drain's live-out reconciliation
+	 copies are emitted after the slot loop.  */
+      if (prev_uid >= 0)
+	lvx_sched2->insn_flags[prev_uid] |= LVX_SCHED2_INSN_STOP;
+    }
+}
+
 static void
 lvx_cms_group_free (void)
 {
+  lvx_cms_owns_blocks = false;
   free (lvx_cms_group);
   lvx_cms_group = NULL;
   free (lvx_cms_key);
@@ -390,7 +650,13 @@ lvx_cms_group_check (FILE *file)
 	       -- which is why the first version of this reported nothing at
 	       all on a corpus that has 77 files' worth of sites.  */
 	    if (file)
-	      fprintf (file, "\t;; lvx cms: GROUPSPLIT insn %d writes %s,"
+	      /* `#', NOT `;;': the latter IS the bundle separator, so a report
+		 written with it closed a bundle and left its own text to be
+		 parsed as instructions -- "Unexpected token when parsing
+		 `lvx cms:GROUPSPLIT ...'", and in inftrees.c a bogus "too
+		 many ALU instructions in bundle".  Invisible to the census,
+		 which stops at -S and never runs gas.  */
+	      fprintf (file, "\t# lvx cms: GROUPSPLIT insn %d writes %s,"
 		       " insn %d reads it, node %d cycle %d\n",
 		       INSN_UID (lvx_cms_group_recs[a].insn),
 		       reg_names[REGNO (SET_DEST (set))],
@@ -8808,6 +9074,9 @@ lvx_sched2_ctor (int max_uid)
   lvx_sched2->insn_flags = XCNEWVEC (unsigned char, lvx_sched2->max_uid);
   lvx_sched2->bundle_state = xmalloc (state_size ());
   lvx_sched2->cond_insn = make_insn_raw (gen_cond_insn ());
+  /* The pipeliner's own blocks are not scheduled, so their bundles come from
+     the modes it left behind rather than from a hook.  §7tricies.193.  */
+  lvx_cms_seed_bundles ();
   SET_PREV_INSN (lvx_sched2->cond_insn) = 0;
   SET_NEXT_INSN (lvx_sched2->cond_insn) = 0;
   recog_memoized (lvx_sched2->cond_insn);
@@ -9906,6 +10175,31 @@ lvx_final_prescan_insn (rtx_insn *insn)
       int cycle = lvx_sched2->insn_cycle[uid];
       unsigned flags = lvx_sched2->insn_flags[uid];
 
+      /* A BUNDLE NEVER LEAVES A BLOCK THE PIPELINER OWNS.  §7tricies.193.
+
+	 The seeding puts STOP on the last insn of each owned block, and that
+	 insn can be DELETED afterwards -- a self copy removed after reorg --
+	 which takes the STOP with it.  The repair below cannot help: it is
+	 conditioned on `!HEAD' because cycle numbers restart at a region
+	 head, so `prev_cycle < cycle' says nothing there, and the insn after
+	 an owned block is typically a scheduled region's HEAD.
+
+	 Asked of the PREVIOUS insn's block, which is the one whose bundle is
+	 still open, and which survives any deletion inside it.  Without this,
+	 inftrees.c's `sw -1152[$r1]' kept its bundle open across the label and
+	 absorbed the next block's four ALU insns -- "too many ALU instructions
+	 in bundle".  Scoped to owned blocks: a scheduled region is closed by
+	 TARGET_SCHED_INIT already.  */
+      if (lvx_final_prev_bb != NULL
+	  && lvx_final_prev_bb != BLOCK_FOR_INSN (insn)
+	  && (lvx_final_prev_bb->flags & BB_DISABLE_SCHEDULE) != 0
+	  && (unsigned) prev_uid < (unsigned) lvx_sched2->max_uid
+	  && !(lvx_sched2->insn_flags[prev_uid] & LVX_SCHED2_INSN_STOP))
+	{
+	  lvx_sched2->insn_flags[prev_uid] |= LVX_SCHED2_INSN_STOP;
+	  sprintf (lvx_final_end_bundle, ";;\t# (end owned block)\t(fixup)\n\t");
+	}
+
       if (!(flags & LVX_SCHED2_INSN_HEAD) && prev_cycle < cycle)
 	if (!(prev_flags & LVX_SCHED2_INSN_STOP))
 	  {
@@ -9941,6 +10235,7 @@ lvx_final_prescan_insn (rtx_insn *insn)
       prev_flags = flags;
       prev_cycle = cycle;
       prev_uid = uid;
+      lvx_final_prev_bb = BLOCK_FOR_INSN (insn);
     }
 }
 
@@ -29275,7 +29570,11 @@ lvx_regrename_one_loop (class loop *loop, HARD_REG_SET fixed_unavail,
 
   lvx_regrename_fill_blocks (loop, blocks);
   regrename_init (true);
-  regrename_analyze (blocks);
+  /* FALSE, not the default: regrename_analyze's include_all_block_p defaults
+     to TRUE and is documented to process all blocks "ignoring
+     BB_DISABLE_SCHEDULE", so the pipeliner's blocks would be renamed under it
+     despite the mark.  §7tricies.193.  */
+  regrename_analyze (blocks, false);
 
   for (unsigned b = 0; b < n; b++)
     {
@@ -29598,7 +29897,20 @@ lvx_machine_dependent_reorg (void)
       reorg_loops (true, &lvx_doloop_hooks);
     }
 
+  /* AFTER reorg_loops, because its cleanup_cfg renumbers and merges blocks:
+     the mark is derived from the tagged insns, which survive that, and not
+     from the plan's block array, which does not.  §7tricies.193.  */
+  lvx_cms_own_blocks ();
+
   lvx_fix_pcreljump_ranges ();
+
+  /* BEFORE regrename and SCHED2, both of which must leave the owned blocks
+     alone, and early enough that the flags lvx_fix_debug_for_bundles reads
+     are seeded for them.  Still conditional, so a build with neither SCHED2
+     nor an owned block keeps the state it had: an absent insn_cycle, which
+     the emission reads as "one bundle per insn".  */
+  if ((optimize && flag_schedule_insns_after_reload) || lvx_cms_owns_blocks)
+    lvx_sched2_ctor (get_max_uid () + 1);
 
   df_analyze ();
 
@@ -29617,7 +29929,6 @@ lvx_machine_dependent_reorg (void)
     {
       timevar_push (TV_SCHED2);
 
-      lvx_sched2_ctor (get_max_uid () + 1);
       if (flag_selective_scheduling2 && !maybe_skip_selective_scheduling ())
 	{
 	  selective_scheduling2 = true;
