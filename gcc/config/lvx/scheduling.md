@@ -36,7 +36,6 @@
 (define_insn_reservation "lvx_alu_lite_x" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
 (define_insn_reservation "lvx_xmoveto_lite_misc" 1 (and (eq_attr "type" "xmoveto") (eq_attr "issue" "lite_misc")) "lvx_lite_misc_r")
 (define_insn_reservation "lvx_fdiv_lite" 13 (and (eq_attr "type" "fdiv") (eq_attr "issue" "lite")) "lvx_lite_r")
-(define_insn_reservation "lvx_alu_lite_x2" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "lite_x2")) "lvx_lite_x2_r")
 (define_insn_reservation "lvx_alu_lite2" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "lite2")) "lvx_lite2_r")
 (define_insn_reservation "lvx_alu_lite2_x2" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "lite2_x2")) "lvx_lite2_x2_r")
 (define_insn_reservation "lvx_alu_tiny" 1 (and (eq_attr "type" "alu") (eq_attr "issue" "tiny")) "lvx_tiny_r")
