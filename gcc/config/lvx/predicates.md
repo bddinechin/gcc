@@ -241,8 +241,7 @@
   (match_code "mem")
 {
   return indirect_operand (op, mode)
-         || lvx_has_27bit_immediate_p (op)
-         || lvx_has_54bit_immediate_p (op);
+         || lvx_has_27bit_immediate_p (op);
 })
 
 ;; Used to filter the addressing mode of atomic memory instructions.
@@ -250,8 +249,7 @@
   (match_code "mem")
 {
   return indirect_operand (op, mode)
-         || lvx_has_27bit_immediate_p (op)
-         || lvx_has_54bit_immediate_p (op);
+         || lvx_has_27bit_immediate_p (op);
 })
 
 ;; Used for do loop pattern where we have an output reload in a jump insn.

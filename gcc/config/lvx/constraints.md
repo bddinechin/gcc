@@ -148,11 +148,6 @@
   (and (match_code "mem")
        (match_test "lvx_has_27bit_immediate_p (op)")))
 
-(define_memory_constraint "e"
-  "Memory operands with 54-bit immediate."
-  (and (match_code "mem")
-       (match_test "lvx_has_54bit_immediate_p (op)")))
-
 (define_address_constraint "Aa"
   "Memory address with 10-bit immediate or register."
   (and (match_test "address_operand (op, mode)")
