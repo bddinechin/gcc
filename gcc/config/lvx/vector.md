@@ -114,14 +114,32 @@
 ;; check rather than assume; `lvx_make_128bit_const' falls back to the two
 ;; MAKEDs when it is not, exactly as it does on lvx-1, where MAKEDP does not
 ;; exist.
+;; ONE IMMEDIATE ALTERNATIVE, 32 BITS, EIGHT BYTES.  §7tricies.206.
+;;
+;; This advertised three -- I16/I43/i at lengths 4/8/12 -- and MAKEDP has only
+;; TWO formats, `[ ALU_DPWI, ALU_DPWI.S ]', with NO .X/.Y extension.  Compare
+;; MAKED, which really does have them: `[ ALU_DWI, ALU_DWI.X, ALU_DWI.Y,
+;; ALU_DWR, ALU_DWR.M ]'.  The opcode table lists exactly a register form and
+;; an `upper27_lower5' immediate of width 32, and Instruction.yml stores
+;; `_SX_64(argument2)' into each double word -- so the immediate is a SIGNED
+;; 32-BIT value, which is what I32 means.
+;;
+;; THE LENGTHS WERE WRONG IN BOTH DIRECTIONS AND THE SHORT ONE IS THE DANGEROUS
+;; ONE.  Measured by assembling it: `makedp $r0r1 = 5', `= 0x7fff' and
+;; `= 0x12345678' ALL encode to EIGHT bytes.  The I16 alternative claimed FOUR,
+;; so every size-dependent computation downstream -- bundle packing,
+;; (lvx_fix_pcreljump_ranges)'s branch reach, CMS's own length accounting --
+;; was handed an instruction four bytes shorter than the one emitted.  The `i'
+;; alternative claimed twelve for a form that does not exist at all, which is
+;; how `makedp $r32r33 = 0x3ff07ae147ae147b' came to be emitted (§7tricies.205).
 (define_insn "lvx_makedp"
-  [(set (match_operand:V2DI 0 "register_operand" "=r,r,r")
-        (vec_duplicate:V2DI (match_operand:DI 1 "immediate_operand" "I16,I43,i")))]
+  [(set (match_operand:V2DI 0 "register_operand" "=r")
+        (vec_duplicate:V2DI (match_operand:DI 1 "immediate_operand" "I32")))]
   "LVX_2 && lvx_hardreg_aligned_p (operands[0], V2DImode)"
   "makedp %0 = %1"
-  [(set_attr "type" "alu,alu,alu")
-   (set_attr "issue" "lite,lite_x,lite_x2")
-   (set_attr "length" "4,8,12")]
+  [(set_attr "type" "alu")
+   (set_attr "issue" "lite_x")
+   (set_attr "length" "8")]
 )
 
 
