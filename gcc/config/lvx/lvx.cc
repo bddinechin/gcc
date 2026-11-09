@@ -287,8 +287,11 @@ struct lvx_cms_flow_rec
   int root;		/* live-range root this operand belongs to.  */
   int reg;		/* the register its name was given.  */
   int nregs;
+  int region;		/* which pipelined loop: roots are only comparable
+			   within one, so OWNER is scoped by this.  */
   bool is_def;
 };
+static int lvx_cms_flow_region;
 static struct lvx_cms_flow_rec *lvx_cms_flow_recs;
 static int lvx_cms_flow_nrecs;
 static int lvx_cms_flow_recs_max;
@@ -619,6 +622,7 @@ lvx_cms_group_free (void)
   lvx_cms_flow_recs = NULL;
   lvx_cms_flow_nrecs = 0;
   lvx_cms_flow_recs_max = 0;
+  lvx_cms_flow_region = 0;
 }
 
 /* EVERY SPLIT GROUP THAT CHANGES THE ANSWER, checked once the function's
@@ -793,6 +797,7 @@ lvx_cms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def)
   lvx_cms_flow_recs[lvx_cms_flow_nrecs].root = root;
   lvx_cms_flow_recs[lvx_cms_flow_nrecs].reg = reg;
   lvx_cms_flow_recs[lvx_cms_flow_nrecs].nregs = MAX (nregs, 1);
+  lvx_cms_flow_recs[lvx_cms_flow_nrecs].region = lvx_cms_flow_region;
   lvx_cms_flow_recs[lvx_cms_flow_nrecs].is_def = is_def;
   lvx_cms_flow_nrecs++;
 }
@@ -825,6 +830,7 @@ lvx_cms_flow_check (FILE *file)
 {
   int owner[FIRST_PSEUDO_REGISTER];
   int writer[FIRST_PSEUDO_REGISTER];
+  int cur_region = -1;
   int a;
 
   if (lvx_cms_flow_nrecs == 0 || lvx_cms_group_nrecs == 0)
@@ -839,9 +845,44 @@ lvx_cms_flow_check (FILE *file)
     {
       int b = a;
 
+      /* THE REGION, FROM THE RECORDS THEMSELVES.  §7tricies.212.
+
+	 OWNER must not be carried from one pipelined loop into the next: the
+	 ordinary code between them writes registers and has no flow records,
+	 so the map goes stale and every later read looks wrong.  Unchecked,
+	 this check reported `insn 376 reads r3 expecting lr2, but it holds
+	 lr51' -- ranges from DIFFERENT LOOPS -- and reported it identically
+	 in the default order, which runs correctly: 9, 28 and 43 on
+	 inffast.c, inftrees.c and trees.c in both orders.
+
+	 A GAP IN THE BUNDLE NUMBERING IS THE WRONG SIGNAL, and trying it cost
+	 the control: a loop's prologue, kernel and epilogue bundles are not
+	 contiguous in the function's numbering, so invalidating on a gap
+	 wipes the map inside the region and the known violation of
+	 7tricies.190 stopped being reported at all.  The region id each
+	 record carries is the signal; nothing else distinguishes two loops,
+	 since node numbers restart per loop.  */
+
       while (b < lvx_cms_group_nrecs
 	     && lvx_cms_group_recs[b].bundle == lvx_cms_group_recs[a].bundle)
 	b++;
+
+      /* This bundle's region, taken from the first flow record that matches
+	 any of its insns; -1 when none does, which leaves OWNER alone.  */
+      {
+	int reg_here = -1;
+
+	for (int i = a; i < b && reg_here < 0; i++)
+	  for (int f = 0; f < lvx_cms_flow_nrecs && reg_here < 0; f++)
+	    if (lvx_cms_flow_recs[f].insn == lvx_cms_group_recs[i].insn)
+	      reg_here = lvx_cms_flow_recs[f].region;
+	if (reg_here >= 0 && reg_here != cur_region)
+	  {
+	    for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+	      owner[r] = -1, writer[r] = -1;
+	    cur_region = reg_here;
+	  }
+      }
 
       /* Reads first, against the owners as they stand before this bundle.  */
       for (int i = a; i < b; i++)
@@ -20458,7 +20499,14 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
       /* RECORDED BEFORE THE SKIP BELOW.  §7tricies.209: an operand whose name
 	 happens to equal the register it already had needs no substitution and
 	 is just as much part of the dataflow, so the flow check must see it.  */
-      if (target != NULL && neu >= 0)
+      /* ONLY THE WALK THAT EMITS.  §7tricies.211.  `apply' is false for
+	 lvx_cms_rename_lr_dryrun, which the claim negotiation runs up to
+	 three times per loop and two further callers run again -- throwaway
+	 plans whose insns are never emitted and never reach the group table.
+	 Recording them made FLOWTAB read `operands=772 checked=163', so the
+	 check looked to cover a fifth of the dataflow when it in fact covered
+	 nearly all of what exists.  */
+      if (apply && target != NULL && neu >= 0)
 	lvx_cms_flow_record (target, lvx_cms_flow_root_of (lr, g),
 			     neu, MAX (g->nregs, 1), true);
       if (neu < 0 || neu == (int) r)
@@ -20512,7 +20560,7 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	   offset applied just below so it names the component actually read. */
 	if (neu >= 0)
 	  neu += off;
-	if (target != NULL && neu >= 0)
+	if (apply && target != NULL && neu >= 0)
 	  lvx_cms_flow_record (target, lvx_cms_flow_root_of (lr, g),
 			       neu, MAX (g->nregs, 1), false);
 	if (g->use_first && dly && lvx_cms_preheader_copy)
@@ -22125,6 +22173,12 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   bool hwkern = (doloop && site->kunroll > 1 && lvx_cms_hwkern);
   /* Every jump must have a destination outside the loop to drain to, or it is
      an intra-loop branch this emission does not model.  */
+  /* ONE REGION PER EMITTING WALK.  §7tricies.212: the flow check compares
+     live-range roots, which are only meaningful within a single loop's
+     colouring, so each walk that emits gets its own id and the checker drops
+     its OWNER map when the id changes.  */
+  lvx_cms_flow_region++;
+
   *why = "a jump has no exit out of the loop";
   for (unsigned i = 0; i < seq.length (); i++)
     if (JUMP_P (seq[i]) && (int) i != loopback
