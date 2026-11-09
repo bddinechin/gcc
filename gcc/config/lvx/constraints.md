@@ -148,6 +148,28 @@
   (and (match_code "mem")
        (match_test "lvx_has_27bit_immediate_p (op)")))
 
+;; UNREACHABLE, AND KEPT ONLY BECAUSE 53 ALTERNATIVES STILL NAME IT.
+;; 39d01c8fd27 retired the `.D' LSU formats and deleted this constraint on the
+;; stated ground that it was "defined and used by no pattern".  It is named by
+;; 53 pattern alternatives -- atomic.md 12, builtin.md 24, extension.md 17 --
+;; and genmodes stops with "undefined machine-specific constraint" on each, so
+;; the tree did not build.
+;;
+;; That commit's PURPOSE does not need the deletion: it also stopped
+;; memsimple_operand and mematomic_operand accepting a 54-bit address, so no
+;; operand can match this alternative any more and nothing unencodable can
+;; reach the assembler through it.  The constraint is therefore dead by
+;; construction rather than by absence.
+;;
+;; The real cleanup is to delete the third alternative from all 53 patterns,
+;; together with their per-alternative length/issue/type attributes, which is
+;; a separate reviewable change and not a build fix.
+(define_memory_constraint "e"
+  "Memory operands with 54-bit immediate.  Unreachable: the two addressing
+   predicates stop at the 27-bit form."
+  (and (match_code "mem")
+       (match_test "lvx_has_54bit_immediate_p (op)")))
+
 (define_address_constraint "Aa"
   "Memory address with 10-bit immediate or register."
   (and (match_test "address_operand (op, mode)")
