@@ -305,8 +305,8 @@ Target RejectNegative Joined Var(lvx_cms_only_fn) Optimization
 -mcms-only-fn=NAME	Pipeline only loops in the function whose name contains NAME, to bisect which function a wrong answer comes from; empty considers them all.  Measurement only.  7tricies.153.
 
 mcms-claim-floor=
-Target RejectNegative Joined UInteger Var(lvx_cms_claim_floor) Init(0) Optimization
--mcms-claim-floor=N	Start the claim_def_cycle negotiation at N instead of 0, so a loop that linearises without the claim is still given it: 1 withholds it from tie-carrying ranges, 2 claims everywhere.  Diagnostic for 7tricies.135.
+Target RejectNegative Joined UInteger Var(lvx_cms_claim_floor) Init(1) Optimization
+-mcms-claim-floor=N	Lowest claim_def_cycle the negotiation will try, running upward to 2 and accepting an attempt only if it both linearises and survives the rename dry-run.  0 claims nothing, so intervals are [def+1, last] and two live ranges may share a register across a same-cycle WAR -- legal inside a bundle, where every source is read before any result is written, and INEXPRESSIBLE in GCC's sequential insn stream, where a jump must come last: that is 7tricies.190.  1 claims for EVERY range, [def, last], removing the hazard.  2 claims for every range EXCEPT those carrying a tie, since a tied range cannot take a second name and claiming for one cost five loops their whole pipeline at `recog'.  So 1 is the most conservative and 2 the middle, which is the reverse of what this text said until 7tricies.210.  Default 1: at 0 the no-claim model is tried first, linearises, and is accepted -- shipping the bug -- while from 1 the fallback to 2 still rescues the tied ranges, measured at +2 emitted loops and no files lost.
 
 
 mcms-exit-live-span

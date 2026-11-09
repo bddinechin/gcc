@@ -27740,8 +27740,14 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
     /* THREE MODELS, AND THE TEST IS WHETHER THE RESULT CAN BE EMITTED.
        §7tricies.120.
 
-       The order matters and is from least to most conservative: no claim,
-       the claim withheld from ranges carrying a tie, the claim everywhere.
+       The order matters, and it is NOT least-to-most conservative, which is
+       what this comment claimed until §7tricies.210: attempt 1 claims for
+       EVERY range and attempt 2 withholds the claim from tie-carrying ranges,
+       as the `ec' expression in lvx_cms_colour_lranges says and as the
+       comment beside it has always said.  So the order is no claim, then the
+       MOST conservative model, then the middle one -- which is still
+       monotone in what it accepts, because 2 is tried only when 1 has been
+       refused.
        Inserting the middle one is strictly additive -- the two it sits
        between are unchanged, so a loop that settled before can only settle
        the same way or earlier.
