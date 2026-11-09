@@ -646,6 +646,21 @@ lvx_cms_group_check (FILE *file)
       fprintf (file, "\t# lvx cms: GROUPTAB recs=%d groups=%d bundles=%d"
 	       " cross-bundle-pairs=%d\n", lvx_cms_group_nrecs, ngroups,
 	       nbundles, npair);
+      /* EVERY RECORD, so "no cross-bundle pair" can be checked against the
+	 emitted code rather than believed.  §7tricies.208: 7tricies.190's two
+	 instances are plan-simultaneous -- insn 3 at kernel cycle 3 stage 0
+	 and insn 5 at cycle 3 stage 1, sharing r2 on a read-before-write that
+	 only one bundle provides -- yet the emitted code places the write two
+	 bundles before the read.  Either they are not both recorded or the
+	 group key does not separate what it should, and only the records can
+	 say which.  */
+      for (int a = 0; a < lvx_cms_group_nrecs; a++)
+	fprintf (file, "\t# lvx cms: GROUPREC uid=%d node=%d cycle=%d"
+		 " bundle=%d key=%d\n",
+		 INSN_UID (lvx_cms_group_recs[a].insn),
+		 (lvx_cms_group_recs[a].group - 1) >> 16,
+		 (lvx_cms_group_recs[a].group - 1) & 0xffff,
+		 lvx_cms_group_recs[a].bundle, lvx_cms_group_recs[a].key);
     }
   for (int a = 0; a < lvx_cms_group_nrecs; a++)
     for (int b = a + 1; b < lvx_cms_group_nrecs; b++)
