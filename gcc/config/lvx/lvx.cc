@@ -830,13 +830,14 @@ lvx_cms_flow_check (FILE *file)
 {
   int owner[FIRST_PSEUDO_REGISTER];
   int writer[FIRST_PSEUDO_REGISTER];
+  int wregion[FIRST_PSEUDO_REGISTER];
   int cur_region = -1;
   int a;
 
   if (lvx_cms_flow_nrecs == 0 || lvx_cms_group_nrecs == 0)
     return;
   for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
-    owner[r] = -1, writer[r] = -1;
+    owner[r] = -1, writer[r] = -1, wregion[r] = -1;
 
   /* The group records are appended in output order, so consecutive ones with
      the same BUNDLE are one bundle.  */
@@ -901,12 +902,53 @@ lvx_cms_flow_check (FILE *file)
 		if (owner[r] == fr->root)
 		  continue;
 		if (file)
+		  /* BOTH SIDES' REGIONS.  §7tricies.213: roots are per-loop
+		     indices, so `expecting lr1 but holds lr2' says nothing
+		     until it also says whether the two lr numbers belong to
+		     the SAME loop.  Without this the residual on trees.c
+		     could not be told from a scoping leak.  */
 		  fprintf (file, "\t# lvx cms: FLOWBAD insn %d reads %s"
-			   " expecting lr%d, but it holds lr%d written by"
-			   " insn %d\n", INSN_UID (fr->insn), reg_names[r],
-			   fr->root, owner[r], writer[r]);
+			   " expecting lr%d(rgn%d), but it holds lr%d(rgn%d)"
+			   " written by insn %d\n", INSN_UID (fr->insn),
+			   reg_names[r], fr->root, fr->region, owner[r],
+			   wregion[r], writer[r]);
 	      }
 	  }
+
+      /* AND THE WRITES THE MODEL DOES NOT TRACK.  §7tricies.213.
+
+	 CMS emits insns inside a region that never go through the renamer --
+	 the entry copies, the hardware-loop setup, the drain's reconciliation
+	 -- built with `gen_rtx_SET' directly.  They are group-tagged, they
+	 write registers, and they leave NO flow record, so OWNER kept naming
+	 a range whose register had since been overwritten by one of them.
+	 That is the whole of the residual this check reported on trees.c in
+	 the DEFAULT order, which runs correctly: 16 reports pairing ADJACENT
+	 roots within one region, where the cross-region staleness of
+	 §7tricies.212 paired roots from different loops.
+
+	 Such an insn makes its destinations UNKNOWN rather than wrong -- the
+	 model has nothing to say about them -- so they are cleared, and a
+	 cleared register is never judged.  */
+      for (int i = a; i < b; i++)
+	{
+	  bool tracked = false;
+
+	  for (int f = 0; f < lvx_cms_flow_nrecs && !tracked; f++)
+	    if (lvx_cms_flow_recs[f].insn == lvx_cms_group_recs[i].insn)
+	      tracked = true;
+	  if (!tracked && INSN_P (lvx_cms_group_recs[i].insn))
+	    {
+	      HARD_REG_SET stores;
+
+	      CLEAR_HARD_REG_SET (stores);
+	      note_stores (lvx_cms_group_recs[i].insn, record_hard_reg_sets,
+			   &stores);
+	      for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+		if (TEST_HARD_REG_BIT (stores, r))
+		  owner[r] = -1, writer[r] = -1;
+	    }
+	}
 
       /* Then the writes, which land at the end of the bundle.  */
       for (int i = a; i < b; i++)
@@ -921,7 +963,8 @@ lvx_cms_flow_check (FILE *file)
 		int r = fr->reg + t;
 
 		if (r >= 0 && r < FIRST_PSEUDO_REGISTER)
-		  owner[r] = fr->root, writer[r] = INSN_UID (fr->insn);
+		  owner[r] = fr->root, writer[r] = INSN_UID (fr->insn),
+		  wregion[r] = fr->region;
 	      }
 	  }
       a = b;
@@ -20506,6 +20549,13 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	 Recording them made FLOWTAB read `operands=772 checked=163', so the
 	 check looked to cover a fifth of the dataflow when it in fact covered
 	 nearly all of what exists.  */
+      /* THE RANGE'S WIDTH, AND THE OPERAND'S WAS TRIED AND IS WORSE.
+	 §7tricies.213: recording `hard_regno_nregs' of the reference's own
+	 mode instead took trees.c from 16 false positives to 160, so the
+	 narrower width is not the answer even though the range's width is
+	 demonstrably too wide -- "insn 1013 reads r8 AND r9 expecting lr1"
+	 where one register is read.  Left at the measured better of the two,
+	 with the residual characterised rather than guessed at again.  */
       if (apply && target != NULL && neu >= 0)
 	lvx_cms_flow_record (target, lvx_cms_flow_root_of (lr, g),
 			     neu, MAX (g->nregs, 1), true);
