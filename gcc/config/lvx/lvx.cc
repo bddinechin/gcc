@@ -2450,7 +2450,31 @@ lvx_emit_64bit_halves (rtx dst, HOST_WIDE_INT value)
   machine_mode mode = GET_MODE (dst);
   rtx pair = simplify_gen_subreg (V2DImode, dst, mode, 0);
 
-  if (LVX_2 && pair && lvx_hardreg_aligned_p (pair, V2DImode))
+  /* AND THE VALUE MUST FIT MAKEDP'S IMMEDIATE.  §7tricies.205.
+
+     MAKEDP sign-extends a 32-BIT immediate and stores it into each double
+     word -- Instruction.yml: "new value = _SX_64(argument2)", the operand is
+     `wrapped32' (width 32, encoded upper27_lower5), and the formats are
+     ALU_DPWI and ALU_DPWI.S with NO .X/.Y extended variant.  So the encodable
+     lane values are exactly the sign-extensions of 32-bit immediates, and the
+     two encodings the opcode table lists are that immediate form and a
+     REGISTER form -- which is what gas offers when it refuses:
+     "expected one of [Immediate_lvx_2_wrapped32, RegClass_lvx_2_singleReg]".
+
+     Without this test a full 64-bit lane value took this path: 1.03 as V2DF
+     is 0x3ff07ae147ae147b in both halves, and `makedp $r32r33 =
+     0x3ff07ae147ae147b' is not an instruction.  It breaks the gate's own
+     store.c and lame's quantize.c, with the INSTALLED compiler too, and it is
+     why deleting the splat-register patterns of §7tricies.204 cost 29 corpus
+     files: without them more constants route through MAKEDP, so that deletion
+     waits on this.
+
+     The caller's comment already said "every constant uniform at 32-bit lanes
+     or narrower" -- the intent was right and only the test was missing.  The
+     fall-through below is the fix for everything else: two movdi of the same
+     value, which can materialise any 64 bits.  */
+  if (LVX_2 && pair && lvx_hardreg_aligned_p (pair, V2DImode)
+      && value == trunc_int_for_mode (value, SImode))
     {
       emit_insn (gen_lvx_makedp (pair, GEN_INT (value)));
       return;
