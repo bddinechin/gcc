@@ -11299,12 +11299,30 @@ lvx_option_override (void)
      Until then the combination is refused rather than left reachable: a
      compile failure is better than a miscompile, and both are worse than an
      error.  */
-  /* LIFTED AGAIN, and this time at the root rather than at the symptom.
-     §7tricies.203: the LOOPDO carries the end label's NUMBER and prints the
-     name, so no RTL refers to the label at all -- there is nothing to share,
-     nothing for block merging to claim, and no collision between two loops.
-     The two earlier refusals are kept in the history for the reason they were
-     right at the time: Init(0) is not a safety property.  */
+  /* REFUSED, FOR THE ONE DEFECT THAT IS LEFT.  §7tricies.207.
+
+     §7tricies.203 lifted the previous refusal at the root -- the LOOPDO
+     carries the end label's NUMBER, so no RTL refers to the label and there
+     is nothing for block merging to claim -- and that part stands: the gate's
+     hardware-loop arm is 8/8 for this order and the corpus compiles at exact
+     parity with the shipped one.
+
+     What remains is a WRONG ANSWER, not a compile failure.  mad libz's zlib
+     round trip returns rc=-3 in this order where the default order returns the
+     oracle 101063445393776, re-measured on today's build with MAKEDP and the
+     splat patterns both fixed.  Localising it needs a control that RUNS, and
+     plain vectorized zlib does not (it aborts on an undecodable instruction
+     with the installed compiler too), so the bisect is still owed.
+
+     Init(0) is not a safety property, which is the argument that put the two
+     earlier refusals here and applies unchanged to this one.  The knob stays
+     measurable where it is correct -- with -fno-hwloop there is no LOOPDO to
+     go stale -- and probe-only use is unaffected.  */
+  if (lvx_cms_after_hwloop && (lvx_cms_codegen || lvx_cms_pipeline)
+      && TARGET_HWLOOP)
+    error ("%<-mcms-after-hwloop%> still miscompiles a hardware-loop kernel "
+	   "(mad libz returns rc=-3 where the default order is correct); it "
+	   "is for measurement only and requires %<-fno-hwloop%>");
 
   /* §7tricies.107: the propagation's arcs are not the ones construction
      measured the heights from, so the two go together.  */
