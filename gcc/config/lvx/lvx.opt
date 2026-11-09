@@ -99,6 +99,10 @@ mcms-probe
 Target Var(lvx_cms_probe) Init(0) Optimization
 Dump the convergent-modulo-scheduling probe for each measured inner loop.
 
+mcms-probe-flow
+Target Var(lvx_cms_probe_flow) Init(0) Optimization
+Check the EMITTED dataflow against the plan: for each emitted use, whether the register it reads holds the live range the plan assigned it.  Walks bundles, not insns, because inside a bundle every source is read before any result is written -- the property a same-cycle WAR turns on and GCC's sequential insn stream cannot express.  The one question CMS's other checks cannot ask, all of which validate the model against itself.  7tricies.209.
+
 mcms-probe-groups
 Target Var(lvx_cms_probe_groups) Init(0) Optimization
 Report EVERY same-group write/read pair that landed in different bundles, including the ones lvx_cms_group_check's key filter skips as read-after-write.  The filter assumes a reader later in program order wants that writer's value, which is false when a third insn writes the same register after renaming -- the shape of 7tricies.190.  Needs the report to reach the assembly, so it prints with `#'.

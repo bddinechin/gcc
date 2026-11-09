@@ -268,6 +268,30 @@ struct lvx_cms_group_rec
 static struct lvx_cms_group_rec *lvx_cms_group_recs;
 static int lvx_cms_group_nrecs;
 static int lvx_cms_group_recs_max;
+
+/* WHAT THE PLAN MEANT EACH OPERAND TO READ.  §7tricies.209.
+
+   Every check CMS has validates the MODEL against itself, and all of them
+   passed on the loop of §7tricies.190 while the emitted code was wrong: the
+   colouring is consistent, the intervals are right, no parallel group spans
+   two bundles.  What none of them asks is the one question that matters --
+   does an emitted use RECEIVE the value the plan assigned to it?
+
+   Renaming is where the answer is known: for each operand slot it resolves
+   the live range and the register that range's name holds.  Recording the
+   pair makes the emitted stream checkable against the plan afterwards, which
+   is what the group table alone could not do.  */
+struct lvx_cms_flow_rec
+{
+  rtx_insn *insn;
+  int root;		/* live-range root this operand belongs to.  */
+  int reg;		/* the register its name was given.  */
+  int nregs;
+  bool is_def;
+};
+static struct lvx_cms_flow_rec *lvx_cms_flow_recs;
+static int lvx_cms_flow_nrecs;
+static int lvx_cms_flow_recs_max;
 static int lvx_cms_bundle_index;
 
 static int
@@ -591,6 +615,10 @@ lvx_cms_group_free (void)
   lvx_cms_group_nrecs = 0;
   lvx_cms_group_recs_max = 0;
   lvx_cms_bundle_index = 0;
+  free (lvx_cms_flow_recs);
+  lvx_cms_flow_recs = NULL;
+  lvx_cms_flow_nrecs = 0;
+  lvx_cms_flow_recs_max = 0;
 }
 
 /* EVERY SPLIT GROUP THAT CHANGES THE ANSWER, checked once the function's
@@ -746,6 +774,149 @@ lvx_cms_group_check (FILE *file)
 			(lvx_cms_group_recs[a].group - 1) >> 16,
 			(lvx_cms_group_recs[a].group - 1) & 0xffff);
       }
+}
+
+static void
+lvx_cms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def)
+{
+  if (insn == NULL || root < 0 || reg < 0)
+    return;
+  if (lvx_cms_flow_nrecs >= lvx_cms_flow_recs_max)
+    {
+      lvx_cms_flow_recs_max = lvx_cms_flow_recs_max * 2 + 128;
+      lvx_cms_flow_recs
+	= (struct lvx_cms_flow_rec *) xrealloc (lvx_cms_flow_recs,
+						lvx_cms_flow_recs_max
+						* sizeof (*lvx_cms_flow_recs));
+    }
+  lvx_cms_flow_recs[lvx_cms_flow_nrecs].insn = insn;
+  lvx_cms_flow_recs[lvx_cms_flow_nrecs].root = root;
+  lvx_cms_flow_recs[lvx_cms_flow_nrecs].reg = reg;
+  lvx_cms_flow_recs[lvx_cms_flow_nrecs].nregs = MAX (nregs, 1);
+  lvx_cms_flow_recs[lvx_cms_flow_nrecs].is_def = is_def;
+  lvx_cms_flow_nrecs++;
+}
+
+/* DOES EVERY EMITTED USE RECEIVE THE VALUE THE PLAN ASSIGNED IT?
+   §7tricies.209.  The one question none of CMS's other checks can ask.
+
+   The flow records say, per emitted operand, which live range the plan meant
+   it to be -- `lvx_cms_flow_record', filled at renaming.  The group records
+   say which BUNDLE each emitted insn landed in, which is the unit in which a
+   read precedes every write.  Joining them gives the emitted dataflow, and
+   the check is then simply: walk the bundles in emission order, and before
+   applying a bundle's writes, confirm that each of its reads finds the live
+   range it expects in the register it reads.
+
+   Why the bundle and not the insn is the step: inside one bundle every source
+   is read before any result is written, so a reader and a writer of one
+   register coexist legally and the reader sees the OLD value.  That is the
+   very property §7tricies.190 turned on -- and the property GCC's sequential
+   insn stream cannot express, which is how a same-cycle WAR came to be
+   linearised as a RAW (docs/bundle-linearization.md).  Stepping per bundle
+   models the hardware; stepping per insn would re-import the bug.
+
+   OWNER starts unknown, and an unknown register is not reported: the first
+   bundle's reads legitimately come from the preheader.  Only a register this
+   walk has SEEN written can be judged, which makes the check sound on an
+   entry it cannot see rather than noisy.  */
+static void
+lvx_cms_flow_check (FILE *file)
+{
+  int owner[FIRST_PSEUDO_REGISTER];
+  int writer[FIRST_PSEUDO_REGISTER];
+  int a;
+
+  if (lvx_cms_flow_nrecs == 0 || lvx_cms_group_nrecs == 0)
+    return;
+  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
+    owner[r] = -1, writer[r] = -1;
+
+  /* The group records are appended in output order, so consecutive ones with
+     the same BUNDLE are one bundle.  */
+  a = 0;
+  while (a < lvx_cms_group_nrecs)
+    {
+      int b = a;
+
+      while (b < lvx_cms_group_nrecs
+	     && lvx_cms_group_recs[b].bundle == lvx_cms_group_recs[a].bundle)
+	b++;
+
+      /* Reads first, against the owners as they stand before this bundle.  */
+      for (int i = a; i < b; i++)
+	for (int f = 0; f < lvx_cms_flow_nrecs; f++)
+	  {
+	    struct lvx_cms_flow_rec *fr = &lvx_cms_flow_recs[f];
+
+	    if (fr->insn != lvx_cms_group_recs[i].insn || fr->is_def)
+	      continue;
+	    for (int t = 0; t < fr->nregs; t++)
+	      {
+		int r = fr->reg + t;
+
+		if (r < 0 || r >= FIRST_PSEUDO_REGISTER || owner[r] < 0)
+		  continue;
+		if (owner[r] == fr->root)
+		  continue;
+		if (file)
+		  fprintf (file, "\t# lvx cms: FLOWBAD insn %d reads %s"
+			   " expecting lr%d, but it holds lr%d written by"
+			   " insn %d\n", INSN_UID (fr->insn), reg_names[r],
+			   fr->root, owner[r], writer[r]);
+	      }
+	  }
+
+      /* Then the writes, which land at the end of the bundle.  */
+      for (int i = a; i < b; i++)
+	for (int f = 0; f < lvx_cms_flow_nrecs; f++)
+	  {
+	    struct lvx_cms_flow_rec *fr = &lvx_cms_flow_recs[f];
+
+	    if (fr->insn != lvx_cms_group_recs[i].insn || !fr->is_def)
+	      continue;
+	    for (int t = 0; t < fr->nregs; t++)
+	      {
+		int r = fr->reg + t;
+
+		if (r >= 0 && r < FIRST_PSEUDO_REGISTER)
+		  owner[r] = fr->root, writer[r] = INSN_UID (fr->insn);
+	      }
+	  }
+      a = b;
+    }
+
+  /* COVERAGE, STATED RATHER THAN ASSUMED.  Only insns the group table records
+     are walked, and it holds fewer records than the plan has slots -- 66
+     against 76 on §7tricies.190's loop.  A flow record whose insn is in no
+     bundle is never judged, so the count of those is part of the result: a
+     clean report over half the operands is not a clean report.  */
+  if (file)
+    {
+      int seen = 0, unseen = 0;
+
+      for (int f = 0; f < lvx_cms_flow_nrecs; f++)
+	{
+	  bool found = false;
+
+	  for (int i = 0; i < lvx_cms_group_nrecs && !found; i++)
+	    if (lvx_cms_group_recs[i].insn == lvx_cms_flow_recs[f].insn)
+	      found = true;
+	  if (found)
+	    seen++;
+	  else
+	    unseen++;
+	}
+      int nb = 0;
+
+      for (int i = 0; i < lvx_cms_group_nrecs; i++)
+	if (i == 0 || lvx_cms_group_recs[i].bundle
+		      != lvx_cms_group_recs[i - 1].bundle)
+	  nb++;
+      fprintf (file, "\t# lvx cms: FLOWTAB operands=%d checked=%d"
+	       " not-in-any-bundle=%d bundles=%d\n", lvx_cms_flow_nrecs,
+	       seen, unseen, nb);
+    }
 }
 
 static void
@@ -6885,6 +7056,8 @@ static void
 lvx_function_epilogue (FILE *file)
 {
   lvx_cms_group_check (file);
+  if (lvx_cms_probe_flow)
+    lvx_cms_flow_check (file);
   lvx_sched2_dtor ();
   if (lvx_ifcvt->ce_level > LVX_IFCVT_)
     lvx_ifcvt_dtor ();
@@ -20224,6 +20397,20 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
 static int lvx_cms_ufread_node = -1;
 static int lvx_cms_ufread_kind = -1;
 
+/* The ROOT of the live range G belongs to.  The renaming sites hold the part
+   pointer and not its index, and only the root identifies the live range --
+   §7tricies.98's part-versus-whole distinction, which is why this is not just
+   `g' itself.  */
+static int
+lvx_cms_flow_root_of (const auto_vec<lvx_cms_lrange_part *> &lr,
+		      const lvx_cms_lrange_part *g)
+{
+  for (unsigned z = 0; z < lr.length (); z++)
+    if (lr[z] == g)
+      return lvx_cms_lrange_root (lr, (int) z);
+  return -1;
+}
+
 static bool
 lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 			  int iter, const auto_vec<lvx_cms_lrange_part *> &lr,
@@ -20268,6 +20455,12 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	 it, and keeps its own mode -- so its width -- below.  */
       if (neu >= 0)
 	neu += off;
+      /* RECORDED BEFORE THE SKIP BELOW.  §7tricies.209: an operand whose name
+	 happens to equal the register it already had needs no substitution and
+	 is just as much part of the dataflow, so the flow check must see it.  */
+      if (target != NULL && neu >= 0)
+	lvx_cms_flow_record (target, lvx_cms_flow_root_of (lr, g),
+			     neu, MAX (g->nregs, 1), true);
       if (neu < 0 || neu == (int) r)
 	continue;
       if (trace)
@@ -20315,8 +20508,13 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	    break;
 	  }
 	neu = lvx_cms_lrange_reg (g, iter, dly);
+	/* §7tricies.209: the read side of the flow record, recorded with the
+	   offset applied just below so it names the component actually read. */
 	if (neu >= 0)
 	  neu += off;
+	if (target != NULL && neu >= 0)
+	  lvx_cms_flow_record (target, lvx_cms_flow_root_of (lr, g),
+			       neu, MAX (g->nregs, 1), false);
 	if (g->use_first && dly && lvx_cms_preheader_copy)
 	  lvx_cms_dump (";; lvx cms:     UFREAD node=%d kind=%d insn=%u"
 			" slot=%d iter=%d r%u p2=%d reg0=%d -> r%d\n",
