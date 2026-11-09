@@ -1709,28 +1709,6 @@
    (set_attr "length" "4,8")]
 )
 
-(define_insn "*add<mode>3_s1"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (plus:V128JB (vec_duplicate:V128JB (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V128JB 2 "register_operand" "r")))]
-  "LVX_2"
-  "add<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*add<mode>3_s2"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (plus:V128JB (match_operand:V128JB 1 "register_operand" "r")
-                    (vec_duplicate:V128JB (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "add<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
 (define_insn "ssadd<mode>3"
   [(set (match_operand:V128J 0 "register_operand" "=r,r")
         (ss_plus:V128J (match_operand:V128J 1 "register_operand" "r,r")
@@ -1742,28 +1720,6 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite,lite_x")
    (set_attr "length" "4,8")]
-)
-
-(define_insn "*ssadd<mode>3_s1"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (ss_plus:V128JB (vec_duplicate:V128JB (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                       (match_operand:V128JB 2 "register_operand" "r")))]
-  "LVX_2"
-  "adds<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*ssadd<mode>3_s2"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (ss_plus:V128JB (match_operand:V128JB 1 "register_operand" "r")
-                       (vec_duplicate:V128JB (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "adds<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
 )
 
 (define_expand "usadd<mode>3"
@@ -1789,28 +1745,6 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite,lite_x")
    (set_attr "length" "4,8")]
-)
-
-(define_insn "*usadd<mode>3_s1"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (us_plus:V128JB (vec_duplicate:V128JB (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                       (match_operand:V128JB 2 "register_operand" "r")))]
-  "LVX_2"
-  "addus<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*usadd<mode>3_s2"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (us_plus:V128JB (match_operand:V128JB 1 "register_operand" "r")
-                       (vec_duplicate:V128JB (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "addus<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
 )
 
 (define_insn "*addx2<suffix>"
@@ -1920,28 +1854,6 @@
    (set_attr "length" "4,8")]
 )
 
-(define_insn "*sub<mode>3_s1"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (minus:V128JB (vec_duplicate:V128JB (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                     (match_operand:V128JB 2 "register_operand" "r")))]
-  "LVX_2"
-  "sbf<suffix> %0 = %2, %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*sub<mode>3_s2"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (minus:V128JB (match_operand:V128JB 1 "register_operand" "r")
-                     (vec_duplicate:V128JB (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "sbf<suffix> %0 = %2, %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
 (define_insn "sssub<mode>3"
   [(set (match_operand:V128J 0 "register_operand" "=r,r")
         (ss_minus:V128J (match_operand:V128J 1 "reg_or_splat32_operand" "r,SXW")
@@ -1953,28 +1865,6 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite,lite_x")
    (set_attr "length" "4,8")]
-)
-
-(define_insn "*sssub<mode>3_s1"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (ss_minus:V128JB (vec_duplicate:V128JB (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                        (match_operand:V128JB 2 "register_operand" "r")))]
-  "LVX_2"
-  "sbfs<suffix> %0 = %2, %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*sssub<mode>3_s2"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (ss_minus:V128JB (match_operand:V128JB 1 "register_operand" "r")
-                        (vec_duplicate:V128JB (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "sbfs<suffix> %0 = %2, %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
 )
 
 (define_expand "ussub<mode>3"
@@ -2000,28 +1890,6 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite,lite_x")
    (set_attr "length" "4,8")]
-)
-
-(define_insn "*ussub<mode>3_s1"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (us_minus:V128JB (vec_duplicate:V128JB (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                        (match_operand:V128JB 2 "register_operand" "r")))]
-  "LVX_2"
-  "sbfus<suffix> %0 = %2, %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*ussub<mode>3_s2"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (us_minus:V128JB (match_operand:V128JB 1 "register_operand" "r")
-                        (vec_duplicate:V128JB (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "sbfus<suffix> %0 = %2, %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
 )
 
 
@@ -2105,28 +1973,6 @@
    (set_attr "length" "4,8")]
 )
 
-(define_insn "*smin<mode>3_s1"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (smin:V128JB (vec_duplicate:V128JB (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V128JB 2 "register_operand" "r")))]
-  "LVX_2"
-  "min<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*smin<mode>3_s2"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (smin:V128JB (match_operand:V128JB 1 "register_operand" "r")
-                    (vec_duplicate:V128JB (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "min<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
 (define_insn "smax<mode>3"
   [(set (match_operand:V128J 0 "register_operand" "=r,r")
         (smax:V128J (match_operand:V128J 1 "register_operand" "r,r")
@@ -2138,28 +1984,6 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite,lite_x")
    (set_attr "length" "4,8")]
-)
-
-(define_insn "*smax<mode>3_s1"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (smax:V128JB (vec_duplicate:V128JB (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V128JB 2 "register_operand" "r")))]
-  "LVX_2"
-  "max<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*smax<mode>3_s2"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (smax:V128JB (match_operand:V128JB 1 "register_operand" "r")
-                    (vec_duplicate:V128JB (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "max<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
 )
 
 (define_insn "umin<mode>3"
@@ -2175,28 +1999,6 @@
    (set_attr "length" "4,8")]
 )
 
-(define_insn "*umin<mode>3_s1"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (umin:V128JB (vec_duplicate:V128JB (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V128JB 2 "register_operand" "r")))]
-  "LVX_2"
-  "minu<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*umin<mode>3_s2"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (umin:V128JB (match_operand:V128JB 1 "register_operand" "r")
-                    (vec_duplicate:V128JB (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "minu<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
 (define_insn "umax<mode>3"
   [(set (match_operand:V128J 0 "register_operand" "=r,r")
         (umax:V128J (match_operand:V128J 1 "register_operand" "r,r")
@@ -2208,28 +2010,6 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite,lite_x")
    (set_attr "length" "4,8")]
-)
-
-(define_insn "*umax<mode>3_s1"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (umax:V128JB (vec_duplicate:V128JB (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V128JB 2 "register_operand" "r")))]
-  "LVX_2"
-  "maxu<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*umax<mode>3_s2"
-  [(set (match_operand:V128JB 0 "register_operand" "=r")
-        (umax:V128JB (match_operand:V128JB 1 "register_operand" "r")
-                    (vec_duplicate:V128JB (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "maxu<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
 )
 
 (define_insn "madd<mode><mode>4"
@@ -2524,30 +2304,6 @@
    (set_attr "length" "4,8")]
 )
 
-(define_insn "*abd<suffix>_s1"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (minus:V128L (smax:V128L (vec_duplicate:V128L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                                 (match_operand:V128L 2 "register_operand" "r"))
-                     (smin:V128L (vec_duplicate:V128L (match_dup 1)) (match_dup 2))))]
-  "LVX_2"
-  "abd<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*abd<suffix>_s2"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (minus:V128L (smax:V128L (match_operand:V128L 1 "register_operand" "r")
-                                 (vec_duplicate:V128L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
-                     (smin:V128L (match_dup 1) (vec_duplicate:V128L (match_dup 2)))))]
-  "LVX_2"
-  "abd<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
 (define_expand "abds<mode>3"
   [(match_operand:V128L 0 "register_operand" "")
    (match_operand:V128L 1 "register_operand" "")
@@ -2574,30 +2330,6 @@
    (set_attr "length" "4,8")]
 )
 
-(define_insn "*abds<suffix>_s1"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (ss_minus:V128L (smax:V128L (vec_duplicate:V128L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                                    (match_operand:V128L 2 "register_operand" "r"))
-                        (smin:V128L (vec_duplicate:V128L (match_dup 1)) (match_dup 2))))]
-  "LVX_2"
-  "abds<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*abds<suffix>_s2"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (ss_minus:V128L (smax:V128L (match_operand:V128L 1 "register_operand" "r")
-                                    (vec_duplicate:V128L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
-                        (smin:V128L (match_dup 1) (vec_duplicate:V128L (match_dup 2)))))]
-  "LVX_2"
-  "abds<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
 (define_expand "abdu<mode>3"
   [(match_operand:V128L 0 "register_operand" "")
    (match_operand:V128L 1 "register_operand" "")
@@ -2621,30 +2353,6 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite,lite_x")
    (set_attr "length" "4,8")]
-)
-
-(define_insn "*abdu<suffix>_s1"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (minus:V128L (umax:V128L (vec_duplicate:V128L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                                 (match_operand:V128L 2 "register_operand" "r"))
-                     (umin:V128L (vec_duplicate:V128L (match_dup 1)) (match_dup 2))))]
-  "LVX_2 && (HAVE_LVX_UABD_<MODE>)"
-  "abdu<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*abdu<suffix>_s2"
-  [(set (match_operand:V128L 0 "register_operand" "=r")
-        (minus:V128L (umax:V128L (match_operand:V128L 1 "register_operand" "r")
-                                 (vec_duplicate:V128L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
-                     (umin:V128L (match_dup 1) (vec_duplicate:V128L (match_dup 2)))))]
-  "LVX_2 && (HAVE_LVX_UABD_<MODE>)"
-  "abdu<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
 )
 
 
@@ -3006,32 +2714,6 @@
    (set_attr "length" "8,16")]
 )
 
-(define_insn "*add<mode>3_s1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (plus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V256J 2 "register_operand" "r")))]
-  "LVX_2"
-  {
-    return "add<hsuffix> %L0 = %1, %L2\n\tadd<hsuffix> %M0 = %1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn "*add<mode>3_s2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (plus:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  {
-    return "add<hsuffix> %L0 = %L1, %2\n\tadd<hsuffix> %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
 (define_expand "ssadd<mode>3"
   [(set (match_operand:V256J 0 "register_operand" "")
         (ss_plus:V256J (match_operand:V256J 1 "register_operand" "")
@@ -3057,32 +2739,6 @@
 )
 
 
-(define_insn "*ssadd<mode>3_s1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (ss_plus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V256J 2 "register_operand" "r")))]
-  "LVX_2"
-  {
-    return "adds<hsuffix> %L0 = %1, %L2\n\tadds<hsuffix> %M0 = %1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-
-(define_insn "*ssadd<mode>3_s2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (ss_plus:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  {
-    return "adds<hsuffix> %L0 = %L1, %2\n\tadds<hsuffix> %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
 
 (define_expand "usadd<mode>3"
   [(match_operand:V256J 0 "register_operand" "")
@@ -3112,32 +2768,6 @@
 )
 
 
-(define_insn "*usadd<mode>3_s1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (us_plus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                       (match_operand:V256J 2 "register_operand" "r")))]
-  "LVX_2"
-  {
-    return "addus<hsuffix> %L0 = %1, %L2\n\taddus<hsuffix> %M0 = %1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-
-(define_insn "*usadd<mode>3_s2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (us_plus:V256J (match_operand:V256J 1 "register_operand" "r")
-                       (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  {
-    return "addus<hsuffix> %L0 = %L1, %2\n\taddus<hsuffix> %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
 
 
 
@@ -3249,32 +2879,6 @@
    (set_attr "length" "8,16")]
 )
 
-(define_insn "*sub<mode>3_s1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (minus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                     (match_operand:V256J 2 "register_operand" "r")))]
-  "LVX_2"
-  {
-    return "sbf<hsuffix> %L0 = %L2, %1\n\tsbf<hsuffix> %M0 = %M2, %1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn "*sub<mode>3_s2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (minus:V256J (match_operand:V256J 1 "register_operand" "r")
-                     (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  {
-    return "sbf<hsuffix> %L0 = %2, %L1\n\tsbf<hsuffix> %M0 = %2, %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
 (define_expand "sssub<mode>3"
   [(set (match_operand:V256J 0 "register_operand" "")
         (ss_minus:V256J (match_operand:V256J 1 "register_operand" "")
@@ -3300,32 +2904,6 @@
 )
 
 
-(define_insn "*sssub<mode>3_s1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (ss_minus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                     (match_operand:V256J 2 "register_operand" "r")))]
-  "LVX_2"
-  {
-    return "sbfs<hsuffix> %L0 = %L2, %1\n\tsbfs<hsuffix> %M0 = %M2, %1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-
-(define_insn "*sssub<mode>3_s2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (ss_minus:V256J (match_operand:V256J 1 "register_operand" "r")
-                     (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  {
-    return "sbfs<hsuffix> %L0 = %2, %L1\n\tsbfs<hsuffix> %M0 = %2, %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
 
 (define_expand "ussub<mode>3"
   [(match_operand:V256J 0 "register_operand" "")
@@ -3355,32 +2933,6 @@
 )
 
 
-(define_insn "*ussub<mode>3_s1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (us_minus:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                        (match_operand:V256J 2 "register_operand" "r")))]
-  "LVX_2"
-  {
-    return "sbfus<hsuffix> %L0 = %L2, %1\n\tsbfus<hsuffix> %M0 = %M2, %1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-
-(define_insn "*ussub<mode>3_s2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (us_minus:V256J (match_operand:V256J 1 "register_operand" "r")
-                        (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  {
-    return "sbfus<hsuffix> %L0 = %2, %L1\n\tsbfus<hsuffix> %M0 = %2, %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
 
 
 
@@ -3473,32 +3025,6 @@
    (set_attr "length" "8,16")]
 )
 
-(define_insn "*smin<mode>3_s1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (smin:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V256J 2 "register_operand" "r")))]
-  "LVX_2"
-  {
-    return "min<hsuffix> %L0 = %1, %L2\n\tmin<hsuffix> %M0 = %1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn "*smin<mode>3_s2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (smin:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  {
-    return "min<hsuffix> %L0 = %L1, %2\n\tmin<hsuffix> %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
 (define_insn "smax<mode>3"
   [(set (match_operand:V256J 0 "register_operand" "=r,r")
         (smax:V256J (match_operand:V256J 1 "register_operand" "r,r")
@@ -3512,32 +3038,6 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2,lite2_x2")
    (set_attr "length" "8,16")]
-)
-
-(define_insn "*smax<mode>3_s1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (smax:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V256J 2 "register_operand" "r")))]
-  "LVX_2"
-  {
-    return "max<hsuffix> %L0 = %1, %L2\n\tmax<hsuffix> %M0 = %1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn "*smax<mode>3_s2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (smax:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  {
-    return "max<hsuffix> %L0 = %L1, %2\n\tmax<hsuffix> %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
 )
 
 (define_insn "umin<mode>3"
@@ -3555,32 +3055,6 @@
    (set_attr "length" "8,16")]
 )
 
-(define_insn "*umin<mode>3_s1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (umin:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V256J 2 "register_operand" "r")))]
-  "LVX_2"
-  {
-    return "minu<hsuffix> %L0 = %1, %L2\n\tminu<hsuffix> %M0 = %1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn "*umin<mode>3_s2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (umin:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  {
-    return "minu<hsuffix> %L0 = %L1, %2\n\tminu<hsuffix> %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
 (define_insn "umax<mode>3"
   [(set (match_operand:V256J 0 "register_operand" "=r,r")
         (umax:V256J (match_operand:V256J 1 "register_operand" "r,r")
@@ -3594,32 +3068,6 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2,lite2_x2")
    (set_attr "length" "8,16")]
-)
-
-(define_insn "*umax<mode>3_s1"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (umax:V256J (vec_duplicate:V256J (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V256J 2 "register_operand" "r")))]
-  "LVX_2"
-  {
-    return "maxu<hsuffix> %L0 = %1, %L2\n\tmaxu<hsuffix> %M0 = %1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn "*umax<mode>3_s2"
-  [(set (match_operand:V256J 0 "register_operand" "=r")
-        (umax:V256J (match_operand:V256J 1 "register_operand" "r")
-                    (vec_duplicate:V256J (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  {
-    return "maxu<hsuffix> %L0 = %L1, %2\n\tmaxu<hsuffix> %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
 )
 
 
@@ -3977,35 +3425,7 @@
 
 
 
-(define_insn "*abd<mode>_s1"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (minus:V256L (smax:V256L (vec_duplicate:V256L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                                 (match_operand:V256L 2 "register_operand" "r"))
-                     (smin:V256L (vec_duplicate:V256L (match_dup 1)) (match_dup 2))))]
-  "LVX_2 && (HAVE_LVX_ABD_<MODE>)"
-  {
-    return "abd<hsuffix> %L0 = %1, %L2\n\tabd<hsuffix> %M0 = %1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
 
-
-
-(define_insn "*abd<mode>_s2"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (minus:V256L (smax:V256L (match_operand:V256L 1 "register_operand" "r")
-                                 (vec_duplicate:V256L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
-                     (smin:V256L (match_dup 1) (vec_duplicate:V256L (match_dup 2)))))]
-  "LVX_2 && (HAVE_LVX_ABD_<MODE>)"
-  {
-    return "abd<hsuffix> %L0 = %L1, %2\n\tabd<hsuffix> %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
 
 (define_expand "abds<mode>3"
   [(match_operand:V256L 0 "register_operand" "")
@@ -4035,34 +3455,6 @@
    (set_attr "length" "8,16")]
 )
 
-(define_insn "*abds<mode>_s1"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (ss_minus:V256L (smax:V256L (vec_duplicate:V256L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                                    (match_operand:V256L 2 "register_operand" "r"))
-                        (smin:V256L (vec_duplicate:V256L (match_dup 1)) (match_dup 2))))]
-  "LVX_2"
-  {
-    return "abds<hsuffix> %L0 = %1, %L2\n\tabds<hsuffix> %M0 = %1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn "*abds<mode>_s2"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (ss_minus:V256L (smax:V256L (match_operand:V256L 1 "register_operand" "r")
-                                    (vec_duplicate:V256L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
-                        (smin:V256L (match_dup 1) (vec_duplicate:V256L (match_dup 2)))))]
-  "LVX_2"
-  {
-    return "abds<hsuffix> %L0 = %L1, %2\n\tabds<hsuffix> %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
 (define_expand "abdu<mode>3"
   [(match_operand:V256L 0 "register_operand" "")
    (match_operand:V256L 1 "register_operand" "")
@@ -4089,34 +3481,6 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2,lite2_x2")
    (set_attr "length" "8,16")]
-)
-
-(define_insn "*abdu<mode>_s1"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (minus:V256L (umax:V256L (vec_duplicate:V256L (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                                 (match_operand:V256L 2 "register_operand" "r"))
-                     (umin:V256L (vec_duplicate:V256L (match_dup 1)) (match_dup 2))))]
-  "LVX_2"
-  {
-    return "abdu<hsuffix> %L0 = %1, %L2\n\tabdu<hsuffix> %M0 = %1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn "*abdu<mode>_s2"
-  [(set (match_operand:V256L 0 "register_operand" "=r")
-        (minus:V256L (umax:V256L (match_operand:V256L 1 "register_operand" "r")
-                                 (vec_duplicate:V256L (match_operand:<CHUNK> 2 "nonmemory_operand" "r")))
-                     (umin:V256L (match_dup 1) (vec_duplicate:V256L (match_dup 2)))))]
-  "LVX_2"
-  {
-    return "abdu<hsuffix> %L0 = %L1, %2\n\tabdu<hsuffix> %M0 = %M1, %2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
 )
 
 
@@ -4671,28 +4035,6 @@
    (set_attr "length" "4,8")]
 )
 
-(define_insn "*smin<mode>3_s1"
-  [(set (match_operand:V128F 0 "register_operand" "=r")
-        (smin:V128F (vec_duplicate:V128F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V128F 2 "register_operand" "r")))]
-  "LVX_2 && (HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans))"
-  "fminn<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*smin<mode>3_s2"
-  [(set (match_operand:V128F 0 "register_operand" "=r")
-        (smin:V128F (match_operand:V128F 1 "register_operand" "r")
-                    (vec_duplicate:V128F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2 && (HAVE_LVX_MIN_<MODE> && !(HAVE_LVX_BUG_FMIN && flag_signaling_nans))"
-  "fminn<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
 (define_insn "smax<mode>3"
   [(set (match_operand:V128F 0 "register_operand" "=r,r")
         (smax:V128F (match_operand:V128F 1 "register_operand" "r,r")
@@ -4704,28 +4046,6 @@
   [(set_attr "type" "alu")
    (set_attr "issue" "lite,lite_x")
    (set_attr "length" "4,8")]
-)
-
-(define_insn "*smax<mode>3_s1"
-  [(set (match_operand:V128F 0 "register_operand" "=r")
-        (smax:V128F (vec_duplicate:V128F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V128F 2 "register_operand" "r")))]
-  "LVX_2 && (HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans))"
-  "fmaxn<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "*smax<mode>3_s2"
-  [(set (match_operand:V128F 0 "register_operand" "=r")
-        (smax:V128F (match_operand:V128F 1 "register_operand" "r")
-                    (vec_duplicate:V128F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2 && (HAVE_LVX_MAX_<MODE> && !(HAVE_LVX_BUG_FMAX && flag_signaling_nans))"
-  "fmaxn<suffix> %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
 )
 
 (define_insn "neg<mode>2"
@@ -5426,42 +4746,6 @@
    (set_attr "issue" "lite2")]
 )
 
-(define_insn_and_split "*smin<mode>3_s1"
-  [(set (match_operand:V256F 0 "register_operand" "=&r")
-        (smin:V256F (vec_duplicate:V256F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V256F 2 "register_operand" "r")))]
-  "LVX_2"
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (smin:<HALF> (vec_duplicate:<HALF> (match_dup 1))
-                     (subreg:<HALF> (match_dup 2) 0)))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (smin:<HALF> (vec_duplicate:<HALF> (match_dup 1))
-                     (subreg:<HALF> (match_dup 2) 16)))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
-
-(define_insn_and_split "*smin<mode>3_s2"
-  [(set (match_operand:V256F 0 "register_operand" "=&r")
-        (smin:V256F (match_operand:V256F 1 "register_operand" "r")
-                    (vec_duplicate:V256F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (smin:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                     (vec_duplicate:<HALF> (match_dup 2))))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (smin:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                     (vec_duplicate:<HALF> (match_dup 2))))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
-
 (define_insn_and_split "smax<mode>3"
   [(set (match_operand:V256F 0 "register_operand" "=r")
         (smax:V256F (match_operand:V256F 1 "register_operand" "r")
@@ -5475,42 +4759,6 @@
    (set (subreg:<HALF> (match_dup 0) 16)
         (smax:<HALF> (subreg:<HALF> (match_dup 1) 16)
                      (subreg:<HALF> (match_dup 2) 16)))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
-
-(define_insn_and_split "*smax<mode>3_s1"
-  [(set (match_operand:V256F 0 "register_operand" "=&r")
-        (smax:V256F (vec_duplicate:V256F (match_operand:<CHUNK> 1 "nonmemory_operand" "r"))
-                    (match_operand:V256F 2 "register_operand" "r")))]
-  "LVX_2"
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (smax:<HALF> (vec_duplicate:<HALF> (match_dup 1))
-                     (subreg:<HALF> (match_dup 2) 0)))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (smax:<HALF> (vec_duplicate:<HALF> (match_dup 1))
-                     (subreg:<HALF> (match_dup 2) 16)))]
-  ""
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")]
-)
-
-(define_insn_and_split "*smax<mode>3_s2"
-  [(set (match_operand:V256F 0 "register_operand" "=&r")
-        (smax:V256F (match_operand:V256F 1 "register_operand" "r")
-                    (vec_duplicate:V256F (match_operand:<CHUNK> 2 "nonmemory_operand" "r"))))]
-  "LVX_2"
-  "#"
-  "reload_completed"
-  [(set (subreg:<HALF> (match_dup 0) 0)
-        (smax:<HALF> (subreg:<HALF> (match_dup 1) 0)
-                     (vec_duplicate:<HALF> (match_dup 2))))
-   (set (subreg:<HALF> (match_dup 0) 16)
-        (smax:<HALF> (subreg:<HALF> (match_dup 1) 16)
-                     (vec_duplicate:<HALF> (match_dup 2))))]
   ""
   [(set_attr "type" "alu")
    (set_attr "issue" "lite2")]
