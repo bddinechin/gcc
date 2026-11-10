@@ -290,6 +290,16 @@ struct lvx_cms_flow_rec
   int region;		/* which pipelined loop: roots are only comparable
 			   within one, so OWNER is scoped by this.  */
   bool is_def;
+  int p2;		/* the range's expansion factor.  With p2 > 1 a delayed
+			   read names a DIFFERENT register from the def and the
+			   linear walk judges it soundly; with p2 == 1 it names
+			   the same one and only the order decides.  */
+  bool dly;		/* a READ that takes the range's PREVIOUS-iteration
+			   instance -- `lvx_cms_lrange_of''s delay flag, which
+			   `lvx_cms_lrange_reg' resolves to another register
+			   when the range is expanded and to the same one when
+			   it is not.  A linear walk cannot judge it: see
+			   `lvx_cms_flow_check'.  */
 };
 static int lvx_cms_flow_region;
 static struct lvx_cms_flow_rec *lvx_cms_flow_recs;
@@ -781,7 +791,8 @@ lvx_cms_group_check (FILE *file)
 }
 
 static void
-lvx_cms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def)
+lvx_cms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def,
+		     bool dly, int p2)
 {
   if (insn == NULL || root < 0 || reg < 0)
     return;
@@ -799,6 +810,8 @@ lvx_cms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def)
   lvx_cms_flow_recs[lvx_cms_flow_nrecs].nregs = MAX (nregs, 1);
   lvx_cms_flow_recs[lvx_cms_flow_nrecs].region = lvx_cms_flow_region;
   lvx_cms_flow_recs[lvx_cms_flow_nrecs].is_def = is_def;
+  lvx_cms_flow_recs[lvx_cms_flow_nrecs].dly = dly;
+  lvx_cms_flow_recs[lvx_cms_flow_nrecs].p2 = p2;
   lvx_cms_flow_nrecs++;
 }
 
@@ -824,7 +837,40 @@ lvx_cms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def)
    OWNER starts unknown, and an unknown register is not reported: the first
    bundle's reads legitimately come from the preheader.  Only a register this
    walk has SEEN written can be judged, which makes the check sound on an
-   entry it cannot see rather than noisy.  */
+   entry it cannot see rather than noisy.
+
+   AND A LOOP-CARRIED READ IS NOT A LINEAR READ.  §7tricies.214.  The kernel
+   is ONE copy of the body that executes once per iteration, so a read whose
+   range is taken at a DELAY -- `lvx_cms_lrange_of''s `dly', the previous
+   iteration's instance -- expects a value this pass has not written.  Where
+   the range is expanded that is another register and the walk judges it
+   correctly; where it is not, it is the SAME register, and the def of the
+   current iteration may sit textually BEFORE the read.  A linear pass then
+   finds the new value and calls correct code wrong.  The 16-report residual
+   on trees.c is exactly this population -- `insn 951 reads r4 expecting lr1
+   but holds lr3 written by insn 948', where r4 is `ivtmp.400'.
+
+   SEPARATED AS FLOWCARRIED, AND NOT THEREBY DECLARED BENIGN.  The split is
+   so that FLOWBAD holds only what one pass can decide, which is what makes a
+   FLOWBAD count comparable between two pass orders -- the use the check was
+   built for.  It is NOT a statement that the carried reads are correct, and
+   the two sub-cases are not equally innocent:
+
+     p2 >= 2: expansion gives the delayed read a different register from the
+       def, so which copy is current depends on the iteration parity the walk
+       does not carry.  Genuinely undecidable here.
+
+     p2 == 1: the def and the delayed read share the one register, so a
+       register holding a DIFFERENT range at the read means the previous
+       iteration's value is gone, and no iteration subtlety restores it.
+       Suspicious, and the honest reading of trees.c's residual is that the
+       default order may miscompile a loop this input does not exercise --
+       not that the report is spurious.
+
+   `carried-ambiguous' counts the other side of the same coin: a p2 == 1
+   delayed read whose register DOES hold the expected root, which cannot be
+   told from this iteration's def having already run.  The old check passed
+   every one of those silently.  */
 static void
 lvx_cms_flow_check (FILE *file)
 {
@@ -832,6 +878,8 @@ lvx_cms_flow_check (FILE *file)
   int writer[FIRST_PSEUDO_REGISTER];
   int wregion[FIRST_PSEUDO_REGISTER];
   int cur_region = -1;
+  int carried_bad = 0;
+  int carried_ambig = 0;
   int a;
 
   if (lvx_cms_flow_nrecs == 0 || lvx_cms_group_nrecs == 0)
@@ -900,7 +948,35 @@ lvx_cms_flow_check (FILE *file)
 		if (r < 0 || r >= FIRST_PSEUDO_REGISTER || owner[r] < 0)
 		  continue;
 		if (owner[r] == fr->root)
-		  continue;
+		  {
+		    /* §7tricies.214: for an UNEXPANDED range the def and the
+		       delayed read share the register, so `holds the expected
+		       root' is equally consistent with the previous
+		       iteration's value still standing (right) and with this
+		       iteration's def having already run (wrong).  One pass
+		       cannot separate them; the count says how much of the
+		       check rests on that.  */
+		    if (fr->dly && fr->p2 <= 1)
+		      carried_ambig++;
+		    continue;
+		  }
+		if (fr->dly)
+		  {
+		    /* §7tricies.214: the previous iteration's instance, which
+		       this walk does not hold.  Separated from FLOWBAD so the
+		       judged count stays comparable across pass orders -- not
+		       dismissed; p2 == 1 here is suspicious.  */
+		    carried_bad++;
+		    if (file)
+		      fprintf (file, "\t# lvx cms: FLOWCARRIED insn %d reads"
+			       " %s expecting lr%d(rgn%d) of the PREVIOUS"
+			       " iteration; it holds lr%d(rgn%d) written by"
+			       " insn %d -- not judged by this walk, p2=%d\n",
+			       INSN_UID (fr->insn),
+			       reg_names[r], fr->root, fr->region, owner[r],
+			       wregion[r], writer[r], fr->p2);
+		    continue;
+		  }
 		if (file)
 		  /* BOTH SIDES' REGIONS.  §7tricies.213: roots are per-loop
 		     indices, so `expecting lr1 but holds lr2' says nothing
@@ -929,7 +1005,12 @@ lvx_cms_flow_check (FILE *file)
 
 	 Such an insn makes its destinations UNKNOWN rather than wrong -- the
 	 model has nothing to say about them -- so they are cleared, and a
-	 cleared register is never judged.  */
+	 cleared register is never judged.
+
+	 This did NOT account for the trees.c residual, though the paragraph
+	 above once said it did: the 16 reports survived it unchanged and are
+	 the loop-carried reads of §7tricies.214.  Clearing untracked writes
+	 is still right, and the claim about what it explained was not.  */
       for (int i = a; i < b; i++)
 	{
 	  bool tracked = false;
@@ -997,9 +1078,16 @@ lvx_cms_flow_check (FILE *file)
 	if (i == 0 || lvx_cms_group_recs[i].bundle
 		      != lvx_cms_group_recs[i - 1].bundle)
 	  nb++;
+      int carried_ops = 0;
+
+      for (int f = 0; f < lvx_cms_flow_nrecs; f++)
+	if (!lvx_cms_flow_recs[f].is_def && lvx_cms_flow_recs[f].dly)
+	  carried_ops++;
       fprintf (file, "\t# lvx cms: FLOWTAB operands=%d checked=%d"
-	       " not-in-any-bundle=%d bundles=%d\n", lvx_cms_flow_nrecs,
-	       seen, unseen, nb);
+	       " not-in-any-bundle=%d bundles=%d loop-carried=%d"
+	       " carried-unjudged=%d carried-ambiguous=%d\n",
+	       lvx_cms_flow_nrecs,
+	       seen, unseen, nb, carried_ops, carried_bad, carried_ambig);
     }
 }
 
@@ -11589,12 +11677,25 @@ lvx_option_override (void)
      Init(0) is not a safety property, which is the argument that put the two
      earlier refusals here and applies unchanged to this one.  The knob stays
      measurable where it is correct -- with -fno-hwloop there is no LOOPDO to
-     go stale -- and probe-only use is unaffected.  */
+     go stale -- and probe-only use is unaffected.
+
+     AND THE CAUSE IS NOT THE ONE THIS GUARD WAS WRITTEN FOR.  §7tricies.214.
+     The account above and in the option's help text was that CMS inherits a
+     LOOPDO and leaves its trip count stale, so the failure needed a kernel.
+     Measured, it does not: the minimal failing configuration is
+     `-mcms-codegen -mcms-after-hwloop' with BUILT=0 -- no pipeline emitted
+     at all -- on inffast.c alone, and the emitted assembly differs from the
+     correct one by TWO LINES and no instruction, the end label sitting after
+     the loop's exit branch instead of before it.  The pipeliner is not
+     involved; the second reorg_loops' cleanup_cfg merges the block the end
+     label heads and the label drifts.  Kept as a refusal for the same reason
+     -- it is still wrong code -- with the cause named correctly.  */
   if (lvx_cms_after_hwloop && (lvx_cms_codegen || lvx_cms_pipeline)
       && TARGET_HWLOOP)
-    error ("%<-mcms-after-hwloop%> still miscompiles a hardware-loop kernel "
-	   "(mad libz returns rc=-3 where the default order is correct); it "
-	   "is for measurement only and requires %<-fno-hwloop%>");
+    error ("%<-mcms-after-hwloop%> still miscompiles a hardware loop: the "
+	   "second %<reorg_loops%> displaces the LOOPDO end label past the "
+	   "loop%'s exit branch (7tricies.214); it is for measurement only "
+	   "and requires %<-fno-hwloop%>");
 
   /* §7tricies.107: the propagation's arcs are not the ones construction
      measured the heights from, so the two go together.  */
@@ -20558,7 +20659,8 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	 with the residual characterised rather than guessed at again.  */
       if (apply && target != NULL && neu >= 0)
 	lvx_cms_flow_record (target, lvx_cms_flow_root_of (lr, g),
-			     neu, MAX (g->nregs, 1), true);
+			     neu, MAX (g->nregs, 1), true, false,
+			     g->p2unroll);
       if (neu < 0 || neu == (int) r)
 	continue;
       if (trace)
@@ -20612,7 +20714,8 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	  neu += off;
 	if (apply && target != NULL && neu >= 0)
 	  lvx_cms_flow_record (target, lvx_cms_flow_root_of (lr, g),
-			       neu, MAX (g->nregs, 1), false);
+			       neu, MAX (g->nregs, 1), false, dly,
+			       g->p2unroll);
 	if (g->use_first && dly && lvx_cms_preheader_copy)
 	  lvx_cms_dump (";; lvx cms:     UFREAD node=%d kind=%d insn=%u"
 			" slot=%d iter=%d r%u p2=%d reg0=%d -> r%d\n",
@@ -30913,7 +31016,7 @@ lvx_machine_dependent_reorg (void)
 	 The hooks differ from the first pass's in one callback: a doloop_end
 	 the first pass already mapped must not be DISCOVERED here, or the
 	 loops CMS left alone would be mapped twice.  */
-      if (optimize)
+      if (optimize && lvx_cms_reorg2)
 	{
 	  lvx_check_doloop_discoverable ();
 	  if (lvx_cms_probe_cfg)
