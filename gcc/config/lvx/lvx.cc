@@ -140,39 +140,6 @@ lvx_load_class_p (enum attr_type type)
     }
 }
 
-/* The multiply-accumulate family, which reads its accumuland a cycle late.  */
-static bool
-lvx_accumulate_class_p (enum attr_type type)
-{
-  switch (type)
-    {
-    case TYPE_IMADD: case TYPE_FMADDS: case TYPE_FMADDD:
-    case TYPE_FDOTP: case TYPE_FDMDA:
-      return true;
-    default:
-      return false;
-    }
-}
-
-/* The multiply/multiply-accumulate family, whose results the scoreboard has to
-   wait longer for.  This used to be a range test over the type enum, which
-   asked the reader to keep it in step with the order of types.md; "type" is
-   semantic now, so the question can be asked directly.  */
-static bool
-lvx_multiply_class_p (enum attr_type type)
-{
-  switch (type)
-    {
-    case TYPE_IMUL: case TYPE_IMADD:
-    case TYPE_FMULS: case TYPE_FMADDS:
-    case TYPE_FMULD: case TYPE_FMADDD:
-    case TYPE_FCVT: case TYPE_FDOTP: case TYPE_FDMDA:
-      return true;
-    default:
-      return false;
-    }
-}
-
 /* The BCU prefix kinds that share a bundle's two BCU syllables.  Tagging each
    occupied slot with its kind keeps a MASKS mask keyed on $rN from aliasing a
    GUARD condition, or a MASKM byte-enable, on the same register: a slot is
@@ -206,7 +173,8 @@ static struct lvx_sched2
 #define LVX_SCHED2_INSN_HEAD 1	// Head of scheduling region.
 #define LVX_SCHED2_INSN_START 2	// Start instruction bundle.
 #define LVX_SCHED2_INSN_STOP 4	// Stop instruction bundle.
-#define LVX_SCHED2_INSN_STALL 8	// Stall (scoreboard bug).
+/* Bit 8 was LVX_SCHED2_INSN_STALL, the AUXR-RAW scoreboard's marker.  Retired
+   with the scoreboard: §7tricies.220.  */
 #define LVX_SYLLABLE_SIZE 4
 #define LVX_SCHED2_BUNDLE_SIZE 32
 
@@ -10534,82 +10502,14 @@ lvx_fix_debug_for_bundles (bool selective_scheduling2)
     gcc_assert (!start_insn && !stop_insn);
 }
 
-/* Fix the INSN issue cycle accounting for stall effects of AUXR RAW.
-   We maintain a scoreboard to compute the cumulative delay implied by stalls
-   based on an array of last write dates.  */
-static void
-lvx_sched2_fix_insn_issue (rtx_insn *insn, rtx *opvec, int noperands)
-{
-  int uid = INSN_UID (insn);
-  gcc_assert ((unsigned) uid < (unsigned) lvx_sched2->max_uid);
-
-  // Scoreboard structure, initialized at each SCHE2 region.
-  static struct
-  {
-    int delay;
-    short write[LVX_GPR_LAST_REGNO + 1];
-  } scoreboard;
-  if (lvx_sched2->insn_flags[uid] & LVX_SCHED2_INSN_HEAD)
-    {
-      scoreboard.delay = 0;
-      memset (scoreboard.write, -1, sizeof (scoreboard.write));
-      gcc_assert (LVX_GPR_FIRST_REGNO == 0);
-    }
-
-  if (NONDEBUG_INSN_P (insn))
-    {
-      int stall = 0;
-      int cycle = lvx_sched2->insn_cycle[uid] + scoreboard.delay;
-      enum attr_type type = get_attr_type (insn);
-      if (lvx_accumulate_class_p (type)
-	  && noperands > 3 && REG_P (opvec[3]))
-	{
-	  int regno = REGNO (opvec[3]);
-	  int regno_quad = (regno & -4);
-	  machine_mode mode = GET_MODE (opvec[3]);
-	  unsigned mode_size = GET_MODE_SIZE (mode);
-	  gcc_assert (regno <= LVX_GPR_LAST_REGNO);
-	  if (mode_size <= UNITS_PER_WORD)
-	    {
-	      for (int i = 0; i < 4; i += 2)
-		{
-		  int j = (regno + i) & 3;
-		  int write = scoreboard.write[regno_quad + j];
-		  int delta = write - cycle;
-		  if (stall < delta)
-		    stall = delta;
-		}
-	    }
-	  else if (mode_size >= 2 * UNITS_PER_WORD)
-	    {
-	      for (int i = 0; i < 4; i++)
-		{
-		  int write = scoreboard.write[regno_quad + i];
-		  int delta = write - cycle;
-		  if (stall < delta)
-		    stall = delta;
-		}
-	    }
-	}
-      if (lvx_multiply_class_p (type) && noperands > 0
-	  && REG_P (opvec[0]))
-	{
-	  int regno = REGNO (opvec[0]);
-	  machine_mode mode = GET_MODE (opvec[0]);
-	  int cost = FLOAT_MODE_P (mode) ? 4 : (INTEGRAL_MODE_P (mode) ? 3 : 1);
-	  int i = hard_regno_nregs (regno, mode);
-	  while (--i >= 0)
-	    {
-	      scoreboard.write[regno + i] = cycle + cost + stall;
-	    }
-	}
-
-      if (stall)
-	lvx_sched2->insn_flags[uid] |= LVX_SCHED2_INSN_STALL;
-      lvx_sched2->insn_cycle[uid] = cycle + stall;
-      scoreboard.delay += stall;
-    }
-}
+/* THE AUXR-RAW STALL SCOREBOARD IS GONE.  §7tricies.220.
+   `lvx_sched2_fix_insn_issue' maintained an array of last-write dates and
+   charged a cumulative delay for AUXR read-after-write, marking each delayed
+   insn LVX_SCHED2_INSN_STALL so the emission could print `(stalled)'.  It
+   modelled a scoreboard bug in early versions of the KVX core, which LVX does
+   not have -- and it had NO CALLERS, so the flag was never set and the note
+   never printed.  lvx_accumulate_class_p and lvx_multiply_class_p went with
+   it, having had no other user; lvx_load_class_p stays, which does.  */
 
 
 /* 18.17 Adjusting the Instruction Scheduler }}} */
@@ -10939,8 +10839,6 @@ lvx_asm_final_postscan_insn (FILE *file, rtx_insn *insn,
 	  const char *note = "";
 	  if (doloop_end && cycle != prev_cycle)
 	    note = 0;
-	  else if (!doloop_end && (flags & LVX_SCHED2_INSN_STALL))
-	    note = "\t(stalled)";
 	  else if (doloop_end)
 	    note = "\t(loop end)";
 
