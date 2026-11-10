@@ -31080,13 +31080,19 @@ lvx_machine_dependent_reorg (void)
 	  lvx_check_doloop_discoverable ();
 	  if (lvx_cms_probe_cfg)
 	    lvx_cms_dump_cfg ("reorg: before the second reorg_loops");
-	  /* STEP 0 (7tricies.214): do_reorder OFF.  `true' gates
-	     reorder_loops, which enters cfg_layout_initialize and whose
-	     finalisation merges blocks -- the mechanism that moves the LOOPDO
-	     end label past the loop's exit branch.  The FIRST reorg_loops
-	     already did the layout; this pass only has to map the kernels the
-	     pipeliner built.  */
-	  reorg_loops (false, &lvx_doloop_hooks_pass2);
+	  /* do_reorder STAYS TRUE.  §7tricies.215.  It was turned off in
+	     §7tricies.214 because `true' gates reorder_loops, which enters
+	     cfg_layout_initialize and merges blocks on finalisation -- the
+	     merge that displaced the LOOPDO end label.  That was a workaround
+	     for a vulnerable label, and the label is no longer vulnerable:
+	     the terminator prints the marker itself, so its position is the
+	     instruction's.  Turned back on, and MEASURED back on -- 0 label
+	     drift over 48 hardware loops in 31 files in the after order,
+	     where `true' used to drift 1 of 4 on inffast.c alone, and both
+	     zlib round trips correct with 30 pipelines each.  Keeping it off
+	     would discard the layout this pass exists to produce for no
+	     remaining reason.  */
+	  reorg_loops (true, &lvx_doloop_hooks_pass2);
 	  if (lvx_cms_probe_cfg)
 	    lvx_cms_dump_cfg ("reorg: after the second reorg_loops");
 	}
