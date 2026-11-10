@@ -31039,7 +31039,14 @@ lvx_machine_dependent_reorg (void)
       lvx_check_doloop_discoverable ();
       if (lvx_cms_probe_cfg)
 	lvx_cms_dump_cfg ("reorg: before reorg_loops");
+      /* §7tricies.219: charged to TV_SMS with the pipeliner.  The mapping is
+	 not modulo scheduling, but it is what the pipeliner's exact
+	 doloop_end charge depends on, and the pair is what §7tricies.217
+	 traded for: no prediction, two mapping passes.  One line reports the
+	 cost of that decision.  */
+      timevar_push (TV_SMS);
       reorg_loops (true, &lvx_doloop_hooks);
+      timevar_pop (TV_SMS);
       if (lvx_cms_probe_cfg)
 	lvx_cms_dump_cfg ("reorg: after reorg_loops");
 
@@ -31105,7 +31112,13 @@ lvx_machine_dependent_reorg (void)
 	 and modulo-sched.cc is the only other user -- a pass this port does
 	 not run, CMS being the pipeliner here.  The one way the two could
 	 merge is an explicit -fmodulo-sched, which would then report the sum;
-	 that is the price of not adding a line to timevar.def.  */
+	 that is the price of not adding a line to timevar.def.
+
+	 THE LINE COVERS BOTH reorg_loops CALLS AS WELL, so read it as the
+	 cost of the whole modulo-scheduling-plus-mapping machinery rather
+	 than of the pipeliner alone.  Measured before they were added, the
+	 mapping's share was at most 0.02s against the pipeliner's 0.57s on
+	 tsvc.c, so the figure moves very little.  */
       timevar_push (TV_SMS);
       lvx_cms_pipeline_loops ();
       timevar_pop (TV_SMS);
@@ -31149,7 +31162,11 @@ lvx_machine_dependent_reorg (void)
 	     zlib round trips correct with 30 pipelines each.  Keeping it off
 	     would discard the layout this pass exists to produce for no
 	     remaining reason.  */
+	  /* §7tricies.219: and this one too -- it exists only because CMS
+	     created the kernels it maps.  */
+	  timevar_push (TV_SMS);
 	  reorg_loops (true, &lvx_doloop_hooks_pass2);
+	  timevar_pop (TV_SMS);
 	  if (lvx_cms_probe_cfg)
 	    lvx_cms_dump_cfg ("reorg: after the second reorg_loops");
 	}
