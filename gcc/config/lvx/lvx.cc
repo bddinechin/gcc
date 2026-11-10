@@ -23004,8 +23004,15 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		    if (fe)
 		      fe->probability = profile_probability::even ();
 		  }
-		lvx_cms_group_tag (after, nd, slots[q].date,
-			     slots[q].iter * 65536 + (int) i);
+		/* §7tricies.218: an EPILOGUE insn is left untagged, which is
+		   what leaves its block to SCHED2 -- lvx_cms_own_blocks
+		   derives BB_DISABLE_SCHEDULE from these tags, and the group
+		   invariant must not be asserted over a block CMS no longer
+		   owns.  */
+		if (!lvx_cms_sched2_epilogue
+		    || nodes[nd].kind != LVX_CMS_NODE_EPILOGUE)
+		  lvx_cms_group_tag (after, nd, slots[q].date,
+				     slots[q].iter * 65536 + (int) i);
 		tail[nd] = cj;
 		nemit++;
 		lvx_cms_dump (";; lvx cms:   doloop early exit insn=%u iter=%d"
@@ -23090,8 +23097,11 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	      if (fe)
 		fe->probability = profile_probability::even ();
 	    }
-	  lvx_cms_group_tag (after, nd, slots[q].date,
-			     slots[q].iter * 65536 + (int) i);
+	  /* §7tricies.218: see above -- an epilogue insn carries no group.  */
+	  if (!lvx_cms_sched2_epilogue
+	      || nodes[nd].kind != LVX_CMS_NODE_EPILOGUE)
+	    lvx_cms_group_tag (after, nd, slots[q].date,
+			       slots[q].iter * 65536 + (int) i);
 	  tail[nd] = j;
 	  nemit++;
 	  continue;
