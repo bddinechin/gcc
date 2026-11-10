@@ -30328,6 +30328,56 @@ lvx_cms_pipeline_loops (void)
 
 
 
+/* GIVE THE MAPPED LOOPS BACK THEIR SINGLE ENTRY.  §7tricies.216.
+
+   `lvx_superblock_inner_loops' Phase A already straightens every innermost
+   loop to a single-entry preheader, because "7.3% of innermost loops have a
+   header with two or more out-of-loop predecessors and are refused outright
+   by the pipeliner for it" -- but it runs BEFORE reorg_loops, and reorg_loops
+   undoes it.  In the before order that does not matter: CMS has already run.
+   In the AFTER order it is the whole of the throughput gap.  Measured on
+   syrk at MINI/double: 6 pipelines in the before order, 4 in the after one,
+   the two lost loops reported as
+
+     fn=main loop 7 ENTRIES=2 *** NOT ONE ***
+     fn=main loop 7 codegen declined, no preheader
+
+   and the file 6.8% slower while emitting LESS code -- fewer bundles, fewer
+   instructions, no pipeline.  Note loopdo=0 there: reorg_loops mapped nothing
+   at all and still cost two pipelines, so this is its CFG work and not the
+   mapping.
+
+   NO cfg_layout_initialize HERE, deliberately, unlike Phase A.  Entering
+   cfglayout after reorg_loops is what its own comment warns against -- the
+   merge on finalisation is what displaced the LOOPDO end label (§7tricies.214)
+   -- and splitting an entry edge needs none of it: `create_preheader' only
+   inserts a block ahead of the header, leaving the body's layout and so
+   LOOPDO's 17-bit end-address range untouched.  */
+
+static void
+lvx_cms_restore_preheaders (void)
+{
+  int made = 0;
+
+  if (crtl->has_bb_partition)
+    return;
+
+  loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
+  for (auto loop : loops_list (cfun, LI_ONLY_INNERMOST))
+    /* create_preheader needs loop->latch, which a loop with several latches
+       has not got -- and such a loop is refused anyway, for the back edges.  */
+    if (loop->latch != NULL
+	&& create_preheader (loop, CP_SIMPLE_PREHEADERS) != NULL)
+      made++;
+  loop_optimizer_finalize ();
+
+  if (made)
+    df_analyze ();
+  if (dump_file && lvx_cms_probe)
+    lvx_cms_dump (";; lvx cms: restored %d single-entry preheader%s after"
+		  " reorg_loops\n", made, made == 1 ? "" : "s");
+}
+
 /* Give every innermost loop a single-entry preheader and lay its body out as
    one run, so that EBB formation sees the body whole and the software
    pipeliner's loop selection accepts it.
@@ -31051,6 +31101,11 @@ lvx_machine_dependent_reorg (void)
 
   if (cms_ok && lvx_cms_after_hwloop)
     {
+      /* §7tricies.216: reorg_loops has just undone Phase A's straightening,
+	 and CMS refuses a loop with two entries.  Put them back before it
+	 looks.  */
+      lvx_cms_restore_preheaders ();
+
       lvx_cms_pipeline_loops ();
 
       /* AND MAP WHAT THE PIPELINER JUST BUILT.  §7tricies.201.  This is the
