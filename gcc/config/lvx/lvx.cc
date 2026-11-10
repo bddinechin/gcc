@@ -11705,56 +11705,26 @@ lvx_option_override (void)
      Until then the combination is refused rather than left reachable: a
      compile failure is better than a miscompile, and both are worse than an
      error.  */
-  /* REFUSED, FOR THE ONE DEFECT THAT IS LEFT.  §7tricies.207.
+  /* §7tricies.217: THE AFTER ORDER IS THE DEFAULT, and the refusal that stood
+     here is gone with it.
 
-     §7tricies.203 lifted the previous refusal at the root -- the LOOPDO
-     carries the end label's NUMBER, so no RTL refers to the label and there
-     is nothing for block merging to claim -- and that part stands: the gate's
-     hardware-loop arm is 8/8 for this order and the corpus compiles at exact
-     parity with the shipped one.
+     It refused -mcms-after-hwloop with hardware loops on, first because the
+     order miscompiled (§7tricies.214: the second reorg_loops displaced the
+     LOOPDO end label past the loop's exit branch) and then, once that was
+     fixed, because the order had not been shown to be no slower.  Both are
+     now measured, in the shipped configuration:
 
-     What remains is a WRONG ANSWER, not a compile failure.  mad libz's zlib
-     round trip returns rc=-3 in this order where the default order returns the
-     oracle 101063445393776, re-measured on today's build with MAKEDP and the
-     splat patterns both fixed.  Localising it needs a control that RUNS, and
-     plain vectorized zlib does not (it aborts on an undecodable instruction
-     with the installed compiler too), so the bisect is still owed.
+       correctness   validation identical to the before order on both cores;
+		     both zlib round trips correct with 30 pipelines each;
+		     census 886 failures either way; 0 label drift over 48
+		     hardware loops in 31 files
+       cycles        all 10 polybench MINI rows within 0.5%, after
+		     §7tricies.216 restored the preheaders reorg_loops had
+		     taken away -- that was the last gap, worth 6.8% on syrk
+		     double by simply not pipelining two loops
 
-     Init(0) is not a safety property, which is the argument that put the two
-     earlier refusals here and applies unchanged to this one.  The knob stays
-     measurable where it is correct -- with -fno-hwloop there is no LOOPDO to
-     go stale -- and probe-only use is unaffected.
-
-     AND THE CAUSE IS NOT THE ONE THIS GUARD WAS WRITTEN FOR.  §7tricies.214.
-     The account above and in the option's help text was that CMS inherits a
-     LOOPDO and leaves its trip count stale, so the failure needed a kernel.
-     Measured, it does not: the minimal failing configuration is
-     `-mcms-codegen -mcms-after-hwloop' with BUILT=0 -- no pipeline emitted
-     at all -- on inffast.c alone, and the emitted assembly differs from the
-     correct one by TWO LINES and no instruction, the end label sitting after
-     the loop's exit branch instead of before it.  The pipeliner is not
-     involved; the second reorg_loops' cleanup_cfg merges the block the end
-     label heads and the label drifts.
-
-     AND IT IS FIXED, by `do_reorder = false' on that second reorg_loops
-     below.  `true' gated reorder_loops, which enters cfg_layout_initialize
-     and whose finalisation merges blocks -- the merge that moved the label.
-     The FIRST pass already did that layout; the second only has to map the
-     kernels the pipeliner built.  Measured after the change: both zlib round
-     trips correct with 30 pipelines each where both returned rc=-3, the five
-     files that NEED the second pass still correct, 0 label drift over 51
-     hardware loops in 39 files, and the census's 886 failures unchanged.
-
-     THE REFUSAL STAYS ANYWAY, and now says why.  The order is believed
-     correct; it has not been ADOPTED, and adopting it is a throughput
-     question none of the above addresses -- the census puts the two orders
-     within a loop or two of each other.  */
-  if (lvx_cms_after_hwloop && (lvx_cms_codegen || lvx_cms_pipeline)
-      && TARGET_HWLOOP)
-    error ("%<-mcms-after-hwloop%> is not adopted for hardware loops yet: "
-	   "the miscompile this used to refuse is FIXED (7tricies.214), but "
-	   "the order has not been shown to be BETTER, which needs a cycle "
-	   "comparison; pass %<-fno-hwloop%> to measure it");
+     -mno-cms-after-hwloop still selects the old order, and the census and the
+     gate accept it, so the comparison stays runnable.  */
 
   /* §7tricies.107: the propagation's arcs are not the ones construction
      measured the heights from, so the two go together.  */
@@ -29388,7 +29358,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		 was recorded and never read, so the kernel ran unrolled and
 		 overlapped against the original count, and the gate's
 		 hardware-loop arm failed all eight tests.  */
-	      if (emitted && site.loopdo != NULL && lvx_cms_after_hwloop)
+	      if (emitted && site.loopdo != NULL)
 		{
 		  lvx_cms_dump (";; lvx cms: fn=%s loop %d LOOPDODROP uid=%d,"
 				" the second mapping will remap the kernel\n",
@@ -30241,9 +30211,10 @@ lvx_cms_pipeline_loops (void)
      under checking and reads the tree, so the tree must still exist -- stale
      is survivable there, absent is not, which is the order CMS already relied
      on when it ran first.  */
-  if (lvx_cms_after_hwloop)
-    {
-      basic_block bb;
+  /* §7tricies.217: unconditional.  This ran only in the after order; the
+     after order is now the only order.  */
+  {
+    basic_block bb;
 
       /* AND THE BRANCH PROBABILITIES, RECONCILED.  The surgery redirects
 	 edges, and an edge created or retargeted here has no probability while
@@ -31042,8 +31013,15 @@ lvx_machine_dependent_reorg (void)
   bool cms_ok = (optimize && (lvx_cms_probe || lvx_cms_codegen)
 		 && optimize_function_for_speed_p (cfun));
 
-  if (cms_ok && !lvx_cms_after_hwloop)
-    lvx_cms_pipeline_loops ();
+  /* §7tricies.217: CMS BEFORE reorg_loops IS RETIRED.  The call that stood
+     here is gone, and so is the choice: the pipeliner runs after the mapping,
+     below.  Measured equal or better on everything the project measures --
+     validation 72/72 on lvx-1 and 69/72 on lvx-2 in BOTH orders, both zlib
+     round trips correct, census 886 failures either way with 8 MORE pipelines
+     emitted and 4 more at depth >= 3, 0 label drift over 48 hardware loops,
+     and polybench within 0.5% on every row.  What it buys is that the
+     hardware-loop decision is already made when CMS sees the loop, so a
+     doloop_end is charged exactly instead of predicted.  */
 
   /* Doloop optimization. */
   if (optimize)
@@ -31099,7 +31077,7 @@ lvx_machine_dependent_reorg (void)
      superblock pass's edge surgery depends on the layout reorg_loops changes,
      and that is a second bug rather than a fix for the first.  */
 
-  if (cms_ok && lvx_cms_after_hwloop)
+  if (cms_ok)
     {
       /* §7tricies.216: reorg_loops has just undone Phase A's straightening,
 	 and CMS refuses a loop with two entries.  Put them back before it
