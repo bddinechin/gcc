@@ -31094,7 +31094,21 @@ lvx_machine_dependent_reorg (void)
 	 looks.  */
       lvx_cms_restore_preheaders ();
 
+      /* TV_SMS, GCC'S OWN MODULO-SCHEDULING TIMEVAR, REUSED.  §7tricies.219.
+	 Everything in machine_dependent_reorg was charged to TV_MACH_DEP as
+	 one line, so `-ftime-report' could not say what the pipeliner costs
+	 -- nor what running reorg_loops twice costs, which is the compile-time
+	 half of §7tricies.217's trade and still unmeasured.  Timevars nest, so
+	 this is subtracted out of TV_MACH_DEP.
+
+	 Reused rather than newly declared: TV_SMS is `sms modulo scheduling',
+	 and modulo-sched.cc is the only other user -- a pass this port does
+	 not run, CMS being the pipeliner here.  The one way the two could
+	 merge is an explicit -fmodulo-sched, which would then report the sum;
+	 that is the price of not adding a line to timevar.def.  */
+      timevar_push (TV_SMS);
       lvx_cms_pipeline_loops ();
+      timevar_pop (TV_SMS);
 
       /* AND MAP WHAT THE PIPELINER JUST BUILT.  §7tricies.201.  This is the
 	 whole of what the after-mapping order was missing, and the reason it
