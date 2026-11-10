@@ -11674,14 +11674,27 @@ lvx_option_override (void)
      correct one by TWO LINES and no instruction, the end label sitting after
      the loop's exit branch instead of before it.  The pipeliner is not
      involved; the second reorg_loops' cleanup_cfg merges the block the end
-     label heads and the label drifts.  Kept as a refusal for the same reason
-     -- it is still wrong code -- with the cause named correctly.  */
+     label heads and the label drifts.
+
+     AND IT IS FIXED, by `do_reorder = false' on that second reorg_loops
+     below.  `true' gated reorder_loops, which enters cfg_layout_initialize
+     and whose finalisation merges blocks -- the merge that moved the label.
+     The FIRST pass already did that layout; the second only has to map the
+     kernels the pipeliner built.  Measured after the change: both zlib round
+     trips correct with 30 pipelines each where both returned rc=-3, the five
+     files that NEED the second pass still correct, 0 label drift over 51
+     hardware loops in 39 files, and the census's 886 failures unchanged.
+
+     THE REFUSAL STAYS ANYWAY, and now says why.  The order is believed
+     correct; it has not been ADOPTED, and adopting it is a throughput
+     question none of the above addresses -- the census puts the two orders
+     within a loop or two of each other.  */
   if (lvx_cms_after_hwloop && (lvx_cms_codegen || lvx_cms_pipeline)
       && TARGET_HWLOOP)
-    error ("%<-mcms-after-hwloop%> still miscompiles a hardware loop: the "
-	   "second %<reorg_loops%> displaces the LOOPDO end label past the "
-	   "loop%'s exit branch (7tricies.214); it is for measurement only "
-	   "and requires %<-fno-hwloop%>");
+    error ("%<-mcms-after-hwloop%> is not adopted for hardware loops yet: "
+	   "the miscompile this used to refuse is FIXED (7tricies.214), but "
+	   "the order has not been shown to be BETTER, which needs a cycle "
+	   "comparison; pass %<-fno-hwloop%> to measure it");
 
   /* §7tricies.107: the propagation's arcs are not the ones construction
      measured the heights from, so the two go together.  */
@@ -31007,7 +31020,13 @@ lvx_machine_dependent_reorg (void)
 	  lvx_check_doloop_discoverable ();
 	  if (lvx_cms_probe_cfg)
 	    lvx_cms_dump_cfg ("reorg: before the second reorg_loops");
-	  reorg_loops (true, &lvx_doloop_hooks_pass2);
+	  /* STEP 0 (7tricies.214): do_reorder OFF.  `true' gates
+	     reorder_loops, which enters cfg_layout_initialize and whose
+	     finalisation merges blocks -- the mechanism that moves the LOOPDO
+	     end label past the loop's exit branch.  The FIRST reorg_loops
+	     already did the layout; this pass only has to map the kernels the
+	     pipeliner built.  */
+	  reorg_loops (false, &lvx_doloop_hooks_pass2);
 	  if (lvx_cms_probe_cfg)
 	    lvx_cms_dump_cfg ("reorg: after the second reorg_loops");
 	}
