@@ -26300,6 +26300,67 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
      emission's "refuse a prologue store" precondition becomes a check that
      should never fire rather than the thing standing between the analysis and
      a wrong store.  */
+  /* WHOSE RESULT REACHES AN INSTRUCTION THAT CANNOT BE SPECULATED.
+     §7tricies.221.  Constraint (1) below exempts every load from a branch's
+     guard, on the ground that a dismissible load may cross.  It may -- the
+     FAULT is suppressed -- but the VALUE it read is then garbage, and that is
+     only harmless while nothing consumes it.  An instruction using a
+     speculated result must itself be speculatable, and a conditional branch
+     and a store are not.
+
+     divmodvx was the case: a pipelined 8-trip loop speculatively read UB[8],
+     one element past a uint16_t[8], got zero, and the zero reached the
+     conditional branch of GCC's isolated divide-by-zero path, which traps.
+
+     TRANSITIVE through speculatable consumers, because a load feeding an add
+     feeding a branch is the same bug one step removed.  The fixpoint is over
+     the body, whose length is tens of insns, so its cost is nothing against
+     the II search.  A use ANYWHERE in the body counts, including one textually
+     before the def -- that is the cross-iteration use, and counting it is the
+     conservative direction.  */
+  auto_vec<bool> tainted;
+  int npinned = 0;
+
+  tainted.safe_grow_cleared (n);
+  if (lvx_cms_pin_tainted_loads)
+    {
+      bool changed = true;
+
+      while (changed)
+	{
+	  changed = false;
+	  for (unsigned i = 0; i < n; i++)
+	    {
+	      df_ref d;
+
+	      if (tainted[i] || !NONDEBUG_INSN_P (seq[i]))
+		continue;
+	      FOR_EACH_INSN_DEF (d, seq[i])
+		{
+		  unsigned r = DF_REF_REGNO (d);
+
+		  for (unsigned j = 0; j < n && !tainted[i]; j++)
+		    {
+		      df_ref u;
+
+		      if (j == i || !NONDEBUG_INSN_P (seq[j]))
+			continue;
+		      FOR_EACH_INSN_USE (u, seq[j])
+			if (DF_REF_REGNO (u) == r
+			    && (!lvx_speculatable_p (seq[j]) || tainted[j]))
+			  {
+			    tainted[i] = true;
+			    changed = true;
+			    break;
+			  }
+		    }
+		  if (tainted[i])
+		    break;
+		}
+	    }
+	}
+    }
+
   int first_branch = -1, prev_branch = -1;
   for (unsigned p = 0; p < n; p++)
     {
@@ -26388,11 +26449,22 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  if (q == p)
 	    continue;
 
-	  /* (1) */
+	  /* (1) -- and a TAINTED LOAD is guarded exactly as a store is.
+	     §7tricies.221: the exemption for loads holds only while nothing
+	     consumes what a speculated one read.  */
 	  if ((lvx_mem_write_insn_p (seq[q])
-	       || volatile_insn_p (PATTERN (seq[q])))
+	       || volatile_insn_p (PATTERN (seq[q]))
+	       || (lvx_cms_pin_tainted_loads && tainted[q]
+		   && lvx_mem_read_insn_p (seq[q])
+		   && !lvx_mem_write_insn_p (seq[q])))
 	      && BLOCK_FOR_INSN (seq[q]) == nextbb)
-	    lvx_cms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_STORE);
+	    {
+	      if (lvx_cms_pin_tainted_loads && tainted[q]
+		  && lvx_mem_read_insn_p (seq[q])
+		  && !lvx_mem_write_insn_p (seq[q]))
+		npinned++;
+	      lvx_cms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_STORE);
+	    }
 
 	  /* (2) */
 	  if (exitbb == NULL)
@@ -26447,6 +26519,22 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
     }
 
   /* (3) across the back edge: the last branch still precedes the first.  */
+  /* §7tricies.221: report what the rule cost, so it is a measurement and not
+     an assumption.  Printed even at zero: "no load in this loop feeds a
+     branch or a store" is the finding for most loops, and the number only
+     means something against the loops where it is not.  */
+  if (dump_file && lvx_cms_probe && lvx_cms_pin_tainted_loads)
+    {
+      int ntaint = 0;
+
+      for (unsigned i = 0; i < n; i++)
+	if (tainted[i])
+	  ntaint++;
+      lvx_cms_dump (";; lvx cms: fn=%s loop %d PINNED loads=%d of %d tainted"
+		    " insns, body=%u\n", current_function_name (), loop->num,
+		    npinned, ntaint, n);
+    }
+
   if (first_branch >= 0 && prev_branch > first_branch)
     lvx_cms_push_arc (arcs, prev_branch, first_branch, 0, 1,
 		      LVX_ARC_CTRL_BACKEDGE);
