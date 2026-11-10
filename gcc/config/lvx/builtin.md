@@ -4412,10 +4412,10 @@
 ;; LVX_LOADC*
 
 (define_insn "lvx_loadcbz"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r")
-        (zero_extend:DI (unspec:QI [(match_operand:DI 1 "register_operand" "0,0,0")
-                                    (match_operand:QI 2 "memsimple_operand" "c,d,e")
-                                    (match_operand:DI 3 "register_operand" "r,r,r")
+  [(set (match_operand:DI 0 "register_operand" "=r,r")
+        (zero_extend:DI (unspec:QI [(match_operand:DI 1 "register_operand" "0,0")
+                                    (match_operand:QI 2 "memsimple_operand" "c,d")
+                                    (match_operand:DI 3 "register_operand" "r,r")
                                     (match_operand 4 "" "")
                                     (match_operand 5 "" "")] UNSPEC_LOADC)))]
   ""
@@ -4423,17 +4423,16 @@
   [(set_attr "type" "load")
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
-     (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")
+     (const_string "lsu_auxw_x")])
+   (set_attr "length" "4, 8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadchz"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r")
-        (zero_extend:DI (unspec:HI [(match_operand:DI 1 "register_operand" "0,0,0")
-                                    (match_operand:HI 2 "memsimple_operand" "c,d,e")
-                                    (match_operand:DI 3 "register_operand" "r,r,r")
+  [(set (match_operand:DI 0 "register_operand" "=r,r")
+        (zero_extend:DI (unspec:HI [(match_operand:DI 1 "register_operand" "0,0")
+                                    (match_operand:HI 2 "memsimple_operand" "c,d")
+                                    (match_operand:DI 3 "register_operand" "r,r")
                                     (match_operand 4 "" "")
                                     (match_operand 5 "" "")] UNSPEC_LOADC)))]
   ""
@@ -4441,17 +4440,16 @@
   [(set_attr "type" "load")
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
-     (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")
+     (const_string "lsu_auxw_x")])
+   (set_attr "length" "4, 8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadcwz"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r")
-        (zero_extend:DI (unspec:SI [(match_operand:DI 1 "register_operand" "0,0,0")
-                                    (match_operand:SI 2 "memsimple_operand" "c,d,e")
-                                    (match_operand:DI 3 "register_operand" "r,r,r")
+  [(set (match_operand:DI 0 "register_operand" "=r,r")
+        (zero_extend:DI (unspec:SI [(match_operand:DI 1 "register_operand" "0,0")
+                                    (match_operand:SI 2 "memsimple_operand" "c,d")
+                                    (match_operand:DI 3 "register_operand" "r,r")
                                     (match_operand 4 "" "")
                                     (match_operand 5 "" "")] UNSPEC_LOADC)))]
   ""
@@ -4459,17 +4457,16 @@
   [(set_attr "type" "load")
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
-     (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")
+     (const_string "lsu_auxw_x")])
+   (set_attr "length" "4, 8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadcd"
-  [(set (match_operand:DI 0 "register_operand" "=r,r,r")
-        (unspec:DI [(match_operand:DI 1 "register_operand" "0,0,0")
-                    (match_operand:DI 2 "memsimple_operand" "c,d,e")
-                    (match_operand:DI 3 "register_operand" "r,r,r")
+  [(set (match_operand:DI 0 "register_operand" "=r,r")
+        (unspec:DI [(match_operand:DI 1 "register_operand" "0,0")
+                    (match_operand:DI 2 "memsimple_operand" "c,d")
+                    (match_operand:DI 3 "register_operand" "r,r")
                     (match_operand 4 "" "")
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
@@ -4477,17 +4474,16 @@
   [(set_attr "type" "load")
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
-     (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")
+     (const_string "lsu_auxw_x")])
+   (set_attr "length" "4, 8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadcq"
-  [(set (match_operand:TI 0 "register_operand" "=r,r,r")
-        (unspec:TI [(match_operand:TI 1 "register_operand" "0,0,0")
-                    (match_operand:TI 2 "memsimple_operand" "c,d,e")
-                    (match_operand:DI 3 "register_operand" "r,r,r")
+  [(set (match_operand:TI 0 "register_operand" "=r,r")
+        (unspec:TI [(match_operand:TI 1 "register_operand" "0,0")
+                    (match_operand:TI 2 "memsimple_operand" "c,d")
+                    (match_operand:DI 3 "register_operand" "r,r")
                     (match_operand 4 "" "")
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
@@ -4495,17 +4491,16 @@
   [(set_attr "type" "load")
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
-     (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")
+     (const_string "lsu_auxw_x")])
+   (set_attr "length" "4, 8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadchf"
-  [(set (match_operand:HF 0 "register_operand" "=r,r,r")
-        (unspec:HF [(match_operand:HF 1 "register_operand" "0,0,0")
-                    (match_operand:HF 2 "memsimple_operand" "c,d,e")
-                    (match_operand:DI 3 "register_operand" "r,r,r")
+  [(set (match_operand:HF 0 "register_operand" "=r,r")
+        (unspec:HF [(match_operand:HF 1 "register_operand" "0,0")
+                    (match_operand:HF 2 "memsimple_operand" "c,d")
+                    (match_operand:DI 3 "register_operand" "r,r")
                     (match_operand 4 "" "")
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
@@ -4513,17 +4508,16 @@
   [(set_attr "type" "load")
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
-     (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")
+     (const_string "lsu_auxw_x")])
+   (set_attr "length" "4, 8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadcwf"
-  [(set (match_operand:SF 0 "register_operand" "=r,r,r")
-        (unspec:SF [(match_operand:SF 1 "register_operand" "0,0,0")
-                    (match_operand:SF 2 "memsimple_operand" "c,d,e")
-                    (match_operand:DI 3 "register_operand" "r,r,r")
+  [(set (match_operand:SF 0 "register_operand" "=r,r")
+        (unspec:SF [(match_operand:SF 1 "register_operand" "0,0")
+                    (match_operand:SF 2 "memsimple_operand" "c,d")
+                    (match_operand:DI 3 "register_operand" "r,r")
                     (match_operand 4 "" "")
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
@@ -4531,17 +4525,16 @@
   [(set_attr "type" "load")
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
-     (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")
+     (const_string "lsu_auxw_x")])
+   (set_attr "length" "4, 8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadcdf"
-  [(set (match_operand:DF 0 "register_operand" "=r,r,r")
-        (unspec:DF [(match_operand:DF 1 "register_operand" "0,0,0")
-                    (match_operand:DF 2 "memsimple_operand" "c,d,e")
-                    (match_operand:DI 3 "register_operand" "r,r,r")
+  [(set (match_operand:DF 0 "register_operand" "=r,r")
+        (unspec:DF [(match_operand:DF 1 "register_operand" "0,0")
+                    (match_operand:DF 2 "memsimple_operand" "c,d")
+                    (match_operand:DI 3 "register_operand" "r,r")
                     (match_operand 4 "" "")
                     (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
@@ -4549,9 +4542,8 @@
   [(set_attr "type" "load")
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
-     (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")
+     (const_string "lsu_auxw_x")])
+   (set_attr "length" "4, 8")
    (set_attr "predicable" "no")]
 )
 
@@ -4586,10 +4578,10 @@
 )
 
 (define_insn "lvx_loadc128_"
-  [(set (match_operand:V128 0 "register_operand" "=r,r,r")
-        (unspec:V128 [(match_operand:V128 1 "register_operand" "0,0,0")
-                      (match_operand:V128 2 "memsimple_operand" "c,d,e")
-                      (match_operand:DI 3 "register_operand" "r,r,r")
+  [(set (match_operand:V128 0 "register_operand" "=r,r")
+        (unspec:V128 [(match_operand:V128 1 "register_operand" "0,0")
+                      (match_operand:V128 2 "memsimple_operand" "c,d")
+                      (match_operand:DI 3 "register_operand" "r,r")
                       (match_operand 4 "" "")
                       (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
@@ -4597,9 +4589,8 @@
   [(set_attr "type" "load")
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
-     (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")
+     (const_string "lsu_auxw_x")])
+   (set_attr "length" "4, 8")
    (set_attr "predicable" "no")]
 )
 
@@ -4621,10 +4612,10 @@
 )
 
 (define_insn "lvx_loadc_"
-  [(set (match_operand:V256 0 "register_operand" "=r,r,r")
-        (unspec:V256 [(match_operand:V256 1 "reg_zero_mone_operand" "0,0,0")
-                      (match_operand:V256 2 "memsimple_operand" "c,d,e")
-                      (match_operand:DI 3 "register_operand" "r,r,r")
+  [(set (match_operand:V256 0 "register_operand" "=r,r")
+        (unspec:V256 [(match_operand:V256 1 "reg_zero_mone_operand" "0,0")
+                      (match_operand:V256 2 "memsimple_operand" "c,d")
+                      (match_operand:DI 3 "register_operand" "r,r")
                       (match_operand 4 "" "")
                       (match_operand 5 "" "")] UNSPEC_LOADC))]
   ""
@@ -4632,16 +4623,15 @@
   [(set_attr "type" "load")
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
-     (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")
+     (const_string "lsu_auxw_x")])
+   (set_attr "length" "4, 8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_loadc__"
-  [(set (match_operand:V256 0 "register_operand" "=r,r,r")
-        (unspec:V256 [(match_operand:V256 1 "memsimple_operand" "c,d,e")
-                      (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:V256 0 "register_operand" "=r,r")
+        (unspec:V256 [(match_operand:V256 1 "memsimple_operand" "c,d")
+                      (match_operand:DI 2 "register_operand" "r,r")
                       (match_operand 3 "" "")
                       (match_operand 4 "" "")] UNSPEC_LOADC))]
   ""
@@ -4649,9 +4639,8 @@
   [(set_attr "type" "load")
    (set_attr_alternative "issue"
     [(const_string "lsu_auxw")
-     (const_string "lsu_auxw_x")
-     (const_string "lsu_auxw_x2")])
-   (set_attr "length" "4, 8, 12")
+     (const_string "lsu_auxw_x")])
+   (set_attr "length" "4, 8")
    (set_attr "predicable" "no")]
 )
 
@@ -4820,164 +4809,164 @@
 ;; LVX_STOREC*
 
 (define_insn "lvx_storecb"
-  [(set (match_operand:QI 1 "memsimple_operand"  "=c,d,e")
-        (unspec:QI [(match_operand:DI 0 "register_operand" "r,r,r")
-                    (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:QI 1 "memsimple_operand"  "=c,d")
+        (unspec:QI [(match_operand:DI 0 "register_operand" "r,r")
+                    (match_operand:DI 2 "register_operand" "r,r")
                     (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sb %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 (define_insn "*lvx_storecb"
-  [(set (match_operand:QI 1 "memsimple_operand"  "=c,d,e")
-        (unspec:QI [(ANY_EXTEND:DI (match_operand:QI 0 "register_operand" "r,r,r"))
-                    (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:QI 1 "memsimple_operand"  "=c,d")
+        (unspec:QI [(ANY_EXTEND:DI (match_operand:QI 0 "register_operand" "r,r"))
+                    (match_operand:DI 2 "register_operand" "r,r")
                     (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sb %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storech"
-  [(set (match_operand:HI 1 "memsimple_operand"  "=c,d,e")
-        (unspec:HI [(match_operand:DI 0 "register_operand" "r,r,r")
-                    (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:HI 1 "memsimple_operand"  "=c,d")
+        (unspec:HI [(match_operand:DI 0 "register_operand" "r,r")
+                    (match_operand:DI 2 "register_operand" "r,r")
                     (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sh %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 (define_insn "*lvx_storech"
-  [(set (match_operand:HI 1 "memsimple_operand"  "=c,d,e")
-        (unspec:HI [(ANY_EXTEND:DI (match_operand:HI 0 "register_operand" "r,r,r"))
-                    (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:HI 1 "memsimple_operand"  "=c,d")
+        (unspec:HI [(ANY_EXTEND:DI (match_operand:HI 0 "register_operand" "r,r"))
+                    (match_operand:DI 2 "register_operand" "r,r")
                     (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sh %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storecw"
-  [(set (match_operand:SI 1 "memsimple_operand"  "=c,d,e")
-        (unspec:SI [(match_operand:DI 0 "register_operand" "r,r,r")
-                    (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:SI 1 "memsimple_operand"  "=c,d")
+        (unspec:SI [(match_operand:DI 0 "register_operand" "r,r")
+                    (match_operand:DI 2 "register_operand" "r,r")
                     (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sw %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 (define_insn "*lvx_storecw"
-  [(set (match_operand:SI 1 "memsimple_operand"  "=c,d,e")
-        (unspec:SI [(ANY_EXTEND:DI (match_operand:SI 0 "register_operand" "r,r,r"))
-                    (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:SI 1 "memsimple_operand"  "=c,d")
+        (unspec:SI [(ANY_EXTEND:DI (match_operand:SI 0 "register_operand" "r,r"))
+                    (match_operand:DI 2 "register_operand" "r,r")
                     (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sw %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storecd"
-  [(set (match_operand:DI 1 "memsimple_operand"  "=c,d,e")
-        (unspec:DI [(match_operand:DI 0 "register_operand" "r,r,r")
-                    (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:DI 1 "memsimple_operand"  "=c,d")
+        (unspec:DI [(match_operand:DI 0 "register_operand" "r,r")
+                    (match_operand:DI 2 "register_operand" "r,r")
                     (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sd %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storecq"
-  [(set (match_operand:TI 1 "memsimple_operand"  "=c,d,e")
-        (unspec:TI [(match_operand:TI 0 "register_operand" "r,r,r")
-                    (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:TI 1 "memsimple_operand"  "=c,d")
+        (unspec:TI [(match_operand:TI 0 "register_operand" "r,r")
+                    (match_operand:DI 2 "register_operand" "r,r")
                     (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
  "guard%3%X1 %2? sq %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storechf"
-  [(set (match_operand:HF 1 "memsimple_operand"  "=c,d,e")
-        (unspec:HF [(match_operand:HF 0 "register_operand" "r,r,r")
-                    (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:HF 1 "memsimple_operand"  "=c,d")
+        (unspec:HF [(match_operand:HF 0 "register_operand" "r,r")
+                    (match_operand:DI 2 "register_operand" "r,r")
                     (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sh %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storecwf"
-  [(set (match_operand:SF 1 "memsimple_operand"  "=c,d,e")
-        (unspec:SF [(match_operand:SF 0 "register_operand" "r,r,r")
-                    (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:SF 1 "memsimple_operand"  "=c,d")
+        (unspec:SF [(match_operand:SF 0 "register_operand" "r,r")
+                    (match_operand:DI 2 "register_operand" "r,r")
                     (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sw %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storecdf"
-  [(set (match_operand:DF 1 "memsimple_operand"  "=c,d,e")
-        (unspec:DF [(match_operand:DF 0 "register_operand" "r,r,r")
-                    (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:DF 1 "memsimple_operand"  "=c,d")
+        (unspec:DF [(match_operand:DF 0 "register_operand" "r,r")
+                    (match_operand:DI 2 "register_operand" "r,r")
                     (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sd %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 
@@ -5015,32 +5004,32 @@
 )
 
 (define_insn "lvx_storec128_"
-  [(set (match_operand:V128 1 "memsimple_operand"  "=c,d,e")
-        (unspec:V128 [(match_operand:V128 0 "register_operand" "r,r,r")
-                      (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:V128 1 "memsimple_operand"  "=c,d")
+        (unspec:V128 [(match_operand:V128 0 "register_operand" "r,r")
+                      (match_operand:DI 2 "register_operand" "r,r")
                       (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? sq %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 
 (define_insn "lvx_storec256"
-  [(set (match_operand:V256 1 "memsimple_operand"  "=c,d,e")
-        (unspec:V256 [(match_operand:V256 0 "register_operand" "r,r,r")
-                      (match_operand:DI 2 "register_operand" "r,r,r")
+  [(set (match_operand:V256 1 "memsimple_operand"  "=c,d")
+        (unspec:V256 [(match_operand:V256 0 "register_operand" "r,r")
+                      (match_operand:DI 2 "register_operand" "r,r")
                       (match_operand 3 "" "")] UNSPEC_STOREC))
    (use (match_operand:SI 4 "nonmemory_operand" ""))
    (clobber (match_dup 1))]
   ""
   "guard%3%X1 %2? so %1 = %0"
-  [(set_attr "type" "store, store, store")
-   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x, lsu_memw_auxr_x2")
-   (set_attr "length"            "4,               8,              12")
+  [(set_attr "type" "store, store")
+   (set_attr "issue" "lsu_memw_auxr, lsu_memw_auxr_x")
+   (set_attr "length"            "4,               8")
    (set_attr "predicable" "no")]
 )
 
