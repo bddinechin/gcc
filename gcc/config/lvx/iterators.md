@@ -1380,8 +1380,9 @@
 ])
 
 ;; The 512-bit byte mode alone: V16QI and V32QI reach the general V128J and
-;; V256J patterns now, and HAVE_LVX_SELECT_* is 1 at every width, so the
-;; half-word synthesis these carried was already unreachable.
+;; V256J patterns now, and the half-word synthesis these carried was
+;; unreachable -- it was guarded by !HAVE_LVX_SELECT_*, a macro that was 1 at
+;; every width, and both the branch and the macro are gone.
 (define_mode_iterator VYQI [
   V64QI
 ])

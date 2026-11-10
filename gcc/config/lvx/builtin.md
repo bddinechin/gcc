@@ -802,373 +802,24 @@
 )
 
 
-;; SXE*, ZXE*, QXE*: select the even lanes and extend.  There is no WIDENE*
-;; instruction -- the lvx_widene<hwidenx> builtin entry point that used to
-;; stand here synthesised it, and Builtin.yml dropped widene*/wideno* in
-;; 2026-10.  These insns stay: the madd/mulx expanders below still emit them.
-
-;; EXTLZ* is exactly what these do: select the even or odd lanes and
-;; zero-extend them to the next width.  They used to be hand-built from a
-;; repeating 128-bit mask, which the immediate splat no longer produces for a
-;; quadword operand -- ANDQ sign-extends its immediate, as a 128-bit scalar
-;; should -- and the odd-lane-in-place forms put the lane back with a shift.
-(define_insn "lvx_zxebho"
-  [(set (match_operand:V8HI 0 "register_operand" "=r")
-        (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  "LVX_2"
-  "extlzbho %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "lvx_zxebhx"
-  [(set (match_operand:V16HI 0 "register_operand" "=r")
-        (unspec:V16HI [(match_operand:V32QI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  "LVX_2"
-  {
-    return "extlzbho %L0 = %L1\n\textlzbho %M0 = %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn_and_split "lvx_zxebhv"
-  [(set (match_operand:V32HI 0 "register_operand" "=r")
-        (unspec:V32HI [(match_operand:V64QI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:V16HI (match_dup 0) 0)
-        (unspec:V16HI [(subreg:V32QI (match_dup 1) 0)] UNSPEC_ZXE))
-   (set (subreg:V16HI (match_dup 0) 32)
-        (unspec:V16HI [(subreg:V32QI (match_dup 1) 32)] UNSPEC_ZXE))]
-  ""
-)
-
-(define_insn "lvx_zxehwq"
-  [(set (match_operand:V4SI 0 "register_operand" "=r")
-        (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  "LVX_2"
-  "extlzhwq %0 = %1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "lvx_zxehwo"
-  [(set (match_operand:V8SI 0 "register_operand" "=r")
-        (unspec:V8SI [(match_operand:V16HI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  "LVX_2"
-  {
-    return "extlzhwq %L0 = %L1\n\textlzhwq %M0 = %M1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn "lvx_zxewdp"
-  [(set (match_operand:V2DI 0 "register_operand" "=r")
-        (unspec:V2DI [(match_operand:V4SI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  ""
-  "zxwd %x0 = %x1\n\tzxwd %y0 = %y1"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny2")
-   (set_attr "length"         "8")]
-)
-
-(define_insn "lvx_zxewdq"
-  [(set (match_operand:V4DI 0 "register_operand" "=r")
-        (unspec:V4DI [(match_operand:V8SI 1 "register_operand" "r")] UNSPEC_ZXE))]
-  "LVX_2"
-  {
-    return "zxwd %x0 = %x1\n\tzxwd %y0 = %y1\n\t"
-           "zxwd %z0 = %z1\n\tzxwd %t0 = %t1";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "tiny4")
-   (set_attr "length"        "16")]
-)
-
-(define_insn "lvx_qxebho"
-  [(set (match_operand:V8HI 0 "register_operand" "=r")
-        (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_QXE))]
-  "LVX_2"
-  "sllho %0 = %1, 8"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn_and_split "lvx_qxebhx"
-  [(set (match_operand:V16HI 0 "register_operand" "=r")
-        (unspec:V16HI [(match_operand:V32QI 1 "register_operand" "r")] UNSPEC_QXE))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:V8HI (match_dup 0) 0)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 0)] UNSPEC_QXE))
-   (set (subreg:V8HI (match_dup 0) 16)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 16)] UNSPEC_QXE))]
-  ""
-)
-
-(define_insn_and_split "lvx_qxebhv"
-  [(set (match_operand:V32HI 0 "register_operand" "=r")
-        (unspec:V32HI [(match_operand:V64QI 1 "register_operand" "r")] UNSPEC_QXE))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:V8HI (match_dup 0) 0)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 0)] UNSPEC_QXE))
-   (set (subreg:V8HI (match_dup 0) 16)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 16)] UNSPEC_QXE))
-   (set (subreg:V8HI (match_dup 0) 32)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 32)] UNSPEC_QXE))
-   (set (subreg:V8HI (match_dup 0) 48)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 48)] UNSPEC_QXE))]
-  ""
-)
-
-(define_insn "lvx_qxehwq"
-  [(set (match_operand:V4SI 0 "register_operand" "=r")
-        (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_QXE))]
-  "LVX_2"
-  "sllwq %0 = %1, 16"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn_and_split "lvx_qxehwo"
-  [(set (match_operand:V8SI 0 "register_operand" "=r")
-        (unspec:V8SI [(match_operand:V16HI 1 "register_operand" "r")] UNSPEC_QXE))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:V4SI (match_dup 0) 0)
-        (unspec:V4SI [(subreg:V8HI (match_dup 1) 0)] UNSPEC_QXE))
-   (set (subreg:V4SI (match_dup 0) 16)
-        (unspec:V4SI [(subreg:V8HI (match_dup 1) 16)] UNSPEC_QXE))]
-  ""
-)
-
-(define_insn "lvx_qxewdp"
-  [(set (match_operand:V2DI 0 "register_operand" "=r")
-        (unspec:V2DI [(match_operand:V4SI 1 "register_operand" "r")] UNSPEC_QXE))]
-  "LVX_2"
-  "slldp %0 = %1, 32"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "lvx_qxewdq"
-  [(set (match_operand:V4DI 0 "register_operand" "=r")
-        (unspec:V4DI [(match_operand:V8SI 1 "register_operand" "r")] UNSPEC_QXE))]
-  "LVX_2"
-  {
-    return "slldp %L0 = %L1, 32\n\tslldp %M0 = %M1, 32";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-
-;; SXO*, ZXO*, QXO*: select the odd lanes and extend.  There is no WIDENO*
-;; instruction -- the lvx_wideno<hwidenx> builtin entry point that used to
-;; stand here synthesised it, and Builtin.yml dropped widene*/wideno* in
-;; 2026-10.  These insns stay: the madd/mulx expanders below still emit them.
-
-(define_insn "lvx_zxobho"
-  [(set (match_operand:V8HI 0 "register_operand" "=r")
-        (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_ZXO))]
-  "LVX_2"
-  "srlho %0 = %1, 8"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn_and_split "lvx_zxobhx"
-  [(set (match_operand:V16HI 0 "register_operand" "=r")
-        (unspec:V16HI [(match_operand:V32QI 1 "register_operand" "r")] UNSPEC_ZXO))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:V8HI (match_dup 0) 0)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 0)] UNSPEC_ZXO))
-   (set (subreg:V8HI (match_dup 0) 16)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 16)] UNSPEC_ZXO))]
-  ""
-)
-
-(define_insn_and_split "lvx_zxobhv"
-  [(set (match_operand:V32HI 0 "register_operand" "=r")
-        (unspec:V32HI [(match_operand:V64QI 1 "register_operand" "r")] UNSPEC_ZXO))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:V8HI (match_dup 0) 0)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 0)] UNSPEC_ZXO))
-   (set (subreg:V8HI (match_dup 0) 16)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 16)] UNSPEC_ZXO))
-   (set (subreg:V8HI (match_dup 0) 32)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 32)] UNSPEC_ZXO))
-   (set (subreg:V8HI (match_dup 0) 48)
-        (unspec:V8HI [(subreg:V16QI (match_dup 1) 48)] UNSPEC_ZXO))]
-  ""
-)
-
-(define_insn "lvx_zxohwq"
-  [(set (match_operand:V4SI 0 "register_operand" "=r")
-        (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_ZXO))]
-  "LVX_2"
-  "srlwq %0 = %1, 16"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn_and_split "lvx_zxohwo"
-  [(set (match_operand:V8SI 0 "register_operand" "=r")
-        (unspec:V8SI [(match_operand:V16HI 1 "register_operand" "r")] UNSPEC_ZXO))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:V4SI (match_dup 0) 0)
-        (unspec:V4SI [(subreg:V8HI (match_dup 1) 0)] UNSPEC_ZXO))
-   (set (subreg:V4SI (match_dup 0) 16)
-        (unspec:V4SI [(subreg:V8HI (match_dup 1) 16)] UNSPEC_ZXO))]
-  ""
-)
-
-(define_insn "lvx_zxowdp"
-  [(set (match_operand:V2DI 0 "register_operand" "=r")
-        (unspec:V2DI [(match_operand:V4SI 1 "register_operand" "r")] UNSPEC_ZXO))]
-  "LVX_2"
-  "srldp %0 = %1, 32"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "lvx_zxowdq"
-  [(set (match_operand:V4DI 0 "register_operand" "=r")
-        (unspec:V4DI [(match_operand:V8SI 1 "register_operand" "r")] UNSPEC_ZXO))]
-  "LVX_2"
-  {
-    return "srldp %L0 = %L1, 32\n\tsrldp %M0 = %M1, 32";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-
-;; THE MASK IN A REGISTER, NOT AN IMMEDIATE.  The `.@' modifier is retired from
-;; the ISA: it took a 32-bit immediate and splatted it over the 64- or 128-bit
-;; operand by 32-bit slices, and splatting is now a property of a SIMD
-;; instruction's LaneSize.  ANDQ is bitwise and has no lane size, so it can no
-;; longer be handed a repeating mask at all -- which is why these follow
-;; `lvx_qxowdp' below, which already materialised its mask for the same reason
-;; (0xFFFFFFFF00000000 was never one repeating word).  One MAKE plus the
-;; register form, where it used to be one instruction.
-(define_expand "lvx_qxobho"
-  [(set (match_operand:V8HI 0 "register_operand" "")
-        (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "")] UNSPEC_QXO))]
-  "LVX_2"
-  {
-    rtx mask = gen_reg_rtx (DImode);
-    emit_insn (gen_rtx_SET (mask, GEN_INT (0xFF00FF00FF00FF00)));
-    emit_insn (gen_rtx_SET (operands[0],
-                            gen_rtx_UNSPEC (V8HImode, gen_rtvec (2, operands[1], mask), UNSPEC_ANDD)));
-    DONE;
-  }
-)
-
-(define_expand "lvx_qxobhx"
-  [(set (match_operand:V16HI 0 "register_operand" "")
-        (unspec:V16HI [(match_operand:V32QI 1 "register_operand" "")] UNSPEC_QXO))]
-  "LVX_2"
-  {
-    rtx mask = gen_reg_rtx (DImode);
-    emit_insn (gen_rtx_SET (mask, GEN_INT (0xFF00FF00FF00FF00)));
-    emit_insn (gen_rtx_SET (operands[0],
-                            gen_rtx_UNSPEC (V16HImode, gen_rtvec (2, operands[1], mask), UNSPEC_ANDD)));
-    DONE;
-  }
-)
-
-(define_expand "lvx_qxobhv"
-  [(set (match_operand:V32HI 0 "register_operand" "")
-        (unspec:V32HI [(match_operand:V64QI 1 "register_operand" "")] UNSPEC_QXO))]
-  ""
-  {
-    /* AN EXPAND, NOT A POST-RELOAD SPLIT.  Each half now materialises a mask
-       register, and `reload_completed' is too late to create one.  */
-    for (int h = 0; h < 2; h++)
-      emit_insn (gen_lvx_qxobhx (gen_rtx_SUBREG (V16HImode, operands[0], h * 32),
-                                 gen_rtx_SUBREG (V32QImode, operands[1], h * 32)));
-    DONE;
-  }
-)
-
-(define_expand "lvx_qxohwq"
-  [(set (match_operand:V4SI 0 "register_operand" "")
-        (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "")] UNSPEC_QXO))]
-  "LVX_2"
-  {
-    rtx mask = gen_reg_rtx (DImode);
-    emit_insn (gen_rtx_SET (mask, GEN_INT (0xFFFF0000FFFF0000)));
-    emit_insn (gen_rtx_SET (operands[0],
-                            gen_rtx_UNSPEC (V4SImode, gen_rtvec (2, operands[1], mask), UNSPEC_ANDD)));
-    DONE;
-  }
-)
-
-(define_expand "lvx_qxohwo"
-  [(set (match_operand:V8SI 0 "register_operand" "")
-        (unspec:V8SI [(match_operand:V16HI 1 "register_operand" "")] UNSPEC_QXO))]
-  "LVX_2"
-  {
-    rtx mask = gen_reg_rtx (DImode);
-    emit_insn (gen_rtx_SET (mask, GEN_INT (0xFFFF0000FFFF0000)));
-    emit_insn (gen_rtx_SET (operands[0],
-                            gen_rtx_UNSPEC (V8SImode, gen_rtvec (2, operands[1], mask), UNSPEC_ANDD)));
-    DONE;
-  }
-)
-
-(define_expand "lvx_qxowdp"
-  [(set (match_operand:V2DI 0 "register_operand" "")
-        (unspec:V2DI [(match_operand:V4SI 1 "register_operand" "")] UNSPEC_QXO))]
-  ""
-  {
-    rtx mask = gen_reg_rtx (DImode);
-    emit_insn (gen_rtx_SET (mask, GEN_INT (0xFFFFFFFF00000000)));
-    emit_insn (gen_rtx_SET (operands[0],
-                            gen_rtx_UNSPEC (V2DImode, gen_rtvec (2, operands[1], mask), UNSPEC_ANDD)));
-    DONE;
-  }
-)
-
-(define_expand "lvx_qxowdq"
-  [(set (match_operand:V4DI 0 "register_operand" "")
-        (unspec:V4DI [(match_operand:V8SI 1 "register_operand" "")] UNSPEC_QXO))]
-  ""
-  {
-    rtx mask = gen_reg_rtx (DImode);
-    emit_insn (gen_rtx_SET (mask, GEN_INT (0xFFFFFFFF00000000)));
-    emit_insn (gen_rtx_SET (operands[0],
-                            gen_rtx_UNSPEC (V4DImode, gen_rtvec (2, operands[1], mask), UNSPEC_ANDD)));
-    DONE;
-  }
-)
-
+;; THE ODD/EVEN EXTEND FAMILY IS GONE.  lvx_{zx,qx}{o,e}* -- 28 patterns --
+;; selected the odd or even lanes and extended them.  Their only caller was
+;; the !HAVE_LVX_SELECT_* branch of lvx_select<suffix>, which synthesised a
+;; half-width SELECT when the macro was 0; the macro was 1 at every width, so
+;; the branch was unreachable and went, and these went with it.
+;;
+;; They were a closed island by then: no entry in lvx-builtins.def named one,
+;; nothing in the compiler built UNSPEC_{ZX,QX}{O,E}, and the only references
+;; left pointed INTO the island (lvx_qxobhv -> lvx_qxobhx).  The heading here
+;; used to claim "the madd/mulx expanders below still emit them"; they do not,
+;; and did not -- checked name by name.
+;;
+;; The WIDENING family it sat beside STAYS and is unrelated: lvx_sx<widenx>,
+;; lvx_zx<widenx> and lvx_qx<widenx> are reached from lvx_widen<widenx> (six
+;; builtins, dispatching on a modifier) and from the extend<mode><wide>2 and
+;; floatv8hiv8sf2 expanders.  The trailing letter there is a WIDTH, not a
+;; parity: lvx_sxhwo is half-to-word at 256 bits and live, lvx_qxohwo was
+;; odd-lane and is not.
 
 ;; SHIFT*, CAT*, LOW*, HIGH*
 
@@ -1422,7 +1073,7 @@
                       (match_operand:V256 2 "register_operand" "0")
                       (match_operand:DI 3 "register_operand" "r")
                       (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "LVX_2 && (HAVE_LVX_SELECT_<MODE>)"
+  "LVX_2"
   {
     return "cmoved%4 %3? %x0 = %x1\n\tcmoved%4 %3? %y0 = %y1\n\t"
            "cmoved%4 %3? %z0 = %z1\n\tcmoved%4 %3? %t0 = %t1";
@@ -1449,9 +1100,9 @@
                       (match_operand:V512 2 "register_operand" "0")
                       (match_operand:DI 3 "register_operand" "r")
                       (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "HAVE_LVX_SELECT_<HALF>"
+  ""
   "#"
-  "HAVE_LVX_SELECT_<HALF> && reload_completed"
+  "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (unspec:<HALF> [(subreg:<HALF> (match_dup 1) 0)
                         (subreg:<HALF> (match_dup 2) 0)
@@ -1476,43 +1127,13 @@
    (match_operand 4 "" "")]
   ""
   {
-    if (!HAVE_LVX_SELECT_<MODE>)
-      {
-        const char *modifier = XSTR (operands[4], 0);
-        bool oddeven = !strcmp(modifier, ".odd") || !strcmp(modifier, ".even");
-        rtx op3o = gen_reg_rtx (<HWIDE>mode), op3e = gen_reg_rtx (<HWIDE>mode);
-        if (oddeven)
-          {
-            emit_insn (gen_lvx_zxo<hwidenx> (op3o, operands[3]));
-            emit_insn (gen_lvx_zxe<hwidenx> (op3e, operands[3]));
-          }
-        else
-          {
-            emit_insn (gen_lvx_qxo<hwidenx> (op3o, operands[3]));
-            emit_insn (gen_lvx_qxe<hwidenx> (op3e, operands[3]));
-          }
-        rtx op2 = simplify_gen_subreg (<HWIDE>mode, operands[2], <MODE>mode, 0);
-        rtx op1 = simplify_gen_subreg (<HWIDE>mode, operands[1], <MODE>mode, 0);
-        rtx op0o = gen_reg_rtx (<HWIDE>mode), op0e = gen_reg_rtx (<HWIDE>mode);
-        rtvec veco = gen_rtvec (4, op1, op2, op3o, operands[4]);
-        rtvec vece = gen_rtvec (4, op1, op2, op3e, operands[4]);
-        rtx selecto = gen_rtx_UNSPEC (<HWIDE>mode, veco, UNSPEC_SELECT);
-        rtx selecte = gen_rtx_UNSPEC (<HWIDE>mode, vece, UNSPEC_SELECT);
-        emit_insn (gen_rtx_SET (op0o, selecto));
-        emit_insn (gen_rtx_SET (op0e, selecte));
-        rtx opto = gen_reg_rtx (<MODE>mode), opte = gen_reg_rtx (<MODE>mode);
-        emit_insn (gen_rtx_SET (opto, gen_rtx_SUBREG (<MODE>mode, op0o, 0)));
-        emit_insn (gen_lvx_qxo<hwidenx> (op0o, opto));
-        emit_insn (gen_rtx_SET (opte, gen_rtx_SUBREG (<MODE>mode, op0e, 0)));
-        emit_insn (gen_lvx_zxe<hwidenx> (op0e, opte));
-        emit_insn (gen_lvx_oroe<suffix> (operands[0], op0o, op0e));
-      }
-    else
-      {
-        rtvec vec = gen_rtvec (4, operands[1], operands[2], operands[3], operands[4]);
-        rtx select = gen_rtx_UNSPEC (<MODE>mode, vec, UNSPEC_SELECT);
-        emit_insn (gen_rtx_SET (operands[0], select));
-      }
+    /* HAVE_LVX_SELECT_* was 1 at every width, so the half-word synthesis
+       this used to carry when it was 0 -- two ZX/QX odd-even expansions of
+       the mask, two half-width SELECTs and an OROE to recombine -- was
+       unreachable.  It went with the macro.  */
+    rtvec vec = gen_rtvec (4, operands[1], operands[2], operands[3], operands[4]);
+    rtx select = gen_rtx_UNSPEC (<MODE>mode, vec, UNSPEC_SELECT);
+    emit_insn (gen_rtx_SET (operands[0], select));
     DONE;
   }
 )
@@ -1522,9 +1143,9 @@
                        (match_operand:V64QI 2 "register_operand" "0")
                        (match_operand:V64QI 3 "register_operand" "r")
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "HAVE_LVX_SELECT_V32QI"
+  ""
   "#"
-  "HAVE_LVX_SELECT_V32QI && reload_completed"
+  "reload_completed"
   [(set (subreg:V32QI (match_dup 0) 0)
         (unspec:V32QI [(subreg:V32QI (match_dup 1) 0)
                         (subreg:V32QI (match_dup 2) 0)
@@ -1568,7 +1189,7 @@
                        (match_operand:V256J 2 "register_operand" "0")
                        (match_operand:V256J 3 "register_operand" "r")
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "LVX_2 && (HAVE_LVX_SELECT_<MODE>)"
+  "LVX_2"
   {
     return "lanes<hsuffix>%4 %L3? %L0 = %L1\n\t"
            "lanes<hsuffix>%4 %M3? %M0 = %M1";
@@ -1595,9 +1216,9 @@
                        (match_operand:V512J 2 "register_operand" "0")
                        (match_operand:V512J 3 "register_operand" "r")
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "HAVE_LVX_SELECT_<HALF>"
+  ""
   "#"
-  "HAVE_LVX_SELECT_<HALF> && reload_completed"
+  "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (unspec:<HALF> [(subreg:<HALF> (match_dup 1) 0)
                         (subreg:<HALF> (match_dup 2) 0)
@@ -1670,7 +1291,7 @@
                        (match_operand:V256F 2 "register_operand" "0")
                        (match_operand:<MASK> 3 "register_operand" "r")
                        (match_operand 4 "" "")] UNSPEC_SELECT))]
-  "LVX_2 && (HAVE_LVX_SELECT_<MODE>)"
+  "LVX_2"
   {
     return "lanes<hsuffix>%4 %L3? %L0 = %L1\n\t"
            "lanes<hsuffix>%4 %M3? %M0 = %M1";

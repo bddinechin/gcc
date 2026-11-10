@@ -1344,46 +1344,8 @@
   ""
 )
 
-(define_insn "lvx_oroebx"
-  [(set (match_operand:V16QI 0 "register_operand" "=r")
-        (unspec:V16QI [(match_operand:V8HI 1 "register_operand" "r")
-                       (match_operand:V8HI 2 "register_operand" "r")] UNSPEC_OROE))]
-  "LVX_2"
-  "iorq %0 = %1, %2"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite")
-   (set_attr "length" "4")]
-)
-
-(define_insn "lvx_oroebv"
-  [(set (match_operand:V32QI 0 "register_operand" "=r")
-        (unspec:V32QI [(match_operand:V16HI 1 "register_operand" "r")
-                       (match_operand:V16HI 2 "register_operand" "r")] UNSPEC_OROE))]
-  "LVX_2"
-  {
-    return "iorq %L0 = %L1, %L2\n\tiorq %M0 = %M1, %M2";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2")
-   (set_attr "length" "8")]
-)
-
-(define_insn_and_split "lvx_oroebt"
-  [(set (match_operand:V64QI 0 "register_operand" "=r")
-        (unspec:V64QI [(match_operand:V32HI 1 "register_operand" "r")
-                       (match_operand:V32HI 2 "register_operand" "r")] UNSPEC_OROE))]
-  "LVX_2"
-  "#"
-  "reload_completed"
-  [(set (subreg:V32QI (match_dup 0) 0)
-        (unspec:V32QI [(subreg:V16HI (match_dup 1) 0)
-                       (subreg:V16HI (match_dup 2) 0)] UNSPEC_OROE))
-   (set (subreg:V32QI (match_dup 0) 32)
-        (unspec:V32QI [(subreg:V16HI (match_dup 1) 32)
-                       (subreg:V16HI (match_dup 2) 32)] UNSPEC_OROE))]
-  ""
-)
-
+;; lvx_oroe* is gone with them: it recombined the odd and even halves that
+;; the !HAVE_LVX_SELECT_* branch produced, and nothing else ever called it.
 
 ;; neg<m>2 ssneg<m>2 abs<m>2 ssabs<m>2
 

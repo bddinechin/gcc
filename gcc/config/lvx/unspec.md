@@ -97,11 +97,6 @@
         UNSPEC_SRLD
         UNSPEC_SRAD
         UNSPEC_SRS
-        UNSPEC_ZXO
-        UNSPEC_ZXE
-        UNSPEC_QXO
-        UNSPEC_QXE
-        UNSPEC_OROE
         UNSPEC_LVX_BLEND
 
         ;; BLENDZ*: the zeroing lane select, dst = mask ? src : 0, added to the
