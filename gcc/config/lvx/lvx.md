@@ -1257,6 +1257,13 @@
    (set (match_dup 0)
         (plus:SIDI (match_dup 0)
                    (const_int -1)))
+   ;; 7tricies.215: a mapped hardware loop re-enters when the address of the
+   ;; NEXT bundle reaches its end marker, so the marker must sit immediately
+   ;; after this instruction's bundle-closing ";;" -- which only
+   ;; lvx_asm_final_postscan_insn knows where to put.  It prints it there,
+   ;; reading the number from a side table keyed by this insn's UID rather
+   ;; than from an operand, so the pattern's arity and both callers of
+   ;; gen_doloop_end_* are left alone.
    (unspec [(const_int 0)] UNSPEC_ENDLOOP)
    (clobber (match_scratch:SIDI 2 "=X,&r"))]
   ""

@@ -495,9 +495,11 @@ lvx_cms_region_start_p (basic_block bb)
 
 /* Seed insn_cycle and the HEAD/START/STOP flags for the owned blocks from the
    modes, so that NOTHING downstream needs a special case: the emission's STOP
-   path keeps its doloop_end nop, its (stalled) note and its
-   jump_cycle/prev_cycle tracking, and lvx_fix_debug_for_bundles keeps the
-   non-selective path it already has.  A parallel mode-reading path in the
+   path keeps its (stalled) note and its prev_cycle tracking, and
+   lvx_fix_debug_for_bundles keeps the non-selective path it already has.
+   (The doloop_end nop that used to be listed here is gone -- §7tricies.215,
+   a KVX rule about jumps in a hardware loop's last bundle that LVX does not
+   have.)  A parallel mode-reading path in the
    emission would have to duplicate all of that and could disagree with it.
 
    THE CYCLE IS RELATIVE TO ITS REGION, counting from zero at the region's
@@ -1144,6 +1146,10 @@ bool lvx_legitimate_pic_symbolic_ref_p (rtx op);
 static bool lvx_legitimate_constant_p (enum machine_mode, rtx x);
 static bool lvx_shaker_enabled = false;
 static char lvx_final_end_bundle[128];
+/* §7tricies.216: -mcms-probe-bundles' report, flushed with the above by
+   ASM_OUTPUT_OPCODE so it lands at the start of a line like any comment.
+   Kept separate because that buffer carries a ";;" the assembler must see.  */
+static char lvx_final_probe_note[512];
 
 rtx lvx_link_reg_rtx;
 
@@ -5946,6 +5952,9 @@ lvx_hwloop_mapped_p (rtx_insn *insn)
 	  && bitmap_bit_p (lvx_hwloop_mapped_ends, INSN_UID (insn)));
 }
 
+static int lvx_loopend_marker (rtx_insn *);
+static void lvx_loopend_set_marker (rtx_insn *, int);
+
 static bool
 lvx_hwloop_optimize (hwloop_info loop)
 {
@@ -6058,55 +6067,27 @@ lvx_hwloop_optimize (hwloop_info loop)
       emit_insn (gen_rtx_SET (gen_raw_REG (DImode, REGNO (iter_reg)),
 			      gen_rtx_ZERO_EXTEND (DImode, iter_reg)));
 
-  /* BY NUMBER, NOT BY RTX.  §7tricies.203 -- see lvx_loopdo in lvx.md for why
-     the label must not appear in the pattern.  CODE_LABEL_NUMBER is what
-     final prints the label under, for a surviving CODE_LABEL and for the
-     NOTE_INSN_DELETED_LABEL that LABEL_PRESERVE_P leaves behind alike, so the
-     two names agree by construction.  */
+  /* OUR OWN END MARKER, NAMED BY NOTHING ELSE.  §7tricies.215.
+     §7tricies.203 made the LOOPDO carry a NUMBER rather than the label rtx,
+     to keep a bare CODE_LABEL out of the pattern.  That left the reference
+     off the RTL while the DEFINITION stayed an RTL label -- and a label has a
+     position GCC maintains, which it duly stopped doing: the second
+     reorg_loops merged the block the label headed, LABEL_PRESERVE_P turned it
+     into a NOTE_INSN_DELETED_LABEL, and the note drifted past the loop's exit
+     branch (§7tricies.214).
+     So take the definition off the RTL too.  A fresh number nothing else
+     names, printed by the loop's own TERMINATOR after it closes the body's
+     last bundle -- which is where the hardware looks, and which only that
+     instruction knows.  `loop->end_label' is left to GCC to keep or discard
+     as it likes; we no longer depend on it.  */
+  int endnum = CODE_LABEL_NUMBER (gen_label_rtx ());
   rtx_insn *loopdo
-    = emit_insn (gen_lvx_loopdo (iter_reg,
-				 GEN_INT (CODE_LABEL_NUMBER (loop->end_label))));
-  /* THE LABEL HAS TO BE KEPT ALIVE BY HAND.  §7tricies.201.  lvx_loopdo is a
-     plain define_insn -- an unspec_volatile -- not a jump, and a label
-     referenced only from a non-jump insn survives only through a
-     REG_LABEL_OPERAND note and its use count.  Without them nothing stops
-     cleanup from deleting the label while the LOOPDO still names it, and the
-     result is a link failure rather than a diagnostic:
-     "undefined reference to .L12".
-
-     LATENT IN THE MAPPING ALL ALONG, and it only bit once the pipeliner
-     removed the label's other users: `block_label (loop->successor)' usually
-     names a block some branch also targets, so the count was non-zero for
-     reasons that had nothing to do with this insn.  */
-  if (loop->end_label != NULL_RTX && LABEL_P (loop->end_label))
-    {
-      /* LABEL_PRESERVE_P, AND DELIBERATELY NOT REG_LABEL_OPERAND.
-	 §7tricies.201.
-
-	 The label has to be kept alive by hand: lvx_loopdo is a plain
-	 define_insn -- an unspec_volatile, not a jump -- and the CFG has no
-	 edge standing for "the hardware takes the back edge when the next
-	 bundle's address reaches this label", so nothing the CFG can see
-	 refers to it.  `rtl_merge_blocks' then deletes the label heading the
-	 successor block UNCONDITIONALLY, which LABEL_NUSES does not prevent,
-	 and validation/cms/unroll.c came out as `loopdo $r1, .L12' ...
-	 `# loopdo end' with .L12 nowhere in the file -- a LINK failure, not a
-	 compile one, so the census could never see it.
-
-	 LABEL_PRESERVE_P is what survives that: `delete_insn' converts a
-	 preserved label into NOTE_INSN_DELETED_LABEL instead of removing it,
-	 and that note still emits the label.
-
-	 A REG_LABEL_OPERAND note was the obvious companion and is WRONG here.
-	 The label rtx is already inside the unspec, and once it becomes a
-	 NOTE_INSN_DELETED_LABEL the note is reachable BOTH from the pattern
-	 and from the insn's own REG_NOTES, which is exactly what
-	 `verify_rtl_sharing' rejects: "invalid rtl sharing found in the insn",
-	 39 corpus files, none of them caught by the 8 gate tests or the 72
-	 validation programs.  */
-      LABEL_NUSES (loop->end_label)++;
-      LABEL_PRESERVE_P (loop->end_label) = 1;
-    }
+    = emit_insn (gen_lvx_loopdo (iter_reg, GEN_INT (endnum)));
+  /* AND NO LABEL TO KEEP ALIVE.  §7tricies.215.  This used to set
+     LABEL_PRESERVE_P and bump LABEL_NUSES on loop->end_label, because the
+     LOOPDO named it and nothing in the RTL did.  Both are gone with the
+     dependency: PRESERVE_P only kept the label's EXISTENCE -- as a note that
+     still printed -- and never its position, which was the bug.  */
   rtx_insn *seq = get_insns ();
 
   end_sequence ();
@@ -6231,11 +6212,50 @@ lvx_hwloop_optimize (hwloop_info loop)
 				 (ENTRY_BLOCK_PTR_FOR_FN (cfun)));
     }
 
+  /* AND THE TERMINATOR LEARNS THE MARKER IT HAS TO PRINT.  §7tricies.215.
+     Set here, at the one point the mapping is known to have succeeded, so an
+     unmapped doloop_end keeps 0 and prints the plain `# loopdo end' it always
+     did.  */
+  lvx_loopend_set_marker (loop->loop_end, endnum);
+
   /* TAKEN.  Recorded so a second reorg_loops does not map it again -- and
      recorded on loop_end rather than on the loop, because that insn is what
      `end_pattern_reg' is handed.  §7tricies.201.  */
   lvx_hwloop_mark_mapped (loop->loop_end);
   return true;
+}
+
+/* THE END MARKER A MAPPED LOOP'S TERMINATOR PRINTS, or 0 for one that is not
+   mapped.  §7tricies.215.
+
+   Kept in a table keyed by the terminator's UID rather than in an operand of
+   the pattern: an extra operand changes `gen_doloop_end_*''s arity, and its
+   two callers would then have to construct the match_scratch by hand.  The
+   same idiom as `lvx_hwloop_mapped_ends' beside it, and for the same span --
+   written when the loop is mapped, read when it is emitted, both within one
+   function.  Allocated fresh per function, because the default obstack is
+   released between functions and a stale pointer segfaults.  */
+
+static hash_map<int_hash<unsigned int, 0, UINT_MAX>, int> *lvx_loopend_markers;
+
+static int
+lvx_loopend_marker (rtx_insn *insn)
+{
+  int *slot;
+
+  if (insn == NULL || lvx_loopend_markers == NULL)
+    return 0;
+  slot = lvx_loopend_markers->get ((unsigned int) INSN_UID (insn));
+  return slot ? *slot : 0;
+}
+
+static void
+lvx_loopend_set_marker (rtx_insn *insn, int num)
+{
+  if (lvx_loopend_markers == NULL)
+    lvx_loopend_markers
+      = new hash_map<int_hash<unsigned int, 0, UINT_MAX>, int> (16);
+  lvx_loopend_markers->put ((unsigned int) INSN_UID (insn), num);
 }
 
 static struct hw_doloop_hooks lvx_doloop_hooks
@@ -6526,6 +6546,10 @@ lvx_init_expanders (void)
      lvx_record_packcmp.  */
   if (lvx_packcmp_map)
     lvx_packcmp_map->empty ();
+  /* §7tricies.215: the end markers are keyed by INSN_UID, so they must not
+     survive into another function's numbering.  */
+  if (lvx_loopend_markers)
+    lvx_loopend_markers->empty ();
 }
 
 /* 18.4 Defining data structures for per-function information }}}  */
@@ -10718,6 +10742,12 @@ lvx_output_guard_prefix (FILE *stream, rtx_insn *insn)
 const char *
 lvx_asm_output_opcode (FILE *stream, const char *code)
 {
+  if (lvx_final_probe_note[0])
+    {
+      fputs (lvx_final_probe_note, stream);
+      lvx_final_probe_note[0] = '\0';
+    }
+
   if (!lvx_shaker_enabled && lvx_final_end_bundle[0])
     fputs(lvx_final_end_bundle, stream);
 
@@ -10732,6 +10762,7 @@ void
 lvx_final_prescan_insn (rtx_insn *insn)
 {
   lvx_final_end_bundle[0] = '\0';
+  lvx_final_probe_note[0] = '\0';
 
   lvx_final_guarded_insn = 0;
   if (GET_CODE (PATTERN (insn)) == COND_EXEC && INSN_CODE (insn) >= 0
@@ -10781,6 +10812,30 @@ lvx_final_prescan_insn (rtx_insn *insn)
 	 absorbed the next block's four ALU insns -- "too many ALU instructions
 	 in bundle".  Scoped to owned blocks: a scheduled region is closed by
 	 TARGET_SCHED_INIT already.  */
+      /* IS A BUNDLE EVER LEFT OPEN ACROSS A BOUNDARY?  §7tricies.216.
+	 Asked before the fixup below, so it sees what the fixup would repair,
+	 and asked UNCONDITIONALLY -- the fixup is scoped to lvx_bundle_per_block
+	 and to blocks CMS owns, on the stated assumption that a scheduled
+	 region is already closed by TARGET_SCHED_INIT.  The report says which
+	 side of that scope each case falls on, so the assumption is tested
+	 rather than trusted.  */
+      if (lvx_cms_probe_bundles
+	  && lvx_final_prev_bb != NULL
+	  && lvx_final_prev_bb != BLOCK_FOR_INSN (insn)
+	  && (unsigned) prev_uid < (unsigned) lvx_sched2->max_uid
+	  && !(lvx_sched2->insn_flags[prev_uid] & LVX_SCHED2_INSN_STOP))
+	{
+	  bool covered = (lvx_bundle_per_block
+			  || (lvx_final_prev_bb->flags & BB_DISABLE_SCHEDULE) != 0);
+
+	  snprintf (lvx_final_probe_note, sizeof lvx_final_probe_note,
+		    "# lvx cms: BUNDLEOPEN insn %d (bb%d) ends its block with"
+		    " no STOP; insn %d begins bb%d -- the (end block) fixup"
+		    " %s\n\t", prev_uid, lvx_final_prev_bb->index,
+		    INSN_UID (insn), BLOCK_FOR_INSN (insn)->index,
+		    covered ? "COVERS this" : "does NOT cover this");
+	}
+
       if (lvx_final_prev_bb != NULL
 	  && lvx_final_prev_bb != BLOCK_FOR_INSN (insn)
 	  && (lvx_bundle_per_block
@@ -10845,7 +10900,6 @@ lvx_asm_final_postscan_insn (FILE *file, rtx_insn *insn,
   if (lvx_sched2->insn_cycle)
     {
       static int prev_cycle;
-      static int jump_cycle;
 
       int uid = INSN_UID (insn);
       if ((unsigned) uid >= (unsigned) lvx_sched2->max_uid
@@ -10872,19 +10926,18 @@ lvx_asm_final_postscan_insn (FILE *file, rtx_insn *insn,
 	     so a bundle left open puts the exit block's first instructions
 	     inside the loop and never lands on the end label at all; the
 	     assembler meanwhile keeps filling that bundle past what one can
-	     hold.  When the body's last bundle ends on a branch, a taken
-	     branch wins over the loop-back, so a nop bundle is appended to
-	     stand as the last one in its place.  Nothing is printed when the
-	     marker is alone in a bundle of its own: the instruction before it
-	     closed the body already, and a second ";;" would be an empty
-	     bundle.  */
+	     hold.  Nothing is printed when the marker is alone in a bundle of
+	     its own: the instruction before it closed the body already, and a
+	     second ";;" would be an empty bundle.
+
+	     THERE IS NO NOP FIXUP.  §7tricies.215.  A nop bundle used to be
+	     appended when the body's last bundle ended on a branch, on the
+	     ground that a taken branch beats the loop-back -- which is a KVX
+	     rule, not an LVX one: LVX permits a jump in a hardware loop's last
+	     bundle.  It cost a bundle per iteration of every such loop and
+	     bought nothing here.  */
 	  const char *note = "";
-	  if (doloop_end && jump_cycle == prev_cycle)
-	    {
-	      fprintf (file, "\tnop\n\t;;\n");
-	      note = 0;
-	    }
-	  else if (doloop_end && cycle != prev_cycle)
+	  if (doloop_end && cycle != prev_cycle)
 	    note = 0;
 	  else if (!doloop_end && (flags & LVX_SCHED2_INSN_STALL))
 	    note = "\t(stalled)";
@@ -10901,17 +10954,24 @@ lvx_asm_final_postscan_insn (FILE *file, rtx_insn *insn,
 	}
 
       prev_cycle = cycle;
-      if (flags & LVX_SCHED2_INSN_HEAD)
-	jump_cycle = -1;
-      if (JUMP_P (insn) || CALL_P (insn))
-	jump_cycle = prev_cycle;
     }
   else
-    {
-      fprintf (file, "\t;;\n");
-      if (doloop_end)
-	fprintf (file, "\tnop\n\t;;\n");
-    }
+    fprintf (file, "\t;;\n");
+
+  /* THE END MARKER, AFTER THE BUNDLE THIS INSN JUST CLOSED.  §7tricies.215.
+     The hardware re-enters the loop when the address of the NEXT bundle
+     reaches the marker, so here -- past every ";;" emitted above, including
+     the appended nop bundle that stands in when a taken branch would beat the
+     loop-back -- is the one correct place, and this is the only code that
+     knows where it is.  Printed from the instruction rather than left to a
+     CODE_LABEL because an instruction's output has the instruction's
+     position, while a label has one GCC maintains and may merge away.  */
+  {
+    int endnum = lvx_loopend_marker (insn);
+
+    if (endnum != 0)
+      fprintf (file, ".L%d:\n", endnum);
+  }
 
   return;
 }
