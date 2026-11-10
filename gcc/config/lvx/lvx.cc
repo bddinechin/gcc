@@ -5729,20 +5729,6 @@ lvx_has_27bit_immediate_p (rtx x)
   return false;
 }
 
-bool
-lvx_has_54bit_immediate_p (rtx x)
-{
-  if (MEM_P (x))
-    x = XEXP (x, 0);
-
-  if (GET_CODE (x) == PLUS && GET_CODE (XEXP (x, 1)) == CONST_INT
-      && REG_P (XEXP (x, 0)))
-    return !IN_RANGE (INTVAL (XEXP (x, 1)), -(1LL << 26), (1LL << 26) - 1)
-	   && IN_RANGE (INTVAL (XEXP (x, 1)), -(1LL << 53), (1LL << 53) - 1);
-
-  return false;
-}
-
 /* Constraints }}} */
 
 /* Load Variants {{{ */
