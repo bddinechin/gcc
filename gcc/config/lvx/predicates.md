@@ -344,13 +344,22 @@
   (ior (match_operand 0 "register_operand")
        (match_operand 0 "const_zero_operand")))
 
-;; A 128-bit scalar source for a .M format: a register, a constant the machine
-;; sign-extends, or one it replicates.  The two immediate readings are one
-;; encoding bit apart, and an __int128 wants both -- a small constant and a
-;; repeating mask.
-(define_predicate "reg_or_splat32_or_imm32_operand"
+;; A 128-bit scalar source for a .M format: a register, or a constant the
+;; machine sign-extends from a 32-bit word.
+;;
+;; IT USED TO ADMIT A REPLICATED WORD TOO, via reg_or_splat32_operand, the two
+;; immediate readings being one encoding bit apart -- and an __int128 wanted
+;; both, a small constant and a repeating mask.  The replicating reading was
+;; the `.@' modifier, which is retired from the ISA: splatting is now a
+;; property of a SIMD instruction's LaneSize, and none of this predicate's
+;; users (the TImode arithmetic and bitwise patterns, and CMOVEQ) has a lane
+;; size.  Admitting a value no alternative can hold is what makes reload fail
+;; rather than diagnose, so the arm goes with the alternatives it fed.
+;;
+;; reg_or_splat32_operand itself STAYS: its other 66 users in vector.md are
+;; the lane-wise .M forms, where the splat is now implicit.
+(define_predicate "reg_or_imm32_operand"
   (ior (match_operand 0 "register_operand")
-       (match_operand 0 "reg_or_splat32_operand")
        (and (match_code "const_int")
             (match_test "SIGNED_INT_FITS_N_BITS (INTVAL (op), 32)"))))
 

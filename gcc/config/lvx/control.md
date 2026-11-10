@@ -1149,43 +1149,42 @@
 ;; port never emitted it; the pair cost two instructions and both ALU slots
 ;; (issue tiny2) for what the quadword form does in one.
 ;;
-;; The value operand gains the two immediate readings of ALU_QCMWRR.M, which is
-;; also new: I32 is the word the machine sign-extends across the operand, SXW the
-;; word it replicates (printed with %W and the .@ marker).  That subsumes the
-;; rS01 this pattern used to carry -- 0 and -1 are reachable both ways -- and it
-;; is why the predicate is the .M one the TImode bitwise patterns already use.
+;; The value operand carries one immediate reading, I32, the word the machine
+;; sign-extends across the operand.  It used to carry a second, SXW -- the word
+;; the machine REPLICATES, printed with %W and the `.@' marker -- but `.@' is
+;; retired from the ISA: splatting is now a property of a SIMD instruction's
+;; LaneSize, and CMOVEQ has no lane size.  I32 still subsumes the rS01 this
+;; pattern once carried, 0 and -1 being reachable as sign-extended words.
 (define_insn "*cmov<SIDI:mode>.<ALL128:mode>"
-  [(set (match_operand:ALL128 0 "register_operand" "=r,r,r")
+  [(set (match_operand:ALL128 0 "register_operand" "=r,r")
         (if_then_else:ALL128 (match_operator 2 "zero_comparison_operator"
-                                               [(match_operand:SIDI 3 "register_operand" "r,r,r")
+                                               [(match_operand:SIDI 3 "register_operand" "r,r")
                                                 (const_int 0)])
-                             (match_operand:ALL128 1 "reg_or_splat32_or_imm32_operand" "r,I32,SXW")
-                             (match_operand:ALL128 4 "register_operand" "0,0,0")))]
+                             (match_operand:ALL128 1 "reg_or_imm32_operand" "r,I32")
+                             (match_operand:ALL128 4 "register_operand" "0,0")))]
   ""
   "@
    cmoveq.<SIDI:suffix>%2z %3? %0 = %1
-   cmoveq.<SIDI:suffix>%2z %3? %0 = %1
-   cmoveq.<SIDI:suffix>%2z %3? %0 = %W1.@"
-  [(set_attr "type" "alu,alu,alu")
-   (set_attr "issue" "lite,lite_x,lite_x")
-   (set_attr "length"    "4,     8,      8")]
+   cmoveq.<SIDI:suffix>%2z %3? %0 = %1"
+  [(set_attr "type" "alu,alu")
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length"    "4,8")]
 )
 
 (define_insn "*cmov<SIDI:mode>.<ALL128:mode>.<EQNE:evenodd>"
-  [(set (match_operand:ALL128 0 "register_operand" "=r,r,r")
-        (if_then_else:ALL128 (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r,r")
+  [(set (match_operand:ALL128 0 "register_operand" "=r,r")
+        (if_then_else:ALL128 (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r")
                                                       (const_int 1) (const_int 0))
                                    (const_int 0))
-                             (match_operand:ALL128 1 "reg_or_splat32_or_imm32_operand" "r,I32,SXW")
-                             (match_operand:ALL128 3 "register_operand" "0,0,0")))]
+                             (match_operand:ALL128 1 "reg_or_imm32_operand" "r,I32")
+                             (match_operand:ALL128 3 "register_operand" "0,0")))]
   ""
   "@
    cmoveq.<EQNE:evenodd> %2? %0 = %1
-   cmoveq.<EQNE:evenodd> %2? %0 = %1
-   cmoveq.<EQNE:evenodd> %2? %0 = %W1.@"
-  [(set_attr "type" "alu,alu,alu")
-   (set_attr "issue" "lite,lite_x,lite_x")
-   (set_attr "length"    "4,     8,      8")]
+   cmoveq.<EQNE:evenodd> %2? %0 = %1"
+  [(set_attr "type" "alu,alu")
+   (set_attr "issue" "lite,lite_x")
+   (set_attr "length"    "4,8")]
 )
 
 (define_insn_and_split "*cmov<SIDI:mode>.<ALL256:mode>"

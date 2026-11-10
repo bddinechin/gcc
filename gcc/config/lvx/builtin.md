@@ -1068,61 +1068,79 @@
    (set_attr "length" "8")]
 )
 
-(define_insn "lvx_qxobho"
-  [(set (match_operand:V8HI 0 "register_operand" "=r")
-        (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "r")] UNSPEC_QXO))]
-  "LVX_2"
-  "andq %0 = %1, 0xFF00FF00.@"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite_x")
-   (set_attr "length" "8")]
-)
 
-(define_insn "lvx_qxobhx"
-  [(set (match_operand:V16HI 0 "register_operand" "=r")
-        (unspec:V16HI [(match_operand:V32QI 1 "register_operand" "r")] UNSPEC_QXO))]
-  "LVX_2"
-  {
-    return "andq %L0 = %L1, 0xFF00FF00.@\n\tandq %M0 = %M1, 0xFF00FF00.@";
-  }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2_x2")
-   (set_attr "length" "16")]
-)
-
-(define_insn_and_split "lvx_qxobhv"
-  [(set (match_operand:V32HI 0 "register_operand" "=r")
-        (unspec:V32HI [(match_operand:V64QI 1 "register_operand" "r")] UNSPEC_QXO))]
-  ""
-  "#"
-  "reload_completed"
-  [(set (subreg:V16HI (match_dup 0) 0)
-        (unspec:V16HI [(subreg:V32QI (match_dup 1) 0)] UNSPEC_QXO))
-   (set (subreg:V16HI (match_dup 0) 32)
-        (unspec:V16HI [(subreg:V32QI (match_dup 1) 32)] UNSPEC_QXO))]
-  ""
-)
-
-(define_insn "lvx_qxohwq"
-  [(set (match_operand:V4SI 0 "register_operand" "=r")
-        (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "r")] UNSPEC_QXO))]
-  "LVX_2"
-  "andq %0 = %1, 0xFFFF0000.@"
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite_x")
-   (set_attr "length" "8")]
-)
-
-(define_insn "lvx_qxohwo"
-  [(set (match_operand:V8SI 0 "register_operand" "=r")
-        (unspec:V8SI [(match_operand:V16HI 1 "register_operand" "r")] UNSPEC_QXO))]
+;; THE MASK IN A REGISTER, NOT AN IMMEDIATE.  The `.@' modifier is retired from
+;; the ISA: it took a 32-bit immediate and splatted it over the 64- or 128-bit
+;; operand by 32-bit slices, and splatting is now a property of a SIMD
+;; instruction's LaneSize.  ANDQ is bitwise and has no lane size, so it can no
+;; longer be handed a repeating mask at all -- which is why these follow
+;; `lvx_qxowdp' below, which already materialised its mask for the same reason
+;; (0xFFFFFFFF00000000 was never one repeating word).  One MAKE plus the
+;; register form, where it used to be one instruction.
+(define_expand "lvx_qxobho"
+  [(set (match_operand:V8HI 0 "register_operand" "")
+        (unspec:V8HI [(match_operand:V16QI 1 "register_operand" "")] UNSPEC_QXO))]
   "LVX_2"
   {
-    return "andq %L0 = %L1, 0xFFFF0000.@\n\tandq %M0 = %M1, 0xFFFF0000.@";
+    rtx mask = gen_reg_rtx (DImode);
+    emit_insn (gen_rtx_SET (mask, GEN_INT (0xFF00FF00FF00FF00)));
+    emit_insn (gen_rtx_SET (operands[0],
+                            gen_rtx_UNSPEC (V8HImode, gen_rtvec (2, operands[1], mask), UNSPEC_ANDD)));
+    DONE;
   }
-  [(set_attr "type" "alu")
-   (set_attr "issue" "lite2_x2")
-   (set_attr "length" "16")]
+)
+
+(define_expand "lvx_qxobhx"
+  [(set (match_operand:V16HI 0 "register_operand" "")
+        (unspec:V16HI [(match_operand:V32QI 1 "register_operand" "")] UNSPEC_QXO))]
+  "LVX_2"
+  {
+    rtx mask = gen_reg_rtx (DImode);
+    emit_insn (gen_rtx_SET (mask, GEN_INT (0xFF00FF00FF00FF00)));
+    emit_insn (gen_rtx_SET (operands[0],
+                            gen_rtx_UNSPEC (V16HImode, gen_rtvec (2, operands[1], mask), UNSPEC_ANDD)));
+    DONE;
+  }
+)
+
+(define_expand "lvx_qxobhv"
+  [(set (match_operand:V32HI 0 "register_operand" "")
+        (unspec:V32HI [(match_operand:V64QI 1 "register_operand" "")] UNSPEC_QXO))]
+  ""
+  {
+    /* AN EXPAND, NOT A POST-RELOAD SPLIT.  Each half now materialises a mask
+       register, and `reload_completed' is too late to create one.  */
+    for (int h = 0; h < 2; h++)
+      emit_insn (gen_lvx_qxobhx (gen_rtx_SUBREG (V16HImode, operands[0], h * 32),
+                                 gen_rtx_SUBREG (V32QImode, operands[1], h * 32)));
+    DONE;
+  }
+)
+
+(define_expand "lvx_qxohwq"
+  [(set (match_operand:V4SI 0 "register_operand" "")
+        (unspec:V4SI [(match_operand:V8HI 1 "register_operand" "")] UNSPEC_QXO))]
+  "LVX_2"
+  {
+    rtx mask = gen_reg_rtx (DImode);
+    emit_insn (gen_rtx_SET (mask, GEN_INT (0xFFFF0000FFFF0000)));
+    emit_insn (gen_rtx_SET (operands[0],
+                            gen_rtx_UNSPEC (V4SImode, gen_rtvec (2, operands[1], mask), UNSPEC_ANDD)));
+    DONE;
+  }
+)
+
+(define_expand "lvx_qxohwo"
+  [(set (match_operand:V8SI 0 "register_operand" "")
+        (unspec:V8SI [(match_operand:V16HI 1 "register_operand" "")] UNSPEC_QXO))]
+  "LVX_2"
+  {
+    rtx mask = gen_reg_rtx (DImode);
+    emit_insn (gen_rtx_SET (mask, GEN_INT (0xFFFF0000FFFF0000)));
+    emit_insn (gen_rtx_SET (operands[0],
+                            gen_rtx_UNSPEC (V8SImode, gen_rtvec (2, operands[1], mask), UNSPEC_ANDD)));
+    DONE;
+  }
 )
 
 (define_expand "lvx_qxowdp"
