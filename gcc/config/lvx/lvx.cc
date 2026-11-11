@@ -24901,6 +24901,118 @@ lvx_lms_path_metrics (const auto_vec<rtx_insn *> &seq,
   for (unsigned i = 0; i < n; i++)
     slack[i] = (makespan - tosink[i]) - asap[i];
 }
+/* ACCEPTANCE, WHICH EVERY ENGINE IS JUDGED BY.  §7tricies.222.
+
+   A schedule is accepted when it VERIFIES -- every arc satisfied and the
+   modulo reservation table within its availabilities -- and when the kernel it
+   implies can be COLOURED.  Both tests are properties of the schedule and of
+   the machine, not of the search that found it, so they belong to LMS and not
+   to any one engine: CMS calls this inside its Squeaky Wheel cycle because a
+   rejection is its squeak, and an engine with no search of its own calls it
+   once.  Judging two engines by two tests would make the comparison
+   meaningless before it started.
+
+   Returns NULL when the schedule is accepted, and otherwise the reason, which
+   the caller reports as its last failure.  BLAME and CULPRIT, when given,
+   receive the instructions a rejection implicates, which is what SWO reads.
+
+   Extracted from lvx_cms_swo_at_ii unchanged.  */
+
+static const char *
+lvx_lms_accept_p (const auto_vec<rtx_insn *> &seq,
+		  const auto_vec<lvx_lms_arc> &arcs,
+		  int ii, const auto_vec<int> &sigma, bitmap livein,
+		  auto_vec<int> *blame, auto_vec<int> *culprit)
+{
+  unsigned n = seq.length ();
+  const char *bad = lvx_lms_verify (seq, arcs, ii, sigma);
+
+  if (bad)
+    return bad;
+
+  /* ALLOCATION IS PART OF ACCEPTANCE, AT THIS II.
+     A schedule that verifies may still produce a kernel the
+     allocator cannot colour -- §7ter.10 measured 27 of 158 lvx-2
+     loops, twelve of them at a pressure that fits.  The author's
+     instruction (2026-10-27) is that colourability must NOT be
+     wired into the II search: raising II is not the answer, and
+     among the schedules SWO already explores at a given II some
+     will allocate and some will not.  So an uncolourable kernel is
+     just another squeak -- the values whose nodes could not be
+     removed are blamed, the parameters move, and the budget is
+     spent looking for a schedule at THIS II that both verifies and
+     allocates.  Only when the budget runs out does the II rise, by
+     the ordinary path.  */
+  const char *why = NULL;
+  if (lvx_lms_regalloc_feasible)
+    {
+      /* ONE MODEL FOR THE SEARCH AND FOR CODEGEN.  §7tricies.40.
+
+	 This asked the VALUE colouring, with AVAIL defaulting to
+	 all 64 registers, while codegen asks the LIVE RANGE colouring
+	 against the registers actually free.  Two models and two
+	 register files: the search accepted an II whose kernel
+	 codegen then could not colour, and since select failure
+	 was silent (§7tricies.39) the loop was emitted with two of
+	 its names sharing a register.  heat-3d's loop 7 is the
+	 case -- 44 nodes, maxreg 63, and the search believed the
+	 whole file was free.
+
+	 So the test is the same build, the same colouring and the
+	 same AVAIL the emission will use.  It is more expensive
+	 per candidate II, and it raises II where the registers are
+	 genuinely not there, which is the honest answer: the lower
+	 II was not achievable, it was only unmeasured.  */
+      auto_vec<lvx_lms_lrange_part *> flr;
+      auto_vec<int> fstuck;
+      HARD_REG_SET fresv;
+      unsigned HOST_WIDE_INT favail = 0;
+      int fnn = 0, fst = 0, fmx = -1, fkun = 1;
+      int fpin = 0, fpinf = 0, fwide = 0;
+
+      lvx_lms_build_lranges (seq, flr, NULL, NULL, NULL);
+      lvx_lms_set_lrange_dates (seq, flr, sigma, ii, NULL);
+      lvx_lms_lrange_reserved (seq, flr, livein, &fresv);
+      for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
+	if (!TEST_HARD_REG_BIT (fresv, r))
+	  favail |= (unsigned HOST_WIDE_INT) 1 << r;
+
+      if (!lvx_lms_colour_lranges (seq, flr, ii,
+				   lvx_lms_sigma_min (sigma),
+				   favail, &fnn, &fst, &fmx,
+				   &fkun, &fpin, &fpinf, &fwide,
+				   false, &fstuck))
+	{
+
+	  why = "kernel not colourable";
+	  /* Blame the DEFINING instruction of every live range left
+	     uncoloured.  Its range is what interferes, and the
+	     release lever below moves a task later -- which
+	     shortens a live range from its definition end,
+	     lowering interference without touching II.  */
+	  for (unsigned q = 0; q < fstuck.length (); q++)
+	    {
+	      int k = fstuck[q];
+
+	      if (k < 0 || k >= (int) flr.length ()
+		  || flr[k]->effects.is_empty ())
+		continue;
+	      {
+		unsigned i = flr[k]->effects[0].insn;
+
+		if (i < n)
+		  (*blame)[i]++, (*culprit)[i]++;
+	      }
+	    }
+	}
+      for (unsigned k = 0; k < flr.length (); k++)
+	delete flr[k];
+    }
+
+  return why;
+}
+
+
 
 /* SQUEAKY WHEEL OPTIMIZATION at a fixed II, after Joslin and Clements, JAIR
    1999: Construct, Analyze, Prioritize, and go round again.
@@ -25281,110 +25393,32 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
       if (lvx_cms_converge (seq, arcs, prio, release, ii, delta, sigma,
 			    &blame, &culprit, vseed))
 	{
-	  const char *bad = lvx_lms_verify (seq, arcs, ii, sigma);
+	  /* ACCEPTANCE IS LMS'S, NOT THE ENGINE'S.  §7tricies.222.  Verifying
+	     and colouring are what any engine must be judged by, so they are
+	     one call here and the same call elsewhere.  */
+	  const char *bad = lvx_lms_accept_p (seq, arcs, ii, sigma, livein,
+					      &blame, &culprit);
 	  if (!bad)
 	    {
-	      /* ALLOCATION IS PART OF ACCEPTANCE, AT THIS II.
-		 A schedule that verifies may still produce a kernel the
-		 allocator cannot colour -- §7ter.10 measured 27 of 158 lvx-2
-		 loops, twelve of them at a pressure that fits.  The author's
-		 instruction (2026-10-27) is that colourability must NOT be
-		 wired into the II search: raising II is not the answer, and
-		 among the schedules SWO already explores at a given II some
-		 will allocate and some will not.  So an uncolourable kernel is
-		 just another squeak -- the values whose nodes could not be
-		 removed are blamed, the parameters move, and the budget is
-		 spent looking for a schedule at THIS II that both verifies and
-		 allocates.  Only when the budget runs out does the II rise, by
-		 the ordinary path.  */
-	      bool allocates = true;
-	      if (lvx_lms_regalloc_feasible)
+	      if (!lvx_cms_best_of_n)
 		{
-		  /* ONE MODEL FOR THE SEARCH AND FOR CODEGEN.  §7tricies.40.
-
-		     This asked the VALUE colouring, with AVAIL defaulting to
-		     all 64 registers, while codegen asks the LIVE RANGE colouring
-		     against the registers actually free.  Two models and two
-		     register files: the search accepted an II whose kernel
-		     codegen then could not colour, and since select failure
-		     was silent (§7tricies.39) the loop was emitted with two of
-		     its names sharing a register.  heat-3d's loop 7 is the
-		     case -- 44 nodes, maxreg 63, and the search believed the
-		     whole file was free.
-
-		     So the test is the same build, the same colouring and the
-		     same AVAIL the emission will use.  It is more expensive
-		     per candidate II, and it raises II where the registers are
-		     genuinely not there, which is the honest answer: the lower
-		     II was not achievable, it was only unmeasured.  */
-		  auto_vec<lvx_lms_lrange_part *> flr;
-		  auto_vec<int> fstuck;
-		  HARD_REG_SET fresv;
-		  unsigned HOST_WIDE_INT favail = 0;
-		  int fnn = 0, fst = 0, fmx = -1, fkun = 1;
-		  int fpin = 0, fpinf = 0, fwide = 0;
-
-		  lvx_lms_build_lranges (seq, flr, NULL, NULL, NULL);
-		  lvx_lms_set_lrange_dates (seq, flr, sigma, ii, NULL);
-		  lvx_lms_lrange_reserved (seq, flr, livein, &fresv);
-		  for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
-		    if (!TEST_HARD_REG_BIT (fresv, r))
-		      favail |= (unsigned HOST_WIDE_INT) 1 << r;
-
-		  if (!lvx_lms_colour_lranges (seq, flr, ii,
-					       lvx_lms_sigma_min (sigma),
-					       favail, &fnn, &fst, &fmx,
-					       &fkun, &fpin, &fpinf, &fwide,
-					       false, &fstuck))
-		    {
-		      allocates = false;
-		      *last_bad = "kernel not colourable";
-		      /* Blame the DEFINING instruction of every live range left
-			 uncoloured.  Its range is what interferes, and the
-			 release lever below moves a task later -- which
-			 shortens a live range from its definition end,
-			 lowering interference without touching II.  */
-		      for (unsigned q = 0; q < fstuck.length (); q++)
-			{
-			  int k = fstuck[q];
-
-			  if (k < 0 || k >= (int) flr.length ()
-			      || flr[k]->effects.is_empty ())
-			    continue;
-			  {
-			    unsigned i = flr[k]->effects[0].insn;
-
-			    if (i < n)
-			      blame[i]++, culprit[i]++;
-			  }
-			}
-		    }
-		  for (unsigned k = 0; k < flr.length (); k++)
-		    delete flr[k];
+		  return true;
 		}
-
-	      if (allocates)
+	      /* Keep the shortest local schedule seen, and carry on
+		 spending the budget.  SIGMA is overwritten by every later
+		 construction, so the winner has to be copied out.  */
+	      int sp = lvx_lms_sigma_span (sigma);
+	      if (!have_best || sp < bestspan)
 		{
-		  if (!lvx_cms_best_of_n)
-		    {
-		      return true;
-		    }
-		  /* Keep the shortest local schedule seen, and carry on
-		     spending the budget.  SIGMA is overwritten by every later
-		     construction, so the winner has to be copied out.  */
-		  int sp = lvx_lms_sigma_span (sigma);
-		  if (!have_best || sp < bestspan)
-		    {
-		      bestspan = sp;
-		      have_best = true;
-		      bestsig.truncate (0);
-		      for (unsigned q = 0; q < sigma.length (); q++)
-			bestsig.safe_push (sigma[q]);
-		    }
-		  if (dump_file && lvx_lms_probe)
-		    lvx_lms_dump (";; lvx cms: BESTOFN ii=%d pass=%d span=%d"
-				  " best=%d\n", ii, pass, sp, bestspan);
+		  bestspan = sp;
+		  have_best = true;
+		  bestsig.truncate (0);
+		  for (unsigned q = 0; q < sigma.length (); q++)
+		    bestsig.safe_push (sigma[q]);
 		}
+	      if (dump_file && lvx_lms_probe)
+		lvx_lms_dump (";; lvx cms: BESTOFN ii=%d pass=%d span=%d"
+			      " best=%d\n", ii, pass, sp, bestspan);
 	    }
 	  else
 	    *last_bad = bad;
