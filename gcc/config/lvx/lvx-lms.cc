@@ -13183,6 +13183,37 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
      Note this is NOT the sum of the per-value degrees: a value contributes
      ceil(L/II) only at one phase and less at the others, so summing degrees
      over-counts.  The old mveregs did exactly that.  */
+  /* A VALUE THE LOOP DEFINES AND ONLY THE CODE AFTER IT READS still holds a
+     register, from its definition to the exit, and the walk below used to skip
+     it because it has no REG_RAW successor inside the body (author,
+     2026-11-11).  Its lifetime is taken to the end of the schedule, which is
+     what lvx_lms_lrange_part::occ_last does for the same reason: the drain
+     replays work that must not overwrite the register the reconciliation copy
+     will read (§7tricies.135).  A value with uses on BOTH sides takes the
+     later of the two ends.
+
+     What is still deliberately NOT counted is a register live THROUGH the
+     loop without being referenced in it.  That is not this loop's pressure --
+     it is the allocator's problem outside, and the walk cannot reach it
+     anyway, since it iterates over the body's own instructions.  */
+  basic_block exitbb = NULL;
+  for (unsigned q = 0; q < loop->num_nodes && exitbb == NULL; q++)
+    {
+      edge e;
+      edge_iterator ei;
+
+      FOR_EACH_EDGE (e, ei, body[q]->succs)
+	if (!flow_bb_inside_loop_p (loop, e->dest)
+	    && e->dest != EXIT_BLOCK_PTR_FOR_FN (cfun))
+	  {
+	    exitbb = e->dest;
+	    break;
+	  }
+    }
+  int maxsig = sigma.is_empty () ? 0 : sigma[0];
+  for (unsigned i = 1; i < sigma.length (); i++)
+    maxsig = MAX (maxsig, sigma[i]);
+
   int mvepress = 0;
   {
     for (int c = 0; c < found; c++)
@@ -13198,6 +13229,16 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 		  if (when > lastu)
 		    lastu = when;
 		}
+	    if (exitbb != NULL)
+	      {
+		rtx dl = single_set (seq[i]);
+
+		if (dl != NULL_RTX && REG_P (SET_DEST (dl))
+		    && REGNO (SET_DEST (dl)) < FIRST_PSEUDO_REGISTER
+		    && bitmap_bit_p (df_get_live_in (exitbb),
+				     REGNO (SET_DEST (dl))))
+		  lastu = MAX (lastu, maxsig);
+	      }
 	    if (lastu < 0)
 	      continue;
 	    int l = lastu - sigma[i];
