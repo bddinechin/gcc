@@ -206,6 +206,8 @@ struct lvx_sms_state
 static inline bool
 lvx_sms_data_arc_p (const lvx_lms_arc &a)
 {
+  if (lvx_sms_ctrl_order)
+    return true;
   return (a.kind == LVX_ARC_REG_RAW || a.kind == LVX_ARC_REG_WAR
 	  || a.kind == LVX_ARC_REG_WAW || a.kind == LVX_ARC_MEM_INTRA
 	  || a.kind == LVX_ARC_MEM_CROSS);

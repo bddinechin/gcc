@@ -520,3 +520,7 @@ Target RejectNegative Joined UInteger Var(lvx_sms_recmii_llvm) Init(0) Optimizat
 mlms-sms-trace
 Target Var(lvx_sms_trace) Init(0) Optimization
 Dump swing modulo scheduling's node functions, its node sets and the order it computes, which is what a mis-transcribed sweep shows up in.
+
+mlms-sms-ctrl-order
+Target Var(lvx_sms_ctrl_order) Init(0) Optimization
+Let the control arcs decide swing modulo scheduling's node order as well as its placement.  OFF by default, which is the paper's own graph: section 4.1 includes only data dependences, because the loops it handles have one branch and that is the last instruction, and an LVX body may hold several branches, each a hub that turns dependence chains into diamonds the two-level ordering was not designed for.  The arcs constrain placement and are verified either way; this decides only whether they also decide what is ordered next.
