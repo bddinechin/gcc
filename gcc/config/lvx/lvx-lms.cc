@@ -14218,7 +14218,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
     auto_vec<lvx_lms_lrange_part *> lr;
     int nrange = 0, lrorph = 0, lrdup = 0, lrnoloc = 0;
     int lrmaxp2 = 0, lruf = 0, lrxl = 0;
-    int lrtie = 0, lrunit = 0, lrheld = 0;
+    int lrtie = 0, lrunit = 0, lrheld = 0, lrwiden = 0;
 
     int nwar = 0, nwaw = 0, nlo = 0, nlotight = 0;
     for (unsigned a = 0; a < arcs.length (); a++)
@@ -14246,7 +14246,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
        partition the anti-dependence decisions were made from.  */
     /* §7tricies.110: the same record for every set built here, or two
        of them would describe different programs.  */
-    lvx_lms_build_lranges (seq, lr, &lrtie, &lrunit, &lrheld, NULL,
+    lvx_lms_build_lranges (seq, lr, &lrtie, &lrunit, &lrheld, &lrwiden,
 			   NULL, &prop);
     lvx_lms_set_lrange_dates (seq, lr, sigma, found, liveout);
     bool lrok = lvx_lms_verify_lranges (seq, lr, &nrange, &lrorph, &lrdup,
@@ -14285,13 +14285,14 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 	}
     lvx_lms_dump (";; lvx cms: fn=%s loop %d lranges %s n=%d orphan=%d"
 		  " dup=%d noloc=%d overlap=%d maxp2=%d usefirst=%d"
-		  " exitlive=%d tie=%d units=%d held=%d nwar=%d nwaw=%d"
+		  " exitlive=%d tie=%d units=%d held=%d widen=%d"
+		  " nwar=%d nwaw=%d"
 		  " nlo=%d/%d"
 		  " adropped=%d akunres=%d akone=%d akkeep=%d narcs=%u\n",
 		  current_function_name (), loop->num,
 		  lrok && lrovl == 0 ? "ok" : "BAD",
 		  nrange, lrorph, lrdup, lrnoloc, lrovl, lrmaxp2, lruf, lrxl,
-		  lrtie, lrunit, lrheld, nwar, nwaw, nlotight, nlo,
+		  lrtie, lrunit, lrheld, lrwiden, nwar, nwaw, nlotight, nlo,
 		  lrdropped[0],
 		  lrdropped[1], lrdropped[2], lrdropped[3], arcs.length ());
     /* §7tricies.106: the copy-propagation candidates, each filter's
