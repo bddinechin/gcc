@@ -217,6 +217,7 @@ struct lvx_lms_problem
   const auto_vec<int> *crit;
   bitmap livein;
   int delta;
+  int lower;			/* max (RecMII, ResMII), the bound the ladder starts from */
 };
 
 /* AN ENGINE, WHICH IS ASKED FOR A SCHEDULE AT A GIVEN II AND NOTHING ELSE.
@@ -247,6 +248,7 @@ struct lvx_lms_engine
 /* The engines.  */
 
 extern const struct lvx_lms_engine lvx_cms_engine;
+extern const struct lvx_lms_engine lvx_sms_engine;
 
 extern bool
 lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,

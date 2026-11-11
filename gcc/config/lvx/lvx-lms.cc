@@ -12881,7 +12881,8 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
      holds the per-loop work that must not be redone per interval, which for
      LMS is its path metrics and for SMS will be the node ordering its cost
      argument rests on.  */
-  const struct lvx_lms_engine *eng = &lvx_cms_engine;
+  const struct lvx_lms_engine *eng
+    = lvx_lms_which_engine == 1 ? &lvx_sms_engine : &lvx_cms_engine;
   struct lvx_lms_problem prob;
 
   prob.seq = &seq;
@@ -12890,6 +12891,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
   prob.crit = &crit;
   prob.livein = df_get_live_in (loop->header);
   prob.delta = delta;
+  prob.lower = lower;
 
   void *est = eng->prepare (&prob);
   for (int try_ii = first_ii; try_ii <= first_ii + 8 && !found; try_ii++)

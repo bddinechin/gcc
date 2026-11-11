@@ -508,3 +508,15 @@ Target Alias(mlms-hwkern) Undocumented
 
 mcms-reorg2
 Target Alias(mlms-reorg2) Undocumented
+
+mlms-engine=
+Target RejectNegative Joined UInteger Var(lvx_lms_which_engine) Init(0) Optimization
+-mlms-engine=N	Which modulo scheduler decides the dates: 0 convergent modulo scheduling with its Squeaky Wheel search (the default), 1 swing modulo scheduling.  Everything else is the same -- the same dependence graph, the same bounds, the same resource model, the same acceptance test and the same code generation -- so that two arms differ in the scheduler and in nothing else.
+
+mlms-sms-recmii=
+Target RejectNegative Joined UInteger Var(lvx_sms_recmii_llvm) Init(0) Optimization
+-mlms-sms-recmii=N	How swing modulo scheduling bounds the recurrence of one node set: 0 the exact period of the subgraph it induces, from the parametric solver, 1 LLVM's rule, which is the circuit's latency with the distance assumed to be one.  The second is wrong by a factor of the distance and exists so that a divergence from LLVM can be attributed rather than guessed at.
+
+mlms-sms-trace
+Target Var(lvx_sms_trace) Init(0) Optimization
+Dump swing modulo scheduling's node functions, its node sets and the order it computes, which is what a mis-transcribed sweep shows up in.

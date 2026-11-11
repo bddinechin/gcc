@@ -62,3 +62,12 @@ lvx-lms.o: $(srcdir)/config/lvx/lvx-lms.cc \
   $(RECOG_H) $(srcdir)/config/lvx/lvx-issue-table.inc
 	$(COMPILE) $<
 	$(POSTCOMPILE)
+
+# SMS, the second engine: Llosa et al., PACT 1996, after LLVM.
+lvx-sms.o: $(srcdir)/config/lvx/lvx-sms.cc \
+  $(srcdir)/config/lvx/lvx-lms.h $(srcdir)/config/lvx/lvx-plc.h \
+  $(CONFIG_H) $(SYSTEM_H) coretypes.h \
+  $(BACKEND_H) $(RTL_H) $(TREE_H) $(TARGET_H) $(DF_H) insn-attr.h \
+  $(RECOG_H) $(srcdir)/config/lvx/lvx-issue-table.inc
+	$(COMPILE) $<
+	$(POSTCOMPILE)
