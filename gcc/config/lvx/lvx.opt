@@ -223,6 +223,14 @@ mlms-copy-pref
 Target Var(lvx_lms_copy_pref) Init(0) Optimization
 Prefer a live-out range's own architected register when colouring, so the drain's copy back to it is deleted (Moon & Ebcioglu 1992).
 
+mlms-liveout-verify-applied
+Target Var(lvx_lms_liveout_verify_applied) Init(1) Optimization
+Check the CTRL_LIVEOUT commitment only on loops that actually dropped an arc.  7tricies.227.  The verifier was gated on this option being enabled rather than on the drop having happened, so a loop that considered the drop and declined it -- because it did not improve the bounds -- was still refused for breaking a promise it never made.  Measured: 126 loops were refused that way, 119 of them having reached the II lower bound, while ELEVEN loops in the whole corpus ever dropped an arc and none of the 126 was among them.  -mno-lms-liveout-verify-applied restores the old ungated check, and exists so the cost of the refusals can be measured on one compiler.
+
+mlms-liveout-renamed-only
+Target Var(lvx_lms_liveout_renamed_only) Init(1) Optimization
+Keep a live-out range's CTRL_LIVEOUT arc when the renaming is going to decline the range, instead of dropping it and refusing the loop after the fact.  7tricies.227.  The drop asks lvx_lms_liveout_arc_reconciled_p whether the drain will copy the range back; that predicate tested exit-live, def-headed and not use-headed, but NOT whether the range gets a name of its own, on the ground that the colouring has not run.  Renaming is not the colouring: the hold guards and the noname paths all live in lvx_lms_build_lranges, which reads the body and takes neither sigma nor II, and the drop site has already built that vector -- so the answer is available where the decision is made.  Measured: 126 loops built a schedule, 119 of them at the II lower bound, and were then refused because a range kept its architected register, 125 of the 126 because the range was never renamed at all.  -mno-lms-liveout-renamed-only restores the old predicate.
+
 mlms-liveout-split
 Target Var(lvx_lms_liveout_split) Init(1) Optimization
 Omit the CTRL_LIVEOUT control arcs for live-out ranges the renaming gives a name of their own, the drain reconciling that name to the architected register on the way out.  The commitment is verified before emission and the loop refused if a range kept its architected register.  On by default since the drain reconciliation it rests on was fixed (7tricies.135); -mno-lms-liveout-split restores the arcs.

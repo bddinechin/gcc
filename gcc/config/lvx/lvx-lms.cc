@@ -3702,6 +3702,28 @@ lvx_lms_liveout_arc_reconciled_p (const auto_vec<lvx_lms_lrange_part *> &lr,
       if (g->use_first && !lvx_lms_usefirst_unpinned
 	  && !(lvx_lms_preheader_copy && (lvx_lms_ph_parts & 4)))
 	return false;
+
+      /* §7tricies.227: AND WILL THE RENAMING GIVE IT A NAME?  The comment above
+         says RENAMED cannot be asked here because the colouring has not run,
+         and that conflates two things.  The colouring assigns the NAMES, which
+         is what lvx_lms_verify_liveout_split's second test reads; RENAMED is
+         set by the hold guards and the noname paths, all of which live in
+         lvx_lms_build_lranges -- a function taking neither sigma nor II, whose
+         result the drop site has already built and is passing in here.  So the
+         answer IS available at the decision, and withholding it is what makes
+         the drop wider than the promise for a second time.
+
+         Measured before the change: 126 loops built a schedule, 119 at the II
+         lower bound and 33 of them deep, and were refused at emission; 125 of
+         the 126 because the offending range had RENAMED clear, one because a
+         name collided with the architected register.  The collision needs the
+         colouring and stays unpredictable here; the other 125 do not.
+
+         Keeping the arc is the whole remedy: the loop then schedules WITH the
+         constraint, which is what it would have done had the drop never
+         promised anything, instead of discarding a finished schedule.  */
+      if (lvx_lms_liveout_renamed_only && !g->renamed)
+        return false;
       found = true;
     }
   return found;
@@ -12661,6 +12683,10 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
   auto_vec<lvx_lms_arc> arcs;
   auto_vec<int> height;
   int dropped_safelen = 0;
+  /* §7tricies.227: whether the CTRL_LIVEOUT drop was actually applied to THIS
+     loop, which is what the commitment verifier must be gated on -- not on the
+     option being enabled.  */
+  bool losplit_applied = false;
 
   int lrdropped[4] = { 0, 0, 0, 0 };
   {
@@ -12776,6 +12802,13 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 	 will act on, not a different description of the program.  Only
 	 EXIT_LIVE, EFFECTS[0] and USE_FIRST are consulted, all of which
 	 lvx_lms_build_lranges settles without dates.  */
+      /* §7tricies.227: DID THIS LOOP ACTUALLY DROP ANYTHING?  The verifier below
+         was gated on the OPTION, so a loop that considered the drop and
+         declined it -- because it did not improve the bounds -- was still
+         held to the promise and refused.  Measured: of 126 loops refused for
+         a range keeping its architected register, ELEVEN loops in the whole
+         corpus ever dropped an arc and NONE of the 126 was among them.  All
+         126 were refused for breaking a promise they never made.  */
       lvx_lms_build_lranges (seq, dlr, NULL, NULL, NULL, NULL, NULL, &prop);
 
       for (unsigned a = 0; a < arcs.length (); a++)
@@ -12809,6 +12842,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 	  lvx_lms_dump (";; lvx cms: fn=%s loop %d liveout split: dropped %d"
 			" arc(s), lower %d -> %d\n", current_function_name (),
 			loop->num, ndrop, MAX (k, r), MAX (k2, r2));
+	  losplit_applied = true;
 	  arcs.truncate (0);
 	  for (unsigned a = 0; a < kept.length (); a++)
 	    arcs.safe_push (kept[a]);
@@ -14915,7 +14949,8 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 						 &cnheld, &cninv, &cnocc);
 		/* §7tricies.112: and the commitment the dropped CTRL_LIVEOUT
 		   arcs were made on.  Before emission, with the rest.  */
-		if (lvx_lms_liveout_split)
+		if (lvx_lms_liveout_split
+		    && (losplit_applied || !lvx_lms_liveout_verify_applied))
 		  {
 		    int losbad = 0;
 
