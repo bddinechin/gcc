@@ -13353,6 +13353,39 @@ lvx_speculatable_p (rtx_insn *insn)
   return true;
 }
 
+/* WHY INSN cannot be speculated, as one word for the probe, and
+   "speculatable" when it can be.  §7tricies.223.  The tests are in the SAME
+   ORDER as lvx_speculatable_p above and test the same things, so the two
+   cannot disagree about which property is the obstacle -- a probe that named
+   a different reason than the predicate acted on would be worse than none.
+   Keep them together if either changes.  */
+
+static const char *
+lvx_cms_unspec_reason (rtx_insn *insn)
+{
+  if (!NONDEBUG_INSN_P (insn))
+    return "not-an-insn";
+  if (CALL_P (insn))
+    return "call";
+  if (JUMP_P (insn))
+    return "jump";
+  if (volatile_insn_p (PATTERN (insn))
+      || asm_noperands (PATTERN (insn)) >= 0)
+    return "volatile-or-asm";
+  if (lvx_mem_write_insn_p (insn))
+    return "store";
+  if (lvx_mem_read_insn_p (insn))
+    {
+      enum lvx_variant v = lvx_insn_variant (insn);
+
+      if (v != LVX_VARIANT_SPECULATE && v != LVX_VARIANT_PRELOAD)
+	return "load-not-dismissible";
+    }
+  if (flag_trapping_math && lvx_fp_insn_p (insn))
+    return "trapping-fp";
+  return "speculatable";
+}
+
 /* One arc of the CMS dependence graph: a dependence from SRC to DST with
    latency THETA and iteration distance OMEGA, so the constraint it imposes on a
    modulo schedule at initiation interval II is
@@ -26319,9 +26352,19 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
      before the def -- that is the cross-iteration use, and counting it is the
      conservative direction.  */
   auto_vec<bool> tainted;
+  /* §7tricies.223: WHO tainted each insn, so the probe can name the obstacle
+     rather than only count it, and WHICH loads the rule actually pinned --
+     npinned counts ARCS, one per guarding branch, which is not the number of
+     loads and was reported as if it were.  */
+  auto_vec<int> taint_via;
+  auto_vec<bool> pinned_load;
   int npinned = 0;
 
   tainted.safe_grow_cleared (n);
+  taint_via.safe_grow (n);
+  pinned_load.safe_grow_cleared (n);
+  for (unsigned i = 0; i < n; i++)
+    taint_via[i] = -1;
   if (lvx_cms_pin_tainted_loads)
     {
       bool changed = true;
@@ -26380,6 +26423,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 			if (DF_REF_REGNO (u) == r)
 			  {
 			    tainted[i] = true;
+			    taint_via[i] = (int) j;
 			    changed = true;
 			    break;
 			  }
@@ -26492,7 +26536,10 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	      if (lvx_cms_pin_tainted_loads && tainted[q]
 		  && lvx_mem_read_insn_p (seq[q])
 		  && !lvx_mem_write_insn_p (seq[q]))
-		npinned++;
+		{
+		  npinned++;
+		  pinned_load[q] = true;
+		}
 	      lvx_cms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_STORE);
 	    }
 
@@ -26555,14 +26602,59 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
      means something against the loops where it is not.  */
   if (dump_file && lvx_cms_probe && lvx_cms_pin_tainted_loads)
     {
-      int ntaint = 0;
+      int ntaint = 0, nloads = 0;
 
       for (unsigned i = 0; i < n; i++)
-	if (tainted[i])
-	  ntaint++;
-      lvx_cms_dump (";; lvx cms: fn=%s loop %d PINNED loads=%d of %d tainted"
-		    " insns, body=%u\n", current_function_name (), loop->num,
-		    npinned, ntaint, n);
+	{
+	  if (tainted[i])
+	    ntaint++;
+	  if (pinned_load[i])
+	    nloads++;
+	}
+      lvx_cms_dump (";; lvx cms: fn=%s loop %d PINNED loads=%d arcs=%d of %d"
+		    " tainted insns, body=%u\n", current_function_name (),
+		    loop->num, nloads, npinned, ntaint, n);
+
+      /* §7tricies.223: and NAME THE OBSTACLE for each load pinned.  Counting
+	 told us the rule costs mibench 39% of its pipelines; it could not tell
+	 us WHY a given load is tainted, and two hypotheses died of that -- the
+	 store half of the rule looked redundant (it is, and exempting it
+	 recovered nothing because these loads do not reach a store) and the
+	 drain fix looked like the remedy (it is not, 74% of pinning loops have
+	 no known trip count).
+
+	 The chain is walked to its ROOT: taint_via[q] is the consumer whose
+	 use tainted q, and that consumer is either itself non-speculatable --
+	 the root -- or was tainted in turn, so follow it while the reason
+	 reads "speculatable".  The walk is bounded by n because each step
+	 moves to a strictly earlier-tainted insn, but it is bounded
+	 explicitly anyway: a cycle here would hang the compiler, and a probe
+	 must never be able to do that.  */
+      for (unsigned q = 0; q < n; q++)
+	if (pinned_load[q])
+	  {
+	    int root = taint_via[q], prev = (int) q;
+	    unsigned guard = 0;
+	    int qcode = INSN_CODE (seq[q]), rcode;
+
+	    while (root >= 0 && guard++ < n
+		   && !strcmp (lvx_cms_unspec_reason (seq[root]),
+			       "speculatable"))
+	      {
+		prev = root;
+		root = taint_via[root];
+	      }
+	    if (root < 0)
+	      root = prev;
+	    rcode = INSN_CODE (seq[root]);
+	    lvx_cms_dump (";; lvx cms:   PINWHY fn=%s loop %d load uid=%d %s"
+			  " <- uid=%d %s %s\n", current_function_name (),
+			  loop->num, INSN_UID (seq[q]),
+			  qcode >= 0 ? insn_data[qcode].name : "?",
+			  INSN_UID (seq[root]),
+			  lvx_cms_unspec_reason (seq[root]),
+			  rcode >= 0 ? insn_data[rcode].name : "?");
+	  }
     }
 
   if (first_branch >= 0 && prev_branch > first_branch)
