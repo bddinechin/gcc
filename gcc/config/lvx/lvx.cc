@@ -12705,6 +12705,38 @@ lvx_doloop_end_p (rtx_insn *insn)
 	  && doloop_condition_get (insn) != NULL_RTX);
 }
 
+/* LMS AND CMS, AND WHY THERE ARE TWO PREFIXES BELOW.
+
+   LMS is LATE MODULO SCHEDULING: the framework, late because it runs after
+   register allocation and after the hardware-loop mapping.  Everything an
+   engine needs but does not decide is `lvx_lms_' -- loop admission and
+   preconditioning, ResMII and RecMII, the dependence graph, the relaxations
+   (Estart/Lstart, MCRL), the resource model and the acceptance oracle
+   (lvx_lms_verify plus the colouring), live ranges, register allocation and
+   the pipeline construction and emission.
+
+   CMS is CONVERGENT MODULO SCHEDULING: one engine, and only six functions of
+   it -- lvx_cms_converge, which schedules unwound copies against a monotone
+   clock and projects, and lvx_cms_swo_at_ii, which drives it through a
+   Squeaky Wheel cycle, with earliest_cycle, rnd and rwc_weight in support.
+   Its own options keep the `-mcms-' spelling and the `lvx_cms_' prefix.
+
+   The line between them is the question "would another engine decide this
+   differently?".  A rule that is about the PROGRAM belongs in LMS and every
+   engine then inherits it -- the tainted-load rule of §7tricies.221 is the
+   worked example, since it lands in lvx_lms_build_graph as ordinary arcs and
+   an engine never learns it exists.  A rule that is about the SEARCH belongs
+   in CMS.
+
+   Two things are deliberately NOT renamed.  The option spellings are all
+   still `-mcms-', so every command line recorded in docs/ still runs; and the
+   dump prefix is still `;; lvx cms:', so every harness still matches and a
+   rename could be verified by a byte-identical census.  Both change when the
+   generic options do, and that change carries Alias() entries.
+
+   The comments below still say CMS in many places where they now mean LMS.
+   That is a reading pass, not a correctness one.  */
+
 /* THE TRIP COUNT, RECOVERED AFTER RELOAD.  §7tricies.84.
 
    get_max_loop_iterations needs loop->any_upper_bound, which record_niter_bound
