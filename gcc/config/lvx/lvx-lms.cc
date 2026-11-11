@@ -138,11 +138,17 @@ static const char *const lvx_lms_arc_kind_name[] = {
    an engine never learns it exists.  A rule that is about the SEARCH belongs
    in CMS.
 
-   Two things are deliberately NOT renamed.  The option spellings are all
-   still `-mcms-', so every command line recorded in docs/ still runs; and the
-   dump prefix is still `;; lvx cms:', so every harness still matches and a
-   rename could be verified by a byte-identical census.  Both change when the
-   generic options do, and that change carries Alias() entries.
+   THE OPTIONS FOLLOW THE SAME LINE.  The forty-five generic ones are
+   `-mlms-' since §7tricies.223, the nineteen that steer CMS's own search are
+   still `-mcms-', and every old spelling survives as an Alias() so that the
+   command lines recorded in docs/ and in commit messages still run -- a
+   measurement that cannot be re-run is not a record.  A retired option named
+   in a comment below keeps the spelling it had when it existed.
+
+   The dump prefix is still `;; lvx cms:'.  It is not an option and no harness
+   keys on it -- they match the field names -- but leaving it alone is what
+   lets each of these steps be verified by a BYTE-IDENTICAL census rather than
+   by reading.
 
    The comments below still say CMS in many places where they now mean LMS.
    That is a reading pass, not a correctness one.  */
@@ -300,7 +306,7 @@ lvx_lms_find_loopdo (class loop *loop)
 
    The CMS probe was written when `-fdump-rtl-mach' was its only entry, so
    DUMP_FILE could be assumed non-null after the one early return at the top
-   of lvx_lms_pipeline_loops.  `-mcms-codegen' broke that assumption: it runs the
+   of lvx_lms_pipeline_loops.  `-mlms-codegen' broke that assumption: it runs the
    probe for its side effect -- the schedule -- with no dump requested, and
    the first unguarded fprintf then takes a null FILE * into vfprintf and
    segfaults.  The compiler died at pipe.c:10 that way while trmm stayed
@@ -323,7 +329,7 @@ lvx_lms_dump (const char *fmt, ...)
   va_end (ap);
 }
 
-/* How much longer -mcms-load-latency says this instruction's result takes than
+/* How much longer -mlms-load-latency says this instruction's result takes than
    the machine description does, or 0.
 
    A load carries a "variant" (cached, speculate, uncached, preload) and the
@@ -1735,7 +1741,7 @@ lvx_lms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
        powers of two is the largest of them; the lcm form says why.
 
        It mattered because the rounding rule lived in two places and only one
-       of them read -mcms-exact-degree, so a value could have exact degree 3
+       of them read -mlms-exact-degree, so a value could have exact degree 3
        while KUNROLL was the power-of-two 4.  The names then rotate 0,1,2,0
        through one unrolled kernel and 1,2,0,1 through the next -- the copy
        that wrote a register is not the copy that reads it.
@@ -1838,7 +1844,7 @@ lvx_lms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	       the rounding is not neutral when ranges are COMBINED, since
 	       p2 (a + b) can exceed p2 (a) + p2 (b) even though
 	       ceil ((a+b)/II) <= ceil (a/II) + ceil (b/II) always holds.
-	       -mcms-exact-degree separates the two effects.  */
+	       -mlms-exact-degree separates the two effects.  */
 	    int p2 = 1;
 	    if (lvx_lms_exact_degree)
 	      p2 = MAX (deg[v], 1);
@@ -2038,7 +2044,7 @@ lvx_lms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		 paragraph above asks for.
 
 		 §7tricies.158: per value rather than for all of them, so
-		 -mcms-ph-mask can keep the pin on every range but one and
+		 -mlms-ph-mask can keep the pin on every range but one and
 		 ask which one's un-pinning is unsound.  A range left pinned
 		 gets reg[0] == regno and so no entry copy, the emission
 		 keying on exactly that.  */
@@ -3651,7 +3657,7 @@ lvx_lms_operand_tied_p (rtx_insn *insn, int useidx)
    copy: the scheduler is then free to hoist the next iteration's write of a
    live-out register above the exit branch, and the exit returns a value one
    iteration too far.  That is exactly the unsoundness
-   -mcms-drop-liveout-arcs is documented to have and is refused with codegen
+   -mlms-drop-liveout-arcs is documented to have and is refused with codegen
    for -- reached here by a drop wider than its own promise.
 
    Measured on TSVC2's initialise_arrays: the loop dropped FIVE arcs with ONE
@@ -3711,7 +3717,7 @@ lvx_lms_liveout_arc_pinned_p (class loop *loop,
 
 /* DID THE SPLIT ACTUALLY HAPPEN?  §7tricies.112.
 
-   -mcms-liveout-split drops the CTRL_LIVEOUT arcs on the expectation that the
+   -mlms-liveout-split drops the CTRL_LIVEOUT arcs on the expectation that the
    renaming writes a name of its own and the drain reconciles it.  That is
    decided after scheduling, so it is a commitment to be checked, not a fact to
    be assumed: a range that came out holding its architected register has a
@@ -3825,7 +3831,7 @@ lvx_lms_prop_lookup (const auto_vec<lvx_lms_prop> *prop, unsigned i, int slot)
    the probe path and a NULL dereference on the codegen one: by then
    lvx_lms_make_nodes has created blocks and redirected edges, so a successor
    can be a block DF has never seen and `df_get_live_in' returns nothing at
-   all.  Compiling libgcc with -mcms-codegen segfaulted here.
+   all.  Compiling libgcc with -mlms-codegen segfaulted here.
 
    A null check would have been the wrong repair: a branch whose exit liveness
    silently read as empty leaves every range it should have marked `exit_live'
@@ -5008,7 +5014,7 @@ lvx_lms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
      makes every live-out range conflict with everything scheduled after its
      definition -- and that is the direction a register's contents must be
      reasoned about when a drain is going to copy them back.  The control is
-     -mno-cms-exit-live-span.  */
+     -mno-lms-exit-live-span.  */
   {
     int endd = 0;
 
@@ -5703,7 +5709,7 @@ lvx_lms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
    P2UNROLL IS READ BACK, not recomputed.  lvx_lms_build_lranges puts a
    provisional power-of-two round in it so the structural report has something
    to say; what the renaming uses is the number of anodes the colouring
-   actually built, which is the discipline that fixed the -mcms-exact-degree
+   actually built, which is the discipline that fixed the -mlms-exact-degree
    bug (§7ter.14): a rounding rule in two places goes stale, a count of what
    exists cannot.  */
 
@@ -6783,7 +6789,7 @@ lvx_lms_verify_lranges (const auto_vec<rtx_insn *> &seq,
    (L - OMEGA) mod P2(V).
 
    P2 IS NOT PASSED IN; it is the number of anodes the colouring made for the
-   value.  Recomputing it from DEG and -mcms-exact-degree would be six lines
+   value.  Recomputing it from DEG and -mlms-exact-degree would be six lines
    duplicating lvx_lms_colour, and a duplicate of a rounding rule is a thing
    that goes stale -- this cannot, because it counts what the allocator
    actually built.  A value with no anode has P2 == 0 and is not renamed at
@@ -8404,10 +8410,10 @@ lvx_lms_make_nodes (const struct lvx_lms_site *site, class loop *loop,
    local scheduler already does, with the right dependence graph.  Giving
    phase one its own graph would have meant reimplementing that scheduler.
 
-   -mcms-codegen alone now builds the block skeleton and emits nothing, which
+   -mlms-codegen alone now builds the block skeleton and emits nothing, which
    is the state §7quinquies.9 designed it for: the edge surgery verified
    against a working program before the schedule is allowed to move an
-   instruction.  -mcms-pipeline is what emits.  */
+   instruction.  -mlms-pipeline is what emits.  */
 
 /* THE ANTI-DEPENDENCES RENAMING DOES NOT REMOVE.  §7tricies.19.
 
@@ -9026,7 +9032,7 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
          void g (int n)
          { for (int i = 0; i < n; i++) A[i] = B[i] * 1.25 + Cc[i]; }
 
-     at -O2 -ffast-math -mcms-pipeline, where the base compiles to a LOOPDO.
+     at -O2 -ffast-math -mlms-pipeline, where the base compiles to a LOOPDO.
      That is why every CMS study passes -fno-hwloop, and it is the whole of
      what TSVC2's s312 was: an ordinary hardware loop.
 
@@ -10175,7 +10181,7 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
      being dictated from outside.
 
      ONE COPY PER RANGE AND ONE EXECUTION PER LOOP ENTRY, which is what
-     separates it from -mcms-tied-copy: that phase put a copy in the BODY for
+     separates it from -mlms-tied-copy: that phase put a copy in the BODY for
      every constraint group and spent 1352 of them on about five needs,
      taking emitted from 949 to 877.  The set is a PARALLEL copy -- two
      use-headed ranges can want each other's registers -- so it goes through
@@ -12394,7 +12400,7 @@ lvx_lms_bounds (class loop *loop, basic_block *body,
    rewrite at emission is not an incomplete feature, it is a miscompile: the
    schedule would assume `u' reads rS while the code still reads rD.  So the
    analysis lands first, with its filters measured, and the transformation
-   follows behind an option refused with -mcms-codegen until emission can
+   follows behind an option refused with -mlms-codegen until emission can
    honour it.
 
    The filters, each able to reject on its own:
@@ -12482,7 +12488,7 @@ lvx_lms_recompute_heights (const auto_vec<lvx_lms_arc> &arcs,
    theta (p->c) and omega (p->c) + omega (c->u).  Returns how many arcs were
    redirected.
 
-   MEASUREMENT ONLY, AND REFUSED WITH -mcms-codegen.  Doing this without the
+   MEASUREMENT ONLY, AND REFUSED WITH -mlms-codegen.  Doing this without the
    matching rewrite at emission is not an incomplete feature but a miscompile:
    the schedule would assume `u' reads rS while the code still reads rD.  The
    emission side substitutes registers already (the renaming does it per
@@ -12626,7 +12632,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
      bisect arm name the same loop.  */
   if (lvx_lms_only_loop != 0 && loop->num != (int) lvx_lms_only_loop)
     {
-      lvx_lms_dump (";; lvx cms: fn=%s loop %d skipped by -mcms-only-loop\n",
+      lvx_lms_dump (";; lvx cms: fn=%s loop %d skipped by -mlms-only-loop\n",
 		    current_function_name (), loop->num);
       return;
     }
@@ -12861,7 +12867,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
      unpinned.  II is never lost and the epilogue saving is taken wherever it
      costs nothing.  */
   int pin = lvx_cms_branch_stage;
-  /* -mcms-ii-bias starts the search above the bound.  It exists to answer a
+  /* -mlms-ii-bias starts the search above the bound.  It exists to answer a
      question the ordinary search cannot: when two schedulers disagree only
      because one of them had to take a larger II, comparing them needs both to
      be at the SAME larger II.  §7quinvicies.  */
@@ -12902,13 +12908,13 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 	 ask MCRL where the tasks want to go.
 
 	 ARM A IS ONLY SOUND WITH THE COLOURING IN ACCEPTANCE, and measurement
-	 showed why rather than argument: with -mno-cms-regalloc-feasible the
+	 showed why rather than argument: with -mno-lms-regalloc-feasible the
 	 acceptance test is verification alone, so arm A happily takes a
 	 SMALLER II with a kernel that cannot be coloured -- fdtd-2d's loop 14
 	 went II 9 -> 7 and 0 -> 20 uncolourable values, a smaller II being more
 	 stages and so more pressure (§7octodecies).  With the colouring in
 	 acceptance the same loop goes 11 -> 9 and stays colourable.  That is
-	 why -mcms-regalloc-feasible now defaults ON: the two are one mechanism,
+	 why -mlms-regalloc-feasible now defaults ON: the two are one mechanism,
 	 and the gate is what pays back most of what the colouring costs in II.
 	 §7septvicies.5.  */
       else if (lvx_cms_mcrl_gate
@@ -13415,7 +13421,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 
 	       CATDQ halves the TINY cost of a pair but spends the scarcer
 	       counter -- availability 2 against 4 -- and a quad's two CATDQ
-	       saturate LITE outright.  With -mcms-split-wide=1 take CATDQ
+	       saturate LITE outright.  With -mlms-split-wide=1 take CATDQ
 	       where it fits and fall back to COPYD, which is the better way
 	       round: TINY is the binding counter on this corpus (§7septies.3's
 	       tight= field names it in 46 of 51 missing loops).  */
@@ -14368,7 +14374,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
      emission has replaced, and LOOP->NUM_NODES no longer describes the loop
      either, so the walk dereferenced freed blocks: a segfault in
      `__deregister_frame_info_bases' the moment libgcc was compiled with
-     -mcms-codegen, and the reason code generation could not be turned on by
+     -mlms-codegen, and the reason code generation could not be turned on by
      default.
 
      It is the third appearance of one hazard -- state captured before
@@ -14395,7 +14401,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
   }
 
   /* CODEGEN, phase one: the block structure (§7quinquies.9).  Behind
-     -mcms-codegen and off by default, because it is incomplete -- the blocks
+     -mlms-codegen and off by default, because it is incomplete -- the blocks
      are built empty and no instruction moves, so the loop is unchanged and the
      edge surgery can be verified against a working program before the schedule
      is allowed to touch it.
@@ -14690,7 +14696,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 	     emission, and every refusal above it becomes non-mutating by
 	     construction rather than by review.
 
-	     WITHOUT -mcms-pipeline it stays where it was: -mcms-codegen alone
+	     WITHOUT -mlms-pipeline it stays where it was: -mlms-codegen alone
 	     exists to build the block skeleton and emit nothing (§7tricies.?),
 	     so there the skeleton IS the product and there is no later point
 	     to defer it to.  */
@@ -14708,7 +14714,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 			    cgblocks.length (), plnodes.length ());
 	    }
 
-	  /* PHASE TWO.  -mcms-pipeline emits the pipeline itself; without it
+	  /* PHASE TWO.  -mlms-pipeline emits the pipeline itself; without it
 	     the body is only put into schedule order, which is verified
 	     (§7tricies.7).  Two flags rather than one so that a broken
 	     pipeline cannot regress the reordering.  */
@@ -15150,7 +15156,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
   /* How many expanded values admit a repair that keeps MinII?  §7novodecies.
      SPLITOK counts those a splitting COPYD could serve (one extra TINY per
      register, latency 1); SPILLOK those a store/reload could (two extra
-     instructions, and the reload's latency, which under -mcms-load-latency is
+     instructions, and the reload's latency, which under -mlms-load-latency is
      the uncached figure).  */
   int splitok = 0, spillok = 0, cand = 0, nsplit = 0, spl_after = -1;
   int spl_nodes = 0, spl_before = -1, nspill = 0, sp_after = -1, sp_why = 0;
@@ -15159,7 +15165,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
        cannot be taken here.  */
     /* A spill reload is a CACHED load whatever the data loads are (author,
        2026-10-27): the slot is in the frame, which is hot, so it is priced at
-       the description's cached figure of 3 and NOT at -mcms-load-latency's
+       the description's cached figure of 3 and NOT at -mlms-load-latency's
        uncached one.  That option models the loop's data stream, which may be
        streamed and not reused; the frame is neither.  The distinction matters
        because 15 cycles of reload latency inside a recurrence could almost
@@ -15560,7 +15566,7 @@ lvx_lms_probe_ddg (struct ddg *g, int r)
      the blocks; CMS linearises the chain and schedules instructions, so what
      bounds it is instruction count, not block count.
 
-   - Its own instruction bound, -mcms-max-insns, because the cost of a CMS
+   - Its own instruction bound, -mlms-max-insns, because the cost of a CMS
      attempt is the convergence loop over DELTA + 4 copies of the body, not a
      doubling of code size.
 
@@ -15860,7 +15866,7 @@ lvx_lms_pipeline_loops (void)
       if (loop->latch == NULL)
 	continue;
 
-      /* §7tricies.153: the per-function companion to -mcms-only-loop, for
+      /* §7tricies.153: the per-function companion to -mlms-only-loop, for
 	 bisecting a wrong answer down to the function that produces it.  */
       if (lvx_lms_only_fn && lvx_lms_only_fn[0]
 	  && !strstr (current_function_name (), lvx_lms_only_fn))

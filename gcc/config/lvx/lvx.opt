@@ -95,23 +95,23 @@ Target Var(lvx_regrename_inner_loops_p) Init(1) Optimization
 Rename registers through inner superblock loops before EBB scheduling, so successive definitions use different registers.
 
 
-mcms-probe
+mlms-probe
 Target Var(lvx_lms_probe) Init(0) Optimization
 Dump the convergent-modulo-scheduling probe for each measured inner loop.
 
-mcms-probe-bundles
+mlms-probe-bundles
 Target Var(lvx_lms_probe_bundles) Init(0) Optimization
 Check the one bundling invariant the emission cannot repair after the fact: A BUNDLE NEVER CROSSES A BASIC-BLOCK BOUNDARY.  Reports every insn that leaves its bundle open across a boundary, and says whether the existing (end block) fixup covers that case -- it is scoped to lvx_bundle_per_block and to blocks CMS owns, resting on the assumption that a scheduled region is closed by TARGET_SCHED_INIT already.  This is what tests that assumption rather than trusting it.  A bundle left open absorbs the next block's instructions, which gas reports as 'too many ALU instructions in bundle' when it is lucky and assembles silently when it is not.  7tricies.216.
 
-mcms-probe-flow
+mlms-probe-flow
 Target Var(lvx_lms_probe_flow) Init(0) Optimization
 Check the EMITTED dataflow against the plan: for each emitted use, whether the register it reads holds the live range the plan assigned it.  Walks bundles, not insns, because inside a bundle every source is read before any result is written -- the property a same-cycle WAR turns on and GCC's sequential insn stream cannot express.  The one question CMS's other checks cannot ask, all of which validate the model against itself.  7tricies.209.
 
-mcms-probe-groups
+mlms-probe-groups
 Target Var(lvx_lms_probe_groups) Init(0) Optimization
 Report EVERY same-group write/read pair that landed in different bundles, including the ones lvx_lms_group_check's key filter skips as read-after-write.  The filter assumes a reader later in program order wants that writer's value, which is false when a third insn writes the same register after renaming -- the shape of 7tricies.190.  Needs the report to reach the assembly, so it prints with `#'.
 
-mcms-probe-cfg
+mlms-probe-cfg
 Target Var(lvx_lms_probe_cfg) Init(0) Optimization
 Dump every block's successors, by edge kind and with verify_flow_info's own branch-edge count, around the hardware-loop mapping.  Needs a dump file (-fdump-rtl-mach); the instrument that located the illegal CFG of 7tricies.197.
 
@@ -119,29 +119,29 @@ mcms-release=
 Target RejectNegative Joined UInteger Var(lvx_cms_release_policy) Init(1) Optimization
 -mcms-release=N	SWO release-date policy: 0 none, 1 every unblamed task with slack to its ALAP, 2 only culprits of resource contention, 4 every task with slack, 5 Huff's stretchable-side decision, which releases an operation only when it has more values to stretch forward than backward, 6 every task with slack that is NOT on the critical recurrence.
 
-mcms-split-wide=
+mlms-split-wide=
 Target RejectNegative Joined UInteger Var(lvx_lms_split_wide) Init(0) Optimization
--mcms-split-wide=N	How a lifetime-splitting copy of a value wider than one register is costed: 0 one COPYD per register (TINY each), 1 prefer CATDQ (one per 128 bits, costing a LITE and a TINY).
+-mlms-split-wide=N	How a lifetime-splitting copy of a value wider than one register is costed: 0 one COPYD per register (TINY each), 1 prefer CATDQ (one per 128 bits, costing a LITE and a TINY).
 
-mcms-load-latency=
+mlms-load-latency=
 Target RejectNegative Joined UInteger Var(lvx_lms_load_latency) Init(15) Optimization
--mcms-load-latency=N	Charge every load N cycles of latency instead of what the machine description gives, 0 uses the description, and the default of 15 is the uncached .us variant, which is the regime to design for.
+-mlms-load-latency=N	Charge every load N cycles of latency instead of what the machine description gives, 0 uses the description, and the default of 15 is the uncached .us variant, which is the regime to design for.
 
-mcms-regalloc-feasible
+mlms-regalloc-feasible
 Target Var(lvx_lms_regalloc_feasible) Init(1) Optimization
 Reject an initiation interval whose modulo kernel cannot be register allocated, making colourability a feasibility test inside the II search rather than a property discovered afterwards.
 
-mcms-exact-degree
+mlms-exact-degree
 Target Var(lvx_lms_exact_degree) Init(0) Optimization
 Colour the interference graph with exact modulo expansion degrees instead of degrees rounded up to a power of two, to separate the cost of the rounding from the cost of the schedule.
 
-mcms-stage-sched
+mlms-stage-sched
 Target Var(lvx_lms_stage_sched) Init(0) Optimization
 After a modulo schedule converges, shift operations by whole multiples of the initiation interval to shorten live ranges, which changes the stage but not the modulo cycle and so cannot affect resources or the initiation interval (Eichenberger's skip factors).
 
-mcms-ii-bias=
+mlms-ii-bias=
 Target RejectNegative Joined UInteger Var(lvx_lms_ii_bias) Init(0) Optimization
--mcms-ii-bias=N	Start the initiation-interval search N cycles above the lower bound, to compare schedulers at an II neither of them would have chosen.
+-mlms-ii-bias=N	Start the initiation-interval search N cycles above the lower bound, to compare schedulers at an II neither of them would have chosen.
 
 mcms-branch-stage=
 Target RejectNegative Joined UInteger Var(lvx_cms_branch_stage) Init(3) Optimization
@@ -155,37 +155,37 @@ mcms-swo-budget=
 Target RejectNegative Joined UInteger Var(lvx_cms_swo_budget) Init(4) Optimization
 -mcms-swo-budget=N	Allow N squeaky-wheel passes at each candidate initiation interval before trying the next.  One is a single greedy construction, the pre-SWO behaviour.
 
-mcms-inductive-relaxation
+mlms-inductive-relaxation
 Target Var(lvx_lms_inductive_relaxation) Init(0) Optimization
-Drop scheduling arcs from a simple induction's definition to its uses as a base+displacement base, assuming codegen adjusts the displacements; for measurement only until it does, and rejected without -mcms-probe.
+Drop scheduling arcs from a simple induction's definition to its uses as a base+displacement base, assuming codegen adjusts the displacements; for measurement only until it does, and rejected without -mlms-probe.
 
-mcms-stride-test
+mlms-stride-test
 Target Var(lvx_lms_stride_test) Init(1) Optimization
 Disprove cross-iteration memory dependences whose addresses are affine in the iteration number with a common stride.
 
-mcms-max-insns=
+mlms-max-insns=
 Target RejectNegative Joined UInteger Var(lvx_lms_max_insns) Init(256) Optimization
--mcms-max-insns=N	Do not consider an inner loop with more than N instructions for modulo scheduling.
+-mlms-max-insns=N	Do not consider an inner loop with more than N instructions for modulo scheduling.
 
-mcms-pin-tainted-loads
+mlms-pin-tainted-loads
 Target Var(lvx_lms_pin_tainted_loads) Init(1) Optimization
-Guard a load whose result reaches a NON-SPECULATABLE consumer exactly as a store is guarded, instead of letting it cross a conditional branch.  7tricies.221.  Constraint (1) of the dependence graph exempts every load from a branch's guard -- `a load may cross, which is what the dismissible variant is for' -- but that is only sound while nothing CONSUMES what the load read: a dismissible load suppresses the FAULT, not the garbage value.  An instruction using a speculated result must itself be speculatable, and a conditional branch and a store are not.  divmodvx was the case: a pipelined 8-trip loop speculatively read UB[8], one element past a uint16_t[8], got zero, and the zero reached GCC's isolated divide-by-zero path, which traps.  The taint is transitive through speculatable consumers, so a load feeding an add feeding a branch is pinned too.  -mno-cms-pin-tainted-loads restores the old exemption -- UNSOUND, and kept only so the cost of this can be measured against it: pinning a load that feeds its own loop's exit test, as a while (*p) or a search loop does, may raise II or decline the loop.
+Guard a load whose result reaches a NON-SPECULATABLE consumer exactly as a store is guarded, instead of letting it cross a conditional branch.  7tricies.221.  Constraint (1) of the dependence graph exempts every load from a branch's guard -- `a load may cross, which is what the dismissible variant is for' -- but that is only sound while nothing CONSUMES what the load read: a dismissible load suppresses the FAULT, not the garbage value.  An instruction using a speculated result must itself be speculatable, and a conditional branch and a store are not.  divmodvx was the case: a pipelined 8-trip loop speculatively read UB[8], one element past a uint16_t[8], got zero, and the zero reached GCC's isolated divide-by-zero path, which traps.  The taint is transitive through speculatable consumers, so a load feeding an add feeding a branch is pinned too.  -mno-lms-pin-tainted-loads restores the old exemption -- UNSOUND, and kept only so the cost of this can be measured against it: pinning a load that feeds its own loop's exit test, as a while (*p) or a search loop does, may raise II or decline the loop.
 
-mcms-taint-through-stores
+mlms-taint-through-stores
 Target Var(lvx_lms_taint_through_stores) Init(1) Optimization
-Let a store or a volatile reference taint the loads feeding it, as well as a branch.  7tricies.222.  Constraint (1) of the dependence graph ALREADY pins a store below the guarding branch, so a store never executes speculatively: if the next iteration exists the speculated load read the right address and the store commits the correct value, and if it does not, that iteration's store never runs and the garbage is never committed.  Tainting through a consumer that is already pinned is therefore redundant, which is what -mno-cms-taint-through-stores drops.  Branches, calls, non-dismissible loads (whose ADDRESS a speculated value can fault) and trapping FP keep tainting, so the divmodvx case stays fixed.  MEASURED AND REJECTED as a default, 2026-11-11: the argument above is sound and divmodvx stays fixed with the exemption on, but it recovers nothing and costs a little.  Census full -> exempt, one build, idle machine: emitted 305/885 both, lvx-mibench 245 -> 251 emitted with nstages>=3 unchanged at 66, lvx-turbopfor 362 -> 363 emitted but nstages>=3 145 -> 137, lvx-kernels deep 2 -> 1; net +7 emitted and -9 DEEP, and deep is the column that means something.  polybench 2mm is byte-identical either way (17 pinned, 14 built, 8 deep) because its pins do not flow through stores at all -- they flow through the loads forced dismissible, whose consumers are not stores.  Kept at 1 so the hypothesis and its refutation stay in the tree rather than being rediscovered.
+Let a store or a volatile reference taint the loads feeding it, as well as a branch.  7tricies.222.  Constraint (1) of the dependence graph ALREADY pins a store below the guarding branch, so a store never executes speculatively: if the next iteration exists the speculated load read the right address and the store commits the correct value, and if it does not, that iteration's store never runs and the garbage is never committed.  Tainting through a consumer that is already pinned is therefore redundant, which is what -mno-lms-taint-through-stores drops.  Branches, calls, non-dismissible loads (whose ADDRESS a speculated value can fault) and trapping FP keep tainting, so the divmodvx case stays fixed.  MEASURED AND REJECTED as a default, 2026-11-11: the argument above is sound and divmodvx stays fixed with the exemption on, but it recovers nothing and costs a little.  Census full -> exempt, one build, idle machine: emitted 305/885 both, lvx-mibench 245 -> 251 emitted with nstages>=3 unchanged at 66, lvx-turbopfor 362 -> 363 emitted but nstages>=3 145 -> 137, lvx-kernels deep 2 -> 1; net +7 emitted and -9 DEEP, and deep is the column that means something.  polybench 2mm is byte-identical either way (17 pinned, 14 built, 8 deep) because its pins do not flow through stores at all -- they flow through the loads forced dismissible, whose consumers are not stores.  Kept at 1 so the hypothesis and its refutation stay in the tree rather than being rediscovered.
 
-mcms-force-speculative-loads
+mlms-force-speculative-loads
 Target Var(lvx_lms_force_spec_loads) Init(0) Optimization
 Emit loop-variant-address loads in pipelined inner loops as their dismissible variant.
 
-mcms-free-doloop-end
+mlms-free-doloop-end
 Target Var(lvx_lms_free_doloop_end) Init(0) Optimization
-Charge a doloop_end no resources, on the assumption that reorg_loops will map the loop and it will emit no instruction; for measurement only, since the mapping can still be refused, and rejected without -mcms-probe.
+Charge a doloop_end no resources, on the assumption that reorg_loops will map the loop and it will emit no instruction; for measurement only, since the mapping can still be refused, and rejected without -mlms-probe.
 
-mcms-assume-ivdep
+mlms-assume-ivdep
 Target Var(lvx_lms_assume_ivdep) Init(0) Optimization
-Assume every inner loop carries #pragma GCC ivdep; for measurement only, not a legal transformation, and rejected without -mcms-probe.
+Assume every inner loop carries #pragma GCC ivdep; for measurement only, not a legal transformation, and rejected without -mlms-probe.
 
 mcms-mcrl-release=
 Target RejectNegative Joined UInteger Var(lvx_cms_mcrl_release) Init(0) Optimization
@@ -195,37 +195,37 @@ mcms-mcrl-gate
 Target Var(lvx_cms_mcrl_gate) Init(1) Optimization
 Reach for the minimum cumulative register lifetime dates at the current initiation interval when an unseeded construction fails there, or when its makespan overshoots the dependence graph's own bound.
 
-mcms-codegen
+mlms-codegen
 Target Var(lvx_lms_codegen) Init(0) Optimization
-Emit the convergent modulo schedule as code, rather than only measuring it.  Incomplete: builds the pipeline block structure only.  Enables the loop walk by itself; -mcms-probe is not needed for code generation, only for the dump.
+Emit the convergent modulo schedule as code, rather than only measuring it.  Incomplete: builds the pipeline block structure only.  Enables the loop walk by itself; -mlms-probe is not needed for code generation, only for the dump.
 
-mcms-pipeline
+mlms-pipeline
 Target Var(lvx_lms_pipeline) Init(0) Optimization
-Emit the software pipeline itself, not only the body in schedule order.  Requires -mcms-codegen and is refused without it; separate from it so that a broken pipeline cannot regress the reordering, which is verified.
+Emit the software pipeline itself, not only the body in schedule order.  Requires -mlms-codegen and is refused without it; separate from it so that a broken pipeline cannot regress the reordering, which is verified.
 
-mcms-force-p2unroll=
+mlms-force-p2unroll=
 Target RejectNegative Joined UInteger Var(lvx_lms_force_p2unroll) Init(0) Optimization
--mcms-force-p2unroll=N	Give every renamed live range kunroll names instead of the minimum its lifetime needs, so each name carries one kernel copy: 0 off, 1 interior ranges only, 2 including ranges live on an exit edge, which costs reconciliation copies in each drain.  Measured to change no II on this target (7tricies.97); kept as a control for other register allocators.
+-mlms-force-p2unroll=N	Give every renamed live range kunroll names instead of the minimum its lifetime needs, so each name carries one kernel copy: 0 off, 1 interior ranges only, 2 including ranges live on an exit edge, which costs reconciliation copies in each drain.  Measured to change no II on this target (7tricies.97); kept as a control for other register allocators.
 
-mcms-drop-liveout-arcs
+mlms-drop-liveout-arcs
 Target Var(lvx_lms_drop_liveout_arcs) Init(0) Optimization
-Omit the CTRL_LIVEOUT control arcs, to size what splitting the live-out definition would be worth; measurement only, requires -mcms-probe and refused with -mcms-codegen.
+Omit the CTRL_LIVEOUT control arcs, to size what splitting the live-out definition would be worth; measurement only, requires -mlms-probe and refused with -mlms-codegen.
 
-mcms-copy-prop
+mlms-copy-prop
 Target Var(lvx_lms_copy_prop) Init(0) Optimization
-Redirect a reader of a register copy onto the copy's source in the dependence graph, shortening recurrences through the copy; measurement only, requires -mcms-probe and refused with -mcms-codegen until emission performs the matching operand rewrite.
+Redirect a reader of a register copy onto the copy's source in the dependence graph, shortening recurrences through the copy; measurement only, requires -mlms-probe and refused with -mlms-codegen until emission performs the matching operand rewrite.
 
-mcms-recompute-heights
+mlms-recompute-heights
 Target Var(lvx_lms_recompute_heights_p) Init(0) Optimization
-Recompute the dependence heights by relaxation over the intra-iteration arcs instead of taking what graph construction left; measurement only, and required by -mcms-copy-prop whose redirected arcs construction's values do not describe.
+Recompute the dependence heights by relaxation over the intra-iteration arcs instead of taking what graph construction left; measurement only, and required by -mlms-copy-prop whose redirected arcs construction's values do not describe.
 
-mcms-copy-pref
+mlms-copy-pref
 Target Var(lvx_lms_copy_pref) Init(0) Optimization
 Prefer a live-out range's own architected register when colouring, so the drain's copy back to it is deleted (Moon & Ebcioglu 1992).
 
-mcms-liveout-split
+mlms-liveout-split
 Target Var(lvx_lms_liveout_split) Init(1) Optimization
-Omit the CTRL_LIVEOUT control arcs for live-out ranges the renaming gives a name of their own, the drain reconciling that name to the architected register on the way out.  The commitment is verified before emission and the loop refused if a range kept its architected register.  On by default since the drain reconciliation it rests on was fixed (7tricies.135); -mno-cms-liveout-split restores the arcs.
+Omit the CTRL_LIVEOUT control arcs for live-out ranges the renaming gives a name of their own, the drain reconciling that name to the architected register on the way out.  The commitment is verified before emission and the loop refused if a range kept its architected register.  On by default since the drain reconciliation it rests on was fixed (7tricies.135); -mno-lms-liveout-split restores the arcs.
 
 mcms-vbss=
 Target RejectNegative Joined UInteger Var(lvx_cms_vbss) Init(1) Optimization
@@ -279,85 +279,232 @@ mcms-squeak=
 Target RejectNegative Joined UInteger Var(lvx_cms_squeak) Init(0) Optimization
 -mcms-squeak=N	Where SWO's per-instruction failure signal comes from: 0 none, 1 the convergence oracle's named culprits, 2 the same with the delay path's writes suppressed.  The construction delay itself always drives the priority escalation and the release policies that read it; only the per-instruction attribution is selected here, the resource window scan having been retired with the forward walk.
 
-mcms-only-loop=
+mlms-only-loop=
 Target RejectNegative Joined UInteger Var(lvx_lms_only_loop) Init(0) Optimization
--mcms-only-loop=N	Consider only loop N of each function, to bisect which pipelined loop a wrong answer comes from; 0 considers them all.  Measurement only.
+-mlms-only-loop=N	Consider only loop N of each function, to bisect which pipelined loop a wrong answer comes from; 0 considers them all.  Measurement only.
 
 
-mcms-rotate-bottom-test
+mlms-rotate-bottom-test
 Target Var(lvx_lms_rotate_bottom_test) Init(1) Optimization
 Rotate an innermost loop whose latch carries no exit by duplicating the header onto the preheader edge, so the copy jumps around the loop and the remaining body is bottom-tested, then merge the two remaining blocks.  Makes the latch carry the exit the drain needs and entering the loop run the body unconditionally, so the loop satisfies both gates rather than either being weakened.  Worth 962 -> 1000 emitted, 286 -> 291 at nstages>=3, and 1.21x on adpcm; costs 3.46% text on the files that rotate.  7tricies.164.
 
-mcms-drain-from-exit
+mlms-drain-from-exit
 Target Var(lvx_lms_drain_from_exit) Init(0) Optimization
 Where the latch has no edge leaving the loop, put the drain on the latest exit in body order instead of declining.  Recovers the loops whose back edge comes from a latch that only jumps back, with the exit test earlier in the body.  7tricies.162.
 
-mcms-ph-mask=
+mlms-ph-mask=
 Target RejectNegative Joined UInteger Var(lvx_lms_ph_mask) Init(4294967295) Optimization
--mcms-ph-mask=N	Un-pin only the use-headed ranges whose ordinal within the loop has its bit set in N, so which range's un-pinning breaks a program can be bisected one range at a time.  Measurement only.  7tricies.158.
+-mlms-ph-mask=N	Un-pin only the use-headed ranges whose ordinal within the loop has its bit set in N, so which range's un-pinning breaks a program can be bisected one range at a time.  Measurement only.  7tricies.158.
 
-mcms-subst-trace
+mlms-subst-trace
 Target Var(lvx_lms_subst_trace) Init(0) Optimization
 Trace every APPLIED rename substitution with the node it is emitted into, its slot, iteration and chosen register, so two arms can be diffed reference by reference.  Measurement only.  7tricies.156.
 
-mcms-ph-parts=
+mlms-ph-parts=
 Target RejectNegative Joined UInteger Var(lvx_lms_ph_parts) Init(15) Optimization
--mcms-ph-parts=N	Which consequences of -mcms-preheader-copy to take, as a bitmask, to bisect which one is unsound: 1 un-pin the colouring and emit the copy, 2 relax the register anti-dependences, 4 relax the live-out arc keeps, 8 extend the live-out verifier and its exclusion.  15 is all of them.  Measurement only.  7tricies.156.
+-mlms-ph-parts=N	Which consequences of -mlms-preheader-copy to take, as a bitmask, to bisect which one is unsound: 1 un-pin the colouring and emit the copy, 2 relax the register anti-dependences, 4 relax the live-out arc keeps, 8 extend the live-out verifier and its exclusion.  15 is all of them.  Measurement only.  7tricies.156.
 
-mcms-preheader-copy
+mlms-preheader-copy
 Target Var(lvx_lms_preheader_copy) Init(0) Optimization
 MEASURED AND REJECTED, kept for the record and for the probes it drives: free name 0 of a use-headed range by copying the incoming value into it in the preheader instead of pinning it.  The copy and the anti-dependence relaxation are worth nothing (emitted 962 -> 959, nstages>=3 unchanged at 286); the whole gain came from also dropping the use-headed live-out arcs, which is unsound because the drain identifies its iteration by `best' and the drop lets a later iteration's definition precede the exit.  7tricies.159.
 
-mcms-usefirst-unpinned
+mlms-usefirst-unpinned
 Target Var(lvx_lms_usefirst_unpinned) Init(0) Optimization
-Size what a PREHEADER COPY would be worth, by pretending name 0 of a use-headed range is not pinned to the register the preheader wrote.  Measurement only: requires -mcms-probe and refused with -mcms-codegen, because without the copy the body really does write the architected register.  7tricies.155.
+Size what a PREHEADER COPY would be worth, by pretending name 0 of a use-headed range is not pinned to the register the preheader wrote.  Measurement only: requires -mlms-probe and refused with -mlms-codegen, because without the copy the body really does write the architected register.  7tricies.155.
 
-mcms-only-fn=
+mlms-only-fn=
 Target RejectNegative Joined Var(lvx_lms_only_fn) Optimization
--mcms-only-fn=NAME	Pipeline only loops in the function whose name contains NAME, to bisect which function a wrong answer comes from; empty considers them all.  Measurement only.  7tricies.153.
+-mlms-only-fn=NAME	Pipeline only loops in the function whose name contains NAME, to bisect which function a wrong answer comes from; empty considers them all.  Measurement only.  7tricies.153.
 
-mcms-claim-floor=
+mlms-claim-floor=
 Target RejectNegative Joined UInteger Var(lvx_lms_claim_floor) Init(1) Optimization
--mcms-claim-floor=N	Lowest claim_def_cycle the negotiation will try, running upward to 2 and accepting an attempt only if it both linearises and survives the rename dry-run.  0 claims nothing, so intervals are [def+1, last] and two live ranges may share a register across a same-cycle WAR -- legal inside a bundle, where every source is read before any result is written, and INEXPRESSIBLE in GCC's sequential insn stream, where a jump must come last: that is 7tricies.190.  1 claims for EVERY range, [def, last], removing the hazard.  2 claims for every range EXCEPT those carrying a tie, since a tied range cannot take a second name and claiming for one cost five loops their whole pipeline at `recog'.  So 1 is the most conservative and 2 the middle, which is the reverse of what this text said until 7tricies.210.  Default 1: at 0 the no-claim model is tried first, linearises, and is accepted -- shipping the bug -- while from 1 the fallback to 2 still rescues the tied ranges, measured at +2 emitted loops and no files lost.
+-mlms-claim-floor=N	Lowest claim_def_cycle the negotiation will try, running upward to 2 and accepting an attempt only if it both linearises and survives the rename dry-run.  0 claims nothing, so intervals are [def+1, last] and two live ranges may share a register across a same-cycle WAR -- legal inside a bundle, where every source is read before any result is written, and INEXPRESSIBLE in GCC's sequential insn stream, where a jump must come last: that is 7tricies.190.  1 claims for EVERY range, [def, last], removing the hazard.  2 claims for every range EXCEPT those carrying a tie, since a tied range cannot take a second name and claiming for one cost five loops their whole pipeline at `recog'.  So 1 is the most conservative and 2 the middle, which is the reverse of what this text said until 7tricies.210.  Default 1: at 0 the no-claim model is tried first, linearises, and is accepted -- shipping the bug -- while from 1 the fallback to 2 still rescues the tied ranges, measured at +2 emitted loops and no files lost.
 
 
-mcms-exit-live-span
+mlms-exit-live-span
 Target Var(lvx_lms_exit_live_span) Init(1) Optimization
-Extend a live-out live range's interval to the end of the schedule, so the drain's replayed work cannot overwrite the register its reconciliation copy reads.  On by default; -mno-cms-exit-live-span restores the interval that ends at the last in-loop use, for measuring what the extension costs.
+Extend a live-out live range's interval to the end of the schedule, so the drain's replayed work cannot overwrite the register its reconciliation copy reads.  On by default; -mno-lms-exit-live-span restores the interval that ends at the last in-loop use, for measuring what the extension costs.
 
-mcms-tied-copy
+mlms-tied-copy
 Target Var(lvx_lms_tied_copy) Init(0) Optimization
 Insert a copy after an instruction whose constraint group has a delayed read, so the group keeps one register while its downstream readers rotate.  Off by default: it mutates the loop body post-RA and needs a spare hard register.
 
-mcms-partial-arcs
+mlms-partial-arcs
 Target Var(lvx_lms_partial_arcs) Init(1) Optimization
-Where a partial definition reaches a use, make an arc from every definition that contributes to the value instead of declining the loop.  -mno-cms-partial-arcs restores the refusal, for measuring what it costs.
+Where a partial definition reaches a use, make an arc from every definition that contributes to the value instead of declining the loop.  -mno-lms-partial-arcs restores the refusal, for measuring what it costs.
 
 mvect-empty-mask-cheap
 Target Var(lvx_vect_empty_mask_cheap) Init(0) Optimization
 Tell the vectorizer an all-zero mask is cheap, so it does not branch around a masked store.  Recovers 11 pipelines whose bodies the guard splits with a join, but OFF by default until the cycle case is made: the only cycle measurement available costs 0.13% on TSVC2, because it was taken with the pipeline off, where removing the guard can only lose.  7tricies.152.
 
-mcms-assert-groups
+mlms-assert-groups
 Target Var(lvx_lms_assert_groups) Init(0) Optimization
 ICE when bundling splits a parallel instruction group across a write: one slot writes a register a slot EARLIER IN PROGRAM ORDER reads, and a bundle boundary lands between them, so the reader sees the new value where one bundle would have given it the old one.  OFF BY DEFAULT BECAUSE THE INVARIANT IS ALREADY VIOLATED: 77 of 276 corpus files and 5 of 8 gate tests report it while computing correct answers, the clobbered value happening to be dead.  A detector until those are fixed, a hard assert afterwards.  7tricies.191.
 
-mcms-sched2-epilogue
+mlms-sched2-epilogue
 Target Var(lvx_lms_sched2_epilogue) Init(0) Optimization
 A CONTROL, and NOT YET EFFECTIVE.  7tricies.218.  The intent is to leave the pipeline's EPILOGUE blocks to SCHED2 rather than let CMS own their bundles: an epilogue is straight-line drain code with no loop-back, so no modulo schedule has to survive it, and SCHED2's resource model is the finer of the two -- it models the GUARD/MASKS/MASKM prefixes and the slot they share, which lvx_lms_resources_add does not.  It is implemented by not tagging the epilogue insns with a CMS group, since lvx_lms_own_blocks derives BB_DISABLE_SCHEDULE from those tags, and doing it that way round also keeps the parallel-group invariant (an ICE) from being asserted over a block CMS no longer owns.  MEASURED TO CHANGE NOTHING: on syrk at MINI/double, with pipelines up to nstages=4, the group records, the owned-block list and the bundle count are identical with it on and off.  The two tagging sites it gates take nd = slots[q].node, and the slots are the prologue-and-kernel walk, so an epilogue node never reaches them -- the epilogue's own insns are filled in elsewhere.  Left in as the control arm for whoever implements it against the right site, and OFF so it cannot be mistaken for a working switch.  THE HAZARD IT MUST ANSWER FIRST: a bundle reads every source before writing any result, so CMS may put a reader and a writer of one register in one cycle; the RTL stream linearises that and SCHED2 may reorder it.  claim-floor=1 excludes it BETWEEN ranges by claiming [def,last] for every range, but not a delayed read whose own def shares its cycle at p2unroll == 1 -- which is what a drain is made of.
 
-mcms-own-bundles
+mlms-own-bundles
 Target Var(lvx_lms_own_bundles) Init(1) Optimization
-Let the pipeliner own the bundles of the blocks it emits: mark them BB_DISABLE_SCHEDULE so SCHED2 and regrename leave them alone, carry the parallel groups across the passes as TImode on each group's first insn, and seed LVX_SCHED2_INSN_START/STOP from those modes so the emission and lvx_fix_debug_for_bundles need no special case.  A CMS cycle then IS a bundle, which is what makes the group invariant hold by construction rather than be asserted.  IT WAS OFF BY DEFAULT while CMS's static resource model could not tell whether one of its cycles fits a bundle: lvx_sched_dfa_new_cycle models the GUARD/MASKS/MASKM prefixes correctly -- the guard condition or the mask register is the key, and ops sharing an identical prefix spend ONE BCU slot between them -- and splits a cycle that would not fit, while lvx_lms_resources_add modelled only get_attr_issue, the bare insn.  lvx_lms_resources_add_prefix closed that gap by charging one BCU_BRRP per guarded or masked op -- conservatively, since the bundler lets ops under an identical prefix share one slot and this charges one each, so it over-charges II and never legality.  SO IT IS ON BY DEFAULT, since: census emitted 1005 against the baseline's 1003 (nohw) and 724 unchanged (hw), gate 8/8, both zlib round trips matching, GROUPSPLIT 2 -> 0.  AND NOTE WHAT -mno-cms-own-bundles GIVES UP BESIDES THE BUNDLES: the mark is what keeps the other passes out, so without it SCHED2 reschedules the pipelined blocks and lvx_regrename_inner_loops renames through them -- that pass skips an owned loop only because lvx_inner_superblock_loop_p tests BB_DISABLE_SCHEDULE, and it additionally passes include_all_block_p as false to regrename_analyze, whose default is to process every block ignoring the mark.  Renaming a modulo schedule's registers breaks the assignment it computed, the same-cycle WAR pairs included.  7tricies.193.
+Let the pipeliner own the bundles of the blocks it emits: mark them BB_DISABLE_SCHEDULE so SCHED2 and regrename leave them alone, carry the parallel groups across the passes as TImode on each group's first insn, and seed LVX_SCHED2_INSN_START/STOP from those modes so the emission and lvx_fix_debug_for_bundles need no special case.  A CMS cycle then IS a bundle, which is what makes the group invariant hold by construction rather than be asserted.  IT WAS OFF BY DEFAULT while CMS's static resource model could not tell whether one of its cycles fits a bundle: lvx_sched_dfa_new_cycle models the GUARD/MASKS/MASKM prefixes correctly -- the guard condition or the mask register is the key, and ops sharing an identical prefix spend ONE BCU slot between them -- and splits a cycle that would not fit, while lvx_lms_resources_add modelled only get_attr_issue, the bare insn.  lvx_lms_resources_add_prefix closed that gap by charging one BCU_BRRP per guarded or masked op -- conservatively, since the bundler lets ops under an identical prefix share one slot and this charges one each, so it over-charges II and never legality.  SO IT IS ON BY DEFAULT, since: census emitted 1005 against the baseline's 1003 (nohw) and 724 unchanged (hw), gate 8/8, both zlib round trips matching, GROUPSPLIT 2 -> 0.  AND NOTE WHAT -mno-lms-own-bundles GIVES UP BESIDES THE BUNDLES: the mark is what keeps the other passes out, so without it SCHED2 reschedules the pipelined blocks and lvx_regrename_inner_loops renames through them -- that pass skips an owned loop only because lvx_inner_superblock_loop_p tests BB_DISABLE_SCHEDULE, and it additionally passes include_all_block_p as false to regrename_analyze, whose default is to process every block ignoring the mark.  Renaming a modulo schedule's registers breaks the assignment it computed, the same-cycle WAR pairs included.  7tricies.193.
 
 mbundle-per-block
 Target Var(lvx_bundle_per_block) Init(1) Optimization
 Never let a bundle span a basic-block boundary.  STOP is otherwise placed only at scheduling-region boundaries and on a clock advance, so schedule_ebbs -- which pulls a block and its fall-through successor into ONE region -- can leave the successor's first insn sharing the branch's bundle.  Every instruction in an LVX bundle issues and the branch redirects only at bundle end, so that insn executes on the taken path which never enters its block: accum.c emits `cb.deqz $r2? .L6' with the next block's `addd $r0 = $r0, 32' beside it.  Correct only when the insn happens to be dead there.  -mno-bundle-per-block restores the old packing.  7tricies.195.
 
-mcms-hwkern
+mlms-hwkern
 Target Var(lvx_lms_hwkern) Init(0) Optimization
 Build the exit-free copy of an unrolled doloop kernel, so the repetition can be a hardware loop over it with a remainder copy after it.  OFF BY DEFAULT BECAUSE IT MISCOMPILES: 7tricies.65 showed the loops it admits are wrong by something that is neither the drain nor bundle speculation, and 7tricies.190's zlib failure carries hwkern=1.  It was reachable in the SHIPPED configuration -- hwkern is (doloop && kunroll > 1), which -fno-hwloop made unreachable and nothing else did -- so the structure is behind a flag until the fault is found, and the loops fall back to a counted kernel that reorg_loops declines and lvx_hwloop_fail turns into a branch loop.  7tricies.62, 7tricies.65, 7tricies.199.
 
-mcms-reorg2
+mlms-reorg2
 Target Var(lvx_lms_reorg2) Init(1) Optimization
-Run the SECOND reorg_loops that maps the kernels the pipeliner just built (7tricies.201).  On by default because without it a kernel emits no loop-back at all.  -mno-cms-reorg2 is a bisection knob: the after order returns wrong code even at built=0, where this pass has nothing new to map and acts only on loops the FIRST reorg_loops already mapped, so turning it off separates its damage from the rest of the after-order path.
+Run the SECOND reorg_loops that maps the kernels the pipeliner just built (7tricies.201).  On by default because without it a kernel emits no loop-back at all.  -mno-lms-reorg2 is a bisection knob: the after order returns wrong code even at built=0, where this pass has nothing new to map and acts only on loops the FIRST reorg_loops already mapped, so turning it off separates its damage from the rest of the after-order path.
 
+; THE OLD SPELLINGS, KEPT AS ALIASES.  §7tricies.223.
+; 
+; The generic options became -mlms- when the framework was separated from the
+; engine, and every one of them is cited by a command line recorded in docs/ or
+; in a commit message -- cms-foundations.md alone is 17,000 lines of measurement
+; whose figures are reproducible only if those lines still run.  So the old
+; spelling is an alias rather than a deletion, and the documentation can be
+; brought over at leisure instead of in one unverifiable sweep.
+; 
+; Undocumented, so --help=target lists each option once, under the name it now
+; has.  The nineteen -mcms- options that remain are not here: they are CMS's own
+; search knobs and keep their names because they belong to the engine.
+
+mcms-probe
+Target Alias(mlms-probe) Undocumented
+
+mcms-probe-bundles
+Target Alias(mlms-probe-bundles) Undocumented
+
+mcms-probe-flow
+Target Alias(mlms-probe-flow) Undocumented
+
+mcms-probe-groups
+Target Alias(mlms-probe-groups) Undocumented
+
+mcms-probe-cfg
+Target Alias(mlms-probe-cfg) Undocumented
+
+mcms-split-wide=
+Target RejectNegative Joined Alias(mlms-split-wide=) Undocumented
+
+mcms-load-latency=
+Target RejectNegative Joined Alias(mlms-load-latency=) Undocumented
+
+mcms-regalloc-feasible
+Target Alias(mlms-regalloc-feasible) Undocumented
+
+mcms-exact-degree
+Target Alias(mlms-exact-degree) Undocumented
+
+mcms-stage-sched
+Target Alias(mlms-stage-sched) Undocumented
+
+mcms-ii-bias=
+Target RejectNegative Joined Alias(mlms-ii-bias=) Undocumented
+
+mcms-inductive-relaxation
+Target Alias(mlms-inductive-relaxation) Undocumented
+
+mcms-stride-test
+Target Alias(mlms-stride-test) Undocumented
+
+mcms-max-insns=
+Target RejectNegative Joined Alias(mlms-max-insns=) Undocumented
+
+mcms-pin-tainted-loads
+Target Alias(mlms-pin-tainted-loads) Undocumented
+
+mcms-taint-through-stores
+Target Alias(mlms-taint-through-stores) Undocumented
+
+mcms-force-speculative-loads
+Target Alias(mlms-force-speculative-loads) Undocumented
+
+mcms-free-doloop-end
+Target Alias(mlms-free-doloop-end) Undocumented
+
+mcms-assume-ivdep
+Target Alias(mlms-assume-ivdep) Undocumented
+
+mcms-codegen
+Target Alias(mlms-codegen) Undocumented
+
+mcms-pipeline
+Target Alias(mlms-pipeline) Undocumented
+
+mcms-force-p2unroll=
+Target RejectNegative Joined Alias(mlms-force-p2unroll=) Undocumented
+
+mcms-drop-liveout-arcs
+Target Alias(mlms-drop-liveout-arcs) Undocumented
+
+mcms-copy-prop
+Target Alias(mlms-copy-prop) Undocumented
+
+mcms-recompute-heights
+Target Alias(mlms-recompute-heights) Undocumented
+
+mcms-copy-pref
+Target Alias(mlms-copy-pref) Undocumented
+
+mcms-liveout-split
+Target Alias(mlms-liveout-split) Undocumented
+
+mcms-only-loop=
+Target RejectNegative Joined Alias(mlms-only-loop=) Undocumented
+
+mcms-rotate-bottom-test
+Target Alias(mlms-rotate-bottom-test) Undocumented
+
+mcms-drain-from-exit
+Target Alias(mlms-drain-from-exit) Undocumented
+
+mcms-ph-mask=
+Target RejectNegative Joined Alias(mlms-ph-mask=) Undocumented
+
+mcms-subst-trace
+Target Alias(mlms-subst-trace) Undocumented
+
+mcms-ph-parts=
+Target RejectNegative Joined Alias(mlms-ph-parts=) Undocumented
+
+mcms-preheader-copy
+Target Alias(mlms-preheader-copy) Undocumented
+
+mcms-usefirst-unpinned
+Target Alias(mlms-usefirst-unpinned) Undocumented
+
+mcms-only-fn=
+Target RejectNegative Joined Alias(mlms-only-fn=) Undocumented
+
+mcms-claim-floor=
+Target RejectNegative Joined Alias(mlms-claim-floor=) Undocumented
+
+mcms-exit-live-span
+Target Alias(mlms-exit-live-span) Undocumented
+
+mcms-tied-copy
+Target Alias(mlms-tied-copy) Undocumented
+
+mcms-partial-arcs
+Target Alias(mlms-partial-arcs) Undocumented
+
+mcms-assert-groups
+Target Alias(mlms-assert-groups) Undocumented
+
+mcms-sched2-epilogue
+Target Alias(mlms-sched2-epilogue) Undocumented
+
+mcms-own-bundles
+Target Alias(mlms-own-bundles) Undocumented
+
+mcms-hwkern
+Target Alias(mlms-hwkern) Undocumented
+
+mcms-reorg2
+Target Alias(mlms-reorg2) Undocumented

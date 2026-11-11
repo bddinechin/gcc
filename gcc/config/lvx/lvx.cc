@@ -627,7 +627,7 @@ static void
 lvx_lms_group_check (FILE *file)
 {
   /* IS THE TABLE EVEN POPULATED?  "Zero splits" is only evidence when there
-     were pairs to test: with -mcms-own-bundles the default, CMS places its own
+     were pairs to test: with -mlms-own-bundles the default, CMS places its own
      boundaries and a group should never span two, so a vacuous check and a
      clean one look identical from the outside.  §7tricies.200.  */
   if (lvx_lms_probe_groups && file)
@@ -688,7 +688,7 @@ lvx_lms_group_check (FILE *file)
 	   correctly, which is how the distinction was found.  */
 	if (lvx_lms_group_recs[b].key >= lvx_lms_group_recs[a].key)
 	  {
-	    /* REPORTED, NOT SILENT, UNDER -mcms-probe-groups.  The filter's
+	    /* REPORTED, NOT SILENT, UNDER -mlms-probe-groups.  The filter's
 	       premise is that a reader later in program order WANTS this
 	       writer's value, so a boundary between them changes nothing.
 	       That is false when a THIRD insn writes the same register
@@ -1094,7 +1094,7 @@ bool lvx_legitimate_pic_symbolic_ref_p (rtx op);
 static bool lvx_legitimate_constant_p (enum machine_mode, rtx x);
 static bool lvx_shaker_enabled = false;
 static char lvx_final_end_bundle[128];
-/* §7tricies.216: -mcms-probe-bundles' report, flushed with the above by
+/* §7tricies.216: -mlms-probe-bundles' report, flushed with the above by
    ASM_OUTPUT_OPCODE so it lands at the start of a line like any comment.
    Kept separate because that buffer carries a ";;" the assembler must see.  */
 static char lvx_final_probe_note[512];
@@ -11477,10 +11477,10 @@ lvx_option_override (void)
   /* THE TWO UNSOUND MEASUREMENT SWITCHES MAY NOT REACH A REAL COMPILE.
      §7decies, the one retirement item with a correctness deadline.
 
-     `-mcms-assume-ivdep' drops genuine cross-iteration memory dependences on
+     `-mlms-assume-ivdep' drops genuine cross-iteration memory dependences on
      an assumption nothing verifies -- measured in §7sexvicies as changing 103
      of 162 loops' recurrence bound, so on PolyBench it would miscompile 162 of
-     162 rather than some corner.  `-mcms-inductive-relaxation' drops arcs that
+     162 rather than some corner.  `-mlms-inductive-relaxation' drops arcs that
      are legal only once codegen performs the displacement adjustment of
      PaCT 1997 §4 (`fixRelaxed'), which does not exist yet.
 
@@ -11489,46 +11489,46 @@ lvx_option_override (void)
      so they are tied to the probe HERE, before any codegen exists to be
      endangered -- an error a user cannot miss rather than a miscompile they
      cannot see.  An error, not a silent disable: a sweep that forgot
-     `-mcms-probe' would otherwise quietly measure a different compiler than it
+     `-mlms-probe' would otherwise quietly measure a different compiler than it
      reported.
 
-     `-mcms-force-speculative-loads' is deliberately NOT gated.  It promotes a
+     `-mlms-force-speculative-loads' is deliberately NOT gated.  It promotes a
      loop-variant-address load to its dismissible variant, which is what the
      schedule it measures actually requires, so it becomes mandatory rather
      than dangerous once codegen exists.  */
   if (lvx_lms_free_doloop_end && !lvx_lms_probe)
-    error ("%<-mcms-free-doloop-end%> assumes a mapping that can still be "
-	   "refused and is for measurement only; it requires %<-mcms-probe%>");
+    error ("%<-mlms-free-doloop-end%> assumes a mapping that can still be "
+	   "refused and is for measurement only; it requires %<-mlms-probe%>");
   if (lvx_lms_assume_ivdep && !lvx_lms_probe)
-    error ("%<-mcms-assume-ivdep%> drops real cross-iteration memory "
+    error ("%<-mlms-assume-ivdep%> drops real cross-iteration memory "
 	   "dependences and is for measurement only; it requires "
-	   "%<-mcms-probe%>");
+	   "%<-mlms-probe%>");
   if (lvx_lms_inductive_relaxation && !lvx_lms_probe)
-    error ("%<-mcms-inductive-relaxation%> needs a displacement adjustment in "
+    error ("%<-mlms-inductive-relaxation%> needs a displacement adjustment in "
 	   "code generation that does not exist yet, and is for measurement "
-	   "only; it requires %<-mcms-probe%>");
+	   "only; it requires %<-mlms-probe%>");
 
-  /* AND IT IS INCOMPATIBLE WITH EMISSION, which `requires -mcms-probe' does
-     not say.  -mcms-codegen and -mcms-pipeline are used ALONGSIDE
-     -mcms-probe, so the test above accepts the combination -- and the arcs
+  /* AND IT IS INCOMPATIBLE WITH EMISSION, which `requires -mlms-probe' does
+     not say.  -mlms-codegen and -mlms-pipeline are used ALONGSIDE
+     -mlms-probe, so the test above accepts the combination -- and the arcs
      the relaxation drops are justified by a displacement adjustment
      (PaCT 1997 §4's fixRelaxed) that does not exist.  Emitting a pipeline
      built on that graph produces a base+displacement operand reading the
      wrong instance, with nothing to say so: the same shape as the
-     -mcms-exact-degree hole below, where a measurement lever was reachable
+     -mlms-exact-degree hole below, where a measurement lever was reachable
      from the emission path because the gate tested the wrong thing.  */
-  /* THE SAME HOLE, FOR THE SAME REASON.  §7tricies.95.  `-mcms-assume-ivdep'
-     had only the `requires -mcms-probe' test above, which -mcms-codegen and
-     -mcms-pipeline satisfy ALONGSIDE the probe while emission still happens.
+  /* THE SAME HOLE, FOR THE SAME REASON.  §7tricies.95.  `-mlms-assume-ivdep'
+     had only the `requires -mlms-probe' test above, which -mlms-codegen and
+     -mlms-pipeline satisfy ALONGSIDE the probe while emission still happens.
      It drops genuine cross-iteration memory dependences on an assumption
      nothing verifies -- §7sexvicies measured it changing 103 of 162 loops'
      recurrence bound -- so a pipeline emitted on that graph reorders real
      memory dependences and is wrong.  The guard its neighbour got, which it
      needed just as much.  */
   if (lvx_lms_assume_ivdep && (lvx_lms_codegen || lvx_lms_pipeline))
-    error ("%<-mcms-assume-ivdep%> drops real cross-iteration memory "
+    error ("%<-mlms-assume-ivdep%> drops real cross-iteration memory "
 	   "dependences on an assumption nothing verifies; it is for "
-	   "measurement only and is incompatible with %<-mcms-codegen%>");
+	   "measurement only and is incompatible with %<-mlms-codegen%>");
 
   /* THE SAME HOLE AGAIN, AND THIS ONE IS REACHABLE FROM THE SHIPPED FLAGS.
      §7tricies.198.  -mcms-after-hwloop lets CMS pipeline a loop that
@@ -11639,35 +11639,35 @@ lvx_option_override (void)
      In MLIR an operand is an SSA edge and none of them exist, which is where
      §5a2d of the design note says to build it.  */
   if (lvx_lms_copy_prop && (lvx_lms_codegen || lvx_lms_pipeline))
-    error ("%<-mcms-copy-prop%> is not yet correct with code generation: the "
+    error ("%<-mlms-copy-prop%> is not yet correct with code generation: the "
 	   "analysis is reached twice for a loop and may choose a different "
-	   "propagation each time; it is incompatible with %<-mcms-codegen%>");
+	   "propagation each time; it is incompatible with %<-mlms-codegen%>");
 
   if (lvx_lms_usefirst_unpinned && !lvx_lms_probe)
-    error ("%<-mcms-usefirst-unpinned%> is for measurement only; it requires "
-	   "%<-mcms-probe%>");
+    error ("%<-mlms-usefirst-unpinned%> is for measurement only; it requires "
+	   "%<-mlms-probe%>");
   if (lvx_lms_usefirst_unpinned && (lvx_lms_codegen || lvx_lms_pipeline))
-    error ("%<-mcms-usefirst-unpinned%> assumes a preheader copy that is not "
+    error ("%<-mlms-usefirst-unpinned%> assumes a preheader copy that is not "
 	   "emitted, so name 0 of a use-headed range really is the register "
 	   "the preheader wrote and the body really does write it; it sizes "
-	   "the opportunity and is incompatible with %<-mcms-codegen%>");
+	   "the opportunity and is incompatible with %<-mlms-codegen%>");
 
   if (lvx_lms_drop_liveout_arcs && !lvx_lms_probe)
-    error ("%<-mcms-drop-liveout-arcs%> is for measurement only; it requires "
-	   "%<-mcms-probe%>");
+    error ("%<-mlms-drop-liveout-arcs%> is for measurement only; it requires "
+	   "%<-mlms-probe%>");
   if (lvx_lms_drop_liveout_arcs && (lvx_lms_codegen || lvx_lms_pipeline))
-    error ("%<-mcms-drop-liveout-arcs%> lets a definition of a live-out "
+    error ("%<-mlms-drop-liveout-arcs%> lets a definition of a live-out "
 	   "register move above the exit branch, so the exit returns a value "
 	   "from the wrong iteration; the split of %<§5a2b%> is what makes it "
-	   "sound, and it is incompatible with %<-mcms-codegen%>");
+	   "sound, and it is incompatible with %<-mlms-codegen%>");
 
-  /* `-mcms-pipeline' EMITS NOTHING ON ITS OWN, and lvx.opt already said so --
-     "Requires -mcms-codegen" -- without anything enforcing it.  Its emission
+  /* `-mlms-pipeline' EMITS NOTHING ON ITS OWN, and lvx.opt already said so --
+     "Requires -mlms-codegen" -- without anything enforcing it.  Its emission
      sits inside the codegen path (`if (built && lvx_lms_pipeline)'), so alone
      it is the same silent inertness as §7tricies.100.  A claim in help text is
      not a check.  */
   if (lvx_lms_pipeline && !lvx_lms_codegen)
-    error ("%<-mcms-pipeline%> emits nothing without %<-mcms-codegen%>");
+    error ("%<-mlms-pipeline%> emits nothing without %<-mlms-codegen%>");
 
   /* A PIPELINE NEEDS DISMISSIBLE LOADS, AND THAT IS NOT A PREFERENCE.
      §7tricies.102.  The dependence graph lets a load cross a conditional
@@ -11681,15 +11681,15 @@ lvx_option_override (void)
     SET_OPTION_IF_UNSET (&global_options, &global_options_set,
 			 lvx_lms_force_spec_loads, 1);
   if (lvx_lms_pipeline && !lvx_lms_force_spec_loads)
-    error ("%<-mcms-pipeline%> hoists loads above the trip-count test and "
-	   "needs %<-mcms-force-speculative-loads%>; disabling it leaves the "
+    error ("%<-mlms-pipeline%> hoists loads above the trip-count test and "
+	   "needs %<-mlms-force-speculative-loads%>; disabling it leaves the "
 	   "prologue reading past the end of the object");
 
   if (lvx_lms_inductive_relaxation && (lvx_lms_codegen || lvx_lms_pipeline))
-    error ("%<-mcms-inductive-relaxation%> drops dependences that only the "
+    error ("%<-mlms-inductive-relaxation%> drops dependences that only the "
 	   "displacement adjustment of PaCT 1997 section 4 makes sound, and "
 	   "that adjustment is not implemented; it is for measurement only "
-	   "and is incompatible with %<-mcms-codegen%>");
+	   "and is incompatible with %<-mlms-codegen%>");
 
 
 #if 0 // If 1 then gcc/gcc/testsuite/gcc.dg/ipa/iinline-attr.c fails.
@@ -13839,8 +13839,8 @@ lvx_machine_dependent_reorg (void)
 	 work this ordering simply avoids.  */
   /* CODE GENERATION ENABLES ITS OWN WALK.  §7tricies.100.
 
-     This read `lvx_lms_probe' alone, so `-mcms-codegen -mcms-pipeline' without
-     `-mcms-probe' compiled exactly like no option at all: the walk never ran,
+     This read `lvx_lms_probe' alone, so `-mlms-codegen -mlms-pipeline' without
+     `-mlms-probe' compiled exactly like no option at all: the walk never ran,
      nothing was built, nothing was said.  The function below is already
      written for that caller -- its first test is
      `if (!dump_file && !lvx_lms_codegen) return;', i.e. the dump is one
@@ -13849,7 +13849,7 @@ lvx_machine_dependent_reorg (void)
      It cost a measurement: a five-arm unfold-versus-CMS comparison whose two
      CMS arms were byte-identical to the baseline on all fourteen programs,
      while the static counts beside them reported twenty pipelines built,
-     because that step passed -mcms-probe and the timed arms did not.  The
+     because that step passed -mlms-probe and the timed arms did not.  The
      name invites it -- a `probe' reads as reporting, not as the master
      switch.
 
