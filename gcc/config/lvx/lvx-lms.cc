@@ -365,7 +365,7 @@ lvx_lms_load_latency_delta (rtx_insn *insn)
 }
 
 /* Declared here, defined with the rest of the promotion machinery: a load LMS
-   is going to rewrite to its dismissible form.  §7tricies.224.  */
+   is going to rewrite to its dismissible form.  §7tricies.226.  */
 
 static bool lvx_lms_promotable_load_p (rtx_insn *, bitmap);
 
@@ -381,7 +381,7 @@ lvx_lms_unspec_reason (rtx_insn *insn, bitmap bodydef)
 {
   if (!NONDEBUG_INSN_P (insn))
     return "not-an-insn";
-  /* §7tricies.224: a load LMS will promote is speculatable, and saying
+  /* §7tricies.226: a load LMS will promote is speculatable, and saying
      otherwise is what made crc32 pin 16 loads against consumers that the
      emitted code issues as `ld.s'.  */
   if (bodydef != NULL && lvx_lms_promotable_load_p (insn, bodydef))
@@ -829,7 +829,7 @@ lvx_lms_speculated_load_p (rtx_insn *insn, bitmap bodydef)
 }
 
 /* True if INSN is a load LMS IS GOING TO REWRITE to `.s'/`.us'.
-   §7tricies.224.
+   §7tricies.226.
 
    This exists because of an ORDERING, not a capability: the taint fixpoint
    runs in lvx_lms_build_graph, the promotion below runs after the II search,
@@ -863,7 +863,7 @@ lvx_lms_promotable_load_p (rtx_insn *insn, bitmap bodydef)
 
 /* True if INSN may be speculated once LMS has promoted what it promotes.  The
    taint fixpoint asks THIS, not lvx_speculatable_p, because it runs before the
-   promotion.  §7tricies.224.  */
+   promotion.  §7tricies.226.  */
 
 static bool
 lvx_lms_speculatable_after_promotion_p (rtx_insn *insn, bitmap bodydef)
@@ -909,7 +909,7 @@ lvx_lms_force_speculative_loads (const auto_vec<rtx_insn *> &seq,
 	}
     }
 
-  /* §7tricies.224: THE TIE.  lvx_lms_build_graph's taint fixpoint treated
+  /* §7tricies.226: THE TIE.  lvx_lms_build_graph's taint fixpoint treated
      every promotable load as speculatable on the strength of this function
      promoting it.  If one survives, that assumption was false for it and the
      graph is missing a constraint -- which is the divmodvx bug.  Checked
@@ -11937,7 +11937,7 @@ lvx_lms_build_graph (class loop *loop, basic_block *body,
   auto_vec<int> taint_via;
   auto_vec<bool> pinned_load;
   int npinned = 0;
-  /* §7tricies.224: the body's own definitions -- what makes a load's address
+  /* §7tricies.226: the body's own definitions -- what makes a load's address
      loop-variant, and so makes it one LMS is going to promote to `.s'.  The
      same set lvx_lms_force_speculative_loads builds; built again here because
      the fixpoint below runs BEFORE that promotion and has to judge a load by
