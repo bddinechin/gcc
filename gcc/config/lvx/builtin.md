@@ -3843,7 +3843,7 @@
 (define_insn "lvx_<minmax><suffix>"
   [(set (match_operand:V128F 0 "register_operand" "=r,r")
         (unspec:V128F [(match_operand:V128F 1 "register_operand" "r,r")
-                       (match_operand:V128F 2 "reg_or_splat32_operand" "r,SXW")]
+                       (match_operand:V128F 2 "reg_or_lane_imm_operand" "r,SXW")]
                       MINMAX))]
   "LVX_2"
   "@

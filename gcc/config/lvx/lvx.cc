@@ -5552,69 +5552,62 @@ lvx_has_43bit_vector_const_p (rtx x)
 }
 
 bool
-lvx_splat32_const_p (rtx x)
+lvx_uniform_lane_imm_p (rtx x)
 {
-  /* The .M formats carry one 32-bit word and the machine replicates it over
-     the whole operand, so the constant has to be that word, repeated.  For
-     byte, half-word and word lanes any uniform lane constant is; for 64-bit
-     lanes only those whose halves repeat, which in practice means zero.  */
-  if (GET_CODE (x) == CONST_VECTOR)
+  /* The packed-immediate formats carry one 32-bit field and each lane takes
+     its low LaneWidth bits, sign-extended when a lane is wider than the
+     field.  So a constant rides in the instruction exactly when every lane
+     holds the same value AND that value is what the field can produce:
+     anything at all for lanes of 32 bits or fewer, since the lane *is* the
+     field's low bits; a sign-extended 32-bit value at 64-bit lanes.
+
+     This used to test that the constant was one 32-bit word repeated, which
+     was the rule while the splat was pinned.  That test is now wrong in both
+     directions: it accepted { 1, 2, 1, 2, ... } at 16-bit lanes, which the
+     machine would compute as 1 in every lane, and it rejected { 5, 5 } at
+     64-bit lanes, which is now a single instruction.  */
+  if (GET_CODE (x) != CONST_VECTOR)
+    return false;
+
+  unsigned size = GET_MODE_SIZE (GET_MODE (x));
+  if (size != 16 && size != 32)
+    return false;
+
+  /* Only the lane modes lvx_const_vector_value has an arm for: it asserts
+     on anything else rather than returning, and this runs from a
+     predicate.  */
+  switch (GET_MODE_INNER (GET_MODE (x)))
     {
-      unsigned size = GET_MODE_SIZE (GET_MODE (x));
-      if (size != 16 && size != 32)
-	return false;
-
-      /* Only the lane modes lvx_const_vector_value has an arm for: it asserts
-	 on anything else rather than returning, and this runs from a
-	 predicate.  */
-      switch (GET_MODE_INNER (GET_MODE (x)))
-	{
-	case E_QImode: case E_HImode: case E_SImode: case E_DImode:
-	case E_HFmode: case E_SFmode: case E_DFmode:
-	  break;
-	default:
-	  return false;
-	}
-
-      HOST_WIDE_INT lo = lvx_const_vector_value (x, 0);
-      for (unsigned slice = 1; slice < size / 8; slice++)
-	if (lo != lvx_const_vector_value (x, slice))
-	  return false;
-      return ((lo >> 32) & 0xFFFFFFFF) == (lo & 0xFFFFFFFF);
+    case E_QImode: case E_HImode: case E_SImode: case E_DImode:
+    case E_HFmode: case E_SFmode: case E_DFmode:
+      break;
+    default:
+      return false;
     }
 
-  /* And the same for a scalar: a DImode constant that is one word twice, or a
-     TImode one that is four times.  Both carry VOIDmode, so the width comes
-     from how many host words the constant needs -- the operand predicate,
-     which does know the mode, is the authority.  */
-  if (CONST_INT_P (x))
-    {
-      unsigned HOST_WIDE_INT v = UINTVAL (x);
-      return ((v >> 32) & 0xFFFFFFFF) == (v & 0xFFFFFFFF);
-    }
+  /* Lane-uniform, which is the half the old word test could not express.  */
+  rtx elt;
+  if (!const_vec_duplicate_p (x, &elt))
+    return false;
 
-  if (CONST_WIDE_INT_P (x))
-    {
-      unsigned HOST_WIDE_INT lo = CONST_WIDE_INT_ELT (x, 0);
-      for (int i = 1; i < CONST_WIDE_INT_NUNITS (x); i++)
-	if (lo != (unsigned HOST_WIDE_INT) CONST_WIDE_INT_ELT (x, i))
-	  return false;
-      return ((lo >> 32) & 0xFFFFFFFF) == (lo & 0xFFFFFFFF);
-    }
+  if (GET_MODE_UNIT_BITSIZE (GET_MODE (x)) <= 32)
+    return true;
 
-  return false;
+  /* 64-bit lanes: the field reaches only a sign-extended 32-bit value, and
+     uniformity means slice 0 is that lane.  */
+  HOST_WIDE_INT lane = lvx_const_vector_value (x, 0);
+  return SIGNED_INT_FITS_N_BITS (lane, 32);
 }
 
 /* The 32-bit word a splattable constant is made of.  */
 HOST_WIDE_INT
-lvx_splat32_value (rtx x)
+lvx_uniform_lane_imm_value (rtx x)
 {
-  gcc_assert (lvx_splat32_const_p (x));
-  if (GET_CODE (x) == CONST_VECTOR)
-    return lvx_const_vector_value (x, 0) & 0xFFFFFFFF;
-  if (CONST_WIDE_INT_P (x))
-    return CONST_WIDE_INT_ELT (x, 0) & 0xFFFFFFFF;
-  return INTVAL (x) & 0xFFFFFFFF;
+  gcc_assert (lvx_uniform_lane_imm_p (x));
+  /* Lane-uniform, so the first 64-bit slice is the lane repeated and its low
+     word is the field: at 8- and 16-bit lanes that word is the lane value
+     repeated, whose low bits are what the machine reads.  */
+  return lvx_const_vector_value (x, 0) & 0xFFFFFFFF;
 }
 
 /* Test if X is of the form reg[reg] or .xs reg = reg[reg] or signed10bits[reg]
@@ -11048,10 +11041,10 @@ lvx_print_operand (FILE *file, rtx x, int code)
       break;
 
     case 'W':
-      /* The 32-bit word of a splattable vector constant, which is all a .M
-         format encodes -- the machine replicates it over the operand.  */
+      /* The 32-bit field of a uniform lane constant: each lane takes its low
+         LaneWidth bits, sign-extended when the lane is wider.  */
       fprintf (file, "0x%08" HOST_LONG_FORMAT "x",
-               (unsigned long) (lvx_splat32_value (x) & 0xFFFFFFFF));
+               (unsigned long) (lvx_uniform_lane_imm_value (x) & 0xFFFFFFFF));
       return;
 
     case 'X':

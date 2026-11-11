@@ -120,13 +120,14 @@
        (match_test "op == CONST0_RTX (GET_MODE (op))")))
 
 (define_constraint "SXW"
-  "A constant that is one 32-bit word repeated across the operand, which is what
-   a .M format encodes: it carries the word and the machine replicates it.  The
-   width is the operand's -- twice in a 64-bit one, four times in a 128-bit one,
-   eight over a 256-bit pair of halves -- and the operand predicate, which knows
-   the mode, is what enforces it exactly."
-  (and (match_code "const_vector,const_int,const_wide_int")
-       (match_test "lvx_splat32_const_p (op)")))
+  "A vector constant the packed immediate can carry: every lane equal, and the
+   lane value one the 32-bit field produces -- any value at lanes of 32 bits or
+   fewer, since the lane is the field's low bits, and a sign-extended 32-bit
+   value at 64-bit lanes.  const_int and const_wide_int are no longer accepted:
+   they stood for the non-lane-wise uses of the immediate, which went with the
+   splat modifier."
+  (and (match_code "const_vector")
+       (match_test "lvx_uniform_lane_imm_p (op)")))
 
 (define_memory_constraint "a"
   "Memory operands with 10-bit immediate or register."

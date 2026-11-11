@@ -323,16 +323,16 @@
 (define_predicate "maskload_else_operand"
   (match_operand 0 "scratch_operand"))
 
-;; A 128-bit SIMD source that the .M formats can take: a register, or a vector
-;; constant that is one 32-bit word repeated over the operand.
-(define_predicate "reg_or_splat32_operand"
+;; A packed SIMD source the immediate formats can take: a register, or a vector
+;; constant whose lanes are all equal and whose lane value the 32-bit field can
+;; produce.  The scalar arm this predicate used to carry -- for a CONST_INT
+;; standing in for a 64-bit splat -- is gone with the non-lane-wise uses of the
+;; immediate: every one of the eleven places that asks is on a 128- or 256-bit
+;; vector mode, so GET_MODE_SIZE (mode) <= 8 was unreachable.
+(define_predicate "reg_or_lane_imm_operand"
   (ior (match_operand 0 "register_operand")
-       (and (match_test "lvx_splat32_const_p (op)")
-            ;; A scalar constant carries VOIDmode, so the mode this predicate is
-            ;; asked about is what says how wide the replication must be: a
-            ;; CONST_INT repeats only over 64 bits, which is not a 128-bit splat.
-            (ior (match_code "const_vector,const_wide_int")
-                 (match_test "GET_MODE_SIZE (mode) <= 8")))))
+       (and (match_code "const_vector")
+            (match_test "lvx_uniform_lane_imm_p (op)"))))
 
 ;; A 128-bit SIMD source that a .M format can take at 64-bit lanes.  The format
 ;; carries one 32-bit word and the machine replicates it over the operand, so
@@ -347,7 +347,7 @@
 ;; A 128-bit scalar source for a .M format: a register, or a constant the
 ;; machine sign-extends from a 32-bit word.
 ;;
-;; IT USED TO ADMIT A REPLICATED WORD TOO, via reg_or_splat32_operand, the two
+;; IT USED TO ADMIT A REPLICATED WORD TOO, via reg_or_lane_imm_operand, the two
 ;; immediate readings being one encoding bit apart -- and an __int128 wanted
 ;; both, a small constant and a repeating mask.  The replicating reading was
 ;; the `.@' modifier, which is retired from the ISA: splatting is now a
@@ -356,7 +356,7 @@
 ;; size.  Admitting a value no alternative can hold is what makes reload fail
 ;; rather than diagnose, so the arm goes with the alternatives it fed.
 ;;
-;; reg_or_splat32_operand itself STAYS: its other 66 users in vector.md are
+;; reg_or_lane_imm_operand itself STAYS: its other 66 users in vector.md are
 ;; the lane-wise .M forms, where the splat is now implicit.
 (define_predicate "reg_or_imm32_operand"
   (ior (match_operand 0 "register_operand")

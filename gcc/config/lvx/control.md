@@ -374,7 +374,7 @@
    (set_attr "length"         "8")]
 )
 
-/* Operand 3 takes any splat32, not just 0/-1: COMPN*'s .S twin carries one
+/* Operand 3 takes any uniform lane constant, not just 0/-1: COMPN*'s .S twin carries one
    32-bit word replicated over the operand, so `a < 7' is one instruction where
    S01 left it a MAKEDP first.  This was dead weight until 2026-10-15, when
    COMPN* became reachable at all (lvx_expand_vcond_mask); before that no
@@ -383,7 +383,7 @@
   [(set (match_operand:<MASK> 0 "register_operand" "=r,r")
         (match_operator:<MASK> 1 "comparison_operator"
          [(match_operand:V128N 2 "register_operand" "r,r")
-          (match_operand:V128N 3 "reg_or_splat32_operand" "r,SXW")]))]
+          (match_operand:V128N 3 "reg_or_lane_imm_operand" "r,SXW")]))]
   "LVX_2"
   "@
    compn<suffix>.%1 %0 = %2, %3
