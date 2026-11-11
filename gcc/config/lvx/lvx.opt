@@ -519,7 +519,7 @@ Target Alias(mlms-reorg2) Undocumented
 
 mlms-engine=
 Target RejectNegative Joined UInteger Var(lvx_lms_which_engine) Init(0) Optimization
--mlms-engine=N	Which modulo scheduler decides the dates: 0 convergent modulo scheduling with its Squeaky Wheel search (the default), 1 swing modulo scheduling.  Everything else is the same -- the same dependence graph, the same bounds, the same resource model, the same acceptance test and the same code generation -- so that two arms differ in the scheduler and in nothing else.
+-mlms-engine=N	Which modulo scheduler decides the dates: 0 convergent modulo scheduling with its Squeaky Wheel search (the default), 1 swing modulo scheduling, 2 RCMS, the time-indexed integer program solved by an external solver.  Everything else is the same -- the same dependence graph, the same bounds, the same resource model, the same acceptance test and the same code generation -- so that two arms differ in the scheduler and in nothing else.
 
 mlms-sms-recmii=
 Target RejectNegative Joined UInteger Var(lvx_sms_recmii_llvm) Init(0) Optimization
@@ -532,3 +532,31 @@ Dump swing modulo scheduling's node functions, its node sets and the order it co
 mlms-sms-ctrl-order
 Target Var(lvx_sms_ctrl_order) Init(0) Optimization
 Let the control arcs decide swing modulo scheduling's node order as well as its placement.  OFF by default, which is the paper's own graph: section 4.1 includes only data dependences, because the loops it handles have one branch and that is the last instruction, and an LVX body may hold several branches, each a hub that turns dependence chains into diamonds the two-level ordering was not designed for.  The arcs constrain placement and are verified either way; this decides only whether they also decide what is ordered next.
+
+mlms-rcms-solver=
+Target RejectNegative Joined Var(lvx_lms_rcms_solver) Optimization
+-mlms-rcms-solver=PROG	The program RCMS execs to solve one model, called as PROG <model.lp> <solution> <seconds>.  It is a PROGRAM and not a command line the compiler composes, so the compiler never learns any solver's flag spelling and a new solver is a new wrapper script rather than a new compiler; validation/cms carries one per solver.  The wrapper also owns determinism -- single-threaded, fixed seed, fixed limit -- because a parallel MIP is not reproducible and a compiler whose output depends on how busy the machine was is not a compiler.
+
+mlms-rcms-seconds=
+Target RejectNegative Joined UInteger Var(lvx_lms_rcms_seconds) Init(10) Optimization
+-mlms-rcms-seconds=N	The time limit handed to the solver wrapper for one model.  Feasibility at a fixed interval is NP-complete, so this is the budget after which the answer is UNKNOWN rather than INFEASIBLE -- a distinction the ladder must keep, or the interval it reports is an upper bound wearing a minimum's name.
+
+mlms-rcms-margin=
+Target RejectNegative Joined UInteger Var(lvx_lms_rcms_margin) Init(1) Optimization
+-mlms-rcms-margin=N	How many intervals of slack the scheduling horizon gets above the critical path.  Each one widens every window and so multiplies the binary count; zero makes the model smallest and can make a feasible interval look infeasible, because it forbids placing an operation a stage later than its earliest date.
+
+mlms-rcms-check
+Target Var(lvx_lms_rcms_check) Init(0) Optimization
+Verify the integer program against a schedule CMS found at the same interval, instead of trusting that it is right.  A schedule the framework accepted must satisfy every row the model emits, so a failure is a bug in the MODEL -- a sign the wrong way round, a residue off by one, a window a cycle too tight -- and the test needs no solver and runs on the real corpus.
+
+mlms-rcms-dir=
+Target RejectNegative Joined Var(lvx_lms_rcms_dir) Optimization
+-mlms-rcms-dir=DIR	Keep each emitted model in DIR instead of a temporary file.  The model is then an artefact that can be archived beside a measurement and re-solved later by a DIFFERENT solver, which is the only way to tell a formulation bug from a solver bug.
+
+mlms-rcms-keep
+Target Var(lvx_lms_rcms_keep) Init(0) Optimization
+Do not delete the temporary model and solution files.
+
+mlms-rcms-trace
+Target Var(lvx_lms_rcms_trace) Init(0) Optimization
+Dump what RCMS asked of the solver and what came back, including the acceptance verdict on the returned schedule.

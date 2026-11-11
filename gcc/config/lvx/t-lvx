@@ -71,3 +71,14 @@ lvx-sms.o: $(srcdir)/config/lvx/lvx-sms.cc \
   $(RECOG_H) $(srcdir)/config/lvx/lvx-issue-table.inc
 	$(COMPILE) $<
 	$(POSTCOMPILE)
+
+# RCMS, the third engine: the time-indexed integer program, after LAO's
+# Formulation.c.  The solver is a separate process, so there is nothing to
+# link here.
+lvx-rcms.o: $(srcdir)/config/lvx/lvx-rcms.cc \
+  $(srcdir)/config/lvx/lvx-lms.h \
+  $(CONFIG_H) $(SYSTEM_H) coretypes.h \
+  $(BACKEND_H) $(RTL_H) $(TREE_H) $(TARGET_H) $(DF_H) insn-attr.h \
+  $(RECOG_H) $(srcdir)/config/lvx/lvx-issue-table.inc
+	$(COMPILE) $<
+	$(POSTCOMPILE)

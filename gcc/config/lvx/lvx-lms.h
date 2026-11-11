@@ -249,6 +249,7 @@ struct lvx_lms_engine
 
 extern const struct lvx_lms_engine lvx_cms_engine;
 extern const struct lvx_lms_engine lvx_sms_engine;
+extern const struct lvx_lms_engine lvx_rcms_engine;
 
 extern bool
 lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,

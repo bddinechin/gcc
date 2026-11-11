@@ -12916,7 +12916,8 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
      LMS is its path metrics and for SMS will be the node ordering its cost
      argument rests on.  */
   const struct lvx_lms_engine *eng
-    = lvx_lms_which_engine == 1 ? &lvx_sms_engine : &lvx_cms_engine;
+    = (lvx_lms_which_engine == 2 ? &lvx_rcms_engine
+       : lvx_lms_which_engine == 1 ? &lvx_sms_engine : &lvx_cms_engine);
   struct lvx_lms_problem prob;
 
   prob.seq = &seq;
