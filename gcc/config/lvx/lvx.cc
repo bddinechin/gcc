@@ -26342,12 +26342,42 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		  for (unsigned j = 0; j < n && !tainted[i]; j++)
 		    {
 		      df_ref u;
+		      bool taints;
 
 		      if (j == i || !NONDEBUG_INSN_P (seq[j]))
 			continue;
+
+		      taints = tainted[j] || !lvx_speculatable_p (seq[j]);
+
+		      /* §7tricies.222: a consumer that constraint (1) has
+			 ALREADY pinned does not taint what feeds it.  (1)
+			 gives a store and a volatile reference an arc from
+			 the guarding branch, so neither can be scheduled
+			 above it and neither executes speculatively.  For a
+			 load feeding only such a consumer: if the next
+			 iteration exists, the load read the right address
+			 and the store commits the CORRECT value; if it does
+			 not, that iteration's store never runs and the
+			 garbage is never committed.  A load feeding a BRANCH
+			 is the opposite case -- with kunroll=2 the duplicated
+			 body's branch evaluates its condition in the same
+			 kernel pass, which is divmodvx -- so branches, calls,
+			 non-dismissible loads (whose ADDRESS a speculated
+			 value can fault) and trapping FP keep tainting.
+
+			 tainted[j] still propagates: an exempt consumer that
+			 is itself tainted stays conservative.  */
+		      if (taints && !tainted[j]
+			  && !lvx_cms_taint_through_stores
+			  && (lvx_mem_write_insn_p (seq[j])
+			      || volatile_insn_p (PATTERN (seq[j]))))
+			taints = false;
+
+		      if (!taints)
+			continue;
+
 		      FOR_EACH_INSN_USE (u, seq[j])
-			if (DF_REF_REGNO (u) == r
-			    && (!lvx_speculatable_p (seq[j]) || tainted[j]))
+			if (DF_REF_REGNO (u) == r)
 			  {
 			    tainted[i] = true;
 			    changed = true;
