@@ -3,7 +3,7 @@
 
    This is the oracle for the one part of CMS that has no other check.  SMS
    builds its ddg BEFORE register allocation, so its register arcs are true
-   dataflow over pseudos; lvx_cms_build_graph reconstructs them AFTER
+   dataflow over pseudos; lvx_lms_build_graph reconstructs them AFTER
    allocation, from reaching definitions.  Comparing the two recurrence bounds
    on one graph is therefore a test of that reconstruction against ground
    truth -- and the reconstruction is the part that has been wrong twice, once

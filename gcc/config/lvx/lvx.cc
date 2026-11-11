@@ -212,30 +212,30 @@ static basic_block lvx_final_prev_bb;
    and conflating the two would fire this assert on code that works.
 
    Keyed by INSN_UID, which restarts per function, so the table is freed with
-   the rest of the per-function scheduling state and LVX_CMS_GROUP_PREV with
+   the rest of the per-function scheduling state and LVX_LMS_GROUP_PREV with
    it -- otherwise a uid reused by the next function could match a stale
    group.  */
-static int *lvx_cms_group;
-static int *lvx_cms_key;
-static int lvx_cms_group_max;
-static int lvx_cms_group_prev;
-static rtx_insn *lvx_cms_group_prev_insn;
+static int *lvx_lms_group;
+static int *lvx_lms_key;
+static int lvx_lms_group_max;
+static int lvx_lms_group_prev;
+static rtx_insn *lvx_lms_group_prev_insn;
 
 /* Where each tagged slot ended up: its group, the bundle it landed in, and
    the insn.  Collected during final and checked once per function, because
    the two slots of a split group need not be ADJACENT across the boundary --
    in huft_build loop 6 the insn that closed the bundle was a third slot and
    the hwkern setup sat between -- so an adjacency test sees nothing.  */
-struct lvx_cms_group_rec
+struct lvx_lms_group_rec
 {
   int group;
   int bundle;
   int key;		/* program order of the slot: iteration, then index. */
   rtx_insn *insn;
 };
-static struct lvx_cms_group_rec *lvx_cms_group_recs;
-static int lvx_cms_group_nrecs;
-static int lvx_cms_group_recs_max;
+static struct lvx_lms_group_rec *lvx_lms_group_recs;
+static int lvx_lms_group_nrecs;
+static int lvx_lms_group_recs_max;
 
 /* WHAT THE PLAN MEANT EACH OPERAND TO READ.  §7tricies.209.
 
@@ -249,7 +249,7 @@ static int lvx_cms_group_recs_max;
    the live range and the register that range's name holds.  Recording the
    pair makes the emitted stream checkable against the plan afterwards, which
    is what the group table alone could not do.  */
-struct lvx_cms_flow_rec
+struct lvx_lms_flow_rec
 {
   rtx_insn *insn;
   int root;		/* live-range root this operand belongs to.  */
@@ -263,32 +263,32 @@ struct lvx_cms_flow_rec
 			   linear walk judges it soundly; with p2 == 1 it names
 			   the same one and only the order decides.  */
   bool dly;		/* a READ that takes the range's PREVIOUS-iteration
-			   instance -- `lvx_cms_lrange_of''s delay flag, which
-			   `lvx_cms_lrange_reg' resolves to another register
+			   instance -- `lvx_lms_lrange_of''s delay flag, which
+			   `lvx_lms_lrange_reg' resolves to another register
 			   when the range is expanded and to the same one when
 			   it is not.  A linear walk cannot judge it: see
-			   `lvx_cms_flow_check'.  */
+			   `lvx_lms_flow_check'.  */
 };
-static int lvx_cms_flow_region;
-static struct lvx_cms_flow_rec *lvx_cms_flow_recs;
-static int lvx_cms_flow_nrecs;
-static int lvx_cms_flow_recs_max;
-static int lvx_cms_bundle_index;
+static int lvx_lms_flow_region;
+static struct lvx_lms_flow_rec *lvx_lms_flow_recs;
+static int lvx_lms_flow_nrecs;
+static int lvx_lms_flow_recs_max;
+static int lvx_lms_bundle_index;
 
 static int
-lvx_cms_group_of_uid (int uid)
+lvx_lms_group_of_uid (int uid)
 {
-  if (lvx_cms_group == NULL || uid < 0 || uid >= lvx_cms_group_max)
+  if (lvx_lms_group == NULL || uid < 0 || uid >= lvx_lms_group_max)
     return 0;
-  return lvx_cms_group[uid];
+  return lvx_lms_group[uid];
 }
 
 static int
-lvx_cms_key_of_uid (int uid)
+lvx_lms_key_of_uid (int uid)
 {
-  if (lvx_cms_key == NULL || uid < 0 || uid >= lvx_cms_group_max)
+  if (lvx_lms_key == NULL || uid < 0 || uid >= lvx_lms_group_max)
     return 0;
-  return lvx_cms_key[uid];
+  return lvx_lms_key[uid];
 }
 
 /* Tag the first insn emitted after AFTER as belonging to (NODE, DATE), with
@@ -296,7 +296,7 @@ lvx_cms_key_of_uid (int uid)
    SEQ.  The key is what separates a WAR pair from a RAW one, and only the WAR
    pair is at risk from a split.  */
 static void
-lvx_cms_group_tag (rtx_insn *after, int node, int date, int key)
+lvx_lms_group_tag (rtx_insn *after, int node, int date, int key)
 {
   rtx_insn *first = after ? NEXT_INSN (after) : NULL;
   int uid;
@@ -306,23 +306,23 @@ lvx_cms_group_tag (rtx_insn *after, int node, int date, int key)
   uid = INSN_UID (first);
   if (uid < 0)
     return;
-  if (uid >= lvx_cms_group_max)
+  if (uid >= lvx_lms_group_max)
     {
-      int old = lvx_cms_group_max;
+      int old = lvx_lms_group_max;
 
-      lvx_cms_group_max = uid + 256;
-      lvx_cms_group = (int *) xrealloc (lvx_cms_group,
-					lvx_cms_group_max * sizeof (int));
-      lvx_cms_key = (int *) xrealloc (lvx_cms_key,
-				      lvx_cms_group_max * sizeof (int));
-      memset (lvx_cms_group + old, 0,
-	      (lvx_cms_group_max - old) * sizeof (int));
-      memset (lvx_cms_key + old, 0, (lvx_cms_group_max - old) * sizeof (int));
+      lvx_lms_group_max = uid + 256;
+      lvx_lms_group = (int *) xrealloc (lvx_lms_group,
+					lvx_lms_group_max * sizeof (int));
+      lvx_lms_key = (int *) xrealloc (lvx_lms_key,
+				      lvx_lms_group_max * sizeof (int));
+      memset (lvx_lms_group + old, 0,
+	      (lvx_lms_group_max - old) * sizeof (int));
+      memset (lvx_lms_key + old, 0, (lvx_lms_group_max - old) * sizeof (int));
     }
   /* Non-zero marks "tagged", so node 0 date 0 is distinguishable from
      untagged.  */
-  lvx_cms_group[uid] = 1 + (node << 16) + (date & 0xffff);
-  lvx_cms_key[uid] = key;
+  lvx_lms_group[uid] = 1 + (node << 16) + (date & 0xffff);
+  lvx_lms_key[uid] = key;
 }
 
 /* THE BLOCKS THE PIPELINER OWNS, AND THE BUNDLES IT WANTS IN THEM.
@@ -360,14 +360,14 @@ lvx_cms_group_tag (rtx_insn *after, int node, int date, int key)
        exit is a decrement and then a branch reading what it wrote, and the
        hardware-loop setup is four insns chained through two registers.  */
 
-static bool lvx_cms_owns_blocks;
+static bool lvx_lms_owns_blocks;
 
 static void
-lvx_cms_own_blocks (void)
+lvx_lms_own_blocks (void)
 {
   basic_block bb;
 
-  if (!lvx_cms_own_bundles || lvx_cms_group == NULL)
+  if (!lvx_lms_own_bundles || lvx_lms_group == NULL)
     return;
 
   /* Mark first, from the insns, so a merge cannot lose a block.  */
@@ -377,17 +377,17 @@ lvx_cms_own_blocks (void)
 
       FOR_BB_INSNS (bb, insn)
 	if (NONDEBUG_INSN_P (insn)
-	    && lvx_cms_group_of_uid (INSN_UID (insn)) != 0)
+	    && lvx_lms_group_of_uid (INSN_UID (insn)) != 0)
 	  {
 	    bb->flags |= BB_DISABLE_SCHEDULE;
-	    lvx_cms_owns_blocks = true;
+	    lvx_lms_owns_blocks = true;
 	    break;
 	  }
     }
-  if (!lvx_cms_owns_blocks)
+  if (!lvx_lms_owns_blocks)
     return;
 
-  if (dump_file && lvx_cms_probe)
+  if (dump_file && lvx_lms_probe)
     {
       fprintf (dump_file, ";; lvx cms: OWNED blocks:");
       FOR_EACH_BB_FN (bb, cfun)
@@ -413,7 +413,7 @@ lvx_cms_own_blocks (void)
 	      || GET_CODE (PATTERN (insn)) == USE
 	      || GET_CODE (PATTERN (insn)) == CLOBBER)
 	    continue;
-	  g = lvx_cms_group_of_uid (INSN_UID (insn));
+	  g = lvx_lms_group_of_uid (INSN_UID (insn));
 	  if (first || g == 0 || g != prev_group)
 	    PUT_MODE (insn, TImode);
 	  else
@@ -444,7 +444,7 @@ lvx_cms_own_blocks (void)
    begins a region when it is the first owned one, or carries a label, or is
    not its predecessor's fall-through successor.  */
 static bool
-lvx_cms_region_start_p (basic_block bb)
+lvx_lms_region_start_p (basic_block bb)
 {
   basic_block prev = bb->prev_bb;
   edge e;
@@ -488,19 +488,19 @@ lvx_cms_region_start_p (basic_block bb)
    bundles ahead of it have already passed.  Monotonic and distinct either
    way, which is all the three readers compare.  */
 static void
-lvx_cms_seed_bundles (void)
+lvx_lms_seed_bundles (void)
 {
   basic_block bb;
   int cycle = -1, base = -1;
 
-  if (!lvx_cms_owns_blocks)
+  if (!lvx_lms_owns_blocks)
     return;
 
   FOR_EACH_BB_FN (bb, cfun)
     {
       rtx_insn *insn;
       int prev_uid = -1;
-      bool head = lvx_cms_region_start_p (bb);
+      bool head = lvx_lms_region_start_p (bb);
 
       if (!(bb->flags & BB_DISABLE_SCHEDULE))
 	continue;
@@ -540,7 +540,7 @@ lvx_cms_seed_bundles (void)
 	  uid = INSN_UID (insn);
 	  if ((unsigned) uid >= (unsigned) lvx_sched2->max_uid)
 	    continue;
-	  g = lvx_cms_group_of_uid (uid);
+	  g = lvx_lms_group_of_uid (uid);
 	  if (GET_MODE (insn) == TImode)
 	    {
 	      int want = cycle + 1;
@@ -568,10 +568,10 @@ lvx_cms_seed_bundles (void)
 	  lvx_sched2->insn_cycle[uid] = cycle;
 	  prev_uid = uid;
 	}
-      if (dump_file && lvx_cms_probe)
+      if (dump_file && lvx_lms_probe)
 	fprintf (dump_file, ";; lvx cms: SEED bb%d head=%d lastuid=%d"
 		 " cycle=%d\n", bb->index,
-		 lvx_cms_region_start_p (bb) ? 1 : 0, prev_uid, cycle);
+		 lvx_lms_region_start_p (bb) ? 1 : 0, prev_uid, cycle);
       /* A bundle never spans a block here: a group carries its node, so the
 	 first slot of the next block is always a new group and therefore
 	 TImode.  Closing explicitly anyway, because an owned block can end in
@@ -583,26 +583,26 @@ lvx_cms_seed_bundles (void)
 }
 
 static void
-lvx_cms_group_free (void)
+lvx_lms_group_free (void)
 {
-  lvx_cms_owns_blocks = false;
-  free (lvx_cms_group);
-  lvx_cms_group = NULL;
-  free (lvx_cms_key);
-  lvx_cms_key = NULL;
-  lvx_cms_group_max = 0;
-  lvx_cms_group_prev = 0;
-  lvx_cms_group_prev_insn = NULL;
-  free (lvx_cms_group_recs);
-  lvx_cms_group_recs = NULL;
-  lvx_cms_group_nrecs = 0;
-  lvx_cms_group_recs_max = 0;
-  lvx_cms_bundle_index = 0;
-  free (lvx_cms_flow_recs);
-  lvx_cms_flow_recs = NULL;
-  lvx_cms_flow_nrecs = 0;
-  lvx_cms_flow_recs_max = 0;
-  lvx_cms_flow_region = 0;
+  lvx_lms_owns_blocks = false;
+  free (lvx_lms_group);
+  lvx_lms_group = NULL;
+  free (lvx_lms_key);
+  lvx_lms_key = NULL;
+  lvx_lms_group_max = 0;
+  lvx_lms_group_prev = 0;
+  lvx_lms_group_prev_insn = NULL;
+  free (lvx_lms_group_recs);
+  lvx_lms_group_recs = NULL;
+  lvx_lms_group_nrecs = 0;
+  lvx_lms_group_recs_max = 0;
+  lvx_lms_bundle_index = 0;
+  free (lvx_lms_flow_recs);
+  lvx_lms_flow_recs = NULL;
+  lvx_lms_flow_nrecs = 0;
+  lvx_lms_flow_recs_max = 0;
+  lvx_lms_flow_region = 0;
 }
 
 /* EVERY SPLIT GROUP THAT CHANGES THE ANSWER, checked once the function's
@@ -628,35 +628,35 @@ lvx_cms_group_free (void)
    there is no correct code to emit -- the requirement belongs in the
    dependence graph, and reaching here means it was not expressed there.  */
 static void
-lvx_cms_group_check (FILE *file)
+lvx_lms_group_check (FILE *file)
 {
   /* IS THE TABLE EVEN POPULATED?  "Zero splits" is only evidence when there
      were pairs to test: with -mcms-own-bundles the default, CMS places its own
      boundaries and a group should never span two, so a vacuous check and a
      clean one look identical from the outside.  §7tricies.200.  */
-  if (lvx_cms_probe_groups && file)
+  if (lvx_lms_probe_groups && file)
     {
       int ngroups = 0, nbundles = 0, npair = 0;
-      for (int a = 0; a < lvx_cms_group_nrecs; a++)
+      for (int a = 0; a < lvx_lms_group_nrecs; a++)
 	{
 	  int k;
 	  for (k = 0; k < a; k++)
-	    if (lvx_cms_group_recs[k].group == lvx_cms_group_recs[a].group)
+	    if (lvx_lms_group_recs[k].group == lvx_lms_group_recs[a].group)
 	      break;
 	  if (k == a)
 	    ngroups++;
 	  for (k = 0; k < a; k++)
-	    if (lvx_cms_group_recs[k].bundle == lvx_cms_group_recs[a].bundle)
+	    if (lvx_lms_group_recs[k].bundle == lvx_lms_group_recs[a].bundle)
 	      break;
 	  if (k == a)
 	    nbundles++;
-	  for (k = a + 1; k < lvx_cms_group_nrecs; k++)
-	    if (lvx_cms_group_recs[k].group == lvx_cms_group_recs[a].group
-		&& lvx_cms_group_recs[k].bundle != lvx_cms_group_recs[a].bundle)
+	  for (k = a + 1; k < lvx_lms_group_nrecs; k++)
+	    if (lvx_lms_group_recs[k].group == lvx_lms_group_recs[a].group
+		&& lvx_lms_group_recs[k].bundle != lvx_lms_group_recs[a].bundle)
 	      npair++;
 	}
       fprintf (file, "\t# lvx cms: GROUPTAB recs=%d groups=%d bundles=%d"
-	       " cross-bundle-pairs=%d\n", lvx_cms_group_nrecs, ngroups,
+	       " cross-bundle-pairs=%d\n", lvx_lms_group_nrecs, ngroups,
 	       nbundles, npair);
       /* EVERY RECORD, so "no cross-bundle pair" can be checked against the
 	 emitted code rather than believed.  §7tricies.208: 7tricies.190's two
@@ -666,21 +666,21 @@ lvx_cms_group_check (FILE *file)
 	 bundles before the read.  Either they are not both recorded or the
 	 group key does not separate what it should, and only the records can
 	 say which.  */
-      for (int a = 0; a < lvx_cms_group_nrecs; a++)
+      for (int a = 0; a < lvx_lms_group_nrecs; a++)
 	fprintf (file, "\t# lvx cms: GROUPREC uid=%d node=%d cycle=%d"
 		 " bundle=%d key=%d\n",
-		 INSN_UID (lvx_cms_group_recs[a].insn),
-		 (lvx_cms_group_recs[a].group - 1) >> 16,
-		 (lvx_cms_group_recs[a].group - 1) & 0xffff,
-		 lvx_cms_group_recs[a].bundle, lvx_cms_group_recs[a].key);
+		 INSN_UID (lvx_lms_group_recs[a].insn),
+		 (lvx_lms_group_recs[a].group - 1) >> 16,
+		 (lvx_lms_group_recs[a].group - 1) & 0xffff,
+		 lvx_lms_group_recs[a].bundle, lvx_lms_group_recs[a].key);
     }
-  for (int a = 0; a < lvx_cms_group_nrecs; a++)
-    for (int b = a + 1; b < lvx_cms_group_nrecs; b++)
+  for (int a = 0; a < lvx_lms_group_nrecs; a++)
+    for (int b = a + 1; b < lvx_lms_group_nrecs; b++)
       {
 	rtx set;
 
-	if (lvx_cms_group_recs[a].group != lvx_cms_group_recs[b].group
-	    || lvx_cms_group_recs[a].bundle == lvx_cms_group_recs[b].bundle)
+	if (lvx_lms_group_recs[a].group != lvx_lms_group_recs[b].group
+	    || lvx_lms_group_recs[a].bundle == lvx_lms_group_recs[b].bundle)
 	  continue;
 	/* A IS THE WRITER AND B THE READER IN EMISSION ORDER.  That is only a
 	   LOST value if B came FIRST in the program's own order, so that B
@@ -690,7 +690,7 @@ lvx_cms_group_check (FILE *file)
 	   value, and a boundary between them changes nothing.  Without this
 	   test the check fired on 87 files of the corpus that compile and run
 	   correctly, which is how the distinction was found.  */
-	if (lvx_cms_group_recs[b].key >= lvx_cms_group_recs[a].key)
+	if (lvx_lms_group_recs[b].key >= lvx_lms_group_recs[a].key)
 	  {
 	    /* REPORTED, NOT SILENT, UNDER -mcms-probe-groups.  The filter's
 	       premise is that a reader later in program order WANTS this
@@ -702,29 +702,29 @@ lvx_cms_group_check (FILE *file)
 	       the SAME r2.  Program order therefore says nothing, and the
 	       pair the comment above cites as the known failure is the pair
 	       this test drops.  §7tricies.200.  */
-	    rtx s2 = single_set (lvx_cms_group_recs[a].insn);
-	    if (lvx_cms_probe_groups && file && s2 != NULL_RTX
+	    rtx s2 = single_set (lvx_lms_group_recs[a].insn);
+	    if (lvx_lms_probe_groups && file && s2 != NULL_RTX
 		&& REG_P (SET_DEST (s2))
 		&& reg_referenced_p (SET_DEST (s2),
-				     PATTERN (lvx_cms_group_recs[b].insn)))
+				     PATTERN (lvx_lms_group_recs[b].insn)))
 	      fprintf (file, "\t# lvx cms: GROUPRAW insn %d writes %s,"
 		       " insn %d reads it LATER in program order,"
 		       " node %d cycle %d, keys %d then %d\n",
-		       INSN_UID (lvx_cms_group_recs[a].insn),
+		       INSN_UID (lvx_lms_group_recs[a].insn),
 		       reg_names[REGNO (SET_DEST (s2))],
-		       INSN_UID (lvx_cms_group_recs[b].insn),
-		       (lvx_cms_group_recs[a].group - 1) >> 16,
-		       (lvx_cms_group_recs[a].group - 1) & 0xffff,
-		       lvx_cms_group_recs[a].key, lvx_cms_group_recs[b].key);
+		       INSN_UID (lvx_lms_group_recs[b].insn),
+		       (lvx_lms_group_recs[a].group - 1) >> 16,
+		       (lvx_lms_group_recs[a].group - 1) & 0xffff,
+		       lvx_lms_group_recs[a].key, lvx_lms_group_recs[b].key);
 	    continue;
 	  }
-	set = single_set (lvx_cms_group_recs[a].insn);
+	set = single_set (lvx_lms_group_recs[a].insn);
 	if (set == NULL_RTX || !REG_P (SET_DEST (set)))
 	  continue;
 	if (!reg_referenced_p (SET_DEST (set),
-			       PATTERN (lvx_cms_group_recs[b].insn)))
+			       PATTERN (lvx_lms_group_recs[b].insn)))
 	  continue;
-	if (!lvx_cms_assert_groups)
+	if (!lvx_lms_assert_groups)
 	  {
 	    /* Reported rather than fatal at the default, so the sites can be
 	       counted and fixed before the assert becomes the gate.  INTO THE
@@ -741,55 +741,55 @@ lvx_cms_group_check (FILE *file)
 		 which stops at -S and never runs gas.  */
 	      fprintf (file, "\t# lvx cms: GROUPSPLIT insn %d writes %s,"
 		       " insn %d reads it, node %d cycle %d\n",
-		       INSN_UID (lvx_cms_group_recs[a].insn),
+		       INSN_UID (lvx_lms_group_recs[a].insn),
 		       reg_names[REGNO (SET_DEST (set))],
-		       INSN_UID (lvx_cms_group_recs[b].insn),
-		       (lvx_cms_group_recs[a].group - 1) >> 16,
-		       (lvx_cms_group_recs[a].group - 1) & 0xffff);
+		       INSN_UID (lvx_lms_group_recs[b].insn),
+		       (lvx_lms_group_recs[a].group - 1) >> 16,
+		       (lvx_lms_group_recs[a].group - 1) & 0xffff);
 	    continue;
 	  }
 	internal_error ("LVX: bundling split a parallel instruction group "
 			"across a write: insn %d writes %s and insn %d reads "
 			"it, both slots of node %d at cycle %d, and they "
 			"landed in different bundles",
-			INSN_UID (lvx_cms_group_recs[a].insn),
+			INSN_UID (lvx_lms_group_recs[a].insn),
 			reg_names[REGNO (SET_DEST (set))],
-			INSN_UID (lvx_cms_group_recs[b].insn),
-			(lvx_cms_group_recs[a].group - 1) >> 16,
-			(lvx_cms_group_recs[a].group - 1) & 0xffff);
+			INSN_UID (lvx_lms_group_recs[b].insn),
+			(lvx_lms_group_recs[a].group - 1) >> 16,
+			(lvx_lms_group_recs[a].group - 1) & 0xffff);
       }
 }
 
 static void
-lvx_cms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def,
+lvx_lms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def,
 		     bool dly, int p2)
 {
   if (insn == NULL || root < 0 || reg < 0)
     return;
-  if (lvx_cms_flow_nrecs >= lvx_cms_flow_recs_max)
+  if (lvx_lms_flow_nrecs >= lvx_lms_flow_recs_max)
     {
-      lvx_cms_flow_recs_max = lvx_cms_flow_recs_max * 2 + 128;
-      lvx_cms_flow_recs
-	= (struct lvx_cms_flow_rec *) xrealloc (lvx_cms_flow_recs,
-						lvx_cms_flow_recs_max
-						* sizeof (*lvx_cms_flow_recs));
+      lvx_lms_flow_recs_max = lvx_lms_flow_recs_max * 2 + 128;
+      lvx_lms_flow_recs
+	= (struct lvx_lms_flow_rec *) xrealloc (lvx_lms_flow_recs,
+						lvx_lms_flow_recs_max
+						* sizeof (*lvx_lms_flow_recs));
     }
-  lvx_cms_flow_recs[lvx_cms_flow_nrecs].insn = insn;
-  lvx_cms_flow_recs[lvx_cms_flow_nrecs].root = root;
-  lvx_cms_flow_recs[lvx_cms_flow_nrecs].reg = reg;
-  lvx_cms_flow_recs[lvx_cms_flow_nrecs].nregs = MAX (nregs, 1);
-  lvx_cms_flow_recs[lvx_cms_flow_nrecs].region = lvx_cms_flow_region;
-  lvx_cms_flow_recs[lvx_cms_flow_nrecs].is_def = is_def;
-  lvx_cms_flow_recs[lvx_cms_flow_nrecs].dly = dly;
-  lvx_cms_flow_recs[lvx_cms_flow_nrecs].p2 = p2;
-  lvx_cms_flow_nrecs++;
+  lvx_lms_flow_recs[lvx_lms_flow_nrecs].insn = insn;
+  lvx_lms_flow_recs[lvx_lms_flow_nrecs].root = root;
+  lvx_lms_flow_recs[lvx_lms_flow_nrecs].reg = reg;
+  lvx_lms_flow_recs[lvx_lms_flow_nrecs].nregs = MAX (nregs, 1);
+  lvx_lms_flow_recs[lvx_lms_flow_nrecs].region = lvx_lms_flow_region;
+  lvx_lms_flow_recs[lvx_lms_flow_nrecs].is_def = is_def;
+  lvx_lms_flow_recs[lvx_lms_flow_nrecs].dly = dly;
+  lvx_lms_flow_recs[lvx_lms_flow_nrecs].p2 = p2;
+  lvx_lms_flow_nrecs++;
 }
 
 /* DOES EVERY EMITTED USE RECEIVE THE VALUE THE PLAN ASSIGNED IT?
    §7tricies.209.  The one question none of CMS's other checks can ask.
 
    The flow records say, per emitted operand, which live range the plan meant
-   it to be -- `lvx_cms_flow_record', filled at renaming.  The group records
+   it to be -- `lvx_lms_flow_record', filled at renaming.  The group records
    say which BUNDLE each emitted insn landed in, which is the unit in which a
    read precedes every write.  Joining them gives the emitted dataflow, and
    the check is then simply: walk the bundles in emission order, and before
@@ -811,7 +811,7 @@ lvx_cms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def,
 
    AND A LOOP-CARRIED READ IS NOT A LINEAR READ.  §7tricies.214.  The kernel
    is ONE copy of the body that executes once per iteration, so a read whose
-   range is taken at a DELAY -- `lvx_cms_lrange_of''s `dly', the previous
+   range is taken at a DELAY -- `lvx_lms_lrange_of''s `dly', the previous
    iteration's instance -- expects a value this pass has not written.  Where
    the range is expanded that is another register and the walk judges it
    correctly; where it is not, it is the SAME register, and the def of the
@@ -842,7 +842,7 @@ lvx_cms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def,
    told from this iteration's def having already run.  The old check passed
    every one of those silently.  */
 static void
-lvx_cms_flow_check (FILE *file)
+lvx_lms_flow_check (FILE *file)
 {
   int owner[FIRST_PSEUDO_REGISTER];
   int writer[FIRST_PSEUDO_REGISTER];
@@ -852,7 +852,7 @@ lvx_cms_flow_check (FILE *file)
   int carried_ambig = 0;
   int a;
 
-  if (lvx_cms_flow_nrecs == 0 || lvx_cms_group_nrecs == 0)
+  if (lvx_lms_flow_nrecs == 0 || lvx_lms_group_nrecs == 0)
     return;
   for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
     owner[r] = -1, writer[r] = -1, wregion[r] = -1;
@@ -860,7 +860,7 @@ lvx_cms_flow_check (FILE *file)
   /* The group records are appended in output order, so consecutive ones with
      the same BUNDLE are one bundle.  */
   a = 0;
-  while (a < lvx_cms_group_nrecs)
+  while (a < lvx_lms_group_nrecs)
     {
       int b = a;
 
@@ -882,8 +882,8 @@ lvx_cms_flow_check (FILE *file)
 	 record carries is the signal; nothing else distinguishes two loops,
 	 since node numbers restart per loop.  */
 
-      while (b < lvx_cms_group_nrecs
-	     && lvx_cms_group_recs[b].bundle == lvx_cms_group_recs[a].bundle)
+      while (b < lvx_lms_group_nrecs
+	     && lvx_lms_group_recs[b].bundle == lvx_lms_group_recs[a].bundle)
 	b++;
 
       /* This bundle's region, taken from the first flow record that matches
@@ -892,9 +892,9 @@ lvx_cms_flow_check (FILE *file)
 	int reg_here = -1;
 
 	for (int i = a; i < b && reg_here < 0; i++)
-	  for (int f = 0; f < lvx_cms_flow_nrecs && reg_here < 0; f++)
-	    if (lvx_cms_flow_recs[f].insn == lvx_cms_group_recs[i].insn)
-	      reg_here = lvx_cms_flow_recs[f].region;
+	  for (int f = 0; f < lvx_lms_flow_nrecs && reg_here < 0; f++)
+	    if (lvx_lms_flow_recs[f].insn == lvx_lms_group_recs[i].insn)
+	      reg_here = lvx_lms_flow_recs[f].region;
 	if (reg_here >= 0 && reg_here != cur_region)
 	  {
 	    for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
@@ -905,11 +905,11 @@ lvx_cms_flow_check (FILE *file)
 
       /* Reads first, against the owners as they stand before this bundle.  */
       for (int i = a; i < b; i++)
-	for (int f = 0; f < lvx_cms_flow_nrecs; f++)
+	for (int f = 0; f < lvx_lms_flow_nrecs; f++)
 	  {
-	    struct lvx_cms_flow_rec *fr = &lvx_cms_flow_recs[f];
+	    struct lvx_lms_flow_rec *fr = &lvx_lms_flow_recs[f];
 
-	    if (fr->insn != lvx_cms_group_recs[i].insn || fr->is_def)
+	    if (fr->insn != lvx_lms_group_recs[i].insn || fr->is_def)
 	      continue;
 	    for (int t = 0; t < fr->nregs; t++)
 	      {
@@ -985,15 +985,15 @@ lvx_cms_flow_check (FILE *file)
 	{
 	  bool tracked = false;
 
-	  for (int f = 0; f < lvx_cms_flow_nrecs && !tracked; f++)
-	    if (lvx_cms_flow_recs[f].insn == lvx_cms_group_recs[i].insn)
+	  for (int f = 0; f < lvx_lms_flow_nrecs && !tracked; f++)
+	    if (lvx_lms_flow_recs[f].insn == lvx_lms_group_recs[i].insn)
 	      tracked = true;
-	  if (!tracked && INSN_P (lvx_cms_group_recs[i].insn))
+	  if (!tracked && INSN_P (lvx_lms_group_recs[i].insn))
 	    {
 	      HARD_REG_SET stores;
 
 	      CLEAR_HARD_REG_SET (stores);
-	      note_stores (lvx_cms_group_recs[i].insn, record_hard_reg_sets,
+	      note_stores (lvx_lms_group_recs[i].insn, record_hard_reg_sets,
 			   &stores);
 	      for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
 		if (TEST_HARD_REG_BIT (stores, r))
@@ -1003,11 +1003,11 @@ lvx_cms_flow_check (FILE *file)
 
       /* Then the writes, which land at the end of the bundle.  */
       for (int i = a; i < b; i++)
-	for (int f = 0; f < lvx_cms_flow_nrecs; f++)
+	for (int f = 0; f < lvx_lms_flow_nrecs; f++)
 	  {
-	    struct lvx_cms_flow_rec *fr = &lvx_cms_flow_recs[f];
+	    struct lvx_lms_flow_rec *fr = &lvx_lms_flow_recs[f];
 
-	    if (fr->insn != lvx_cms_group_recs[i].insn || !fr->is_def)
+	    if (fr->insn != lvx_lms_group_recs[i].insn || !fr->is_def)
 	      continue;
 	    for (int t = 0; t < fr->nregs; t++)
 	      {
@@ -1030,12 +1030,12 @@ lvx_cms_flow_check (FILE *file)
     {
       int seen = 0, unseen = 0;
 
-      for (int f = 0; f < lvx_cms_flow_nrecs; f++)
+      for (int f = 0; f < lvx_lms_flow_nrecs; f++)
 	{
 	  bool found = false;
 
-	  for (int i = 0; i < lvx_cms_group_nrecs && !found; i++)
-	    if (lvx_cms_group_recs[i].insn == lvx_cms_flow_recs[f].insn)
+	  for (int i = 0; i < lvx_lms_group_nrecs && !found; i++)
+	    if (lvx_lms_group_recs[i].insn == lvx_lms_flow_recs[f].insn)
 	      found = true;
 	  if (found)
 	    seen++;
@@ -1044,39 +1044,39 @@ lvx_cms_flow_check (FILE *file)
 	}
       int nb = 0;
 
-      for (int i = 0; i < lvx_cms_group_nrecs; i++)
-	if (i == 0 || lvx_cms_group_recs[i].bundle
-		      != lvx_cms_group_recs[i - 1].bundle)
+      for (int i = 0; i < lvx_lms_group_nrecs; i++)
+	if (i == 0 || lvx_lms_group_recs[i].bundle
+		      != lvx_lms_group_recs[i - 1].bundle)
 	  nb++;
       int carried_ops = 0;
 
-      for (int f = 0; f < lvx_cms_flow_nrecs; f++)
-	if (!lvx_cms_flow_recs[f].is_def && lvx_cms_flow_recs[f].dly)
+      for (int f = 0; f < lvx_lms_flow_nrecs; f++)
+	if (!lvx_lms_flow_recs[f].is_def && lvx_lms_flow_recs[f].dly)
 	  carried_ops++;
       fprintf (file, "\t# lvx cms: FLOWTAB operands=%d checked=%d"
 	       " not-in-any-bundle=%d bundles=%d loop-carried=%d"
 	       " carried-unjudged=%d carried-ambiguous=%d\n",
-	       lvx_cms_flow_nrecs,
+	       lvx_lms_flow_nrecs,
 	       seen, unseen, nb, carried_ops, carried_bad, carried_ambig);
     }
 }
 
 static void
-lvx_cms_group_record (rtx_insn *insn, int g)
+lvx_lms_group_record (rtx_insn *insn, int g)
 {
-  if (lvx_cms_group_nrecs >= lvx_cms_group_recs_max)
+  if (lvx_lms_group_nrecs >= lvx_lms_group_recs_max)
     {
-      lvx_cms_group_recs_max = lvx_cms_group_recs_max * 2 + 64;
-      lvx_cms_group_recs
-	= (struct lvx_cms_group_rec *) xrealloc (lvx_cms_group_recs,
-						 lvx_cms_group_recs_max
-						 * sizeof (*lvx_cms_group_recs));
+      lvx_lms_group_recs_max = lvx_lms_group_recs_max * 2 + 64;
+      lvx_lms_group_recs
+	= (struct lvx_lms_group_rec *) xrealloc (lvx_lms_group_recs,
+						 lvx_lms_group_recs_max
+						 * sizeof (*lvx_lms_group_recs));
     }
-  lvx_cms_group_recs[lvx_cms_group_nrecs].group = g;
-  lvx_cms_group_recs[lvx_cms_group_nrecs].bundle = lvx_cms_bundle_index;
-  lvx_cms_group_recs[lvx_cms_group_nrecs].key = lvx_cms_key_of_uid (INSN_UID (insn));
-  lvx_cms_group_recs[lvx_cms_group_nrecs].insn = insn;
-  lvx_cms_group_nrecs++;
+  lvx_lms_group_recs[lvx_lms_group_nrecs].group = g;
+  lvx_lms_group_recs[lvx_lms_group_nrecs].bundle = lvx_lms_bundle_index;
+  lvx_lms_group_recs[lvx_lms_group_nrecs].key = lvx_lms_key_of_uid (INSN_UID (insn));
+  lvx_lms_group_recs[lvx_lms_group_nrecs].insn = insn;
+  lvx_lms_group_nrecs++;
 }
 
 struct lvx_sched_resources
@@ -5889,7 +5889,7 @@ lvx_hwloop_pattern_reg (rtx_insn *insn)
    job: a marked doloop_end is reported as not being one.
 
    And the mark cannot live in lvx_hwloop_pattern_reg itself, because
-   lvx_cms_doloop_trip_count calls that same function to find the counter --
+   lvx_lms_doloop_trip_count calls that same function to find the counter --
    in the after order the loop IS mapped, so blinding it there would blind
    CMS's own trip-count detection.  Hence a second hooks struct, used only by
    the second pass.  */
@@ -7198,9 +7198,9 @@ lvx_function_prologue (FILE *)
 static void
 lvx_function_epilogue (FILE *file)
 {
-  lvx_cms_group_check (file);
-  if (lvx_cms_probe_flow)
-    lvx_cms_flow_check (file);
+  lvx_lms_group_check (file);
+  if (lvx_lms_probe_flow)
+    lvx_lms_flow_check (file);
   lvx_sched2_dtor ();
   if (lvx_ifcvt->ce_level > LVX_IFCVT_)
     lvx_ifcvt_dtor ();
@@ -9636,7 +9636,7 @@ lvx_sched2_ctor (int max_uid)
   lvx_sched2->cond_insn = make_insn_raw (gen_cond_insn ());
   /* The pipeliner's own blocks are not scheduled, so their bundles come from
      the modes it left behind rather than from a hook.  §7tricies.193.  */
-  lvx_cms_seed_bundles ();
+  lvx_lms_seed_bundles ();
   SET_PREV_INSN (lvx_sched2->cond_insn) = 0;
   SET_NEXT_INSN (lvx_sched2->cond_insn) = 0;
   recog_memoized (lvx_sched2->cond_insn);
@@ -9653,7 +9653,7 @@ lvx_sched2_dtor (void)
   lvx_sched2->insn_flags = 0;
   free (lvx_sched2->bundle_state);
   lvx_sched2->bundle_state = 0;
-  lvx_cms_group_free ();
+  lvx_lms_group_free ();
 }
 
 static void
@@ -10318,7 +10318,7 @@ lvx_sched_set_sched_flags (struct spec_info_def *spec_info)
 #undef TARGET_SCHED_CAN_SPECULATE_INSN
 #define TARGET_SCHED_CAN_SPECULATE_INSN hook_bool_rtx_insn_true
 
-static void lvx_cms_probe_ddg (struct ddg *, int);
+static void lvx_lms_probe_ddg (struct ddg *, int);
 
 static int
 lvx_sched_sms_res_mii (struct ddg *g)
@@ -10341,8 +10341,8 @@ lvx_sched_sms_res_mii (struct ddg *g)
      kvx-unfold.cc used it the same way.  A piggyback rather than a design: the
      hook's job is to answer ResMII, and the probe is a side effect of being
      called with the right argument.  */
-  if (dump_file && lvx_cms_probe)
-    lvx_cms_probe_ddg (g, r);
+  if (dump_file && lvx_lms_probe)
+    lvx_lms_probe_ddg (g, r);
 
   return r;
 }
@@ -10712,7 +10712,7 @@ lvx_final_prescan_insn (rtx_insn *insn)
 	 region is already closed by TARGET_SCHED_INIT.  The report says which
 	 side of that scope each case falls on, so the assumption is tested
 	 rather than trusted.  */
-      if (lvx_cms_probe_bundles
+      if (lvx_lms_probe_bundles
 	  && lvx_final_prev_bb != NULL
 	  && lvx_final_prev_bb != BLOCK_FOR_INSN (insn)
 	  && (unsigned) prev_uid < (unsigned) lvx_sched2->max_uid
@@ -10759,17 +10759,17 @@ lvx_final_prescan_insn (rtx_insn *insn)
 	 same-cycle read-and-write pair into a sequential clobber.  There is no
 	 correct code to emit, so this is an ICE and not a diagnostic.  */
       {
-	int g = lvx_cms_group_of_uid (uid);
+	int g = lvx_lms_group_of_uid (uid);
 
 	/* A new bundle begins wherever the previous insn carries STOP -- read
 	   live, because the fixup above is the last thing that can add one. */
 	if ((unsigned) prev_uid < (unsigned) lvx_sched2->max_uid
 	    && (lvx_sched2->insn_flags[prev_uid] & LVX_SCHED2_INSN_STOP))
-	  lvx_cms_bundle_index++;
+	  lvx_lms_bundle_index++;
 	if (g != 0)
-	  lvx_cms_group_record (insn, g);
-	lvx_cms_group_prev = g;
-	lvx_cms_group_prev_insn = insn;
+	  lvx_lms_group_record (insn, g);
+	lvx_lms_group_prev = g;
+	lvx_lms_group_prev_insn = insn;
       }
 
       prev_flags = flags;
@@ -11516,14 +11516,14 @@ lvx_option_override (void)
      loop-variant-address load to its dismissible variant, which is what the
      schedule it measures actually requires, so it becomes mandatory rather
      than dangerous once codegen exists.  */
-  if (lvx_cms_free_doloop_end && !lvx_cms_probe)
+  if (lvx_lms_free_doloop_end && !lvx_lms_probe)
     error ("%<-mcms-free-doloop-end%> assumes a mapping that can still be "
 	   "refused and is for measurement only; it requires %<-mcms-probe%>");
-  if (lvx_cms_assume_ivdep && !lvx_cms_probe)
+  if (lvx_lms_assume_ivdep && !lvx_lms_probe)
     error ("%<-mcms-assume-ivdep%> drops real cross-iteration memory "
 	   "dependences and is for measurement only; it requires "
 	   "%<-mcms-probe%>");
-  if (lvx_cms_inductive_relaxation && !lvx_cms_probe)
+  if (lvx_lms_inductive_relaxation && !lvx_lms_probe)
     error ("%<-mcms-inductive-relaxation%> needs a displacement adjustment in "
 	   "code generation that does not exist yet, and is for measurement "
 	   "only; it requires %<-mcms-probe%>");
@@ -11545,7 +11545,7 @@ lvx_option_override (void)
      recurrence bound -- so a pipeline emitted on that graph reorders real
      memory dependences and is wrong.  The guard its neighbour got, which it
      needed just as much.  */
-  if (lvx_cms_assume_ivdep && (lvx_cms_codegen || lvx_cms_pipeline))
+  if (lvx_lms_assume_ivdep && (lvx_lms_codegen || lvx_lms_pipeline))
     error ("%<-mcms-assume-ivdep%> drops real cross-iteration memory "
 	   "dependences on an assumption nothing verifies; it is for "
 	   "measurement only and is incompatible with %<-mcms-codegen%>");
@@ -11619,9 +11619,9 @@ lvx_option_override (void)
 
   /* §7tricies.107: the propagation's arcs are not the ones construction
      measured the heights from, so the two go together.  */
-  if (lvx_cms_copy_prop)
+  if (lvx_lms_copy_prop)
     SET_OPTION_IF_UNSET (&global_options, &global_options_set,
-			 lvx_cms_recompute_heights_p, 1);
+			 lvx_lms_recompute_heights_p, 1);
   /* NOT measurement-only: §7tricies.110's propagation implies it and that
      runs with code generation.  Construction UNDER-states the height
      (§7tricies.107), so recomputing is the more accurate answer for any
@@ -11658,24 +11658,24 @@ lvx_option_override (void)
      one of these bugs is about a hard register standing for several values.
      In MLIR an operand is an SSA edge and none of them exist, which is where
      §5a2d of the design note says to build it.  */
-  if (lvx_cms_copy_prop && (lvx_cms_codegen || lvx_cms_pipeline))
+  if (lvx_lms_copy_prop && (lvx_lms_codegen || lvx_lms_pipeline))
     error ("%<-mcms-copy-prop%> is not yet correct with code generation: the "
 	   "analysis is reached twice for a loop and may choose a different "
 	   "propagation each time; it is incompatible with %<-mcms-codegen%>");
 
-  if (lvx_cms_usefirst_unpinned && !lvx_cms_probe)
+  if (lvx_lms_usefirst_unpinned && !lvx_lms_probe)
     error ("%<-mcms-usefirst-unpinned%> is for measurement only; it requires "
 	   "%<-mcms-probe%>");
-  if (lvx_cms_usefirst_unpinned && (lvx_cms_codegen || lvx_cms_pipeline))
+  if (lvx_lms_usefirst_unpinned && (lvx_lms_codegen || lvx_lms_pipeline))
     error ("%<-mcms-usefirst-unpinned%> assumes a preheader copy that is not "
 	   "emitted, so name 0 of a use-headed range really is the register "
 	   "the preheader wrote and the body really does write it; it sizes "
 	   "the opportunity and is incompatible with %<-mcms-codegen%>");
 
-  if (lvx_cms_drop_liveout_arcs && !lvx_cms_probe)
+  if (lvx_lms_drop_liveout_arcs && !lvx_lms_probe)
     error ("%<-mcms-drop-liveout-arcs%> is for measurement only; it requires "
 	   "%<-mcms-probe%>");
-  if (lvx_cms_drop_liveout_arcs && (lvx_cms_codegen || lvx_cms_pipeline))
+  if (lvx_lms_drop_liveout_arcs && (lvx_lms_codegen || lvx_lms_pipeline))
     error ("%<-mcms-drop-liveout-arcs%> lets a definition of a live-out "
 	   "register move above the exit branch, so the exit returns a value "
 	   "from the wrong iteration; the split of %<§5a2b%> is what makes it "
@@ -11683,10 +11683,10 @@ lvx_option_override (void)
 
   /* `-mcms-pipeline' EMITS NOTHING ON ITS OWN, and lvx.opt already said so --
      "Requires -mcms-codegen" -- without anything enforcing it.  Its emission
-     sits inside the codegen path (`if (built && lvx_cms_pipeline)'), so alone
+     sits inside the codegen path (`if (built && lvx_lms_pipeline)'), so alone
      it is the same silent inertness as §7tricies.100.  A claim in help text is
      not a check.  */
-  if (lvx_cms_pipeline && !lvx_cms_codegen)
+  if (lvx_lms_pipeline && !lvx_lms_codegen)
     error ("%<-mcms-pipeline%> emits nothing without %<-mcms-codegen%>");
 
   /* A PIPELINE NEEDS DISMISSIBLE LOADS, AND THAT IS NOT A PREFERENCE.
@@ -11697,15 +11697,15 @@ lvx_option_override (void)
      on the ISS at the first one.  So pipelining implies the dismissible form
      rather than requiring the two flags to be remembered together --
      SET_OPTION_IF_UNSET, so an explicit choice is still the user's.  */
-  if (lvx_cms_pipeline)
+  if (lvx_lms_pipeline)
     SET_OPTION_IF_UNSET (&global_options, &global_options_set,
-			 lvx_cms_force_spec_loads, 1);
-  if (lvx_cms_pipeline && !lvx_cms_force_spec_loads)
+			 lvx_lms_force_spec_loads, 1);
+  if (lvx_lms_pipeline && !lvx_lms_force_spec_loads)
     error ("%<-mcms-pipeline%> hoists loads above the trip-count test and "
 	   "needs %<-mcms-force-speculative-loads%>; disabling it leaves the "
 	   "prologue reading past the end of the object");
 
-  if (lvx_cms_inductive_relaxation && (lvx_cms_codegen || lvx_cms_pipeline))
+  if (lvx_lms_inductive_relaxation && (lvx_lms_codegen || lvx_lms_pipeline))
     error ("%<-mcms-inductive-relaxation%> drops dependences that only the "
 	   "displacement adjustment of PaCT 1997 section 4 makes sound, and "
 	   "that adjustment is not implemented; it is for measurement only "
@@ -12728,7 +12728,7 @@ lvx_doloop_end_p (rtx_insn *insn)
    when nothing was known.  */
 
 static HOST_WIDE_INT
-lvx_cms_doloop_trip_count (class loop *loop, basic_block *body)
+lvx_lms_doloop_trip_count (class loop *loop, basic_block *body)
 {
   rtx cnt = NULL_RTX;
   basic_block entry = NULL;
@@ -12798,10 +12798,10 @@ lvx_cms_doloop_trip_count (class loop *loop, basic_block *body)
 
    Searched in the block the loop is entered from, which is where
    lvx_hwloop_optimize emits it -- and the entry is found by hand for the same
-   reason lvx_cms_pipeline_loop finds its own: CMS runs loop_optimizer_init
+   reason lvx_lms_pipeline_loop finds its own: CMS runs loop_optimizer_init
    with AVOID_CFG_MODIFICATIONS, so there may be no preheader to ask for.  */
 static rtx_insn *
-lvx_cms_find_loopdo (class loop *loop)
+lvx_lms_find_loopdo (class loop *loop)
 {
   basic_block entry = NULL;
   rtx_insn *insn;
@@ -12922,7 +12922,7 @@ lvx_insns_may_alias_p (rtx_insn *insn1, rtx_insn *insn2)
    into the haifa insn data and so may only be called inside the scheduler.
    For the same reason note that lvx_sched_adjust_cost's REG_DEP_ANTI branch
    walks SD_LIST_BACK when the producer is a CLOBBER.  That is unreachable here
-   three times over -- lvx_cms_build_graph skips USE and CLOBBER patterns, skips
+   three times over -- lvx_lms_build_graph skips USE and CLOBBER patterns, skips
    anything with recog_memoized < 0, and the guard below returns 0 when either
    side fails recog_memoized, which a CLOBBER always does -- but it is why this
    function must not be handed arbitrary insns.
@@ -12941,7 +12941,7 @@ lvx_insns_may_alias_p (rtx_insn *insn1, rtx_insn *insn2)
 
    The CMS probe was written when `-fdump-rtl-mach' was its only entry, so
    DUMP_FILE could be assumed non-null after the one early return at the top
-   of lvx_cms_pipeline_loops.  `-mcms-codegen' broke that assumption: it runs the
+   of lvx_lms_pipeline_loops.  `-mcms-codegen' broke that assumption: it runs the
    probe for its side effect -- the schedule -- with no dump requested, and
    the first unguarded fprintf then takes a null FILE * into vfprintf and
    segfaults.  The compiler died at pipe.c:10 that way while trmm stayed
@@ -12952,7 +12952,7 @@ lvx_insns_may_alias_p (rtx_insn *insn1, rtx_insn *insn2)
    belongs to the sink, not to each caller.  */
 
 static void ATTRIBUTE_PRINTF_1
-lvx_cms_dump (const char *fmt, ...)
+lvx_lms_dump (const char *fmt, ...)
 	      {
 	      va_list ap;
 
@@ -12982,14 +12982,14 @@ lvx_cms_dump (const char *fmt, ...)
    discount (§7sedecies.4b) rather than having it overwritten.  */
 
 static int
-lvx_cms_load_latency_delta (rtx_insn *insn)
+lvx_lms_load_latency_delta (rtx_insn *insn)
 {
-  if (lvx_cms_load_latency == 0 || recog_memoized (insn) < 0)
+  if (lvx_lms_load_latency == 0 || recog_memoized (insn) < 0)
     return 0;
   if (!lvx_load_class_p (get_attr_type (insn)))
     return 0;
   int have = insn_default_latency (insn);
-  return (int) lvx_cms_load_latency > have ? (int) lvx_cms_load_latency - have : 0;
+  return (int) lvx_lms_load_latency > have ? (int) lvx_lms_load_latency - have : 0;
 }
 
 static int
@@ -13029,7 +13029,7 @@ lvx_arc_latency (rtx_insn *prod, rtx_insn *cons, enum reg_note dep_type)
      bypasses above keep their effect.  Only a flow dependence carries the
      producer's result, so an anti or output arc is unaffected.  */
   if (dep_type == REG_DEP_TRUE)
-    cost += lvx_cms_load_latency_delta (prod);
+    cost += lvx_lms_load_latency_delta (prod);
 
   return cost < 0 ? 0 : cost;
 }
@@ -13242,7 +13242,7 @@ lvx_insn_dest_earlyclobber_p (rtx_insn *insn)
      then arbitrary, and an arbitrary `true' costs a pipeline: it sets the
      range's EC, which lengthens its interval by a cycle, which pushes
      P2UNROLL past 1, which splits a constraint group across two names and
-     refuses the loop at `recog'.  lvx_cms_operand_tied_p in this same file
+     refuses the loop at `recog'.  lvx_lms_operand_tied_p in this same file
      already asks constrain_operands first, which is what made the omission
      visible once the two were compared.  */
   if (!constrain_operands (1, get_enabled_alternatives (insn)))
@@ -13349,7 +13349,7 @@ lvx_speculatable_p (rtx_insn *insn)
 /* Declared here, defined with the rest of the promotion machinery: a load CMS
    is going to rewrite to its dismissible form.  §7tricies.224.  */
 
-static bool lvx_cms_promotable_load_p (rtx_insn *, bitmap);
+static bool lvx_lms_promotable_load_p (rtx_insn *, bitmap);
 
 /* WHY INSN cannot be speculated, as one word for the probe, and
    "speculatable" when it can be.  §7tricies.223.  The tests are in the SAME
@@ -13359,14 +13359,14 @@ static bool lvx_cms_promotable_load_p (rtx_insn *, bitmap);
    Keep them together if either changes.  */
 
 static const char *
-lvx_cms_unspec_reason (rtx_insn *insn, bitmap bodydef)
+lvx_lms_unspec_reason (rtx_insn *insn, bitmap bodydef)
 {
   if (!NONDEBUG_INSN_P (insn))
     return "not-an-insn";
   /* §7tricies.224: a load CMS will promote is speculatable, and saying
      otherwise is what made crc32 pin 16 loads against consumers that the
      emitted code issues as `ld.s'.  */
-  if (bodydef != NULL && lvx_cms_promotable_load_p (insn, bodydef))
+  if (bodydef != NULL && lvx_lms_promotable_load_p (insn, bodydef))
     return "speculatable";
   if (CALL_P (insn))
     return "call";
@@ -13409,7 +13409,7 @@ lvx_cms_unspec_reason (rtx_insn *insn, bitmap bodydef)
    what the compiler could not prove, and is then worth attacking.  The order
    is the order the builder creates them in.  */
 
-enum lvx_cms_arc_kind
+enum lvx_lms_arc_kind
 {
   LVX_ARC_REG_RAW,	/* register true dependence; the only latency-bearing kind */
   LVX_ARC_REG_WAR,	/* register anti, kept only where renaming cannot remove it */
@@ -13422,18 +13422,18 @@ enum lvx_cms_arc_kind
   LVX_ARC_CTRL_BACKEDGE	/* the last branch precedes the first, omega = 1 */
 };
 
-static const char *const lvx_cms_arc_kind_name[] = {
+static const char *const lvx_lms_arc_kind_name[] = {
   "reg-raw", "reg-war", "reg-waw", "mem-intra", "mem-cross",
   "ctrl-order", "ctrl-store", "ctrl-liveout", "ctrl-backedge"
 };
 
-struct lvx_cms_arc
+struct lvx_lms_arc
 {
   unsigned src;
   unsigned dst;
   HOST_WIDE_INT theta;
   HOST_WIDE_INT omega;
-  enum lvx_cms_arc_kind kind;
+  enum lvx_lms_arc_kind kind;
   /* For a REG_RAW arc: WHICH operand of the consumer reads the value, as an
      index into a deterministic sub-rtx walk of its pattern.  -1 otherwise.
 
@@ -13528,7 +13528,7 @@ lvx_split_plus_const (rtx x, HOST_WIDE_INT *c)
 /* The upper bound on software-pipeline overlap that inductive relaxation is
    allowed to assume, the paper's `o'.  It bounds how far a displacement may be
    adjusted, so it must not exceed what codegen can actually produce.  */
-#define LVX_CMS_MAX_OVERLAP 8
+#define LVX_LMS_MAX_OVERLAP 8
 
 /* Signed 10 bits: the displacement an LVX base+displacement operand holds
    without an IMMX extension syllable (format signed10, widened to signed37 by
@@ -13537,7 +13537,7 @@ lvx_split_plus_const (rtx x, HOST_WIDE_INT *c)
    the instruction's encoding and its cost.  */
 
 static inline bool
-lvx_cms_disp_fits_p (HOST_WIDE_INT d)
+lvx_lms_disp_fits_p (HOST_WIDE_INT d)
 {
   return d >= -512 && d < 512;
 }
@@ -13571,7 +13571,7 @@ lvx_cms_disp_fits_p (HOST_WIDE_INT d)
    INDUCTIONS.  A zero step is not an induction.  */
 
 static void
-lvx_cms_find_simple_inductions (const auto_vec<rtx_insn *> &seq,
+lvx_lms_find_simple_inductions (const auto_vec<rtx_insn *> &seq,
 				auto_vec<HOST_WIDE_INT> &delta,
 				bitmap inductions)
 {
@@ -13623,7 +13623,7 @@ lvx_cms_find_simple_inductions (const auto_vec<rtx_insn *> &seq,
       /* A subtraction reaches here as an addition of a negative constant,
 	 which is how the RTL spells it.  */
       HOST_WIDE_INT d = INTVAL (XEXP (SET_SRC (pat), 1));
-      if (d == 0 || !lvx_cms_disp_fits_p (d))
+      if (d == 0 || !lvx_lms_disp_fits_p (d))
 	continue;
 
       delta[r] = d;
@@ -13633,12 +13633,12 @@ lvx_cms_find_simple_inductions (const auto_vec<rtx_insn *> &seq,
 
 /* True if INSN uses REGNO as the base of a base+displacement memory operand
    whose displacement can still absorb an adjustment of up to
-   LVX_CMS_MAX_OVERLAP steps of DELTA -- the paper's `displacement +- o.delta
+   LVX_LMS_MAX_OVERLAP steps of DELTA -- the paper's `displacement +- o.delta
    still fits in the operand'.  Such a use is RELAXED: it may read any instance
    of the induction, so it needs no dependence on the one definition.  */
 
 static bool
-lvx_cms_relaxed_base_use_p (rtx_insn *insn, unsigned regno,
+lvx_lms_relaxed_base_use_p (rtx_insn *insn, unsigned regno,
 			    HOST_WIDE_INT delta)
 {
   subrtx_iterator::array_type array;
@@ -13673,9 +13673,9 @@ lvx_cms_relaxed_base_use_p (rtx_insn *insn, unsigned regno,
   if (uses != 1)
     return false;
 
-  HOST_WIDE_INT reach = LVX_CMS_MAX_OVERLAP * (delta > 0 ? delta : -delta);
-  return (lvx_cms_disp_fits_p (disp + reach)
-	  && lvx_cms_disp_fits_p (disp - reach));
+  HOST_WIDE_INT reach = LVX_LMS_MAX_OVERLAP * (delta > 0 ? delta : -delta);
+  return (lvx_lms_disp_fits_p (disp + reach)
+	  && lvx_lms_disp_fits_p (disp - reach));
 }
 
 /* Collect a description of every memory reference in SEQ, LOOP's body in chain
@@ -13708,13 +13708,13 @@ lvx_cms_relaxed_base_use_p (rtx_insn *insn, unsigned regno,
    dependence.  */
 
 static void
-lvx_cms_collect_mem_ivs (class loop *, const auto_vec<rtx_insn *> &seq,
+lvx_lms_collect_mem_ivs (class loop *, const auto_vec<rtx_insn *> &seq,
 			 auto_vec<lvx_mem_iv> &ivs)
 {
   unsigned n = seq.length ();
 
   ivs.safe_grow_cleared (n);
-  if (!lvx_cms_stride_test)
+  if (!lvx_lms_stride_test)
     return;
 
   /* Pass 1: each reference's MEM, its displacement off a base register, and
@@ -13826,7 +13826,7 @@ lvx_cms_collect_mem_ivs (class loop *, const auto_vec<rtx_insn *> &seq,
    argument this does not make.  */
 
 static bool
-lvx_cms_mem_independent_p (const struct lvx_mem_iv &a,
+lvx_lms_mem_independent_p (const struct lvx_mem_iv &a,
 			   const struct lvx_mem_iv &b, HOST_WIDE_INT d)
 {
   if (!a.valid || !b.valid)
@@ -13869,11 +13869,11 @@ lvx_insn_def_reads_dest_p (rtx_insn *insn)
 }
 
 static inline void
-lvx_cms_push_arc (auto_vec<lvx_cms_arc> &arcs, unsigned src, unsigned dst,
+lvx_lms_push_arc (auto_vec<lvx_lms_arc> &arcs, unsigned src, unsigned dst,
 		  HOST_WIDE_INT theta, HOST_WIDE_INT omega,
-		  enum lvx_cms_arc_kind kind)
+		  enum lvx_lms_arc_kind kind)
 {
-  lvx_cms_arc a = { src, dst, theta, omega, kind, -1 };
+  lvx_lms_arc a = { src, dst, theta, omega, kind, -1 };
   arcs.safe_push (a);
 }
 
@@ -13883,7 +13883,7 @@ lvx_cms_push_arc (auto_vec<lvx_cms_arc> &arcs, unsigned src, unsigned dst,
    not.  */
 
 static int
-lvx_cms_reg_index (rtx pat, rtx *loc)
+lvx_lms_reg_index (rtx pat, rtx *loc)
 {
   subrtx_ptr_iterator::array_type array;
   int i = 0;
@@ -13905,7 +13905,7 @@ lvx_cms_reg_index (rtx pat, rtx *loc)
 /* The REG at index IDX of that walk, or null.  */
 
 static rtx *
-lvx_cms_reg_at (rtx *pat, int idx)
+lvx_lms_reg_at (rtx *pat, int idx)
 {
   subrtx_ptr_iterator::array_type array;
   int i = 0;
@@ -13938,7 +13938,7 @@ lvx_cms_reg_at (rtx *pat, int idx)
    honest about what it is assuming.  */
 
 static bool
-lvx_cms_speculated_load_p (rtx_insn *insn, bitmap bodydef)
+lvx_lms_speculated_load_p (rtx_insn *insn, bitmap bodydef)
 {
   subrtx_iterator::array_type array;
   rtx pat = PATTERN (insn);
@@ -13969,7 +13969,7 @@ lvx_cms_speculated_load_p (rtx_insn *insn, bitmap bodydef)
    §7tricies.224.
 
    This exists because of an ORDERING, not a capability: the taint fixpoint
-   runs in lvx_cms_build_graph, the promotion below runs after the II search,
+   runs in lvx_lms_build_graph, the promotion below runs after the II search,
    so every promotable load looked NON-dismissible to the analysis and tainted
    whatever fed its address.  Measured in crc32 loop 1: 16 loads pinned and
    16 loads forced to `.s' -- the same sixteen, and the emitted kernel issues
@@ -13977,20 +13977,20 @@ lvx_cms_speculated_load_p (rtx_insn *insn, bitmap bodydef)
    have.
 
    THE CONDITIONS MIRROR THE PROMOTER EXACTLY and must keep doing so: it is a
-   candidate by lvx_cms_speculated_load_p, and every MEM in it is in the
+   candidate by lvx_lms_speculated_load_p, and every MEM in it is in the
    generic address space, because that is the only one set_mem_addr_space is
    applied to below.  If they ever drift apart the taint under-approximates
    and the divmodvx class of wrong code comes back, so the promoter asserts
    that nothing promotable survives it.  */
 
 static bool
-lvx_cms_promotable_load_p (rtx_insn *insn, bitmap bodydef)
+lvx_lms_promotable_load_p (rtx_insn *insn, bitmap bodydef)
 {
   subrtx_iterator::array_type array;
 
-  if (!lvx_cms_force_spec_loads || bodydef == NULL)
+  if (!lvx_lms_force_spec_loads || bodydef == NULL)
     return false;
-  if (!lvx_cms_speculated_load_p (insn, bodydef))
+  if (!lvx_lms_speculated_load_p (insn, bodydef))
     return false;
   FOR_EACH_SUBRTX (iter, array, PATTERN (insn), NONCONST)
     if (MEM_P (*iter) && MEM_ADDR_SPACE (*iter) != ADDR_SPACE_GENERIC)
@@ -14003,10 +14003,10 @@ lvx_cms_promotable_load_p (rtx_insn *insn, bitmap bodydef)
    promotion.  §7tricies.224.  */
 
 static bool
-lvx_cms_speculatable_after_promotion_p (rtx_insn *insn, bitmap bodydef)
+lvx_lms_speculatable_after_promotion_p (rtx_insn *insn, bitmap bodydef)
 {
   return (lvx_speculatable_p (insn)
-	  || lvx_cms_promotable_load_p (insn, bodydef));
+	  || lvx_lms_promotable_load_p (insn, bodydef));
 }
 
 /* Promote the loop-variant-address loads of SEQ to their dismissible variant.
@@ -14019,14 +14019,14 @@ lvx_cms_speculatable_after_promotion_p (rtx_insn *insn, bitmap bodydef)
    count.  */
 
 static int
-lvx_cms_force_speculative_loads (const auto_vec<rtx_insn *> &seq,
+lvx_lms_force_speculative_loads (const auto_vec<rtx_insn *> &seq,
 				 bitmap bodydef)
 {
   int promoted = 0;
 
   for (unsigned i = 0; i < seq.length (); i++)
     {
-      if (!lvx_cms_speculated_load_p (seq[i], bodydef))
+      if (!lvx_lms_speculated_load_p (seq[i], bodydef))
 	continue;
 
       subrtx_ptr_iterator::array_type array;
@@ -14046,21 +14046,21 @@ lvx_cms_force_speculative_loads (const auto_vec<rtx_insn *> &seq,
 	}
     }
 
-  /* §7tricies.224: THE TIE.  lvx_cms_build_graph's taint fixpoint treated
+  /* §7tricies.224: THE TIE.  lvx_lms_build_graph's taint fixpoint treated
      every promotable load as speculatable on the strength of this function
      promoting it.  If one survives, that assumption was false for it and the
      graph is missing a constraint -- which is the divmodvx bug.  Checked
      rather than commented.  */
   if (flag_checking)
     for (unsigned i = 0; i < seq.length (); i++)
-      gcc_assert (!lvx_cms_promotable_load_p (seq[i], bodydef));
+      gcc_assert (!lvx_lms_promotable_load_p (seq[i], bodydef));
 
   return promoted;
 }
 
 /* The furthest iteration distance the scheduler keeps copies for.  Beyond it an
-   arc is slack by arithmetic; see lvx_cms_delta.  */
-#define LVX_CMS_MAX_DELTA 8
+   arc is slack by arithmetic; see lvx_lms_delta.  */
+#define LVX_LMS_MAX_DELTA 8
 
 /* Delta: the largest iteration distance any arc spans that can bind.  This is what replaces
    kvx-unfold.cc's `max_distance = 1; // FIXME' -- that literal was the two-copy
@@ -14069,13 +14069,13 @@ lvx_cms_force_speculative_loads (const auto_vec<rtx_insn *> &seq,
    LVX's graph carries omega explicitly, so Delta is simply measured.  */
 
 static int
-lvx_cms_delta (const auto_vec<lvx_cms_arc> &arcs)
+lvx_lms_delta (const auto_vec<lvx_lms_arc> &arcs)
 {
   int delta = 1;
   for (unsigned i = 0; i < arcs.length (); i++)
     {
       HOST_WIDE_INT w = arcs[i].omega < 0 ? -arcs[i].omega : arcs[i].omega;
-      if (w > LVX_CMS_MAX_DELTA)
+      if (w > LVX_LMS_MAX_DELTA)
 	/* An arc reaching farther than the window cannot bind -- its
 	   requirement theta - omega * II is already hugely negative -- so it
 	   must not inflate the window itself.  This is the rule that a
@@ -14153,14 +14153,14 @@ lvx_cms_delta (const auto_vec<lvx_cms_arc> &arcs)
    them and enforces the real rule, so the charge would buy nothing and cost
    II on every pipelined loop.  */
 static void
-lvx_cms_resources_add_prefix (struct lvx_sched_resources *resources,
+lvx_lms_resources_add_prefix (struct lvx_sched_resources *resources,
 			      rtx_insn *insn)
 {
   enum lvx_bcu_kind kind;
   rtx key;
   int lanetodo;
 
-  if (!lvx_cms_own_bundles)
+  if (!lvx_lms_own_bundles)
     return;
   if (!NONDEBUG_INSN_P (insn) || INSN_CODE (insn) < 0)
     return;
@@ -14176,19 +14176,19 @@ lvx_cms_resources_add_prefix (struct lvx_sched_resources *resources,
     const struct lvx_issue_resources *br = &lvx_issue_table[ISSUE_BCU_BRRP];
 
     resources->ninsns_count += br->ninsns;
-#define LVX_CMS_PREFIX_ADD(R) resources->R##_count += br->R;
-    LVX_ISSUE_RESOURCES (LVX_CMS_PREFIX_ADD)
-#undef LVX_CMS_PREFIX_ADD
+#define LVX_LMS_PREFIX_ADD(R) resources->R##_count += br->R;
+    LVX_ISSUE_RESOURCES (LVX_LMS_PREFIX_ADD)
+#undef LVX_LMS_PREFIX_ADD
   }
 }
 
 static void
-lvx_cms_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
+lvx_lms_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
 {
   if (!lvx_doloop_end_p (insn))
     {
       lvx_sched_resources_add (resources, insn);
-      lvx_cms_resources_add_prefix (resources, insn);
+      lvx_lms_resources_add_prefix (resources, insn);
       return;
     }
 
@@ -14201,7 +14201,7 @@ lvx_cms_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
      schedules.  It is not sound as a default, because reorg_loops can still
      refuse the loop (LOOPDO's reach, ITER_REG_USED) and then the decrement and
      the branch are real.  */
-  if (lvx_cms_free_doloop_end)
+  if (lvx_lms_free_doloop_end)
     return;
 
   const struct lvx_issue_resources *dec = &lvx_issue_table[ISSUE_TINY];
@@ -14209,46 +14209,46 @@ lvx_cms_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn)
 
   resources->insn_count++;
   resources->ninsns_count += dec->ninsns + br->ninsns;
-#define LVX_CMS_DOLOOP_ADD(R) resources->R##_count += dec->R + br->R;
-  LVX_ISSUE_RESOURCES (LVX_CMS_DOLOOP_ADD)
-#undef LVX_CMS_DOLOOP_ADD
+#define LVX_LMS_DOLOOP_ADD(R) resources->R##_count += dec->R + br->R;
+  LVX_ISSUE_RESOURCES (LVX_LMS_DOLOOP_ADD)
+#undef LVX_LMS_DOLOOP_ADD
 }
 
 /* The issue counters by name and index, so a blame can say WHICH resource
    refused a task.  The index past the last counter stands for the issue rate,
    which is a bound on the bundle rather than a counter in Resource.yml.  */
 
-static const char *const lvx_cms_resource_name[] = {
-#define LVX_CMS_RESOURCE_NAME(R) #R,
-  LVX_ISSUE_RESOURCES (LVX_CMS_RESOURCE_NAME)
-#undef LVX_CMS_RESOURCE_NAME
+static const char *const lvx_lms_resource_name[] = {
+#define LVX_LMS_RESOURCE_NAME(R) #R,
+  LVX_ISSUE_RESOURCES (LVX_LMS_RESOURCE_NAME)
+#undef LVX_LMS_RESOURCE_NAME
   "issue"
 };
 
-#define LVX_CMS_NRESOURCES   ((int) (sizeof (lvx_cms_resource_name) / sizeof (lvx_cms_resource_name[0])))
+#define LVX_LMS_NRESOURCES   ((int) (sizeof (lvx_lms_resource_name) / sizeof (lvx_lms_resource_name[0])))
 
 /* Which counter refuses INSN in SLOT, as an index into
-   lvx_cms_resource_name, or -1 if it fits.  The first that overflows is
+   lvx_lms_resource_name, or -1 if it fits.  The first that overflows is
    reported: a task displaced from a cycle is displaced by one thing, and
    attributing it to the first is enough to aim the next construction.  */
 
 static int
-lvx_cms_blocking_resource (const struct lvx_sched_resources *slot,
+lvx_lms_blocking_resource (const struct lvx_sched_resources *slot,
 			   rtx_insn *insn)
 {
   struct lvx_sched_resources trial = *slot;
   int idx = 0;
 
-  lvx_cms_resources_add (&trial, insn);
+  lvx_lms_resources_add (&trial, insn);
 
-#define LVX_CMS_BLOCK(R)						\
+#define LVX_LMS_BLOCK(R)						\
   {									\
     if (trial.R##_count > (unsigned) lvx_issue_availability.R)		\
       return idx;							\
     idx++;								\
   }
-  LVX_ISSUE_RESOURCES (LVX_CMS_BLOCK)
-#undef LVX_CMS_BLOCK
+  LVX_ISSUE_RESOURCES (LVX_LMS_BLOCK)
+#undef LVX_LMS_BLOCK
 
   if (trial.ninsns_count > (unsigned) lvx_sched_issue_rate ())
     return idx;
@@ -14267,7 +14267,7 @@ lvx_cms_blocking_resource (const struct lvx_sched_resources *slot,
 
    Transient overflow is expected during ramp-up and is not an error.  When no
    counter is violated, the latest-instance set is resource-feasible at this
-   II -- the resource half of lvx_cms_verify, maintained incrementally instead
+   II -- the resource half of lvx_lms_verify, maintained incrementally instead
    of rebuilt per call.
 
    READ-ONLY HERE.  This probe answers two questions before any policy reads
@@ -14282,25 +14282,25 @@ lvx_cms_blocking_resource (const struct lvx_sched_resources *slot,
    is stationary for that task, which is the property being converged to.  */
 
 static void
-lvx_cms_resources_sub (struct lvx_sched_resources *resources, rtx_insn *insn)
+lvx_lms_resources_sub (struct lvx_sched_resources *resources, rtx_insn *insn)
 {
   struct lvx_sched_resources zero, one;
 
   memset (&zero, 0, sizeof (zero));
   one = zero;
-  lvx_cms_resources_add (&one, insn);
+  lvx_lms_resources_add (&one, insn);
   resources->insn_count -= one.insn_count;
   resources->ninsns_count -= one.ninsns_count;
-#define LVX_CMS_SUB(R) resources->R##_count -= one.R##_count;
-  LVX_ISSUE_RESOURCES (LVX_CMS_SUB)
-#undef LVX_CMS_SUB
+#define LVX_LMS_SUB(R) resources->R##_count -= one.R##_count;
+  LVX_ISSUE_RESOURCES (LVX_LMS_SUB)
+#undef LVX_LMS_SUB
 }
 
 /* How many counters are over their availability across the whole table: the
    distance to resource feasibility, zero meaning feasible.  */
 
 static unsigned
-lvx_cms_mrt_violations (const auto_vec<struct lvx_sched_resources> &mrt)
+lvx_lms_mrt_violations (const auto_vec<struct lvx_sched_resources> &mrt)
 {
   unsigned v = 0;
 
@@ -14308,9 +14308,9 @@ lvx_cms_mrt_violations (const auto_vec<struct lvx_sched_resources> &mrt)
     {
       const struct lvx_sched_resources *slot = &mrt[r];
 
-#define LVX_CMS_MRTV(R)							      if (slot->R##_count > (unsigned) lvx_issue_availability.R)			v += slot->R##_count - (unsigned) lvx_issue_availability.R;
-      LVX_ISSUE_RESOURCES (LVX_CMS_MRTV)
-#undef LVX_CMS_MRTV
+#define LVX_LMS_MRTV(R)							      if (slot->R##_count > (unsigned) lvx_issue_availability.R)			v += slot->R##_count - (unsigned) lvx_issue_availability.R;
+      LVX_ISSUE_RESOURCES (LVX_LMS_MRTV)
+#undef LVX_LMS_MRTV
       if (slot->ninsns_count > (unsigned) lvx_sched_issue_rate ())
 	v += slot->ninsns_count - (unsigned) lvx_sched_issue_rate ();
     }
@@ -14322,7 +14322,7 @@ lvx_cms_mrt_violations (const auto_vec<struct lvx_sched_resources> &mrt)
    table.  §7tricies.184.  */
 
 static unsigned
-lvx_cms_mrt_trial (auto_vec<struct lvx_sched_resources> &mrt,
+lvx_lms_mrt_trial (auto_vec<struct lvx_sched_resources> &mrt,
 		   const auto_vec<int> &mrow, rtx_insn *insn, unsigned i,
 		   int row)
 {
@@ -14330,12 +14330,12 @@ lvx_cms_mrt_trial (auto_vec<struct lvx_sched_resources> &mrt,
   unsigned v;
 
   if (old >= 0)
-    lvx_cms_resources_sub (&mrt[(unsigned) old], insn);
-  lvx_cms_resources_add (&mrt[(unsigned) row], insn);
-  v = lvx_cms_mrt_violations (mrt);
-  lvx_cms_resources_sub (&mrt[(unsigned) row], insn);
+    lvx_lms_resources_sub (&mrt[(unsigned) old], insn);
+  lvx_lms_resources_add (&mrt[(unsigned) row], insn);
+  v = lvx_lms_mrt_violations (mrt);
+  lvx_lms_resources_sub (&mrt[(unsigned) row], insn);
   if (old >= 0)
-    lvx_cms_resources_add (&mrt[(unsigned) old], insn);
+    lvx_lms_resources_add (&mrt[(unsigned) old], insn);
   return v;
 }
 
@@ -14357,7 +14357,7 @@ lvx_cms_rwc_weight (rtx_insn *insn, const struct lvx_sched_resources *dem,
   if (ii <= 0)
     return 0;
   memset (&u, 0, sizeof (u));
-  lvx_cms_resources_add (&u, insn);
+  lvx_lms_resources_add (&u, insn);
 #define LVX_CMS_RWCW(R)							  {									    unsigned avail = lvx_issue_availability.R;				    if (avail > 0 && u.R##_count > 0 && dem->R##_count > 0)		      w += (int) ((256u * dem->R##_count * u.R##_count)					  / ((unsigned) ii * avail));				  }
   LVX_ISSUE_RESOURCES (LVX_CMS_RWCW)
 #undef LVX_CMS_RWCW
@@ -14369,22 +14369,22 @@ lvx_cms_rwc_weight (rtx_insn *insn, const struct lvx_sched_resources *dem,
    release date should move out of the way.  */
 
 static bool
-lvx_cms_insn_uses_resource_p (rtx_insn *insn, int want)
+lvx_lms_insn_uses_resource_p (rtx_insn *insn, int want)
 {
   struct lvx_sched_resources d;
   int idx = 0;
 
   memset (&d, 0, sizeof (d));
-  lvx_cms_resources_add (&d, insn);
+  lvx_lms_resources_add (&d, insn);
 
-#define LVX_CMS_USES(R)							\
+#define LVX_LMS_USES(R)							\
   {									\
     if (idx == want)							\
       return d.R##_count > 0;						\
     idx++;								\
   }
-  LVX_ISSUE_RESOURCES (LVX_CMS_USES)
-#undef LVX_CMS_USES
+  LVX_ISSUE_RESOURCES (LVX_LMS_USES)
+#undef LVX_LMS_USES
 
   return idx == want && d.ninsns_count > 0;
 }
@@ -14414,13 +14414,13 @@ lvx_cms_insn_uses_resource_p (rtx_insn *insn, int want)
    A node is therefore (value, name) with an occupancy bitmap over the unrolled
    period P = KUNROLL * II, and two nodes interfere iff their bitmaps meet.  */
 
-#define LVX_CMS_IG_MAX_NODES 512
-#define LVX_CMS_IG_MAX_PERIOD 1024
+#define LVX_LMS_IG_MAX_NODES 512
+#define LVX_LMS_IG_MAX_PERIOD 1024
 
 /* Register classes, by how many consecutive registers a value occupies.  */
-enum lvx_cms_rclass { LVX_RC_SINGLE = 0, LVX_RC_PAIR, LVX_RC_QUAD, LVX_RC_N };
+enum lvx_lms_rclass { LVX_RC_SINGLE = 0, LVX_RC_PAIR, LVX_RC_QUAD, LVX_RC_N };
 
-static const int lvx_cms_rclass_size[LVX_RC_N] = { 64, 32, 16 };
+static const int lvx_lms_rclass_size[LVX_RC_N] = { 64, 32, 16 };
 
 /* worst_1 (N, C): the most names of class N that one neighbour of class C can
    deny.  Nine numbers, and they are this simple only because LVX's tuples are
@@ -14433,15 +14433,15 @@ static const int lvx_cms_rclass_size[LVX_RC_N] = { 64, 32, 16 };
        worst_m (N, C) = min (m * worst_1 (N, C), |N|)
 
    so no search over subsets is needed.  */
-static const int lvx_cms_worst1[LVX_RC_N][LVX_RC_N] = {
+static const int lvx_lms_worst1[LVX_RC_N][LVX_RC_N] = {
   /*        C=SINGLE  PAIR  QUAD */
   /* N=SINGLE */ { 1,   2,   4 },
   /* N=PAIR   */ { 1,   1,   2 },
   /* N=QUAD   */ { 1,   1,   1 },
 };
 
-static enum lvx_cms_rclass
-lvx_cms_rclass_of (int nregs)
+static enum lvx_lms_rclass
+lvx_lms_rclass_of (int nregs)
 {
   if (nregs >= 4)
     return LVX_RC_QUAD;
@@ -14454,16 +14454,16 @@ lvx_cms_rclass_of (int nregs)
    class, with the saturation bound: several classes together cannot deny more
    than their alias sets hold, which on a laminar family is |N| itself.  */
 static int
-lvx_cms_squeeze (enum lvx_cms_rclass n, const int deg[LVX_RC_N])
+lvx_lms_squeeze (enum lvx_lms_rclass n, const int deg[LVX_RC_N])
 {
   int sq = 0;
   for (int c = 0; c < LVX_RC_N; c++)
     {
-      int w = deg[c] * lvx_cms_worst1[n][c];
-      int cap = lvx_cms_rclass_size[n];
+      int w = deg[c] * lvx_lms_worst1[n][c];
+      int cap = lvx_lms_rclass_size[n];
       sq += MIN (w, cap);
     }
-  return MIN (sq, lvx_cms_rclass_size[n]);
+  return MIN (sq, lvx_lms_rclass_size[n]);
 }
 
 /* STAGE SCHEDULING: shift operations by whole multiples of II to shorten live
@@ -14489,7 +14489,7 @@ lvx_cms_squeeze (enum lvx_cms_rclass n, const int deg[LVX_RC_N])
    (§7octodecies.3).  */
 
 static int
-lvx_cms_stage_schedule (const auto_vec<lvx_cms_arc> &arcs, unsigned n,
+lvx_lms_stage_schedule (const auto_vec<lvx_lms_arc> &arcs, unsigned n,
 			auto_vec<int> &sigma, int ii)
 {
   int moved = 0;
@@ -14590,8 +14590,8 @@ lvx_cms_stage_schedule (const auto_vec<lvx_cms_arc> &arcs, unsigned n,
    decides everything here.  */
 
 static bool
-lvx_cms_repair_fits_ii_p (const auto_vec<rtx_insn *> &seq,
-			    const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_repair_fits_ii_p (const auto_vec<rtx_insn *> &seq,
+			    const auto_vec<lvx_lms_arc> &arcs,
 			    const struct lvx_sched_resources *demand,
 			    unsigned i, int ii, int extra_lat, int cost_tiny,
 			    int cost_lsu = 0, int cost_memw = 0)
@@ -14654,7 +14654,7 @@ lvx_cms_repair_fits_ii_p (const auto_vec<rtx_insn *> &seq,
 /* Heights over the omega = 0 true-dependence subgraph: 1 for a node with no
    such consumer, else one more than the tallest consumer.  */
 static void
-lvx_cms_lineage_heights (const auto_vec<lvx_cms_arc> &arcs, unsigned n,
+lvx_lms_lineage_heights (const auto_vec<lvx_lms_arc> &arcs, unsigned n,
 			 auto_vec<int> &ht)
 {
   ht.safe_grow_cleared (n);
@@ -14679,12 +14679,12 @@ lvx_cms_lineage_heights (const auto_vec<lvx_cms_arc> &arcs, unsigned n,
 /* Form lineages and report what they cost and buy.  LIN[i] is the lineage id
    of the value defined by SEQ[i], or -1 if SEQ[i] defines nothing read.  */
 static void
-lvx_cms_lineages (const auto_vec<lvx_cms_arc> &arcs, unsigned n,
+lvx_lms_lineages (const auto_vec<lvx_lms_arc> &arcs, unsigned n,
 		  const auto_vec<bool> &defines,
 		  auto_vec<int> &lin, int *nlin_out, int *nseq_out)
 {
   auto_vec<int> ht;
-  lvx_cms_lineage_heights (arcs, n, ht);
+  lvx_lms_lineage_heights (arcs, n, ht);
 
   /* HEIR[i] is the consumer that inherits i's register, or -1.  A node can be
      the heir of at most one parent, which is what makes the lineages disjoint
@@ -14746,7 +14746,7 @@ lvx_cms_lineages (const auto_vec<lvx_cms_arc> &arcs, unsigned n,
 
 /* SIGMA's minimum, the schedule's origin.  */
 static int
-lvx_cms_sigma_min (const auto_vec<int> &sigma)
+lvx_lms_sigma_min (const auto_vec<int> &sigma)
 {
   int lo = sigma.is_empty () ? 0 : sigma[0];
   for (unsigned i = 1; i < sigma.length (); i++)
@@ -14759,7 +14759,7 @@ lvx_cms_sigma_min (const auto_vec<int> &sigma)
    latency of the last instruction is NOT part of it -- see the long note at the
    main dump site and §7quinvicies.5.  */
 static int
-lvx_cms_sigma_span (const auto_vec<int> &sigma)
+lvx_lms_sigma_span (const auto_vec<int> &sigma)
 {
   if (sigma.is_empty ())
     return 0;
@@ -14780,8 +14780,8 @@ lvx_cms_sigma_span (const auto_vec<int> &sigma)
    cross-iteration read counts OMEGA periods later), the expansion degree, the
    width in registers, and whether the destination is earlyclobber.  */
 static void
-lvx_cms_collect_values (const auto_vec<rtx_insn *> &seq,
-			const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_collect_values (const auto_vec<rtx_insn *> &seq,
+			const auto_vec<lvx_lms_arc> &arcs,
 			const auto_vec<int> &sigma, int ii,
 			auto_vec<int> &def_, auto_vec<int> &last_,
 			auto_vec<int> &deg, auto_vec<int> &nregs_,
@@ -14813,7 +14813,7 @@ lvx_cms_collect_values (const auto_vec<rtx_insn *> &seq,
       /* PER INSTRUCTION HERE, AND THAT IS RIGHT.  §7tricies.96.  This model is
 	 keyed by instruction, not by live range, so the flag of the
 	 instruction in hand is exactly the right one -- do not "unify" it with
-	 lvx_cms_lrange_ec_p, which answers a different question about a
+	 lvx_lms_lrange_ec_p, which answers a different question about a
 	 different object.  */
       ec_.safe_push (lvx_insn_dest_earlyclobber_p (seq[i]) ? 1 : 0);
       if (owner)
@@ -14880,7 +14880,7 @@ lvx_cms_collect_values (const auto_vec<rtx_insn *> &seq,
    assumed.  */
 
 static void
-lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
+lvx_lms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		const auto_vec<int> &deg, const auto_vec<int> &nregs_,
 		const auto_vec<int> &ec_, int ii, int lo0,
 		int *nn_out, int *ne_out, int *msq_out, int *spl_out,
@@ -14914,7 +14914,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
        while KUNROLL was the power-of-two 4.  The names then rotate 0,1,2,0
        through one unrolled kernel and 1,2,0,1 through the next -- the copy
        that wrote a register is not the copy that reads it.
-       lvx_cms_verify_rename found it as five register conflicts on one loop
+       lvx_lms_verify_rename found it as five register conflicts on one loop
        of the gate's own test program.
 
        THE LCM DOES NOT MAKE EXACT DEGREES USABLE FOR CODEGEN, and treating it
@@ -14930,7 +14930,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
     for (unsigned v = 0; v < deg.length (); v++)
       {
 	int p2 = 1;
-	if (lvx_cms_exact_degree)
+	if (lvx_lms_exact_degree)
 	  p2 = MAX (deg[v], 1);
 	else
 	  while (p2 < deg[v])
@@ -14947,19 +14947,19 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	/* An lcm can run away where a maximum cannot -- degrees 3, 4 and 5
 	   give 60 -- so it is bounded here and the period test below then
 	   declines the loop, rather than letting a 60-fold unroll be built.  */
-	if (kun > LVX_CMS_IG_MAX_PERIOD)
+	if (kun > LVX_LMS_IG_MAX_PERIOD)
 	  break;
       }
     per = kun * ii;
 
-    if (per > 0 && per <= LVX_CMS_IG_MAX_PERIOD)
+    if (per > 0 && per <= LVX_LMS_IG_MAX_PERIOD)
       {
 	auto_vec<unsigned HOST_WIDE_INT *> occ;
 	auto_vec<int> ncls, nval, nname, nnreg;
 	int words = (per + 63) / 64;
 
 	for (unsigned v = 0;
-	     v < deg.length () && nn < LVX_CMS_IG_MAX_NODES; v++)
+	     v < deg.length () && nn < LVX_LMS_IG_MAX_NODES; v++)
 	  {
 	    /* The range starts one cycle AFTER a normal definition and AT an
 	       earlyclobber one (§7ter.2a).  kvx-unfold.cc computes the
@@ -15015,7 +15015,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	       ceil ((a+b)/II) <= ceil (a/II) + ceil (b/II) always holds.
 	       -mcms-exact-degree separates the two effects.  */
 	    int p2 = 1;
-	    if (lvx_cms_exact_degree)
+	    if (lvx_lms_exact_degree)
 	      p2 = MAX (deg[v], 1);
 	    else
 	      while (p2 < deg[v])
@@ -15028,7 +15028,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	       pipelined kernel two such values coexist where in the original
 	       loop they were sequential.
 
-	       lvx_cms_verify_rename found it on gemm, where RA had reused r0 for
+	       lvx_lms_verify_rename found it on gemm, where RA had reused r0 for
 	       six values of one body.  Two of them were zero-life in r0, so
 	       neither was renamed, and instance i of one landed in the same
 	       kernel cycle as instance i-1 of the other: two writes to r0 in one
@@ -15046,7 +15046,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	    /* One node per NAME of this value.  Name J carries the instances
 	       of iterations congruent to J modulo P2, which is every P2-th
 	       kernel copy -- exact because P2 divides KUNROLL.  */
-	    for (int j = 0; j < p2 && nn < LVX_CMS_IG_MAX_NODES; j++)
+	    for (int j = 0; j < p2 && nn < LVX_LMS_IG_MAX_NODES; j++)
 	      {
 		unsigned HOST_WIDE_INT *b = XCNEWVEC (unsigned HOST_WIDE_INT,
 						      words);
@@ -15057,7 +15057,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		      b[c / 64] |= (unsigned HOST_WIDE_INT) 1 << (c % 64);
 		    }
 		occ.safe_push (b);
-		ncls.safe_push ((int) lvx_cms_rclass_of (nr));
+		ncls.safe_push ((int) lvx_lms_rclass_of (nr));
 		nval.safe_push ((int) v);
 		nname.safe_push (j);
 		nnreg.safe_push (nr);
@@ -15105,10 +15105,10 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		int deg[LVX_RC_N];
 		for (int c = 0; c < LVX_RC_N; c++)
 		  deg[c] = degc[a * LVX_RC_N + c];
-		int sq = lvx_cms_squeeze ((enum lvx_cms_rclass) ncls[a], deg);
+		int sq = lvx_lms_squeeze ((enum lvx_lms_rclass) ncls[a], deg);
 		if (sq > msq)
 		  msq = sq;
-		if (sq < lvx_cms_rclass_size[ncls[a]])
+		if (sq < lvx_lms_rclass_size[ncls[a]])
 		  {
 		    gone[a] = true;
 		    order.safe_push (a);
@@ -15217,7 +15217,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 		 ask which one's un-pinning is unsound.  A range left pinned
 		 gets reg[0] == regno and so no entry copy, the emission
 		 keying on exactly that.  */
-	      if (lvx_cms_preheader_copy && (lvx_cms_ph_parts & 1)
+	      if (lvx_lms_preheader_copy && (lvx_lms_ph_parts & 1)
 		  && vunpin && v < (int) vunpin->length () && (*vunpin)[v])
 		continue;
 	      if (v >= (int) vusefirst->length () || !(*vusefirst)[v])
@@ -15340,7 +15340,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 
 	       VPREFER is populated only where the colouring can KNOW the copy
 	       would be deleted, which is degree one: the drain reads
-	       `lvx_cms_lrange_reg (q, best, delayed)' with a BEST decided at
+	       `lvx_lms_lrange_reg (q, best, delayed)' with a BEST decided at
 	       emission, and at one name every BEST gives the same register.
 	       At a higher degree the preference would be a guess at which name
 	       the drain reads, and guessing the wrong one spends a
@@ -15395,7 +15395,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	   even run there: an II was accepted whenever SIMPLIFY succeeded,
 	   while SELECT could still run out of registers at that II.  On
 	   heat-3d's loop 7 (44 nodes, maxreg 63) all four names of two
-	   live ranges came back unassigned, and because lvx_cms_colour_lranges
+	   live ranges came back unassigned, and because lvx_lms_colour_lranges
 	   seeds REG[] with the original regno -- which is right for a held
 	   live range -- they read back as r10,r10,r10,r10: a p2 = 4 live range with
 	   no expansion at all, whose 15-cycle span then self-overlaps at
@@ -15476,7 +15476,7 @@ lvx_cms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
     *pinfail_out = pinfail;
 }
 
-static int lvx_cms_latency (rtx_insn *);
+static int lvx_lms_latency (rtx_insn *);
 
 /* Is every date within its Estart/Lstart window at this II?  §7quinvicies.2.
 
@@ -15526,8 +15526,8 @@ static int lvx_cms_latency (rtx_insn *);
    MAKESPAN, and the empty-window count through EMPTY.  */
 
 static int
-lvx_cms_dates_in_window (const auto_vec<rtx_insn *> &seq,
-			 const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_dates_in_window (const auto_vec<rtx_insn *> &seq,
+			 const auto_vec<lvx_lms_arc> &arcs,
 			 const auto_vec<int> &dates,
 			 const auto_vec<int> &tosink,
 			 int ii, int *first_out, int *makespan_out,
@@ -15562,7 +15562,7 @@ lvx_cms_dates_in_window (const auto_vec<rtx_insn *> &seq,
   int estop = 1;
   for (unsigned i = 0; i < n; i++)
     {
-      int e = (int) plc.date (i + 1) - root + lvx_cms_latency (seq[i]);
+      int e = (int) plc.date (i + 1) - root + lvx_lms_latency (seq[i]);
       if (e > estop)
 	estop = e;
     }
@@ -15673,8 +15673,8 @@ lvx_cms_dates_in_window (const auto_vec<rtx_insn *> &seq,
    node, normalised so the smallest is zero.  */
 
 static enum lvx_network_result
-lvx_cms_mcrl_dates (const auto_vec<rtx_insn *> &seq,
-		    const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_mcrl_dates (const auto_vec<rtx_insn *> &seq,
+		    const auto_vec<lvx_lms_arc> &arcs,
 		    const auto_vec<int> &estart,
 		    const auto_vec<int> &lstart,
 		    int ii, auto_vec<int> &dates,
@@ -15700,7 +15700,7 @@ lvx_cms_mcrl_dates (const auto_vec<rtx_insn *> &seq,
   /* NREGS per producer, counted only where the value is actually read: a
      definition nothing consumes has no lifetime and must not demand flow,
      which would make the instance infeasible rather than free.  This is the
-     same criterion lvx_cms_collect_values applies.  */
+     same criterion lvx_lms_collect_values applies.  */
   auto_vec<int> nregs;
   for (unsigned i = 0; i < n; i++)
     {
@@ -15772,8 +15772,8 @@ lvx_cms_mcrl_dates (const auto_vec<rtx_insn *> &seq,
    did better than the alternative.  */
 
 static HOST_WIDE_INT
-lvx_cms_cumulative_lifetime (const auto_vec<rtx_insn *> &seq,
-			     const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_cumulative_lifetime (const auto_vec<rtx_insn *> &seq,
+			     const auto_vec<lvx_lms_arc> &arcs,
 			     const auto_vec<int> &dates, int ii)
 {
   HOST_WIDE_INT total = 0;
@@ -15834,7 +15834,7 @@ lvx_cms_cumulative_lifetime (const auto_vec<rtx_insn *> &seq,
    Recording it is what lets the plan's counts and the emission's placement be
    the SAME walk, rather than two walks that agree today.  §7quinquies.2.  */
 
-struct lvx_cms_slot
+struct lvx_lms_slot
 {
   int insn;			/* index into SEQ */
   int iter;			/* which iteration's instance */
@@ -15842,11 +15842,11 @@ struct lvx_cms_slot
   int node;			/* index into the node list */
 };
 
-enum lvx_cms_nodekind
+enum lvx_lms_nodekind
 {
-  LVX_CMS_NODE_PROLOGUE,
-  LVX_CMS_NODE_KERNEL,
-  LVX_CMS_NODE_EPILOGUE
+  LVX_LMS_NODE_PROLOGUE,
+  LVX_LMS_NODE_KERNEL,
+  LVX_LMS_NODE_EPILOGUE
 };
 
 /* A BLOCK THE PIPELINE NEEDS.  The prologue stages and the kernel come out of
@@ -15855,9 +15855,9 @@ enum lvx_cms_nodekind
    falls into.  EXIT_DATE and EXIT_ITER name the instance whose exit enters an
    epilogue, which is what decides WHICH iterations that epilogue drains.  */
 
-struct lvx_cms_node
+struct lvx_lms_node
 {
-  enum lvx_cms_nodekind kind;
+  enum lvx_lms_nodekind kind;
   int stage;
   int exit_date, exit_iter, exit_insn;	/* the jump instance whose exit
 					   enters it -- which is also where
@@ -15865,7 +15865,7 @@ struct lvx_cms_node
   bool main_epilogue;
 };
 
-struct lvx_cms_plan
+struct lvx_lms_plan
 {
   int slots;			/* master slots in all */
   int prologue;			/* slots before the kernel head */
@@ -15884,11 +15884,11 @@ struct lvx_cms_plan
 };
 
 static void
-lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
+lvx_lms_build_plan (const auto_vec<rtx_insn *> &seq,
 		    const auto_vec<int> &sigma, int ii, int kunroll,
-		    int nstages, unsigned nblocks, struct lvx_cms_plan *pl,
-		    auto_vec<lvx_cms_slot> *slots = NULL,
-		    auto_vec<lvx_cms_node> *nodes_out = NULL)
+		    int nstages, unsigned nblocks, struct lvx_lms_plan *pl,
+		    auto_vec<lvx_lms_slot> *slots = NULL,
+		    auto_vec<lvx_lms_node> *nodes_out = NULL)
 {
   memset (pl, 0, sizeof (*pl));
   pl->why = "no loopback branch";
@@ -15899,7 +15899,7 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
   if (loopback < 0 || seq.is_empty () || ii <= 0)
     return;
 
-  int lo = lvx_cms_sigma_min (sigma);
+  int lo = lvx_lms_sigma_min (sigma);
   int instances = nstages + kunroll;
 
   /* ITER_SLOT: the lowest instance of the LOOPBACK branch whose iteration is
@@ -16053,9 +16053,9 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 	      nodes++;
 	      if (nodes_out)
 		{
-		  lvx_cms_node n;
-		  n.kind = (d < kernel_first ? LVX_CMS_NODE_PROLOGUE
-			    : LVX_CMS_NODE_KERNEL);
+		  lvx_lms_node n;
+		  n.kind = (d < kernel_first ? LVX_LMS_NODE_PROLOGUE
+			    : LVX_LMS_NODE_KERNEL);
 		  n.stage = d / ii;
 		  n.exit_date = n.exit_iter = n.exit_insn = -1;
 		  n.main_epilogue = false;
@@ -16064,7 +16064,7 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 	    }
 	  if (slots)
 	    {
-	      lvx_cms_slot sl;
+	      lvx_lms_slot sl;
 	      sl.insn = (int) i;
 	      sl.iter = l;
 	      sl.date = d;
@@ -16149,8 +16149,8 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 	 kernel.  */
       if (nodes_out)
 	{
-	  lvx_cms_node n;
-	  n.kind = LVX_CMS_NODE_EPILOGUE;
+	  lvx_lms_node n;
+	  n.kind = LVX_LMS_NODE_EPILOGUE;
 	  n.stage = (int) e;
 	  n.exit_date = de;
 	  n.exit_iter = le;
@@ -16245,7 +16245,7 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 		pl->exit_slots++;
 	      if (slots)
 		{
-		  lvx_cms_slot sl;
+		  lvx_lms_slot sl;
 		  sl.insn = (int) i;
 		  sl.iter = l;
 		  sl.date = d;
@@ -16296,7 +16296,7 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
 	{
 	  int nd = (*slots)[q].node;
 	  if (nodes_out && nd >= 0 && nd < (int) nodes_out->length ()
-	      && (*nodes_out)[nd].kind == LVX_CMS_NODE_KERNEL
+	      && (*nodes_out)[nd].kind == LVX_LMS_NODE_KERNEL
 	      && (*slots)[q].insn >= 0
 	      && (*slots)[q].insn < (int) seq.length ())
 	    per[(*slots)[q].insn]++;
@@ -16304,13 +16304,13 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
     for (unsigned i = 0; i < seq.length (); i++)
       if (slots && per[i] != kunroll)
 	pl->steady_bad++;
-    if (slots && pl->steady_bad && lvx_cms_probe && dump_file)
+    if (slots && pl->steady_bad && lvx_lms_probe && dump_file)
       {
-	lvx_cms_dump (";; lvx cms:   steadybad kunroll=%d per-insn:", kunroll);
+	lvx_lms_dump (";; lvx cms:   steadybad kunroll=%d per-insn:", kunroll);
 	for (unsigned i = 0; i < seq.length (); i++)
-	  lvx_cms_dump (" %u:%d%s", i, per[i],
+	  lvx_lms_dump (" %u:%d%s", i, per[i],
 			per[i] != kunroll ? "*" : "");
-	lvx_cms_dump ("\n");
+	lvx_lms_dump ("\n");
       }
   }
 
@@ -16339,7 +16339,7 @@ lvx_cms_build_plan (const auto_vec<rtx_insn *> &seq,
    the colouring being OPTIMISTIC predicted and did not quantify.  */
 
 static void
-lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
+lvx_lms_reserved_regs (const auto_vec<rtx_insn *> &seq,
 		       const auto_vec<int> &def_, const auto_vec<int> &last_,
 		       const auto_vec<int> &nregs_, const auto_vec<int> &ec_,
 		       const auto_vec<int> &vregno,
@@ -16432,7 +16432,7 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
 
   for (unsigned v = 0; v < def_.length (); v++)
     {
-      /* Same convention as lvx_cms_colour: [def + !earlyclobber, last].  A
+      /* Same convention as lvx_lms_colour: [def + !earlyclobber, last].  A
 	 check that models the schedule differently from the allocator tests a
 	 different program.  */
       int life = last_[v] - def_[v] + (ec_[v] ? 1 : 0);
@@ -16518,7 +16518,7 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
 
    SLOT is the operand: the ordinal of the reference's location in a
    deterministic sub-rtx walk of the pattern, which is exactly what
-   lvx_cms_reg_index computes from DF_REF_LOC.  It is an index rather than the
+   lvx_lms_reg_index computes from DF_REF_LOC.  It is an index rather than the
    location because the rewrite runs on a COPY, where a pointer into the
    original addresses nothing and the traversal order is identical.  Keyed on
    (insn, slot) the lookup needs no is_def argument and cannot be ambiguous --
@@ -16536,11 +16536,11 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
    would say the opposite of what is meant.
 
    The value is -2 and not -1 so that it cannot be confused with
-   lvx_cms_reg_index's "not in this pattern", and it is negative so that every
-   lookup keyed on a real operand position passes it by: lvx_cms_lrange_of
+   lvx_lms_reg_index's "not in this pattern", and it is negative so that every
+   lookup keyed on a real operand position passes it by: lvx_lms_lrange_of
    returns null for a negative slot, and the renaming walks the pattern's REGs
    and so never visits an effect that has none.  */
-#define LVX_CMS_SLOT_INDIRECT (-2)
+#define LVX_LMS_SLOT_INDIRECT (-2)
 
 /* AN EFFECT IS ON A SUB-OPERAND, so it carries its OFFSET within the
    live range's span as well as its width.  §7tricies.71.
@@ -16563,7 +16563,7 @@ lvx_cms_reserved_regs (const auto_vec<rtx_insn *> &seq,
    "sub-register offset the renaming does not carry" that the old mixed-width
    fallback named as its reason for giving up.  */
 
-struct lvx_cms_effect
+struct lvx_lms_effect
 {
   unsigned insn;		/* index into SEQ */
   int slot;			/* the operand: ordinal in the REG walk */
@@ -16573,31 +16573,31 @@ struct lvx_cms_effect
   int offset;			/* registers from the live range's REGNO */
 };
 
-#define LVX_CMS_MAX_KUNROLL 32
+#define LVX_LMS_MAX_KUNROLL 32
 
 /* A PART OF A LIVE RANGE, NOT A LIVE RANGE.  §7tricies.98.
 
    The renaming unit -- the thing that gets P2UNROLL names, one occupancy and
    one colour -- is a UNION of these, identified by its root through
-   lvx_cms_lrange_root.  One object is a member of it, and only a root object
+   lvx_lms_lrange_root.  One object is a member of it, and only a root object
    stands for the whole; the colouring says so where it skips the others
    ("ONE UNIT PER LIVE RANGE"), and so does the verifier ("one live range, one
-   occupancy").  The type was called `lvx_cms_lrange' and so read as the whole
+   occupancy").  The type was called `lvx_lms_lrange' and so read as the whole
    while denoting a part, which is the same imprecision the lineage/live-range
    rename removed from the prose.
 
    Most live ranges are a single part: measured over 194 loops of TSVC2 and
    PolyBench, 1527 units from 92 unions, with a union occurring in 63 loops.
    That is exactly why the distinction is easy to forget -- the compensating
-   call to lvx_cms_lrange_root is correct in all but a sixteenth of cases even
+   call to lvx_lms_lrange_root is correct in all but a sixteenth of cases even
    if omitted.
 
-   The functions keep the `lvx_cms_lrange_' prefix as a module name: ..._root
+   The functions keep the `lvx_lms_lrange_' prefix as a module name: ..._root
    maps a part to its live range, ..._union joins two, and the rest take a
    part and are written to be called on the root where the answer is the live
    range's.  */
 
-struct lvx_cms_lrange_part
+struct lvx_lms_lrange_part
 {
   unsigned regno;
   int nregs;
@@ -16619,7 +16619,7 @@ struct lvx_cms_lrange_part
   int p2unroll;
   bool ec;			/* the early clobber the COLOURING used, stored so the
 			   verifier cannot recompute a different one.  §7tricies.90 */
-  bool capped;			/* p2unroll was forced to 1 by LVX_CMS_MAX_KUNROLL,
+  bool capped;			/* p2unroll was forced to 1 by LVX_LMS_MAX_KUNROLL,
 			   not derived from LIFE.  §7tricies.92 */
   bool noname;			/* this PART cannot take a stack of names, so its
 			   union cannot either.  Sticky because `renamed' is
@@ -16629,8 +16629,8 @@ struct lvx_cms_lrange_part
 			   §7tricies.118 */
   int self;			/* own index into LR */
   int parent;			/* union-find over LR: the live range */
-  int reg[LVX_CMS_MAX_KUNROLL];
-  auto_vec<lvx_cms_effect> effects;
+  int reg[LVX_LMS_MAX_KUNROLL];
+  auto_vec<lvx_lms_effect> effects;
 };
 
 /* THE EARLY CLOBBER OF A RANGE, NOT OF AN INSTRUCTION.  §7tricies.90.
@@ -16657,7 +16657,7 @@ struct lvx_cms_lrange_part
    definition rather than trusting position zero.  */
 
 static bool
-lvx_cms_lrange_ec_p (const auto_vec<rtx_insn *> &seq, const lvx_cms_lrange_part *g)
+lvx_lms_lrange_ec_p (const auto_vec<rtx_insn *> &seq, const lvx_lms_lrange_part *g)
 {
   if (g->effects.is_empty ())
     return false;
@@ -16680,7 +16680,7 @@ lvx_cms_lrange_ec_p (const auto_vec<rtx_insn *> &seq, const lvx_cms_lrange_part 
 /* The representative of a range's tie union, with path compression.  */
 
 static int
-lvx_cms_lrange_root (const auto_vec<lvx_cms_lrange_part *> &lr, int k)
+lvx_lms_lrange_root (const auto_vec<lvx_lms_lrange_part *> &lr, int k)
 {
   while (lr[k]->parent != k)
     {
@@ -16717,15 +16717,15 @@ lvx_cms_lrange_root (const auto_vec<lvx_cms_lrange_part *> &lr, int k)
    holding by accident now holds by construction.  */
 
 static bool
-lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange_part *> &lr,
-		      lvx_cms_lrange_part *ga, lvx_cms_lrange_part *gb)
+lvx_lms_lrange_union (const auto_vec<lvx_lms_lrange_part *> &lr,
+		      lvx_lms_lrange_part *ga, lvx_lms_lrange_part *gb)
 {
   int a, b;
 
   if (!ga || !gb || ga == gb)
     return false;
-  a = lvx_cms_lrange_root (lr, ga->self);
-  b = lvx_cms_lrange_root (lr, gb->self);
+  a = lvx_lms_lrange_root (lr, ga->self);
+  b = lvx_lms_lrange_root (lr, gb->self);
   if (a == b)
     return false;
   if (a < b)
@@ -16746,7 +16746,7 @@ lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange_part *> &lr,
    untied value through a copy, and only the first is a reason to refuse.
 
    USEIDX indexes the arc builder's sub-rtx walk, not recog_data.operand[], so
-   the two are joined by POINTER IDENTITY: lvx_cms_reg_at gives the location
+   the two are joined by POINTER IDENTITY: lvx_lms_reg_at gives the location
    inside the pattern, and recog_data.operand_loc[] holds those same
    locations.  Matching on register number instead is what §7tricies's arc
    note already records as not being a key -- one instruction can mention one
@@ -16756,14 +16756,14 @@ lvx_cms_lrange_union (const auto_vec<lvx_cms_lrange_part *> &lr,
    transformation rather than performing it unsoundly.  */
 
 static bool
-lvx_cms_operand_tied_p (rtx_insn *insn, int useidx)
+lvx_lms_operand_tied_p (rtx_insn *insn, int useidx)
 {
   const operand_alternative *alt;
   rtx *loc;
 
   if (useidx < 0)
     return true;
-  loc = lvx_cms_reg_at (&PATTERN (insn), useidx);
+  loc = lvx_lms_reg_at (&PATTERN (insn), useidx);
   if (loc == NULL)
     return true;
   if (recog_memoized (insn) < 0)
@@ -16782,7 +16782,7 @@ lvx_cms_operand_tied_p (rtx_insn *insn, int useidx)
      Without this call the predicate reads whatever insn was preprocessed
      last, with this insn's operand count and alternative index.  It did not
      crash while the only callers ran late, after a pass that had preprocessed
-     the same insns; called from lvx_cms_build_lranges it segfaults on an
+     the same insns; called from lvx_lms_build_lranges it segfaults on an
      insn whose table is shorter.  The silent half is worse than the crash:
      every answer this predicate has given came off whichever table happened
      to be loaded.  */
@@ -16820,7 +16820,7 @@ lvx_cms_operand_tied_p (rtx_insn *insn, int useidx)
    across the back edge, which is pinned and keeps its arc.  Everything else
    was dropped, on the expectation that the drain copies it back.
 
-   But the drain's copy loop and lvx_cms_verify_liveout_split both iterate
+   But the drain's copy loop and lvx_lms_verify_liveout_split both iterate
    EXIT_LIVE ranges that are def-headed and not use-headed, which is a
    strictly smaller set.  A definition outside it loses its arc and gains no
    copy: the scheduler is then free to hoist the next iteration's write of a
@@ -16837,21 +16837,21 @@ lvx_cms_operand_tied_p (rtx_insn *insn, int useidx)
    So the predicate becomes the drain's own: an arc is droppable only where
    the range its definition HEADS is one the drain will copy back.  RENAMED
    cannot be asked here -- the colouring has not run -- which is precisely
-   what lvx_cms_verify_liveout_split checks afterwards, so the pair is now
+   what lvx_lms_verify_liveout_split checks afterwards, so the pair is now
    bound, transform, re-bound over ONE set instead of two.  */
 
 static bool
-lvx_cms_liveout_arc_reconciled_p (const auto_vec<lvx_cms_lrange_part *> &lr,
+lvx_lms_liveout_arc_reconciled_p (const auto_vec<lvx_lms_lrange_part *> &lr,
 				  unsigned q)
 {
   bool found = false;
 
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange_part *g = lr[k];
+      lvx_lms_lrange_part *g = lr[k];
 
       if (g->effects.is_empty ()
-	  || lvx_cms_lrange_root (lr, (int) k) != (int) k
+	  || lvx_lms_lrange_root (lr, (int) k) != (int) k
 	  || g->effects[0].insn != q)
 	continue;
       /* A range this instruction heads but the drain will not copy: the arc
@@ -16861,8 +16861,8 @@ lvx_cms_liveout_arc_reconciled_p (const auto_vec<lvx_cms_lrange_part *> &lr,
       /* §7tricies.155: the PIN is the only thing keeping this arc, so it is
 	 the one a preheader copy would remove.  The lever says what that
 	 would be worth; without the copy the pin is real.  */
-      if (g->use_first && !lvx_cms_usefirst_unpinned
-	  && !(lvx_cms_preheader_copy && (lvx_cms_ph_parts & 4)))
+      if (g->use_first && !lvx_lms_usefirst_unpinned
+	  && !(lvx_lms_preheader_copy && (lvx_lms_ph_parts & 4)))
 	return false;
       found = true;
     }
@@ -16870,7 +16870,7 @@ lvx_cms_liveout_arc_reconciled_p (const auto_vec<lvx_cms_lrange_part *> &lr,
 }
 
 static bool
-lvx_cms_liveout_arc_pinned_p (class loop *loop,
+lvx_lms_liveout_arc_pinned_p (class loop *loop,
 			      const auto_vec<rtx_insn *> &seq, unsigned q)
 {
   df_ref def;
@@ -16898,7 +16898,7 @@ lvx_cms_liveout_arc_pinned_p (class loop *loop,
    must be renamed, and no name of it may be its own regno.  */
 
 static bool
-lvx_cms_verify_liveout_split (const auto_vec<lvx_cms_lrange_part *> &lr,
+lvx_lms_verify_liveout_split (const auto_vec<lvx_lms_lrange_part *> &lr,
 			      int *nbad_out)
 {
   int nbad = 0;
@@ -16906,10 +16906,10 @@ lvx_cms_verify_liveout_split (const auto_vec<lvx_cms_lrange_part *> &lr,
   *nbad_out = 0;
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange_part *g = lr[k];
+      lvx_lms_lrange_part *g = lr[k];
 
       if (g->effects.is_empty () || !g->exit_live
-	  || lvx_cms_lrange_root (lr, (int) k) != (int) k
+	  || lvx_lms_lrange_root (lr, (int) k) != (int) k
 	  || !g->effects[0].is_def)
 	continue;
       /* THE CHECK MUST MATCH THE DROP.  §7tricies.113.  A USE_FIRST range
@@ -16923,14 +16923,14 @@ lvx_cms_verify_liveout_split (const auto_vec<lvx_cms_lrange_part *> &lr,
 	 renamed like any other and the drop admits it, so it must be IN the
 	 set this verifier checks -- the whole lesson of §7tricies.154.  */
       if (g->use_first
-	  && !(lvx_cms_preheader_copy && (lvx_cms_ph_parts & 8)))
+	  && !(lvx_lms_preheader_copy && (lvx_lms_ph_parts & 8)))
 	continue;
       if (!g->renamed)
 	{
 	  nbad++;
 	  continue;
 	}
-      for (int j = 0; j < g->p2unroll && j < LVX_CMS_MAX_KUNROLL; j++)
+      for (int j = 0; j < g->p2unroll && j < LVX_LMS_MAX_KUNROLL; j++)
 	if (g->reg[j] == (int) g->regno)
 	  {
 	    nbad++;
@@ -16968,7 +16968,7 @@ lvx_cms_verify_liveout_split (const auto_vec<lvx_cms_lrange_part *> &lr,
    two or more iterations behind has no representation and is refused rather
    than approximated.  */
 
-struct lvx_cms_prop
+struct lvx_lms_prop
 {
   unsigned insn;		/* the reader, as an index into SEQ */
   int slot;			/* which operand of it */
@@ -16980,8 +16980,8 @@ struct lvx_cms_prop
 
 /* The entry for SLOT of insn I, or NULL if that operand was not propagated.  */
 
-static const lvx_cms_prop *
-lvx_cms_prop_lookup (const auto_vec<lvx_cms_prop> *prop, unsigned i, int slot)
+static const lvx_lms_prop *
+lvx_lms_prop_lookup (const auto_vec<lvx_lms_prop> *prop, unsigned i, int slot)
 {
   if (prop == NULL || slot < 0)
     return NULL;
@@ -16995,10 +16995,10 @@ lvx_cms_prop_lookup (const auto_vec<lvx_cms_prop> *prop, unsigned i, int slot)
    §7tricies.104.
 
    For every jump in SEQ, the registers live on its out-of-loop successors.
-   lvx_cms_build_lranges needs this to decide which ranges are live out, and
+   lvx_lms_build_lranges needs this to decide which ranges are live out, and
    computed it from `jbb->succs' at the point of use -- which is correct on
    the probe path and a NULL dereference on the codegen one: by then
-   lvx_cms_make_nodes has created blocks and redirected edges, so a successor
+   lvx_lms_make_nodes has created blocks and redirected edges, so a successor
    can be a block DF has never seen and `df_get_live_in' returns nothing at
    all.  Compiling libgcc with -mcms-codegen segfaulted here.
 
@@ -17014,7 +17014,7 @@ lvx_cms_prop_lookup (const auto_vec<lvx_cms_prop> *prop, unsigned i, int slot)
    paths that bail out early.  */
 
 static void
-lvx_cms_capture_exit_live (const auto_vec<rtx_insn *> &seq,
+lvx_lms_capture_exit_live (const auto_vec<rtx_insn *> &seq,
 			   auto_vec<HARD_REG_SET> &xl)
 {
   xl.safe_grow_cleared (seq.length ());
@@ -17050,19 +17050,19 @@ lvx_cms_capture_exit_live (const auto_vec<rtx_insn *> &seq,
 /* Declared ahead of their definitions: the three operand lookups, which the
    build's unification passes need and which read the structure the build has
    just produced.  */
-static lvx_cms_lrange_part *lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange_part *> &,
+static lvx_lms_lrange_part *lvx_lms_lrange_of (const auto_vec<lvx_lms_lrange_part *> &,
 					  unsigned, int, bool *,
 					  int * = NULL, int * = NULL);
-static lvx_cms_lrange_part *
-lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange_part *> &, unsigned, unsigned);
-static lvx_cms_lrange_part *
-lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange_part *> &, unsigned, unsigned);
+static lvx_lms_lrange_part *
+lvx_lms_lrange_def_of (const auto_vec<lvx_lms_lrange_part *> &, unsigned, unsigned);
+static lvx_lms_lrange_part *
+lvx_lms_lrange_use_of (const auto_vec<lvx_lms_lrange_part *> &, unsigned, unsigned);
 
 /* A LOOP-INVARIANT RANGE: every reference is a read, so the body never writes
    it and its value comes from outside the loop.  §7tricies.167.  */
 
 static bool
-lvx_cms_lrange_invariant_p (const auto_vec<lvx_cms_lrange_part *> &lr,
+lvx_lms_lrange_invariant_p (const auto_vec<lvx_lms_lrange_part *> &lr,
 			    int root)
 {
   bool any = false;
@@ -17070,7 +17070,7 @@ lvx_cms_lrange_invariant_p (const auto_vec<lvx_cms_lrange_part *> &lr,
   for (unsigned k = 0; k < lr.length (); k++)
     {
       if (lr[k]->effects.is_empty ()
-	  || lvx_cms_lrange_root (lr, (int) k) != root)
+	  || lvx_lms_lrange_root (lr, (int) k) != root)
 	continue;
       for (unsigned e = 0; e < lr[k]->effects.length (); e++)
 	{
@@ -17106,14 +17106,14 @@ lvx_cms_lrange_invariant_p (const auto_vec<lvx_cms_lrange_part *> &lr,
     for (unsigned k = 0; k < lr.length (); k++)
       {
 	if (lr[k]->effects.is_empty ()
-	    || lvx_cms_lrange_root (lr, (int) k) == root)
+	    || lvx_lms_lrange_root (lr, (int) k) == root)
 	  continue;
 	for (unsigned e = 0; e < lr[k]->effects.length (); e++)
 	  {
 	    unsigned base, top;
 
 	    if (!lr[k]->effects[e].is_def
-		|| lr[k]->effects[e].slot == LVX_CMS_SLOT_INDIRECT
+		|| lr[k]->effects[e].slot == LVX_LMS_SLOT_INDIRECT
 		|| MAX (lr[k]->effects[e].nregs, 1) <= 1)
 	      continue;
 	    base = lr[k]->regno + lr[k]->effects[e].offset;
@@ -17132,25 +17132,25 @@ lvx_cms_lrange_invariant_p (const auto_vec<lvx_cms_lrange_part *> &lr,
    held names no reason; this makes the first one that clears it say so.  */
 
 static void
-lvx_cms_hold_range (const auto_vec<lvx_cms_lrange_part *> &lr, int root,
+lvx_lms_hold_range (const auto_vec<lvx_lms_lrange_part *> &lr, int root,
 		    int guard)
 {
   if (root < 0 || root >= (int) lr.length ())
     return;
-  if (lr[root]->renamed && dump_file && lvx_cms_probe
-      && lvx_cms_lrange_invariant_p (lr, root))
-    lvx_cms_dump (";; lvx cms:   HELDBY guard=%d lr%d r%u+%d\n", guard, root,
+  if (lr[root]->renamed && dump_file && lvx_lms_probe
+      && lvx_lms_lrange_invariant_p (lr, root))
+    lvx_lms_dump (";; lvx cms:   HELDBY guard=%d lr%d r%u+%d\n", guard, root,
 		  lr[root]->regno, lr[root]->nregs);
   lr[root]->renamed = false;
 }
 
 
 static void
-lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
-		       auto_vec<lvx_cms_lrange_part *> &lr, int *ntie_out,
+lvx_lms_build_lranges (const auto_vec<rtx_insn *> &seq,
+		       auto_vec<lvx_lms_lrange_part *> &lr, int *ntie_out,
 		       int *nunit_out, int *nheld_out, int *nwiden_out = NULL,
 		       const auto_vec<HARD_REG_SET> *pre_xlive = NULL,
-		       const auto_vec<lvx_cms_prop> *prop = NULL)
+		       const auto_vec<lvx_lms_prop> *prop = NULL)
 {
   int ntie = 0;
   /* References that CONTAIN an already-open range rather than sitting inside
@@ -17196,7 +17196,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	   lr5 r34 root=5 eff=1/0D,9/1U
 	   lr6 r35 root=6 eff=1/0D,9/1U
 
-	 and lvx_cms_verify_lranges, which counts the distinct ROOTS claiming
+	 and lvx_lms_verify_lranges, which counts the distinct ROOTS claiming
 	 each operand, reported four for one -- `dup', which refused the loop.
 	 It refused 44 of 131 PolyBench loops, every one of them a body with a
 	 tuple reference and not one without: the dominant blocker, and it was
@@ -17230,7 +17230,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  int nr = ureg && REG_P (ureg) ? REG_NREGS (ureg) : 1;
 	  unsigned r = (ureg && REG_P (ureg)) ? REGNO (ureg)
 					      : DF_REF_REGNO (ref);
-	  lvx_cms_effect e = { i, lvx_cms_reg_index (PATTERN (seq[i]),
+	  lvx_lms_effect e = { i, lvx_lms_reg_index (PATTERN (seq[i]),
 						    DF_REF_LOC (ref)),
 			       nr, false, false };
 
@@ -17241,7 +17241,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	     replaced was loop-carried.  The renaming then substitutes from
 	     that range with no special case at emission.  */
 	  {
-	    const lvx_cms_prop *pe = lvx_cms_prop_lookup (prop, i, e.slot);
+	    const lvx_lms_prop *pe = lvx_lms_prop_lookup (prop, i, e.slot);
 
 	    if (pe)
 	      r = pe->regno, e.delayed = pe->delayed;
@@ -17281,7 +17281,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	    }
 	  if (open[r] < 0)
 	    {
-	      lvx_cms_lrange_part *n = new lvx_cms_lrange_part ();
+	      lvx_lms_lrange_part *n = new lvx_lms_lrange_part ();
 	      n->regno = r;
 	      n->nregs = nr;
 	      /* USE_FIRST means the CYCLIC WRAP and nothing else, so the
@@ -17383,13 +17383,13 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	    }
 	  for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
 	    {
-	      lvx_cms_effect e2;
+	      lvx_lms_effect e2;
 
 	      if (!TEST_HARD_REG_BIT (xlive, r) || !bitmap_bit_p (touched, r))
 		continue;
 	      if (open[r] < 0)
 		{
-		  lvx_cms_lrange_part *n = new lvx_cms_lrange_part ();
+		  lvx_lms_lrange_part *n = new lvx_lms_lrange_part ();
 		  n->regno = r;
 		  n->nregs = 1;
 		  n->use_first = false;
@@ -17416,7 +17416,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
 		for (unsigned q = 0; q < lr[open[r]]->effects.length (); q++)
 		  if (lr[open[r]]->effects[q].insn == i
-		      && lr[open[r]]->effects[q].slot == LVX_CMS_SLOT_INDIRECT)
+		      && lr[open[r]]->effects[q].slot == LVX_LMS_SLOT_INDIRECT)
 		    {
 		      had = true;
 		      break;
@@ -17425,7 +17425,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		  continue;
 	      }
 	      e2.insn = i;
-	      e2.slot = LVX_CMS_SLOT_INDIRECT;
+	      e2.slot = LVX_LMS_SLOT_INDIRECT;
 	      e2.nregs = MAX (lr[open[r]]->nregs, 1);
 	      e2.is_def = false;
 	      e2.delayed = false;
@@ -17445,7 +17445,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  int nr = reg && REG_P (reg) ? REG_NREGS (reg) : 1;
 	  unsigned r = (reg && REG_P (reg)) ? REGNO (reg)
 					    : DF_REF_REGNO (ref);
-	  lvx_cms_effect e = { i, lvx_cms_reg_index (PATTERN (seq[i]),
+	  lvx_lms_effect e = { i, lvx_lms_reg_index (PATTERN (seq[i]),
 						    DF_REF_LOC (ref)),
 			       nr, true, false };
 	  bool nofull = false;
@@ -17574,7 +17574,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		}
 	    }
 
-	  lvx_cms_lrange_part *n = new lvx_cms_lrange_part ();
+	  lvx_lms_lrange_part *n = new lvx_lms_lrange_part ();
 	  n->regno = r;
 	  n->nregs = nr;
 	  n->use_first = false;
@@ -17597,7 +17597,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		     ranges in one live range -- the operand is read and written
 		     in place, so one register has to serve both.  */
 		  lr[open[r]]->effects.ordered_remove (q);
-		  lvx_cms_lrange_union (lr, n, lr[open[r]]);
+		  lvx_lms_lrange_union (lr, n, lr[open[r]]);
 		  break;
 		}
 	  open[r] = (int) lr.length () - 1;
@@ -17644,7 +17644,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
       for (unsigned e = 0; e < lr[first]->effects.length (); e++)
 	{
-	  lvx_cms_effect d = lr[first]->effects[e];
+	  lvx_lms_effect d = lr[first]->effects[e];
 	  d.delayed = true;
 	  lr[last]->effects.safe_push (d);
 	}
@@ -17679,7 +17679,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
      the second read what the first wrote, the RAW arc between them already
      serialises them within the iteration, and across iterations the names
      differ whenever the union expands.  Where it does not expand the
-     anti-dependence is the one lvx_cms_verify_antidep checks.  */
+     anti-dependence is the one lvx_lms_verify_antidep checks.  */
   for (unsigned i = 0; i < seq.length (); i++)
     {
       rtx set = single_set (seq[i]);
@@ -17712,13 +17712,13 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
       /* The matched operand is the input this destination must equal.  */
       {
 	rtx u = recog_data.operand[m];
-	lvx_cms_lrange_part *gd, *gu;
+	lvx_lms_lrange_part *gd, *gu;
 
 	if (!u || !REG_P (u) || REGNO (u) >= FIRST_PSEUDO_REGISTER)
 	  continue;
-	gd = lvx_cms_lrange_def_of (lr, i, REGNO (SET_DEST (set)));
-	gu = lvx_cms_lrange_use_of (lr, i, REGNO (u));
-	if (lvx_cms_lrange_union (lr, gd, gu))
+	gd = lvx_lms_lrange_def_of (lr, i, REGNO (SET_DEST (set)));
+	gu = lvx_lms_lrange_use_of (lr, i, REGNO (u));
+	if (lvx_lms_lrange_union (lr, gd, gu))
 	  ntie++;
       }
     }
@@ -17736,7 +17736,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
      because those 20 are precisely the arcs that did not need to be kept.
      The partition here is built from the body alone -- the walk, the
      read-modify-write operands and the tie pass, none of which need a
-     schedule -- so lvx_cms_build_graph can consult it while it decides which
+     schedule -- so lvx_lms_build_graph can consult it while it decides which
      anti-dependences to keep, and the invariant holds by construction.  That
      ordering is the reference's too: unfold_igraph_make_ranges runs before
      scheduling and unfold_igraph_set_range_dates after it.  */
@@ -17753,7 +17753,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
       if (lr[k]->effects.is_empty ())
 	continue;
-      root = lvx_cms_lrange_root (lr, (int) k);
+      root = lvx_lms_lrange_root (lr, (int) k);
       if ((int) k == root)
 	continue;
       /* A UNION ACROSS DIFFERENT BASES IS NOT RENAMEABLE.  §7tricies.71.
@@ -17771,7 +17771,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
   for (unsigned k = 0; k < lr.length (); k++)
     {
       int root = lr[k]->effects.is_empty () ? (int) k
-		 : lvx_cms_lrange_root (lr, (int) k);
+		 : lvx_lms_lrange_root (lr, (int) k);
 
       lr[root]->renamed = true;
     }
@@ -17787,7 +17787,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
      applied to the root here.  */
   for (unsigned k = 0; k < lr.length (); k++)
     if (lr[k]->noname)
-      lr[lvx_cms_lrange_root (lr, (int) k)]->renamed = false;
+      lr[lvx_lms_lrange_root (lr, (int) k)]->renamed = false;
   /* STILL USE-HEADED MEANS THE BODY NEVER WRITES IT.  §7tricies.91.
 
      This looks like a refusal to rename the loop-carried values, which are
@@ -17823,9 +17823,9 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
   for (unsigned k = 0; k < lr.length (); k++)
     if (!lr[k]->effects.is_empty () && !lr[k]->effects[0].is_def)
       {
-	int rt = lvx_cms_lrange_root (lr, (int) k);
+	int rt = lvx_lms_lrange_root (lr, (int) k);
 
-	lvx_cms_hold_range (lr, rt, 3);
+	lvx_lms_hold_range (lr, rt, 3);
       }
 
   /* MULTI-REGISTER OPERANDS: THE FALLBACK.  §7tricies.33.
@@ -17855,7 +17855,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
       if (lr[k]->effects.is_empty ())
 	continue;
-      root = lvx_cms_lrange_root (lr, (int) k);
+      root = lvx_lms_lrange_root (lr, (int) k);
       /* NOT "all the same width" ANY MORE, but "an aligned sub-range of the
 	 root's span".  §7tricies.71: an effect carries its offset, so a
 	 narrower reference is renameable -- reg[index] + offset at its own
@@ -17868,11 +17868,11 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  int off = lr[k]->effects[e].offset;
 	  int w = MAX (lr[k]->effects[e].nregs, 1);
 
-	  if (lr[k]->effects[e].slot == LVX_CMS_SLOT_INDIRECT)
+	  if (lr[k]->effects[e].slot == LVX_LMS_SLOT_INDIRECT)
 	    continue;		/* no operand, nothing to substitute */
 	  if (off < 0 || off + w > MAX (lr[root]->nregs, 1) || off % w != 0)
 	    {
-	      lvx_cms_hold_range (lr, root, 4);
+	      lvx_lms_hold_range (lr, root, 4);
 	      break;
 	    }
 	}
@@ -17888,8 +17888,8 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
 	  if (lr[b]->effects.is_empty ())
 	    continue;
-	  ra = lvx_cms_lrange_root (lr, (int) a);
-	  rb = lvx_cms_lrange_root (lr, (int) b);
+	  ra = lvx_lms_lrange_root (lr, (int) a);
+	  rb = lvx_lms_lrange_root (lr, (int) b);
 	  if (ra == rb)
 	    continue;
 	  alo = lr[a]->regno;
@@ -17915,8 +17915,8 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 		 writes anything -- and sound when both are invariant, for the
 		 same reason: each copy reads the incoming storage, so the two
 		 still agree about the value they came from.  */
-	      lvx_cms_hold_range (lr, ra, 5);
-	      lvx_cms_hold_range (lr, rb, 5);
+	      lvx_lms_hold_range (lr, ra, 5);
+	      lvx_lms_hold_range (lr, rb, 5);
 	    }
 	}
     }
@@ -17953,13 +17953,13 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  unsigned base, top;
 	  int rk;
 
-	  if (lr[k]->effects[e].slot == LVX_CMS_SLOT_INDIRECT)
+	  if (lr[k]->effects[e].slot == LVX_LMS_SLOT_INDIRECT)
 	    continue;
 	  if (MAX (lr[k]->effects[e].nregs, 1) <= 1)
 	    continue;
 	  base = lr[k]->regno + lr[k]->effects[e].offset;
 	  top = base + MAX (lr[k]->effects[e].nregs, 1);
-	  rk = lvx_cms_lrange_root (lr, (int) k);
+	  rk = lvx_lms_lrange_root (lr, (int) k);
 	  for (unsigned j = 0; j < lr.length (); j++)
 	    {
 	      unsigned jlo, jhi;
@@ -17967,23 +17967,23 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
 	      if (j == k || lr[j]->effects.is_empty ())
 		continue;
-	      rj = lvx_cms_lrange_root (lr, (int) j);
+	      rj = lvx_lms_lrange_root (lr, (int) j);
 	      if (rj == rk)
 		continue;
 	      jlo = lr[j]->regno;
 	      jhi = jlo + MAX (lr[j]->nregs, 1);
 	      if (jlo < top && base < jhi)
 		{
-		  if (dump_file && lvx_cms_probe
-		      && lvx_cms_lrange_invariant_p (lr, rj))
-		    lvx_cms_dump (";; lvx cms:   WIDEREACH lr%d r%u+%d held by"
+		  if (dump_file && lvx_lms_probe
+		      && lvx_lms_lrange_invariant_p (lr, rj))
+		    lvx_lms_dump (";; lvx cms:   WIDEREACH lr%d r%u+%d held by"
 				  " lr%u's effect insn=%u nregs=%d %s\n", rj,
 				  lr[rj]->regno, lr[rj]->nregs, k,
 				  lr[k]->effects[e].insn,
 				  lr[k]->effects[e].nregs,
 				  lr[k]->effects[e].is_def ? "DEF" : "read");
-		  lvx_cms_hold_range (lr, rj, 6);
-		  lvx_cms_hold_range (lr, rk, 6);
+		  lvx_lms_hold_range (lr, rj, 6);
+		  lvx_lms_hold_range (lr, rk, 6);
 		}
 	    }
 	}
@@ -18027,7 +18027,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 	  for (unsigned e = 0; e < lr[k]->effects.length (); e++)
 	    if (lr[k]->effects[e].insn == i)
 	      {
-		lvx_cms_hold_range (lr, lvx_cms_lrange_root (lr, (int) k), 7);
+		lvx_lms_hold_range (lr, lvx_lms_lrange_root (lr, (int) k), 7);
 		break;
 	      }
 	}
@@ -18043,7 +18043,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 
       for (unsigned k = 0; k < lr.length (); k++)
 	if (!lr[k]->effects.is_empty ()
-	    && lvx_cms_lrange_root (lr, (int) k) == (int) k)
+	    && lvx_lms_lrange_root (lr, (int) k) == (int) k)
 	  {
 	    nunit++;
 	    if (!lr[k]->renamed)
@@ -18059,7 +18059,7 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
 /* THE DATES, WHICH NEED A SCHEDULE.  §7tricies.30.
 
    Split from the structural build because the structure must exist BEFORE the
-   graph is finished -- lvx_cms_build_graph consults the live range partition to
+   graph is finished -- lvx_lms_build_graph consults the live range partition to
    decide which anti-dependences to keep -- while the dates cannot exist until
    SIGMA does.  The reference splits it the same way, and at the same seam:
    unfold_igraph_make_ranges then unfold_igraph_set_range_dates.
@@ -18074,13 +18074,13 @@ lvx_cms_build_lranges (const auto_vec<rtx_insn *> &seq,
    once from the root's span.  */
 
 static void
-lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
-			  auto_vec<lvx_cms_lrange_part *> &lr,
+lvx_lms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
+			  auto_vec<lvx_lms_lrange_part *> &lr,
 			  const auto_vec<int> &sigma, int ii, bitmap liveout)
 {
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange_part *g = lr[k];
+      lvx_lms_lrange_part *g = lr[k];
       bool first = true;
 
       g->first_date = g->last_date = 0;
@@ -18119,7 +18119,7 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
 	 went wrong on store.c, where an intra-iteration range and the
 	 loop-carried one share r1 and the register test flagged both.
 
-	 lvx_cms_build_lranges sets it instead, from the branch's INDIRECT
+	 lvx_lms_build_lranges sets it instead, from the branch's INDIRECT
 	 USES: the range that has one is the range live on the exit edge, by
 	 the same rule that keys every other reference to its range.  That is
 	 a structural answer, not a predicate over the side, and it needs no
@@ -18139,7 +18139,7 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
 
       if (lr[k]->effects.is_empty ())
 	continue;
-      root = lvx_cms_lrange_root (lr, (int) k);
+      root = lvx_lms_lrange_root (lr, (int) k);
       if (root == (int) k)
 	continue;
       /* §7tricies.119: the root is the LATEST part of its union, which is
@@ -18192,9 +18192,9 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
     for (unsigned k = 0; k < lr.length (); k++)
       {
 	lr[k]->occ_last = lr[k]->last_date;
-	if (lvx_cms_exit_live_span
+	if (lvx_lms_exit_live_span
 	    && !lr[k]->effects.is_empty ()
-	    && lvx_cms_lrange_root (lr, (int) k) == (int) k
+	    && lvx_lms_lrange_root (lr, (int) k) == (int) k
 	    && lr[k]->exit_live)
 	  lr[k]->occ_last = MAX (lr[k]->last_date, endd);
       }
@@ -18217,7 +18217,7 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
   for (unsigned k = 0; k < lr.length (); k++)
     {
       int root = lr[k]->effects.is_empty () ? (int) k
-		 : lvx_cms_lrange_root (lr, (int) k);
+		 : lvx_lms_lrange_root (lr, (int) k);
       /* PROVISIONAL, AND READ ONLY BY THE DUMP.  §7tricies.90.  The colouring
 	 overwrites P2UNROLL with its own degree, and every functional read --
 	 the index computation, the invariant check -- happens after that.  So
@@ -18227,19 +18227,19 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
 	 same ec anyway, so the two never disagree in the direction that
 	 matters.  */
       int life = (lr[root]->last_date - lr[root]->first_date
-		  + (lvx_cms_lrange_ec_p (seq, lr[root]) ? 1 : 0));
+		  + (lvx_lms_lrange_ec_p (seq, lr[root]) ? 1 : 0));
       int need = ii > 0 ? (life + ii - 1) / ii : 1;
       int p2 = 1;
 
       if (!lr[root]->renamed)
 	need = 1;
-      while (p2 < need && p2 < LVX_CMS_MAX_KUNROLL)
+      while (p2 < need && p2 < LVX_LMS_MAX_KUNROLL)
 	p2 <<= 1;
       lr[k]->p2unroll = MAX (p2, 1);
       lr[k]->use_first = lr[root]->use_first;
       lr[k]->first_date = lr[root]->first_date;
       lr[k]->last_date = lr[root]->last_date;
-      for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
+      for (int x = 0; x < LVX_LMS_MAX_KUNROLL; x++)
 	lr[k]->reg[x] = (int) lr[k]->regno;
     }
 }
@@ -18248,28 +18248,28 @@ lvx_cms_set_lrange_dates (const auto_vec<rtx_insn *> &seq,
    what the structure IS, which is what a wrong answer needs.  */
 
 static void
-lvx_cms_dump_lranges (const auto_vec<rtx_insn *> &seq,
-		      const auto_vec<lvx_cms_lrange_part *> &lr, const char *tag)
+lvx_lms_dump_lranges (const auto_vec<rtx_insn *> &seq,
+		      const auto_vec<lvx_lms_lrange_part *> &lr, const char *tag)
 {
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange_part *g = lr[k];
+      lvx_lms_lrange_part *g = lr[k];
 
       if (g->effects.is_empty ())
 	continue;
-      lvx_cms_dump (";; lvx cms:   %s lr%u r%u+%d root=%d p2=%d uf=%d"
+      lvx_lms_dump (";; lvx cms:   %s lr%u r%u+%d root=%d p2=%d uf=%d"
 		    " ren=%d xl=%d [%d,%d] regs=", tag, k, g->regno,
-		    g->nregs, lvx_cms_lrange_root (lr, (int) k), g->p2unroll,
+		    g->nregs, lvx_lms_lrange_root (lr, (int) k), g->p2unroll,
 		    g->use_first ? 1 : 0, g->renamed ? 1 : 0,
 		    g->exit_live ? 1 : 0, g->first_date, g->last_date);
-      for (int j = 0; j < g->p2unroll && j < LVX_CMS_MAX_KUNROLL; j++)
-	lvx_cms_dump ("%sr%d", j ? "," : "", g->reg[j]);
-      lvx_cms_dump (" eff=");
+      for (int j = 0; j < g->p2unroll && j < LVX_LMS_MAX_KUNROLL; j++)
+	lvx_lms_dump ("%sr%d", j ? "," : "", g->reg[j]);
+      lvx_lms_dump (" eff=");
       for (unsigned e = 0; e < g->effects.length (); e++)
-	lvx_cms_dump ("%s%u/%d%s%s", e ? "," : "", g->effects[e].insn,
+	lvx_lms_dump ("%s%u/%d%s%s", e ? "," : "", g->effects[e].insn,
 		      g->effects[e].slot, g->effects[e].is_def ? "D" : "U",
 		      g->effects[e].delayed ? "~" : "");
-      lvx_cms_dump ("\n");
+      lvx_lms_dump ("\n");
     }
   (void) seq;
 }
@@ -18287,10 +18287,10 @@ lvx_cms_dump_lranges (const auto_vec<rtx_insn *> &seq,
    So this is an invariant of the structure, checked rather than assumed: two
    live ranges may not overlap in registers.  The reference carries the same
    constraint as UNFOLD_EFFECT_FLAG_ALIASED and a PARENT link per
-   sub-register, which lvx_cms_build_lranges did not have.  */
+   sub-register, which lvx_lms_build_lranges did not have.  */
 
 static int
-lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange_part *> &lr)
+lvx_lms_lrange_overlaps (const auto_vec<lvx_lms_lrange_part *> &lr)
 {
   int bad = 0;
 
@@ -18304,8 +18304,8 @@ lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange_part *> &lr)
 
 	  if (lr[b]->effects.is_empty ())
 	    continue;
-	  if (lvx_cms_lrange_root (lr, (int) a)
-	      == lvx_cms_lrange_root (lr, (int) b))
+	  if (lvx_lms_lrange_root (lr, (int) a)
+	      == lvx_lms_lrange_root (lr, (int) b))
 	    continue;		/* one live range, one stack: consistent */
 	  alo = lr[a]->regno;
 	  ahi = alo + MAX (lr[a]->nregs, 1);
@@ -18321,11 +18321,11 @@ lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange_part *> &lr)
 /* THE ANTI-DEPENDENCES THE GRAPH DROPPED, CHECKED AGAINST THE ASSIGNMENT.
    §7tricies.38.
 
-   lvx_cms_antidep_real_p drops a register WAR or WAW arc whenever the two
+   lvx_lms_antidep_real_p drops a register WAR or WAW arc whenever the two
    references belong to different live ranges and at least one of them is renamed,
    on the assumption that modulo expansion separates them.  That assumption is
    about the FINAL assignment -- which register each live range's each name got --
-   and nothing on the live range path was checking it: lvx_cms_verify_antidep
+   and nothing on the live range path was checking it: lvx_lms_verify_antidep
    still runs, but over the class arrays, and site.antidep_ok stopped gating
    anything when the class gates went.  This is the check that belongs there.
 
@@ -18334,12 +18334,12 @@ lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange_part *> &lr)
    then no WAR or WAW between two live ranges can exist to be violated -- the
    second reference simply is not using the first's storage.  So this rebuilds
    the occupancy from SIGMA and the assigned stacks and counts occupants per
-   (cycle, register), the same shape as lvx_cms_verify_rename and for the same
+   (cycle, register), the same shape as lvx_lms_verify_rename and for the same
    reason: the colouring decided interference from a model it built itself, so
    a bug in that model cannot be caught by the colouring.
 
    WHAT IT MUST COVER THAT THE COLOURING DOES NOT.  A HELD live range is not in
-   the interference graph at all -- lvx_cms_colour_lranges skips every root
+   the interference graph at all -- lvx_lms_colour_lranges skips every root
    that is not renamed -- so its register is invisible there and is kept out of
    AVAIL instead.  Here it is given an occupancy of its own, so a renamed name
    landing on it is caught rather than assumed away.
@@ -18358,8 +18358,8 @@ lvx_cms_lrange_overlaps (const auto_vec<lvx_cms_lrange_part *> &lr)
    know which two live ranges to reinstate an arc between.  */
 
 static bool
-lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
-			   const auto_vec<lvx_cms_lrange_part *> &lr,
+lvx_lms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
+			   const auto_vec<lvx_lms_lrange_part *> &lr,
 			   int ii, int lo, int kunroll, int *nconf_out,
 			   int *first_a, int *first_b, int *first_reg,
 			   int *first_cycle, int *nheld_out, int *ninv_out,
@@ -18377,7 +18377,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 
   *nconf_out = *nheld_out = *ninv_out = *nocc_out = 0;
   *first_a = *first_b = *first_reg = *first_cycle = -1;
-  if (ii <= 0 || kunroll <= 0 || per > LVX_CMS_IG_MAX_PERIOD)
+  if (ii <= 0 || kunroll <= 0 || per > LVX_LMS_IG_MAX_PERIOD)
     return true;		/* not modelled: the caller's other gates */
 
   /* OCC[cycle][reg] is the live range root holding that register then, or -1.  */
@@ -18388,12 +18388,12 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange_part *g = lr[k];
+      lvx_lms_lrange_part *g = lr[k];
       int root, ec, d, life, nr;
 
       if (g->effects.is_empty ())
 	continue;
-      root = lvx_cms_lrange_root (lr, (int) k);
+      root = lvx_lms_lrange_root (lr, (int) k);
       if (root != (int) k)
 	continue;		/* one live range, one occupancy */
       nr = MAX (g->nregs, 1);
@@ -18463,7 +18463,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 
       /* THE SAME-LIVE RANGE DROP, CHECKED.  §7tricies.79.
 
-	 lvx_cms_antidep_real_p drops a WAR or WAW between two references of
+	 lvx_lms_antidep_real_p drops a WAR or WAW between two references of
 	 ONE live range at OMEGA > 0 on the grounds that the expansion separates
 	 the instances.  The occupancy test below cannot see that: it compares
 	 pairs of DIFFERENT live ranges, and one live range on its own register is
@@ -18481,7 +18481,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 	     P2UNROLL is derived from LIFE to satisfy exactly this, so no
 	     input can break it -- unless the derivation was abandoned, which
 	     happens in one place only: a range needing more names than
-	     LVX_CMS_MAX_KUNROLL has its degree capped, and says so.  That
+	     LVX_LMS_MAX_KUNROLL has its degree capped, and says so.  That
 	     case is a capacity limit an input can reach and is refused
 	     below; every other way of arriving here is a bug, and refusing
 	     the loop would hide it behind a silently unpipelined loop.  */
@@ -18498,7 +18498,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
 
       /* Name J carries the copies congruent to J modulo P2UNROLL, which is
 	 exact because P2UNROLL divides KUNROLL.  */
-      for (int j = 0; j < g->p2unroll && j < LVX_CMS_MAX_KUNROLL; j++)
+      for (int j = 0; j < g->p2unroll && j < LVX_LMS_MAX_KUNROLL; j++)
 	for (int cp = j; cp < kunroll; cp += g->p2unroll)
 	  for (int t = 0; t < life; t++)
 	    {
@@ -18559,7 +18559,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
        it, because the preheader wrote it, and name 0 comes round every
        P2UNROLL iterations.)
      - one live range that is renamed: dropped here, and whether the expansion
-       really separated it is what lvx_cms_verify_antidep asks of the chosen
+       really separated it is what lvx_lms_verify_antidep asks of the chosen
        SIGMA and the chosen P2 -- the condition being life < p2 * II, which
        p2 = ceil (life / II) gives, so only a live range that came out at p2 = 1
        can fail it.
@@ -18577,7 +18577,7 @@ lvx_cms_verify_lr_antidep (const auto_vec<rtx_insn *> &seq,
    An unresolvable reference keeps the arc.  */
 
 static bool
-lvx_cms_lrange_keeps_regno_p (const auto_vec<lvx_cms_lrange_part *> &lr, int root)
+lvx_lms_lrange_keeps_regno_p (const auto_vec<lvx_lms_lrange_part *> &lr, int root)
 {
   /* §7tricies.156: USE_FIRST keeps its register only because name 0 is
      pinned to it.  The preheader copy removes the pin, so a renamed
@@ -18585,12 +18585,12 @@ lvx_cms_lrange_keeps_regno_p (const auto_vec<lvx_cms_lrange_part *> &lr, int roo
      spurious as any other renamed range's.  */
   return !lr[root]->renamed
 	 || (lr[root]->use_first
-	     && !(lvx_cms_preheader_copy && (lvx_cms_ph_parts & 2)));
+	     && !(lvx_lms_preheader_copy && (lvx_lms_ph_parts & 2)));
 }
 
 static bool
-lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
-			lvx_cms_lrange_part *ga, lvx_cms_lrange_part *gb,
+lvx_lms_antidep_real_p (const auto_vec<lvx_lms_lrange_part *> &lr,
+			lvx_lms_lrange_part *ga, lvx_lms_lrange_part *gb,
 			int *why /* [3]: unresolved, one live range, both keep */,
 			HOST_WIDE_INT omega, unsigned ia = ~0u,
 			unsigned ib = ~0u, bool src_is_def = false)
@@ -18602,8 +18602,8 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
       why[0]++;
       return true;
     }
-  ra = lvx_cms_lrange_root (lr, ga->self);
-  rb = lvx_cms_lrange_root (lr, gb->self);
+  ra = lvx_lms_lrange_root (lr, ga->self);
+  rb = lvx_lms_lrange_root (lr, gb->self);
   if (ra == rb)
     {
       /* THE EXPANSION SEPARATES ITERATIONS, NOT A SINGLE ITERATION'S OWN
@@ -18625,7 +18625,7 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
       if (omega == 0)
 	return true;
       /* The expansion separates them, which is CHECKED rather than assumed:
-	 lvx_cms_verify_lr_antidep requires LIFE <= P2UNROLL * II for every
+	 lvx_lms_verify_lr_antidep requires LIFE <= P2UNROLL * II for every
 	 renamed live range, and that inequality is exactly the statement that
 	 instance I's range ends before instance I + P2UNROLL reuses its
 	 register.  §7tricies.79.
@@ -18720,14 +18720,14 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
      THE DEGREE IS A CONSEQUENCE, NOT A PRECONDITION, which is what makes this
      sound without knowing P2UNROLL here.  Dropping the arc lets the earlier
      reference slip past the later write; the range's interval then WIDENS to
-     cover it, LVX_CMS_SET_LRANGE_DATES measures that on the schedule the drop
+     cover it, LVX_LMS_SET_LRANGE_DATES measures that on the schedule the drop
      produced, and `ceil (life / II)' yields the second name by itself.  The
      invariant `life <= p2unroll * II' is checked afterwards rather than
      assumed, so the obligation is verified where it is discharged.
 
      USE_FIRST IS NOT AN EXCEPTION, and treating it as one is what this
      replaces.  The test used to be `both ends keep their architected
-     register', with lvx_cms_lrange_keeps_regno_p = `!renamed || use_first'.
+     register', with lvx_lms_lrange_keeps_regno_p = `!renamed || use_first'.
      That predicate belongs to §7tricies.26, where the question is which
      registers the colouring may FREE, and there USE_FIRST matters because
      name 0 is pinned to what the preheader wrote.  It is the wrong question
@@ -18738,7 +18738,7 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
 
      The source side keeps its old meaning: if the READER has been moved to a
      different register, the arc is equally spurious.  */
-  if (!lvx_cms_lrange_keeps_regno_p (lr, ra))
+  if (!lvx_lms_lrange_keeps_regno_p (lr, ra))
     return false;
   if (lr[rb]->renamed && !lr[rb]->effects.is_empty ()
       && lr[rb]->effects[0].is_def)
@@ -18749,7 +18749,7 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
 
 /* THE REGISTERS THE RANGE MODEL HOLDS.  §7tricies.26.
 
-   lvx_cms_reserved_regs had to count definitions per register and compare the
+   lvx_lms_reserved_regs had to count definitions per register and compare the
    total against how many of them belonged to a renamed value, because a value
    did not know its own references: a register was freeable when `every
    definition of it belongs to a value the renaming rewrites', and reads were
@@ -18769,8 +18769,8 @@ lvx_cms_antidep_real_p (const auto_vec<lvx_cms_lrange_part *> &lr,
    hard-set override and three wrong diagnoses is now the ordinary answer.  */
 
 static void
-lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
-			 const auto_vec<lvx_cms_lrange_part *> &lr,
+lvx_lms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
+			 const auto_vec<lvx_lms_lrange_part *> &lr,
 			 bitmap livein, HARD_REG_SET *reserved,
 			 int *pool_out = NULL)
 {
@@ -18809,7 +18809,7 @@ lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
 
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange_part *g = lr[k];
+      lvx_lms_lrange_part *g = lr[k];
       bool rewritten;
 
       if (g->effects.is_empty ())
@@ -18818,8 +18818,8 @@ lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
 	 a range whose union is held keeps its register, and so does a
 	 USE_FIRST live range, whose name 0 is pinned to this very register
 	 because the preheader wrote it.  */
-      rewritten = lr[lvx_cms_lrange_root (lr, (int) k)]->renamed
-		  && !lr[lvx_cms_lrange_root (lr, (int) k)]->use_first;
+      rewritten = lr[lvx_lms_lrange_root (lr, (int) k)]->renamed
+		  && !lr[lvx_lms_lrange_root (lr, (int) k)]->use_first;
       for (int w = 0; w < MAX (g->nregs, 1); w++)
 	if (g->regno + w < FIRST_PSEUDO_REGISTER)
 	  {
@@ -18861,7 +18861,7 @@ lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
 
 /* COLOUR THE RANGES AND FILL THEIR REG[] STACKS.  §7tricies.26.
 
-   lvx_cms_colour is unchanged and takes the same parallel arrays; what changes
+   lvx_lms_colour is unchanged and takes the same parallel arrays; what changes
    is what one entry IS.  A unit used to be a value -- one definition that
    something reads, identified by the register RA gave it -- then a tie class
    merging the values a tied operand forces together.  It is now a range, and
@@ -18875,7 +18875,7 @@ lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
        the same register in the same instruction and therefore already one
        range -- there is nothing to merge.
 
-   P2UNROLL IS READ BACK, not recomputed.  lvx_cms_build_lranges puts a
+   P2UNROLL IS READ BACK, not recomputed.  lvx_lms_build_lranges puts a
    provisional power-of-two round in it so the structural report has something
    to say; what the renaming uses is the number of anodes the colouring
    actually built, which is the discipline that fixed the -mcms-exact-degree
@@ -18884,8 +18884,8 @@ lvx_cms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
 
 /* Declared ahead of their definitions: the two accessors over the anode
    arrays, which the value path keeps next to its own rename map.  */
-static int lvx_cms_value_p2 (const auto_vec<int> &, int);
-static int lvx_cms_anode_of (const auto_vec<int> &, const auto_vec<int> &,
+static int lvx_lms_value_p2 (const auto_vec<int> &, int);
+static int lvx_lms_anode_of (const auto_vec<int> &, const auto_vec<int> &,
 			     int, int);
 
 /* DOES THIS LIVE RANGE CARRY A TIED REFERENCE?  §7tricies.120.
@@ -18966,7 +18966,7 @@ static int lvx_cms_anode_of (const auto_vec<int> &, const auto_vec<int> &,
 	dataflow update after it is wrong.  */
 
 static int
-lvx_cms_free_hard_reg (class loop *loop, basic_block *body, machine_mode mode)
+lvx_lms_free_hard_reg (class loop *loop, basic_block *body, machine_mode mode)
 {
   HARD_REG_SET taken;
   df_ref ref;
@@ -19017,7 +19017,7 @@ lvx_cms_free_hard_reg (class loop *loop, basic_block *body, machine_mode mode)
    matching constraint names.  §7tricies.139.  */
 
 static rtx *
-lvx_cms_group_output (rtx_insn *insn)
+lvx_lms_group_output (rtx_insn *insn)
 {
   if (!INSN_P (insn) || recog_memoized (insn) < 0)
     return NULL;
@@ -19048,7 +19048,7 @@ lvx_cms_group_output (rtx_insn *insn)
    in; the caller re-derives everything afterwards, since the body changed.  */
 
 static int
-lvx_cms_tied_copies (class loop *loop, basic_block *body)
+lvx_lms_tied_copies (class loop *loop, basic_block *body)
 {
   int ncopy = 0;
 
@@ -19068,7 +19068,7 @@ lvx_cms_tied_copies (class loop *loop, basic_block *body)
 	  next = (insn == BB_END (body[b]) ? NULL : NEXT_INSN (insn));
 	  if (!NONJUMP_INSN_P (insn))
 	    continue;
-	  out = lvx_cms_group_output (insn);
+	  out = lvx_lms_group_output (insn);
 	  if (!out || !*out || !REG_P (*out)
 	      || REGNO (*out) >= FIRST_PSEUDO_REGISTER)
 	    continue;
@@ -19099,11 +19099,11 @@ lvx_cms_tied_copies (class loop *loop, basic_block *body)
 	  if (!after || before)
 	    continue;
 
-	  t = lvx_cms_free_hard_reg (loop, body, mode);
+	  t = lvx_lms_free_hard_reg (loop, body, mode);
 	  if (t < 0)
 	    {
-	      if (dump_file && lvx_cms_probe)
-		lvx_cms_dump (";; lvx cms: fn=%s loop %d tied copy declined,"
+	      if (dump_file && lvx_lms_probe)
+		lvx_lms_dump (";; lvx cms: fn=%s loop %d tied copy declined,"
 			      " no spare hard register for r%u\n",
 			      current_function_name (), loop->num, outreg);
 	      continue;
@@ -19130,14 +19130,14 @@ lvx_cms_tied_copies (class loop *loop, basic_block *body)
 	    }
 	  if (!apply_change_group ())
 	    {
-	      if (dump_file && lvx_cms_probe)
-		lvx_cms_dump (";; lvx cms: fn=%s loop %d tied copy declined,"
+	      if (dump_file && lvx_lms_probe)
+		lvx_lms_dump (";; lvx cms: fn=%s loop %d tied copy declined,"
 			      " a reader refuses r%d\n",
 			      current_function_name (), loop->num, t);
 	      continue;
 	    }
 	  ncopy++;
-	  lvx_cms_dump (";; lvx cms: fn=%s loop %d TIEDCOPY r%u -> r%d after"
+	  lvx_lms_dump (";; lvx cms: fn=%s loop %d TIEDCOPY r%u -> r%d after"
 			" insn %d\n", current_function_name (), loop->num,
 			outreg, t, INSN_UID (insn));
 	}
@@ -19200,7 +19200,7 @@ lvx_cms_tied_copies (class loop *loop, basic_block *body)
 
 /* TIED FOR CERTAIN, not tied for want of an answer.  §7tricies.141.
 
-   lvx_cms_operand_tied_p answers TRUE on every path where it cannot decide --
+   lvx_lms_operand_tied_p answers TRUE on every path where it cannot decide --
    no operand index, no location, the insn does not recognise, the constraints
    do not hold, no alternative chosen, the operand not in the constrained list.
    That is the right default for its original caller, which withholds a
@@ -19220,14 +19220,14 @@ lvx_cms_tied_copies (class loop *loop, basic_block *body)
    a regression from it.  */
 
 static bool
-lvx_cms_operand_tied_certain_p (rtx_insn *insn, int useidx)
+lvx_lms_operand_tied_certain_p (rtx_insn *insn, int useidx)
 {
   const operand_alternative *alt;
   rtx *loc;
 
   if (useidx < 0)
     return false;
-  loc = lvx_cms_reg_at (&PATTERN (insn), useidx);
+  loc = lvx_lms_reg_at (&PATTERN (insn), useidx);
   if (loc == NULL)
     return false;
   if (recog_memoized (insn) < 0)
@@ -19250,14 +19250,14 @@ lvx_cms_operand_tied_certain_p (rtx_insn *insn, int useidx)
 }
 
 static bool
-lvx_cms_lrange_tied_delayed_p (const auto_vec<rtx_insn *> &seq,
-			       const auto_vec<lvx_cms_lrange_part *> &lr,
+lvx_lms_lrange_tied_delayed_p (const auto_vec<rtx_insn *> &seq,
+			       const auto_vec<lvx_lms_lrange_part *> &lr,
 			       int root)
 {
   for (unsigned k = 0; k < lr.length (); k++)
     {
       if (lr[k]->effects.is_empty ()
-	  || lvx_cms_lrange_root (lr, (int) k) != root)
+	  || lvx_lms_lrange_root (lr, (int) k) != root)
 	continue;
       for (unsigned e = 0; e < lr[k]->effects.length (); e++)
 	{
@@ -19265,10 +19265,10 @@ lvx_cms_lrange_tied_delayed_p (const auto_vec<rtx_insn *> &seq,
 
 	  if (lr[k]->effects[e].is_def
 	      || !lr[k]->effects[e].delayed
-	      || lr[k]->effects[e].slot == LVX_CMS_SLOT_INDIRECT
+	      || lr[k]->effects[e].slot == LVX_LMS_SLOT_INDIRECT
 	      || i >= seq.length ())
 	    continue;
-	  if (!lvx_cms_operand_tied_certain_p (seq[i], lr[k]->effects[e].slot))
+	  if (!lvx_lms_operand_tied_certain_p (seq[i], lr[k]->effects[e].slot))
 	    continue;
 	  /* AND THE SAME RANGE MUST DEF THAT INSTRUCTION.  §7tricies.144.
 	     The group's two members diverge only when BOTH resolve to this
@@ -19283,7 +19283,7 @@ lvx_cms_lrange_tied_delayed_p (const auto_vec<rtx_insn *> &seq,
 	  for (unsigned k2 = 0; k2 < lr.length (); k2++)
 	    {
 	      if (lr[k2]->effects.is_empty ()
-		  || lvx_cms_lrange_root (lr, (int) k2) != root)
+		  || lvx_lms_lrange_root (lr, (int) k2) != root)
 		continue;
 	      for (unsigned e2 = 0; e2 < lr[k2]->effects.length (); e2++)
 		if (lr[k2]->effects[e2].is_def
@@ -19296,23 +19296,23 @@ lvx_cms_lrange_tied_delayed_p (const auto_vec<rtx_insn *> &seq,
 }
 
 static bool
-lvx_cms_lrange_tied_p (const auto_vec<rtx_insn *> &seq,
-		       const auto_vec<lvx_cms_lrange_part *> &lr, int root)
+lvx_lms_lrange_tied_p (const auto_vec<rtx_insn *> &seq,
+		       const auto_vec<lvx_lms_lrange_part *> &lr, int root)
 {
   for (unsigned k = 0; k < lr.length (); k++)
     {
       if (lr[k]->effects.is_empty ()
-	  || lvx_cms_lrange_root (lr, (int) k) != root)
+	  || lvx_lms_lrange_root (lr, (int) k) != root)
 	continue;
       for (unsigned e = 0; e < lr[k]->effects.length (); e++)
 	{
 	  unsigned i = lr[k]->effects[e].insn;
 
 	  if (lr[k]->effects[e].is_def
-	      || lr[k]->effects[e].slot == LVX_CMS_SLOT_INDIRECT
+	      || lr[k]->effects[e].slot == LVX_LMS_SLOT_INDIRECT
 	      || i >= seq.length ())
 	    continue;
-	  if (lvx_cms_operand_tied_p (seq[i], lr[k]->effects[e].slot))
+	  if (lvx_lms_operand_tied_p (seq[i], lr[k]->effects[e].slot))
 	    return true;
 	}
     }
@@ -19320,8 +19320,8 @@ lvx_cms_lrange_tied_p (const auto_vec<rtx_insn *> &seq,
 }
 
 static bool
-lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
-			auto_vec<lvx_cms_lrange_part *> &lr, int ii, int lo,
+lvx_lms_colour_lranges (const auto_vec<rtx_insn *> &seq,
+			auto_vec<lvx_lms_lrange_part *> &lr, int ii, int lo,
 			unsigned HOST_WIDE_INT avail, int *nn_out,
 			int *stuck_out, int *maxreg_out, int *kun_out,
 			int *pin_out, int *pinfail_out, int *wide_out,
@@ -19340,7 +19340,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange_part *g = lr[k];
+      lvx_lms_lrange_part *g = lr[k];
       int ec, life;
       bool ec_tied_dbg = false, ec_ecp_dbg = false;
 
@@ -19348,7 +19348,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	 root's stack and is filled in from it below; a live range that is not
 	 renamed holds its register and is not a unit at all.  */
       if (g->effects.is_empty () || !g->renamed
-	  || lvx_cms_lrange_root (lr, (int) k) != (int) k)
+	  || lvx_lms_lrange_root (lr, (int) k) != (int) k)
 	continue;
       /* CLAIM_DEF_CYCLE makes every interval [def, last] instead of
 	 [def + !earlyclobber, last].  That is not the true interval -- a VLIW
@@ -19370,11 +19370,11 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	 claiming for it turned five loops' entire pipeline into a late
 	 `recog' refusal.  Mode 2 withholds the claim from exactly those
 	 ranges, which is LESS conservative and therefore not assumed to be
-	 sound: lvx_cms_slot_order is run on the result and the mode is used
+	 sound: lvx_lms_slot_order is run on the result and the mode is used
 	 only if it still linearises.  */
       /* BOTH PREDICATES ASKED ONCE, IN A DEFINED ORDER.  §7tricies.147.
 
-	 lvx_cms_lrange_tied_p and lvx_cms_lrange_ec_p each run
+	 lvx_lms_lrange_tied_p and lvx_lms_lrange_ec_p each run
 	 extract_insn and constrain_operands, so each LEAVES recog_data and
 	 WHICH_ALTERNATIVE pointing at whatever insn it looked at last.  Asked
 	 inside one expression they were therefore order-dependent: the `||'
@@ -19387,9 +19387,9 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	 Hoisted into locals, so the order is written down rather than implied
 	 by `||', and so the dump can print exactly what the decision used.  */
       {
-	int root_k = lvx_cms_lrange_root (lr, (int) k);
-	bool tied_k = lvx_cms_lrange_tied_p (seq, lr, root_k);
-	bool ecp_k = lvx_cms_lrange_ec_p (seq, g);
+	int root_k = lvx_lms_lrange_root (lr, (int) k);
+	bool tied_k = lvx_lms_lrange_tied_p (seq, lr, root_k);
+	bool ecp_k = lvx_lms_lrange_ec_p (seq, g);
 
 	ec = ((claim_def_cycle == 1
 	       || (claim_def_cycle == 2 && !tied_k))
@@ -19417,8 +19417,8 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
       /* §7tricies.147: the degree's own inputs, for ranges that will rotate.
 	 Deducing EC from the pattern and the claim mode got the wrong answer
 	 twice; this prints what the computation actually used.  */
-      if (dump_file && lvx_cms_probe && deg.last () > 1)
-	lvx_cms_dump (";; lvx cms:   DEG lr%u r%u [%d,%d] ec=%d life=%d ii=%d"
+      if (dump_file && lvx_lms_probe && deg.last () > 1)
+	lvx_lms_dump (";; lvx cms:   DEG lr%u r%u [%d,%d] ec=%d life=%d ii=%d"
 		      " deg=%d claim=%d tied=%d ecp=%d\n", k, g->regno,
 		      g->first_date, g->last_date, ec, life, ii, deg.last (),
 		      claim_def_cycle,
@@ -19440,9 +19440,9 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	 ranges, where the value arrives from outside the iteration and the
 	 excess sits between its arrival and its consumption.  Counted here
 	 so the population is measured rather than asserted.  */
-      if (dump_file && lvx_cms_probe && ii > 0 && life > ii
+      if (dump_file && lvx_lms_probe && ii > 0 && life > ii
 	  && !g->renamed)
-	lvx_cms_dump (";; lvx cms:   REMEDY lr%u r%u uf=%d life=%d ii=%d"
+	lvx_lms_dump (";; lvx cms:   REMEDY lr%u r%u uf=%d life=%d ii=%d"
 		      " excess=%d want=%d\n", k, g->regno,
 		      g->use_first ? 1 : 0, life, ii, life - ii,
 		      g->use_first ? 2 : 1);
@@ -19482,13 +19482,13 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
      unrewarded HERE, not that it is wrong.  An allocator that does get stuck
      is where it would pay, and that is a property of the allocator rather
      than of this transformation.  */
-  if (lvx_cms_force_p2unroll && !deg.is_empty ())
+  if (lvx_lms_force_p2unroll && !deg.is_empty ())
     {
       int mx = 1, k2 = 1, forced = 0;
 
       for (unsigned u = 0; u < deg.length (); u++)
 	mx = MAX (mx, deg[u]);
-      while (k2 < mx && k2 < LVX_CMS_MAX_KUNROLL)
+      while (k2 < mx && k2 < LVX_LMS_MAX_KUNROLL)
 	k2 <<= 1;
       for (unsigned u = 0; u < deg.length (); u++)
 	{
@@ -19498,7 +19498,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	     value depends on the rotation its exit came from, so raising their
 	     degree multiplies the drain's reconciliation copies -- once per
 	     loop ENTRY, not per iteration.  */
-	  if (lvx_cms_force_p2unroll < 2 && lr[idx[u]]->exit_live)
+	  if (lvx_lms_force_p2unroll < 2 && lr[idx[u]]->exit_live)
 	    continue;
 	  deg[u] = k2, forced++;
 	}
@@ -19506,8 +19506,8 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	 so a line without it is invisible -- which is how this counter read
 	 zero while the forcing was firing, and why the option first looked
 	 inert.  */
-      if (forced && lvx_cms_probe)
-	lvx_cms_dump (";; lvx cms: fn=%s forcep2 kunroll=%d forced=%d of %u\n",
+      if (forced && lvx_lms_probe)
+	lvx_lms_dump (";; lvx cms: fn=%s forcep2 kunroll=%d forced=%d of %u\n",
 		      current_function_name (), k2, forced, deg.length ());
     }
 
@@ -19529,7 +19529,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
   vprefer.safe_grow_cleared (idx.length ());
   for (unsigned u = 0; u < idx.length (); u++)
     {
-      lvx_cms_lrange_part *g = lr[idx[u]];
+      lvx_lms_lrange_part *g = lr[idx[u]];
 
       vprefer[u] = (g->exit_live && !g->effects.is_empty ()
 		    && g->effects[0].is_def
@@ -19548,26 +19548,26 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
       if (lr[idx[u]]->use_first)
 	{
 	  vunpin[u] = (ord < 32
-		       && (lvx_cms_ph_mask >> ord) & 1) ? 1 : 0;
+		       && (lvx_lms_ph_mask >> ord) & 1) ? 1 : 0;
 	  ord++;
 	}
   }
 
   auto_vec<int> vnotown;
-  if (lvx_cms_liveout_split)
+  if (lvx_lms_liveout_split)
     {
       vnotown.safe_grow_cleared (idx.length ());
       for (unsigned u = 0; u < idx.length (); u++)
 	{
-	  lvx_cms_lrange_part *g = lr[idx[u]];
+	  lvx_lms_lrange_part *g = lr[idx[u]];
 
 	  /* §7tricies.156: and so must the exclusion that makes the promise
 	     satisfiable, or the colouring would hand a use-headed range its
 	     own register and the verifier would then refuse the loop.  */
 	  vnotown[u] = (g->exit_live
 			&& (!g->use_first
-			    || (lvx_cms_preheader_copy
-				&& (lvx_cms_ph_parts & 8)))
+			    || (lvx_lms_preheader_copy
+				&& (lvx_lms_ph_parts & 8)))
 			&& !g->effects.is_empty () && g->effects[0].is_def)
 		       ? (int) g->regno : -1;
 	  if (vnotown[u] >= 0)
@@ -19575,20 +19575,20 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 	}
     }
 
-  lvx_cms_colour (def_, last_, deg, nregs_, ec_, ii, lo, &nn, &ne, &msq,
+  lvx_lms_colour (def_, last_, deg, nregs_, ec_, ii, lo, &nn, &ne, &msq,
 		  &spl, &per, &kun, &stuck, &av, &an, &ar, &maxreg, avail,
 		  &vregno, &vuf, &pinned, &pinfail,
-		  lvx_cms_liveout_split ? &vnotown : NULL,
-		  lvx_cms_copy_pref ? &vprefer : NULL, entrybusy, &vunpin);
+		  lvx_lms_liveout_split ? &vnotown : NULL,
+		  lvx_lms_copy_pref ? &vprefer : NULL, entrybusy, &vunpin);
 
   for (unsigned u = 0; u < idx.length (); u++)
     {
-      lvx_cms_lrange_part *g = lr[idx[u]];
-      int p2 = lvx_cms_value_p2 (av, (int) u);
+      lvx_lms_lrange_part *g = lr[idx[u]];
+      int p2 = lvx_lms_value_p2 (av, (int) u);
 
-      for (int j = 0; j < LVX_CMS_MAX_KUNROLL; j++)
+      for (int j = 0; j < LVX_LMS_MAX_KUNROLL; j++)
 	g->reg[j] = (int) g->regno;
-      if (p2 > LVX_CMS_MAX_KUNROLL)
+      if (p2 > LVX_LMS_MAX_KUNROLL)
 	{
 	  /* More names than the stack can hold.  Not a correctness choice
 	     to make quietly: the range would silently wrap onto a name it
@@ -19601,7 +19601,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
       g->p2unroll = MAX (p2, 1);
       for (int j = 0; j < p2; j++)
 	{
-	  int q = lvx_cms_anode_of (av, an, (int) u, j);
+	  int q = lvx_lms_anode_of (av, an, (int) u, j);
 	  if (q >= 0 && ar[q] >= 0)
 	    g->reg[j] = ar[q];
 	  else
@@ -19615,11 +19615,11 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
 
   /* THE LIVE RANGE'S STACK IS EVERY MEMBER'S STACK.  Copied rather than followed
      through the parent at lookup time: the index arithmetic then reads one
-     range and one range only, which is what keeps lvx_cms_lrange_reg the
+     range and one range only, which is what keeps lvx_lms_lrange_reg the
      single place a register is decided.  */
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      int root = lvx_cms_lrange_root (lr, (int) k);
+      int root = lvx_lms_lrange_root (lr, (int) k);
 
       if (root == (int) k)
 	continue;
@@ -19628,7 +19628,7 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
       lr[k]->capped = lr[root]->capped;
       lr[k]->use_first = lr[root]->use_first;
       lr[k]->renamed = lr[root]->renamed;
-      for (int j = 0; j < LVX_CMS_MAX_KUNROLL; j++)
+      for (int j = 0; j < LVX_LMS_MAX_KUNROLL; j++)
 	lr[k]->reg[j] = lr[root]->reg[j];
     }
 
@@ -19664,8 +19664,8 @@ lvx_cms_colour_lranges (const auto_vec<rtx_insn *> &seq,
    That is what tells two ranges in one register apart, and it is the whole of
    what §7tricies.22's gate was standing in for.  */
 
-static lvx_cms_lrange_part *
-lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
+static lvx_lms_lrange_part *
+lvx_lms_lrange_of (const auto_vec<lvx_lms_lrange_part *> &lr, unsigned insn,
 		   int slot, bool *delayed_out, int *offset_out,
 		   int *nregs_out)
 {
@@ -19673,7 +19673,7 @@ lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
     return NULL;
   for (unsigned k = 0; k < lr.length (); k++)
     {
-      lvx_cms_lrange_part *g = lr[k];
+      lvx_lms_lrange_part *g = lr[k];
 
       for (unsigned e = 0; e < g->effects.length (); e++)
 	if (g->effects[e].insn == insn && g->effects[e].slot == slot)
@@ -19715,8 +19715,8 @@ lvx_cms_lrange_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
    carry an OFFSET within the span (§7tricies.71) precisely so that a
    narrower reference belongs to the wider range.  */
 
-static lvx_cms_lrange_part *
-lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
+static lvx_lms_lrange_part *
+lvx_lms_lrange_def_of (const auto_vec<lvx_lms_lrange_part *> &lr, unsigned insn,
 		       unsigned regno)
 {
   for (unsigned k = 0; k < lr.length (); k++)
@@ -19747,11 +19747,11 @@ lvx_cms_lrange_def_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
    live ranges, so this answers only where there is exactly one; it returns null
    rather than a guess otherwise.  */
 
-static lvx_cms_lrange_part *
-lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
+static lvx_lms_lrange_part *
+lvx_lms_lrange_use_of (const auto_vec<lvx_lms_lrange_part *> &lr, unsigned insn,
 		       unsigned regno)
 {
-  lvx_cms_lrange_part *found = NULL;
+  lvx_lms_lrange_part *found = NULL;
 
   for (unsigned k = 0; k < lr.length (); k++)
     {
@@ -19773,7 +19773,7 @@ lvx_cms_lrange_use_of (const auto_vec<lvx_cms_lrange_part *> &lr, unsigned insn,
    computation, and the only place the renaming decides anything.  */
 
 static int
-lvx_cms_lrange_reg (lvx_cms_lrange_part *g, int iteration, bool delayed)
+lvx_lms_lrange_reg (lvx_lms_lrange_part *g, int iteration, bool delayed)
 {
   int index = (iteration + (g->use_first ? 1 : 0) - (delayed ? 1 : 0))
 	      & (g->p2unroll - 1);
@@ -19785,8 +19785,8 @@ lvx_cms_lrange_reg (lvx_cms_lrange_part *g, int iteration, bool delayed)
    two would be the ambiguity this is meant to retire.  */
 
 static bool
-lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
-			const auto_vec<lvx_cms_lrange_part *> &lr,
+lvx_lms_verify_lranges (const auto_vec<rtx_insn *> &seq,
+			const auto_vec<lvx_lms_lrange_part *> &lr,
 			int *nrange_out, int *orphan_out, int *dup_out,
 			int *noloc_out)
 {
@@ -19821,11 +19821,11 @@ lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
       bool onereg = true;
 
       if (lr[k]->effects.is_empty ()
-	  || lvx_cms_lrange_root (lr, (int) k) != (int) k)
+	  || lvx_lms_lrange_root (lr, (int) k) != (int) k)
 	continue;
       for (unsigned j = 0; j < lr.length (); j++)
 	if (!lr[j]->effects.is_empty ()
-	    && lvx_cms_lrange_root (lr, (int) j) == (int) k)
+	    && lvx_lms_lrange_root (lr, (int) j) == (int) k)
 	  {
 	    if (lo < 0)
 	      lo = (int) j;
@@ -19838,7 +19838,7 @@ lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
       for (int j = lo + 1; j < hi; j++)
 	gcc_assert (lr[j]->effects.is_empty ()
 		    || lr[j]->regno != lr[k]->regno
-		    || lvx_cms_lrange_root (lr, j) == (int) k);
+		    || lvx_lms_lrange_root (lr, j) == (int) k);
     }
 
   /* EVERY OPERAND ON EXACTLY ONE LIVE RANGE.  Asked of DF rather than of the
@@ -19861,7 +19861,7 @@ lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
 
 	  if (r >= FIRST_PSEUDO_REGISTER)
 	    continue;
-	  slot = lvx_cms_reg_index (PATTERN (seq[i]), DF_REF_LOC (ref));
+	  slot = lvx_lms_reg_index (PATTERN (seq[i]), DF_REF_LOC (ref));
 	  if (slot < 0)
 	    {
 	      noloc++;
@@ -19872,7 +19872,7 @@ lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
 	      if (lr[k]->effects[e].insn == i
 		  && lr[k]->effects[e].slot == slot)
 		{
-		  int rt = lvx_cms_lrange_root (lr, (int) k);
+		  int rt = lvx_lms_lrange_root (lr, (int) k);
 
 		  if (root < 0)
 		    {
@@ -19896,7 +19896,7 @@ lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
 
 	  if (r >= FIRST_PSEUDO_REGISTER)
 	    continue;
-	  slot = lvx_cms_reg_index (PATTERN (seq[i]), DF_REF_LOC (ref));
+	  slot = lvx_lms_reg_index (PATTERN (seq[i]), DF_REF_LOC (ref));
 	  if (slot < 0)
 	    {
 	      noloc++;
@@ -19907,7 +19907,7 @@ lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
 	      if (lr[k]->effects[e].insn == i
 		  && lr[k]->effects[e].slot == slot)
 		{
-		  int rt = lvx_cms_lrange_root (lr, (int) k);
+		  int rt = lvx_lms_lrange_root (lr, (int) k);
 
 		  if (root < 0)
 		    {
@@ -19950,7 +19950,7 @@ lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
    WHAT THE MAP IS.  Rau's scheme, and it is one line: value V's copy for
    iteration L lives in the register given to V's name (L mod P2(V)).  Name J
    carries the iterations congruent to J modulo P2(V) -- which is exactly what
-   lvx_cms_colour's occupancy construction assumed when it built the
+   lvx_lms_colour's occupancy construction assumed when it built the
    interference graph, so the two cannot disagree without one of them being
    rewritten.  A definition in instance L of instruction OWNER(V) writes that
    register; a use in instance L of a consumer reading V across OMEGA
@@ -19959,18 +19959,18 @@ lvx_cms_verify_lranges (const auto_vec<rtx_insn *> &seq,
 
    P2 IS NOT PASSED IN; it is the number of anodes the colouring made for the
    value.  Recomputing it from DEG and -mcms-exact-degree would be six lines
-   duplicating lvx_cms_colour, and a duplicate of a rounding rule is a thing
+   duplicating lvx_lms_colour, and a duplicate of a rounding rule is a thing
    that goes stale -- this cannot, because it counts what the allocator
    actually built.  A value with no anode has P2 == 0 and is not renamed at
    all: it keeps the register RA gave it.  */
 
 /* Value V's expansion degree as the allocator built it, and the anode index of
    its name J, or -1.  Linear in the anode count, which is bounded by
-   LVX_CMS_IG_MAX_NODES; called per operand, so the loops are the cost of not
+   LVX_LMS_IG_MAX_NODES; called per operand, so the loops are the cost of not
    keeping a parallel index that could disagree with the list it indexes.  */
 
 static int
-lvx_cms_value_p2 (const auto_vec<int> &anode_value, int v)
+lvx_lms_value_p2 (const auto_vec<int> &anode_value, int v)
 {
   int n = 0;
   for (unsigned q = 0; q < anode_value.length (); q++)
@@ -19980,7 +19980,7 @@ lvx_cms_value_p2 (const auto_vec<int> &anode_value, int v)
 }
 
 static int
-lvx_cms_anode_of (const auto_vec<int> &anode_value,
+lvx_lms_anode_of (const auto_vec<int> &anode_value,
 		  const auto_vec<int> &anode_name, int v, int name)
 {
   for (unsigned q = 0; q < anode_value.length (); q++)
@@ -19996,19 +19996,19 @@ lvx_cms_anode_of (const auto_vec<int> &anode_value,
    could be got wrong in one direction only.  */
 
 static int
-lvx_cms_rename_regno (const auto_vec<int> &anode_value,
+lvx_lms_rename_regno (const auto_vec<int> &anode_value,
 		      const auto_vec<int> &anode_name,
 		      const auto_vec<int> &anode_regno,
 		      const auto_vec<int> &vregno, int v, int l)
 {
-  int p2 = lvx_cms_value_p2 (anode_value, v);
+  int p2 = lvx_lms_value_p2 (anode_value, v);
   if (p2 <= 0)
     return v < (int) vregno.length () ? vregno[v] : -1;
   /* Floored modulo: L - OMEGA goes negative in the prologue, where a use
      reaches back past iteration zero.  C's % would give a negative name and
      index nothing.  */
   int name = ((l % p2) + p2) % p2;
-  int q = lvx_cms_anode_of (anode_value, anode_name, v, name);
+  int q = lvx_lms_anode_of (anode_value, anode_name, v, name);
   return q < 0 ? -1 : anode_regno[q];
 }
 
@@ -20024,7 +20024,7 @@ lvx_cms_rename_regno (const auto_vec<int> &anode_value,
 
    RESERVED is the hole the colouring structurally cannot see, and the first
    attempt at measuring it was dead code: it skipped a value whose adjusted
-   life collapses to zero using the very test lvx_cms_colour skips it with, so
+   life collapses to zero using the very test lvx_lms_colour skips it with, so
    the counter could never fire and reported zero for the wrong reason.
 
    The hole is larger than that value class anyway.  The interference graph
@@ -20035,7 +20035,7 @@ lvx_cms_rename_regno (const auto_vec<int> &anode_value,
        (the consumer reads in the cycle the producer writes, which a VLIW
        permits -- so the range is empty but the write is not),
      - a definition with no reader inside the loop at all, which
-       lvx_cms_collect_values drops before the graph is built,
+       lvx_lms_collect_values drops before the graph is built,
      - every register the body merely reads: an address base, a loop-invariant,
        anything live across the loop.
 
@@ -20054,8 +20054,8 @@ lvx_cms_rename_regno (const auto_vec<int> &anode_value,
    determined and the loop must be declined rather than guessed at.  */
 
 static bool
-lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
-		       const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_verify_rename (const auto_vec<rtx_insn *> &seq,
+		       const auto_vec<lvx_lms_arc> &arcs,
 		       const auto_vec<int> &def_, const auto_vec<int> &last_,
 		       const auto_vec<int> &nregs_, const auto_vec<int> &ec_,
 		       const auto_vec<int> &owner, const auto_vec<int> &vregno,
@@ -20075,7 +20075,7 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
   *conflicts_out = *unseen_out = *ambig_out = 0;
   *unassigned_out = *misaligned_out = *nondiv_out = 0;
   *reserved_out = *clash_out = 0;
-  if (per <= 0 || per > LVX_CMS_IG_MAX_PERIOD)
+  if (per <= 0 || per > LVX_LMS_IG_MAX_PERIOD)
     return false;
 
   /* Occupants per (cycle, register) over the unrolled period.  Rebuilt from
@@ -20089,12 +20089,12 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
      a colouring bug, which is the conflation this check exists to avoid.  */
   occ_unseen.safe_grow_cleared (per * FIRST_PSEUDO_REGISTER);
 
-  /* RESERVED comes from lvx_cms_reserved_regs, the same set the caller used
+  /* RESERVED comes from lvx_lms_reserved_regs, the same set the caller used
      to build AVAIL -- recomputing it here would let the check and the
      colouring disagree about what is held, which is the one disagreement this
      function exists to make impossible.  */
   HARD_REG_SET reserved;
-  lvx_cms_reserved_regs (seq, def_, last_, nregs_, ec_, vregno, vusefirst,
+  lvx_lms_reserved_regs (seq, def_, last_, nregs_, ec_, vregno, vusefirst,
 			 livein, &reserved);
   for (int r = 0; r < FIRST_PSEUDO_REGISTER; r++)
     if (TEST_HARD_REG_BIT (reserved, r))
@@ -20103,12 +20103,12 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
   for (unsigned v = 0; v < def_.length (); v++)
     {
       int d = def_[v] - lo + (ec_[v] ? 0 : 1);
-      /* Same convention as lvx_cms_colour: [def + !earlyclobber, last].  A
+      /* Same convention as lvx_lms_colour: [def + !earlyclobber, last].  A
 	 check that models the schedule differently from the allocator tests a
 	 different program.  */
       int life = last_[v] - def_[v] + (ec_[v] ? 1 : 0);
       int nr = MAX (nregs_[v], 1);
-      int p2 = lvx_cms_value_p2 (anode_value, (int) v);
+      int p2 = lvx_lms_value_p2 (anode_value, (int) v);
 
       /* THE INVARIANT THE WHOLE SCHEME RESTS ON: P2 divides KUNROLL, so that
 	 the kernel's K-th copy is always name K mod P2.  Reported as its own
@@ -20125,7 +20125,7 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 
 	  if (p2 > 0)
 	    {
-	      int q = lvx_cms_anode_of (anode_value, anode_name, (int) v,
+	      int q = lvx_lms_anode_of (anode_value, anode_name, (int) v,
 					k % p2);
 	      reg = q < 0 ? -1 : anode_regno[q];
 	      seen = true;
@@ -20158,7 +20158,7 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 	  if (reg + nr > FIRST_PSEUDO_REGISTER)
 	    continue;
 
-	  /* MAX (life, 1) and the start at D, exactly as lvx_cms_colour clamps
+	  /* MAX (life, 1) and the start at D, exactly as lvx_lms_colour clamps
 	     them: a check that models the schedule differently from the
 	     allocator tests a different program.  */
 	  for (int t = 0; t < MAX (life, 1); t++)
@@ -20180,7 +20180,7 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 			     reasoning about this one from the count alone
 			     went in a circle once already.  */
 			  if (conflicts <= 6)
-			    lvx_cms_dump (";; lvx cms:   rename conflict"
+			    lvx_lms_dump (";; lvx cms:   rename conflict"
 					  " cycle=%d reg=r%d v=%u k=%d"
 					  " seen=%d p2=%d life=%d\n",
 					  c, reg + w, v, k, (int) seen, p2,
@@ -20190,7 +20190,7 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
 			{
 			  unseen++;
 			  if (unseen <= 4)
-			    lvx_cms_dump (";; lvx cms:   rename unseen"
+			    lvx_lms_dump (";; lvx cms:   rename unseen"
 					  " cycle=%d reg=r%d v=%u k=%d"
 					  " seen=%d p2=%d life=%d orig=r%d"
 					  " resv=%d\n", c, reg + w, v, k,
@@ -20313,7 +20313,7 @@ lvx_cms_verify_rename (const auto_vec<rtx_insn *> &seq,
    point of measuring it before rewiring the colouring onto it.  */
 
 static int
-lvx_cms_tie_find (auto_vec<int> &parent, int v)
+lvx_lms_tie_find (auto_vec<int> &parent, int v)
 {
   while (parent[v] != v)
     {
@@ -20327,7 +20327,7 @@ lvx_cms_tie_find (auto_vec<int> &parent, int v)
    One arc's worth of change, asked and cancelled.  */
 
 static bool
-lvx_cms_subst_use_ok_p (rtx_insn *insn, int old, int neu)
+lvx_lms_subst_use_ok_p (rtx_insn *insn, int old, int neu)
 {
   rtx pat = PATTERN (insn);
   rtx set = single_set (insn);
@@ -20354,8 +20354,8 @@ lvx_cms_subst_use_ok_p (rtx_insn *insn, int old, int neu)
 }
 
 static void
-lvx_cms_tie_classes (const auto_vec<rtx_insn *> &seq,
-		     const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_tie_classes (const auto_vec<rtx_insn *> &seq,
+		     const auto_vec<lvx_lms_arc> &arcs,
 		     const auto_vec<int> &owner,
 		     const auto_vec<int> &vregno,
 		     const auto_vec<int> &anode_value,
@@ -20391,11 +20391,11 @@ lvx_cms_tie_classes (const auto_vec<rtx_insn *> &seq,
 	 at all; a value with one name is never renamed and cannot be tied
 	 apart from anything.  */
       int old = vregno[pv];
-      int neu = lvx_cms_rename_regno (anode_value, anode_name, anode_regno,
+      int neu = lvx_lms_rename_regno (anode_value, anode_name, anode_regno,
 				      vregno, pv, 1);
       if (old < 0 || neu < 0 || neu == old)
 	continue;
-      if (lvx_cms_subst_use_ok_p (seq[arcs[a].dst], old, neu))
+      if (lvx_lms_subst_use_ok_p (seq[arcs[a].dst], old, neu))
 	continue;
 
       /* Refused.  The consumer's own value must share this register -- and
@@ -20406,8 +20406,8 @@ lvx_cms_tie_classes (const auto_vec<rtx_insn *> &seq,
 	  orphan++;
 	  continue;
 	}
-      int rp = lvx_cms_tie_find (parent, pv);
-      int rc = lvx_cms_tie_find (parent, cv);
+      int rp = lvx_lms_tie_find (parent, pv);
+      int rc = lvx_lms_tie_find (parent, cv);
       if (rp != rc)
 	parent[rc] = rp;
     }
@@ -20416,9 +20416,9 @@ lvx_cms_tie_classes (const auto_vec<rtx_insn *> &seq,
   auto_vec<int> size;
   size.safe_grow_cleared (n);
   for (unsigned v = 0; v < n; v++)
-    size[lvx_cms_tie_find (parent, (int) v)]++;
+    size[lvx_lms_tie_find (parent, (int) v)]++;
   for (unsigned v = 0; v < n; v++)
-    if (lvx_cms_tie_find (parent, (int) v) == (int) v)
+    if (lvx_lms_tie_find (parent, (int) v) == (int) v)
       {
 	nclass++;
 	if (size[v] > biggest)
@@ -20434,7 +20434,7 @@ lvx_cms_tie_classes (const auto_vec<rtx_insn *> &seq,
 /* CAN EVERY SLOT BE RENAMED AND STILL RECOGNISE?  §7tricies.10.
 
    The rename map says which register each instance's operands become
-   (§7tricies.1) and lvx_cms_verify_rename says the assignment is consistent.
+   (§7tricies.1) and lvx_lms_verify_rename says the assignment is consistent.
    Neither asks whether the INSTRUCTION survives the substitution.  Post-RA it
    need not: an operand's constraint may admit only a subset of the register
    file, a tuple's alternative may require an aligned base, and a pattern may
@@ -20457,8 +20457,8 @@ lvx_cms_tie_classes (const auto_vec<rtx_insn *> &seq,
    substitution would pick whichever it met first.  */
 
 static bool
-lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
-		       const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_rename_insn_p (rtx_insn *insn, int iter,
+		       const auto_vec<lvx_lms_arc> &arcs,
 		       const auto_vec<int> &insn2cls,
 		       const auto_vec<int> &cregno,
 		       const auto_vec<int> &anode_value,
@@ -20479,7 +20479,7 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
     {
       int c = self < insn2cls.length () ? insn2cls[self] : -1;
       int old = c >= 0 ? cregno[c] : -1;
-      int neu = c >= 0 ? lvx_cms_rename_regno (anode_value, anode_name,
+      int neu = c >= 0 ? lvx_lms_rename_regno (anode_value, anode_name,
 					      anode_regno, cregno, c, iter)
 			: -1;
       if (old >= 0 && neu >= 0 && neu != old
@@ -20508,7 +20508,7 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
 	 preheader left, which is the original register (§7ter.4).  */
       if (pl < 0)
 	continue;
-      int neu = lvx_cms_rename_regno (anode_value, anode_name, anode_regno,
+      int neu = lvx_lms_rename_regno (anode_value, anode_name, anode_regno,
 				      cregno, pv, pl);
       if (neu < 0 || neu == old)
 	continue;
@@ -20533,7 +20533,7 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
 	 be rewritten precisely, and the loop is refused rather than guessed
 	 at.  */
       {
-	rtx *loc = lvx_cms_reg_at (&pat, arcs[a].useidx);
+	rtx *loc = lvx_lms_reg_at (&pat, arcs[a].useidx);
 
 	if (!loc)
 	  {
@@ -20571,8 +20571,8 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
    change -- the same insn for the dry run, the emitted copy for the real
    thing.  They have to be separate arguments because copy_insn produces an
    insn DF has never seen: the references are resolved on the original and
-   applied to the copy BY POSITION, lvx_cms_reg_index giving a reference's
-   ordinal in the pattern's REG walk and lvx_cms_reg_at recovering that slot.
+   applied to the copy BY POSITION, lvx_lms_reg_index giving a reference's
+   ordinal in the pattern's REG walk and lvx_lms_reg_at recovering that slot.
 
    EVERY REFERENCE IS REWRITTEN, AND EACH FROM ITS OWN RANGE.  The arc-driven
    version could only rewrite what an arc named -- one pass per incoming RAW
@@ -20596,32 +20596,32 @@ lvx_cms_rename_insn_p (rtx_insn *insn, int iter,
 
 /* Probe only (§7tricies.156): which node the emission is filling, so the
    UFREAD trace can be read per path instead of per reference.  */
-static int lvx_cms_ufread_node = -1;
-static int lvx_cms_ufread_kind = -1;
+static int lvx_lms_ufread_node = -1;
+static int lvx_lms_ufread_kind = -1;
 
 /* The ROOT of the live range G belongs to.  The renaming sites hold the part
    pointer and not its index, and only the root identifies the live range --
    §7tricies.98's part-versus-whole distinction, which is why this is not just
    `g' itself.  */
 static int
-lvx_cms_flow_root_of (const auto_vec<lvx_cms_lrange_part *> &lr,
-		      const lvx_cms_lrange_part *g)
+lvx_lms_flow_root_of (const auto_vec<lvx_lms_lrange_part *> &lr,
+		      const lvx_lms_lrange_part *g)
 {
   for (unsigned z = 0; z < lr.length (); z++)
     if (lr[z] == g)
-      return lvx_cms_lrange_root (lr, (int) z);
+      return lvx_lms_lrange_root (lr, (int) z);
   return -1;
 }
 
 static bool
-lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
-			  int iter, const auto_vec<lvx_cms_lrange_part *> &lr,
+lvx_lms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
+			  int iter, const auto_vec<lvx_lms_lrange_part *> &lr,
 			  int *nsubst, bool apply, bool trace0 = false)
 {
   /* §7tricies.156: the option enables the same trace from every call site,
      so the emission's substitutions can be diffed between two arms without
      threading a flag through each caller.  */
-  bool trace = trace0 || lvx_cms_subst_trace;
+  bool trace = trace0 || lvx_lms_subst_trace;
   int base = num_validated_changes ();
   auto_vec<int> at, to;
   bool ok = true;
@@ -20637,22 +20637,22 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 						  : DF_REF_REG (ref);
       unsigned r = (rreg && REG_P (rreg)) ? REGNO (rreg)
 					  : DF_REF_REGNO (ref);
-      lvx_cms_lrange_part *g;
+      lvx_lms_lrange_part *g;
       int idx, neu, off = 0;
 
       if (r >= FIRST_PSEUDO_REGISTER)
 	continue;
-      idx = lvx_cms_reg_index (PATTERN (orig), DF_REF_LOC (ref));
-      g = lvx_cms_lrange_of (lr, self, idx, NULL, &off);
+      idx = lvx_lms_reg_index (PATTERN (orig), DF_REF_LOC (ref));
+      g = lvx_lms_lrange_of (lr, self, idx, NULL, &off);
       if (!g)
 	{
-	  if (dump_file && lvx_cms_probe)
-	    lvx_cms_dump (";; lvx cms:   RENREFUSE norange-def insn=%u"
+	  if (dump_file && lvx_lms_probe)
+	    lvx_lms_dump (";; lvx cms:   RENREFUSE norange-def insn=%u"
 			  " slot=%d\n", self, idx);
 	  ok = false;
 	  break;
 	}
-      neu = lvx_cms_lrange_reg (g, iter, false);
+      neu = lvx_lms_lrange_reg (g, iter, false);
       /* The live range names its whole span; this reference is at OFF within
 	 it, and keeps its own mode -- so its width -- below.  */
       if (neu >= 0)
@@ -20661,7 +20661,7 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	 happens to equal the register it already had needs no substitution and
 	 is just as much part of the dataflow, so the flow check must see it.  */
       /* ONLY THE WALK THAT EMITS.  §7tricies.211.  `apply' is false for
-	 lvx_cms_rename_lr_dryrun, which the claim negotiation runs up to
+	 lvx_lms_rename_lr_dryrun, which the claim negotiation runs up to
 	 three times per loop and two further callers run again -- throwaway
 	 plans whose insns are never emitted and never reach the group table.
 	 Recording them made FLOWTAB read `operands=772 checked=163', so the
@@ -20675,20 +20675,20 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	 where one register is read.  Left at the measured better of the two,
 	 with the residual characterised rather than guessed at again.  */
       if (apply && target != NULL && neu >= 0)
-	lvx_cms_flow_record (target, lvx_cms_flow_root_of (lr, g),
+	lvx_lms_flow_record (target, lvx_lms_flow_root_of (lr, g),
 			     neu, MAX (g->nregs, 1), true, false,
 			     g->p2unroll);
       if (neu < 0 || neu == (int) r)
 	continue;
       if (trace)
-	lvx_cms_dump (";; lvx cms:     SUBST node=%d kind=%d insn=%u iter=%d"
+	lvx_lms_dump (";; lvx cms:     SUBST node=%d kind=%d insn=%u iter=%d"
 		      " D slot=%d dly=0 r%u p2=%d uf=%d -> r%d\n",
-		      lvx_cms_ufread_node, lvx_cms_ufread_kind, self, iter,
+		      lvx_lms_ufread_node, lvx_lms_ufread_kind, self, iter,
 		      idx, r, g->p2unroll, g->use_first ? 1 : 0, neu);
       if (idx < 0)
 	{
-	  if (dump_file && lvx_cms_probe)
-	    lvx_cms_dump (";; lvx cms:   RENREFUSE noidx-def insn=%u\n",
+	  if (dump_file && lvx_lms_probe)
+	    lvx_lms_dump (";; lvx cms:   RENREFUSE noidx-def insn=%u\n",
 			  self);
 	  ok = false;
 	  break;
@@ -20705,51 +20705,51 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 						    : DF_REF_REG (ref);
 	unsigned r = (rreg && REG_P (rreg)) ? REGNO (rreg)
 					    : DF_REF_REGNO (ref);
-	lvx_cms_lrange_part *g;
+	lvx_lms_lrange_part *g;
 	bool dly = false;
 	int idx, neu, off = 0;
 
 	if (r >= FIRST_PSEUDO_REGISTER)
 	  continue;
-	idx = lvx_cms_reg_index (PATTERN (orig), DF_REF_LOC (ref));
-	g = lvx_cms_lrange_of (lr, self, idx, &dly, &off);
+	idx = lvx_lms_reg_index (PATTERN (orig), DF_REF_LOC (ref));
+	g = lvx_lms_lrange_of (lr, self, idx, &dly, &off);
 	if (!g)
 	  {
 	    /* An operand no live range claims.  With the read-modify-write
 	       operand entered once, the only way here is a reference DF gave
 	       no location for, which cannot be rewritten precisely.  */
-	    if (dump_file && lvx_cms_probe)
-	      lvx_cms_dump (";; lvx cms:   RENREFUSE norange-use insn=%u"
+	    if (dump_file && lvx_lms_probe)
+	      lvx_lms_dump (";; lvx cms:   RENREFUSE norange-use insn=%u"
 			    " slot=%d\n", self, idx);
 	    ok = false;
 	    break;
 	  }
-	neu = lvx_cms_lrange_reg (g, iter, dly);
+	neu = lvx_lms_lrange_reg (g, iter, dly);
 	/* §7tricies.209: the read side of the flow record, recorded with the
 	   offset applied just below so it names the component actually read. */
 	if (neu >= 0)
 	  neu += off;
 	if (apply && target != NULL && neu >= 0)
-	  lvx_cms_flow_record (target, lvx_cms_flow_root_of (lr, g),
+	  lvx_lms_flow_record (target, lvx_lms_flow_root_of (lr, g),
 			       neu, MAX (g->nregs, 1), false, dly,
 			       g->p2unroll);
-	if (g->use_first && dly && lvx_cms_preheader_copy)
-	  lvx_cms_dump (";; lvx cms:     UFREAD node=%d kind=%d insn=%u"
+	if (g->use_first && dly && lvx_lms_preheader_copy)
+	  lvx_lms_dump (";; lvx cms:     UFREAD node=%d kind=%d insn=%u"
 			" slot=%d iter=%d r%u p2=%d reg0=%d -> r%d\n",
-			lvx_cms_ufread_node, lvx_cms_ufread_kind, self, idx,
+			lvx_lms_ufread_node, lvx_lms_ufread_kind, self, idx,
 			iter, r, g->p2unroll, g->reg[0], neu);
 	if (neu < 0 || neu == (int) r)
 	  continue;
 	if (trace)
-	  lvx_cms_dump (";; lvx cms:     SUBST node=%d kind=%d insn=%u iter=%d"
+	  lvx_lms_dump (";; lvx cms:     SUBST node=%d kind=%d insn=%u iter=%d"
 			" U slot=%d dly=%d r%u p2=%d uf=%d -> r%d\n",
-			lvx_cms_ufread_node, lvx_cms_ufread_kind, self, iter,
+			lvx_lms_ufread_node, lvx_lms_ufread_kind, self, iter,
 			idx, dly ? 1 : 0, r, g->p2unroll,
 			g->use_first ? 1 : 0, neu);
 	if (idx < 0)
 	  {
-	    if (dump_file && lvx_cms_probe)
-	      lvx_cms_dump (";; lvx cms:   RENREFUSE noidx-use insn=%u\n",
+	    if (dump_file && lvx_lms_probe)
+	      lvx_lms_dump (";; lvx cms:   RENREFUSE noidx-use insn=%u\n",
 			    self);
 	    ok = false;
 	    break;
@@ -20775,8 +20775,8 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	     range EXPANDS; recog refusing is the pattern rejecting a register
 	     it was given.  Lumping them hid which of the two the live-out
 	     interval extension (§7tricies.135) was paying for.  */
-	  if (dump_file && lvx_cms_probe)
-	    lvx_cms_dump (";; lvx cms:   RENREFUSE rmw insn=%u slot=%d\n",
+	  if (dump_file && lvx_lms_probe)
+	    lvx_lms_dump (";; lvx cms:   RENREFUSE rmw insn=%u slot=%d\n",
 			  self, at[a]);
 	  ok = false;
 	  break;
@@ -20788,12 +20788,12 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 
       for (unsigned a = 0; a < at.length (); a++)
 	{
-	  rtx *loc = lvx_cms_reg_at (&pat, at[a]);
+	  rtx *loc = lvx_lms_reg_at (&pat, at[a]);
 
 	  if (!loc || !REG_P (*loc))
 	    {
-	      if (dump_file && lvx_cms_probe)
-		lvx_cms_dump (";; lvx cms:   RENREFUSE noloc insn=%u slot=%d\n",
+	      if (dump_file && lvx_lms_probe)
+		lvx_lms_dump (";; lvx cms:   RENREFUSE noloc insn=%u slot=%d\n",
 			      self, at[a]);
 	      ok = false;
 	      break;
@@ -20809,15 +20809,15 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
   if (ok && num_validated_changes () > base)
     {
       ok = verify_changes (base);
-      if (!ok && dump_file && lvx_cms_probe)
+      if (!ok && dump_file && lvx_lms_probe)
 	{
 	  int code = INSN_CODE (target);
 
-	  lvx_cms_dump (";; lvx cms:   RENREFUSE recog insn=%u pat=%s subst=",
+	  lvx_lms_dump (";; lvx cms:   RENREFUSE recog insn=%u pat=%s subst=",
 			self,
 			(code >= 0 ? insn_data[code].name : "unrecognised"));
 	  for (unsigned a = 0; a < at.length (); a++)
-	    lvx_cms_dump ("%sslot%d->r%d", a ? "," : "", at[a], to[a]);
+	    lvx_lms_dump ("%sslot%d->r%d", a ? "," : "", at[a], to[a]);
 
 	  /* THE CONSTRAINT GROUP, NAMED.  §7tricies.139.  A late `recog'
 	     decline is a renaming rule the upstream did not know, so the
@@ -20826,7 +20826,7 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	     substitution would give it.  Reading the slot numbers and
 	     guessing at the tie is how the first three accounts of this went
 	     wrong -- the slot is a positional register index from
-	     lvx_cms_reg_index, not the match_operand number, and the two do
+	     lvx_lms_reg_index, not the match_operand number, and the two do
 	     not agree (fmasf4 ties operand 3 to 0, *cmov ties operand 4).  */
 	  /* EVERY OPERAND, INCLUDING THE SKIPPED ONES, WITH ITS RANGE.
 	     §7tricies.144.
@@ -20842,16 +20842,16 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 	  {
 	    df_ref r2;
 
-	    lvx_cms_dump (" refs=");
+	    lvx_lms_dump (" refs=");
 	    FOR_EACH_INSN_DEF (r2, orig)
 	      {
-		int ix = lvx_cms_reg_index (PATTERN (orig), DF_REF_LOC (r2));
+		int ix = lvx_lms_reg_index (PATTERN (orig), DF_REF_LOC (r2));
 		int off2 = 0;
-		lvx_cms_lrange_part *g2
-		  = lvx_cms_lrange_of (lr, self, ix, NULL, &off2);
-		int nm2 = g2 ? lvx_cms_lrange_reg (g2, iter, false) : -1;
+		lvx_lms_lrange_part *g2
+		  = lvx_lms_lrange_of (lr, self, ix, NULL, &off2);
+		int nm2 = g2 ? lvx_lms_lrange_reg (g2, iter, false) : -1;
 
-		lvx_cms_dump ("D%d:r%u", ix, DF_REF_REGNO (r2));
+		lvx_lms_dump ("D%d:r%u", ix, DF_REF_REGNO (r2));
 		if (g2)
 		  {
 		    int k2 = -1;
@@ -20859,26 +20859,26 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 		    for (unsigned z = 0; z < lr.length (); z++)
 		      if (lr[z] == g2)
 			k2 = (int) z;
-		    lvx_cms_dump ("[lr%d root%d p2=%d uf=%d ren=%d ->r%d]", k2,
-				  k2 >= 0 ? lvx_cms_lrange_root (lr, k2) : -1,
+		    lvx_lms_dump ("[lr%d root%d p2=%d uf=%d ren=%d ->r%d]", k2,
+				  k2 >= 0 ? lvx_lms_lrange_root (lr, k2) : -1,
 				  g2->p2unroll, g2->use_first ? 1 : 0,
 				  g2->renamed ? 1 : 0,
 				  nm2 >= 0 ? nm2 + off2 : -1);
 		  }
 		else
-		  lvx_cms_dump ("[norange]");
-		lvx_cms_dump (" ");
+		  lvx_lms_dump ("[norange]");
+		lvx_lms_dump (" ");
 	      }
 	    FOR_EACH_INSN_USE (r2, orig)
 	      {
-		int ix = lvx_cms_reg_index (PATTERN (orig), DF_REF_LOC (r2));
+		int ix = lvx_lms_reg_index (PATTERN (orig), DF_REF_LOC (r2));
 		int off2 = 0;
 		bool dly2 = false;
-		lvx_cms_lrange_part *g2
-		  = lvx_cms_lrange_of (lr, self, ix, &dly2, &off2);
-		int nm2 = g2 ? lvx_cms_lrange_reg (g2, iter, dly2) : -1;
+		lvx_lms_lrange_part *g2
+		  = lvx_lms_lrange_of (lr, self, ix, &dly2, &off2);
+		int nm2 = g2 ? lvx_lms_lrange_reg (g2, iter, dly2) : -1;
 
-		lvx_cms_dump ("U%d:r%u", ix, DF_REF_REGNO (r2));
+		lvx_lms_dump ("U%d:r%u", ix, DF_REF_REGNO (r2));
 		if (g2)
 		  {
 		    int k2 = -1;
@@ -20886,16 +20886,16 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 		    for (unsigned z = 0; z < lr.length (); z++)
 		      if (lr[z] == g2)
 			k2 = (int) z;
-		    lvx_cms_dump ("[lr%d root%d p2=%d uf=%d ren=%d dly=%d"
+		    lvx_lms_dump ("[lr%d root%d p2=%d uf=%d ren=%d dly=%d"
 				  " ->r%d]", k2,
-				  k2 >= 0 ? lvx_cms_lrange_root (lr, k2) : -1,
+				  k2 >= 0 ? lvx_lms_lrange_root (lr, k2) : -1,
 				  g2->p2unroll, g2->use_first ? 1 : 0,
 				  g2->renamed ? 1 : 0, dly2 ? 1 : 0,
 				  nm2 >= 0 ? nm2 + off2 : -1);
 		  }
 		else
-		  lvx_cms_dump ("[norange]");
-		lvx_cms_dump (" ");
+		  lvx_lms_dump ("[norange]");
+		lvx_lms_dump (" ");
 	      }
 	  }
 
@@ -20907,22 +20907,22 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 		 constraint, and the operand it names must hold the same
 		 register.  */
 	      extract_insn (target);
-	      lvx_cms_dump (" ops=");
+	      lvx_lms_dump (" ops=");
 	      for (int o = 0; o < recog_data.n_operands; o++)
 		{
 		  rtx x = *recog_data.operand_loc[o];
 
-		  lvx_cms_dump ("%so%d:", o ? " " : "", o);
+		  lvx_lms_dump ("%so%d:", o ? " " : "", o);
 		  if (x && REG_P (x))
-		    lvx_cms_dump ("r%u", REGNO (x));
+		    lvx_lms_dump ("r%u", REGNO (x));
 		  else
-		    lvx_cms_dump ("-");
-		  lvx_cms_dump ("\"%s\"",
+		    lvx_lms_dump ("-");
+		  lvx_lms_dump ("\"%s\"",
 				recog_data.constraints[o]
 				? recog_data.constraints[o] : "");
 		}
 	    }
-	  lvx_cms_dump ("\n");
+	  lvx_lms_dump ("\n");
 	}
       if (ok && apply)
 	{
@@ -20937,9 +20937,9 @@ lvx_cms_rename_lr_insn_p (rtx_insn *orig, rtx_insn *target, unsigned self,
 /* Every slot, dry-run, over the ranges.  */
 
 static bool
-lvx_cms_rename_lr_dryrun (const auto_vec<rtx_insn *> &seq,
-			  const auto_vec<lvx_cms_slot> &slots,
-			  const auto_vec<lvx_cms_lrange_part *> &lr,
+lvx_lms_rename_lr_dryrun (const auto_vec<rtx_insn *> &seq,
+			  const auto_vec<lvx_lms_slot> &slots,
+			  const auto_vec<lvx_lms_lrange_part *> &lr,
 			  int *subst_out, int *fail_out,
 			  auto_vec<int> *refused = NULL)
 {
@@ -20954,7 +20954,7 @@ lvx_cms_rename_lr_dryrun (const auto_vec<rtx_insn *> &seq,
 
       if (i >= seq.length ())
 	continue;
-      if (!lvx_cms_rename_lr_insn_p (seq[i], seq[i], i, slots[q].iter, lr,
+      if (!lvx_lms_rename_lr_insn_p (seq[i], seq[i], i, slots[q].iter, lr,
 				     &n, false))
 	{
 	  fail++;
@@ -20965,7 +20965,7 @@ lvx_cms_rename_lr_dryrun (const auto_vec<rtx_insn *> &seq,
 	      int code = INSN_CODE (seq[i]);
 	      int n2 = 0;
 
-	      lvx_cms_dump (";; lvx cms:   lrrename refused insn=%u iter=%d"
+	      lvx_lms_dump (";; lvx cms:   lrrename refused insn=%u iter=%d"
 			    " uid=%u subst=%d pattern=%s\n", i, slots[q].iter,
 			    INSN_UID (seq[i]), n,
 			    code >= 0 ? get_insn_name (code) : "?");
@@ -20973,7 +20973,7 @@ lvx_cms_rename_lr_dryrun (const auto_vec<rtx_insn *> &seq,
 		 that something was rejected; which reference took which name
 		 is what says WHY, and guessing at that cost four wrong
 		 diagnoses earlier in this work.  */
-	      lvx_cms_rename_lr_insn_p (seq[i], seq[i], i, slots[q].iter, lr,
+	      lvx_lms_rename_lr_insn_p (seq[i], seq[i], i, slots[q].iter, lr,
 					&n2, false, true);
 	    }
 	}
@@ -20989,9 +20989,9 @@ lvx_cms_rename_lr_dryrun (const auto_vec<rtx_insn *> &seq,
    how many of those the target would refuse.  */
 
 static bool
-lvx_cms_rename_dryrun (const auto_vec<rtx_insn *> &seq,
-		       const auto_vec<lvx_cms_arc> &arcs,
-		       const auto_vec<lvx_cms_slot> &slots,
+lvx_lms_rename_dryrun (const auto_vec<rtx_insn *> &seq,
+		       const auto_vec<lvx_lms_arc> &arcs,
+		       const auto_vec<lvx_lms_slot> &slots,
 		       const auto_vec<int> &insn2cls,
 		       const auto_vec<int> &cregno,
 		       const auto_vec<int> &anode_value,
@@ -21010,7 +21010,7 @@ lvx_cms_rename_dryrun (const auto_vec<rtx_insn *> &seq,
       unsigned i = (unsigned) slots[q].insn;
       if (i >= seq.length ())
 	continue;
-      if (!lvx_cms_rename_insn_p (seq[i], slots[q].iter, arcs, insn2cls,
+      if (!lvx_lms_rename_insn_p (seq[i], slots[q].iter, arcs, insn2cls,
 				  cregno, anode_value, anode_name,
 				  anode_regno, i, &n, false))
 	{
@@ -21023,7 +21023,7 @@ lvx_cms_rename_dryrun (const auto_vec<rtx_insn *> &seq,
 	  if (fail <= 3)
 	    {
 	      int code = INSN_CODE (seq[i]);
-	      lvx_cms_dump (";; lvx cms:   rename refused insn=%u iter=%d"
+	      lvx_lms_dump (";; lvx cms:   rename refused insn=%u iter=%d"
 			    " uid=%u subst=%d pattern=%s\n", i, slots[q].iter,
 			    INSN_UID (seq[i]), n,
 			    code >= 0 ? get_insn_name (code) : "?");
@@ -21069,10 +21069,10 @@ lvx_cms_rename_dryrun (const auto_vec<rtx_insn *> &seq,
    loop-carried value as a violation.  */
 
 static bool
-lvx_cms_verify_slots (const auto_vec<rtx_insn *> &seq,
-		      const auto_vec<lvx_cms_arc> &arcs,
-		      const auto_vec<lvx_cms_slot> &slots,
-		      const auto_vec<lvx_cms_node> &nodes,
+lvx_lms_verify_slots (const auto_vec<rtx_insn *> &seq,
+		      const auto_vec<lvx_lms_arc> &arcs,
+		      const auto_vec<lvx_lms_slot> &slots,
+		      const auto_vec<lvx_lms_node> &nodes,
 		      int *undef_out, int *order_out, int *paths_out)
 {
   int undef = 0, order = 0, paths = 0;
@@ -21085,7 +21085,7 @@ lvx_cms_verify_slots (const auto_vec<rtx_insn *> &seq,
     {
       /* EP == length () is the path that stays in the kernel.  */
       bool bare = (ep == nodes.length ());
-      if (!bare && nodes[ep].kind != LVX_CMS_NODE_EPILOGUE)
+      if (!bare && nodes[ep].kind != LVX_LMS_NODE_EPILOGUE)
 	continue;
       paths++;
 
@@ -21114,7 +21114,7 @@ lvx_cms_verify_slots (const auto_vec<rtx_insn *> &seq,
 	{
 	  int nd = slots[q].node;
 	  bool is_ep = (nd >= 0 && nd < (int) nodes.length ()
-			&& nodes[nd].kind == LVX_CMS_NODE_EPILOGUE);
+			&& nodes[nd].kind == LVX_LMS_NODE_EPILOGUE);
 	  if (is_ep && (bare || nd != (int) ep))
 	    continue;
 	  if (!is_ep && !bare)
@@ -21132,7 +21132,7 @@ lvx_cms_verify_slots (const auto_vec<rtx_insn *> &seq,
 	  int t = slots[q].insn * (maxiter + 1) + slots[q].iter;
 	  pos[t] = at++;
 	  if (nd >= 0 && nd < (int) nodes.length ()
-	      && nodes[nd].kind == LVX_CMS_NODE_KERNEL)
+	      && nodes[nd].kind == LVX_LMS_NODE_KERNEL)
 	    inkernel[t] = 1;
 	}
 
@@ -21140,7 +21140,7 @@ lvx_cms_verify_slots (const auto_vec<rtx_insn *> &seq,
 	{
 	  int nd = slots[q].node;
 	  bool is_ep = (nd >= 0 && nd < (int) nodes.length ()
-			&& nodes[nd].kind == LVX_CMS_NODE_EPILOGUE);
+			&& nodes[nd].kind == LVX_LMS_NODE_EPILOGUE);
 	  if (is_ep && (bare || nd != (int) ep))
 	    continue;
 	  if (!is_ep && !bare)
@@ -21180,7 +21180,7 @@ lvx_cms_verify_slots (const auto_vec<rtx_insn *> &seq,
 		{
 		  order++;
 		  if (order <= 3)
-		    lvx_cms_dump (";; lvx cms:   slot order path=%u"
+		    lvx_lms_dump (";; lvx cms:   slot order path=%u"
 				  " cons=%d@%d/pos%d prod=%d@%d/pos%d"
 				  " omega=%u kcons=%d kprod=%d\n", ep,
 				  slots[q].insn, slots[q].iter, pos[ct],
@@ -21236,14 +21236,14 @@ lvx_cms_verify_slots (const auto_vec<rtx_insn *> &seq,
    a described site rather than eight arguments.  Raw basic blocks, with the
    edges re-derived at use: an edge pointer is CFG state and would survive, but
    re-finding it cannot go stale against a redirect elsewhere.  */
-struct lvx_cms_site
+struct lvx_lms_site
 {
   /* The loop itself, so the emission can ask which of a jump's successors
      leaves it -- a multi-exit body needs that per jump, not once.  */
   class loop *loop;
   basic_block preheader, header, latch, exit_src, exit_dest;
   int nstages;
-  struct lvx_cms_plan plan;
+  struct lvx_lms_plan plan;
   /* Whether every slot's insn survives the rename substitution and still
      recognises (§7tricies.10).  Recorded rather than gated on here: phase one
      renames nothing, so declining a loop for it would cost coverage for no
@@ -21290,7 +21290,7 @@ struct lvx_cms_site
    bb 18 from the latch, so one SITE->EXIT_DEST cannot describe both.  */
 
 static basic_block
-lvx_cms_jump_exit_dest (const struct lvx_cms_site *site, rtx_insn *jmp)
+lvx_lms_jump_exit_dest (const struct lvx_lms_site *site, rtx_insn *jmp)
 {
   basic_block bb = BLOCK_FOR_INSN (jmp);
   edge e;
@@ -21311,7 +21311,7 @@ lvx_cms_jump_exit_dest (const struct lvx_cms_site *site, rtx_insn *jmp)
    treated like the loopback.  */
 
 static bool
-lvx_cms_jump_taken_stays_p (const struct lvx_cms_site *site, rtx_insn *jmp)
+lvx_lms_jump_taken_stays_p (const struct lvx_lms_site *site, rtx_insn *jmp)
 {
   basic_block bb = BLOCK_FOR_INSN (jmp);
   edge ft, taken = NULL;
@@ -21331,15 +21331,15 @@ lvx_cms_jump_taken_stays_p (const struct lvx_cms_site *site, rtx_insn *jmp)
 
 /* THE SKELETON BLOCKS.  §7tricies.136.
 
-   This is what `lvx_cms_node' is, and the name is unfortunate because two
+   This is what `lvx_lms_node' is, and the name is unfortunate because two
    different things in CMS are called nodes:
 
-     SKELETON BLOCK   one lvx_cms_node, one BASIC BLOCK of the emitted
+     SKELETON BLOCK   one lvx_lms_node, one BASIC BLOCK of the emitted
 		      pipeline.  BLOCKS[k] is the block, NODES[k].kind says
 		      which part of the pipeline it is, and SLOTS[q].node says
 		      which block a slot is emitted into.
      ANODE            a node of the circular-arc INTERFERENCE graph, one per
-		      (value, name) pair -- lvx_cms_anode_of, counted by NN.
+		      (value, name) pair -- lvx_lms_anode_of, counted by NN.
 		      Nothing to do with blocks.
 
    A software pipeline is a chain of skeleton blocks, in this order, and this
@@ -21358,7 +21358,7 @@ lvx_cms_jump_taken_stays_p (const struct lvx_cms_site *site, rtx_insn *jmp)
 		      them.
 
    HOW MANY BLOCKS EACH PART HAS IS NOT A FUNCTION OF NSTAGES.  One rule in
-   lvx_cms_build_plan decides every boundary --
+   lvx_lms_build_plan decides every boundary --
 
      if (prev_exit || enter_kernel || nodes == 0) ... new block ...
 
@@ -21388,7 +21388,7 @@ lvx_cms_jump_taken_stays_p (const struct lvx_cms_site *site, rtx_insn *jmp)
 		      the register the copy is about to read (§7tricies.135).
 
    PATHS is the number of ways through this chain -- one per epilogue plus the
-   bare kernel path -- and lvx_cms_verify_slots checks each separately,
+   bare kernel path -- and lvx_lms_verify_slots checks each separately,
    because an instance's operands must be defined on EVERY path that reaches
    it, not merely somewhere in the schedule.
 
@@ -21404,7 +21404,7 @@ lvx_cms_jump_taken_stays_p (const struct lvx_cms_site *site, rtx_insn *jmp)
 /* EVERY BLOCK'S SUCCESSORS, so a verify_flow_info failure can be READ rather
    than guessed at.  §7tricies.196.  */
 static void
-lvx_cms_dump_cfg (const char *when)
+lvx_lms_dump_cfg (const char *when)
 {
   basic_block bb;
 
@@ -21443,8 +21443,8 @@ lvx_cms_dump_cfg (const char *when)
 }
 
 static bool
-lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
-		    const auto_vec<lvx_cms_node> *nodes,
+lvx_lms_make_nodes (const struct lvx_lms_site *site, class loop *loop,
+		    const auto_vec<lvx_lms_node> *nodes,
 		    auto_vec<basic_block> *blocks, const char **why)
 {
   int nstages = site->nstages;
@@ -21619,7 +21619,7 @@ lvx_cms_make_nodes (const struct lvx_cms_site *site, class loop *loop,
    one already covers it.  */
 
 static bool
-lvx_cms_verify_antidep (const auto_vec<rtx_insn *> &seq,
+lvx_lms_verify_antidep (const auto_vec<rtx_insn *> &seq,
 			const auto_vec<int> &sigma, int ii,
 			const HARD_REG_SET *surviving,
 			const auto_vec<int> &classreg,
@@ -21744,9 +21744,9 @@ lvx_cms_verify_antidep (const auto_vec<rtx_insn *> &seq,
    half way through cannot be retried.  */
 
 static bool
-lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
-		    const auto_vec<lvx_cms_slot> &slots,
-		    const auto_vec<lvx_cms_lrange_part *> &lr, int loopback,
+lvx_lms_slot_order (const auto_vec<rtx_insn *> &seq,
+		    const auto_vec<lvx_lms_slot> &slots,
+		    const auto_vec<lvx_lms_lrange_part *> &lr, int loopback,
 		    auto_vec<int> &order, bool *any_rw = NULL)
 {
   /* ANY_RW: did ANY cycle hold a reader-writer pair on one register, cyclic
@@ -21775,11 +21775,11 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 	  FOR_EACH_INSN_USE (ref, seq[i])
 	    {
 	      unsigned r = DF_REF_REGNO (ref);
-	      int slot = lvx_cms_reg_index (PATTERN (seq[i]),
+	      int slot = lvx_lms_reg_index (PATTERN (seq[i]),
 					    DF_REF_LOC (ref));
 	      bool dly = false;
 	      int off = 0, wid = 1;
-	      lvx_cms_lrange_part *g = lvx_cms_lrange_of (lr, i, slot, &dly, &off,
+	      lvx_lms_lrange_part *g = lvx_lms_lrange_of (lr, i, slot, &dly, &off,
 						     &wid);
 	      /* THE EFFECT'S SPAN, NOT THE RANGE'S.  §7tricies.77.  Taking
 		 the range's name and width recorded a partial reference as
@@ -21787,7 +21787,7 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 		 edges in both directions between a wide reference and a
 		 narrow one inside it -- the symmetric all-four-registers
 		 circuit that looked like two writers of one register.  */
-	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, dly) + off
+	      int neu = g ? lvx_lms_lrange_reg (g, slots[q].iter, dly) + off
 			  : (int) r;
 	      int nw = g ? wid : 1;
 
@@ -21798,12 +21798,12 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 	  FOR_EACH_INSN_DEF (ref, seq[i])
 	    {
 	      unsigned r = DF_REF_REGNO (ref);
-	      int slot = lvx_cms_reg_index (PATTERN (seq[i]),
+	      int slot = lvx_lms_reg_index (PATTERN (seq[i]),
 					    DF_REF_LOC (ref));
 	      int off = 0, wid = 1;
-	      lvx_cms_lrange_part *g = lvx_cms_lrange_of (lr, i, slot, NULL, &off,
+	      lvx_lms_lrange_part *g = lvx_lms_lrange_of (lr, i, slot, NULL, &off,
 						     &wid);
-	      int neu = g ? lvx_cms_lrange_reg (g, slots[q].iter, false) + off
+	      int neu = g ? lvx_lms_lrange_reg (g, slots[q].iter, false) + off
 			  : (int) r;
 	      int nw = g ? wid : 1;
 
@@ -21919,7 +21919,7 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 		   legal in a bundle, inexpressible as a sequential stream.
 		   Reporting only "cannot be linearised" left no way to tell
 		   an unlucky colouring from a forced one.  */
-		if (lvx_cms_probe)
+		if (lvx_lms_probe)
 		  {
 		    /* WHETHER THE CIRCUIT IS CONFINED TO ONE NODE.
 		       §7tricies.181.  A circuit whose members all share a
@@ -21943,17 +21943,17 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 			    else if (slots[a + x].node != n0)
 			      onenode = false;
 			  }
-		      lvx_cms_dump (";; lvx cms:   LINEARSPAN %s nodes"
+		      lvx_lms_dump (";; lvx cms:   LINEARSPAN %s nodes"
 				    " date=%d\n",
 				    onenode ? "ONE" : "MANY", slots[a].date);
 		    }
-		    lvx_cms_dump (";; lvx cms:   LINEAR node%d date%d: circuit",
+		    lvx_lms_dump (";; lvx cms:   LINEAR node%d date%d: circuit",
 				  slots[a].node, slots[a].date);
 		    for (unsigned x = 0; x < n; x++)
 		      if (!done[x])
-			lvx_cms_dump (" %d/%d", slots[a + x].insn,
+			lvx_lms_dump (" %d/%d", slots[a + x].insn,
 				      slots[a + x].iter);
-		    lvx_cms_dump ("\n");
+		    lvx_lms_dump ("\n");
 		    for (unsigned x = 0; x < n; x++)
 		      if (!done[x])
 			for (unsigned y = 0; y < n; y++)
@@ -21964,7 +21964,7 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
 
 			      for (int rr = 0; rr < 64; rr++)
 				if ((m >> rr) & 1)
-				  lvx_cms_dump (";; lvx cms:     %d/%d reads"
+				  lvx_lms_dump (";; lvx cms:     %d/%d reads"
 						" r%d that %d/%d writes\n",
 						slots[a + x].insn,
 						slots[a + x].iter, rr,
@@ -22044,7 +22044,7 @@ lvx_cms_slot_order (const auto_vec<rtx_insn *> &seq,
    what lets the whole thing be two arrays and two stacks.  */
 
 static bool
-lvx_cms_seq_pcopy (const auto_vec<int> &psrc, const auto_vec<int> &pdst,
+lvx_lms_seq_pcopy (const auto_vec<int> &psrc, const auto_vec<int> &pdst,
 		   const auto_vec<machine_mode> &pmode, int scratch,
 		   auto_vec<int> *osrc, auto_vec<int> *odst,
 		   auto_vec<machine_mode> *omode)
@@ -22132,12 +22132,12 @@ lvx_cms_seq_pcopy (const auto_vec<int> &psrc, const auto_vec<int> &pdst,
 }
 
 static bool
-lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
+lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 		       const auto_vec<rtx_insn *> &seq,
-		       const auto_vec<lvx_cms_slot> &slots,
-		       const auto_vec<lvx_cms_node> &nodes,
+		       const auto_vec<lvx_lms_slot> &slots,
+		       const auto_vec<lvx_lms_node> &nodes,
 		       const auto_vec<basic_block> &blocks,
-		       const auto_vec<lvx_cms_lrange_part *> &lr,
+		       const auto_vec<lvx_lms_lrange_part *> &lr,
 		       unsigned HOST_WIDE_INT avail,
 		       int *nemit_out, const char **why)
 {
@@ -22340,19 +22340,19 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      the counted kernel the plan already built, whose KUNROLL - 1 counter
      tests make reorg_loops decline the mapping (ITER_REG_USED) so
      lvx_hwloop_fail turns it into a branch loop.  That is slower and right.  */
-  bool hwkern = (doloop && site->kunroll > 1 && lvx_cms_hwkern);
+  bool hwkern = (doloop && site->kunroll > 1 && lvx_lms_hwkern);
   /* Every jump must have a destination outside the loop to drain to, or it is
      an intra-loop branch this emission does not model.  */
   /* ONE REGION PER EMITTING WALK.  §7tricies.212: the flow check compares
      live-range roots, which are only meaningful within a single loop's
      colouring, so each walk that emits gets its own id and the checker drops
      its OWNER map when the id changes.  */
-  lvx_cms_flow_region++;
+  lvx_lms_flow_region++;
 
   *why = "a jump has no exit out of the loop";
   for (unsigned i = 0; i < seq.length (); i++)
     if (JUMP_P (seq[i]) && (int) i != loopback
-	&& !lvx_cms_jump_exit_dest (site, seq[i]))
+	&& !lvx_lms_jump_exit_dest (site, seq[i]))
       return false;
 
   /* The first kernel node is the branch target that closes the loop, and the
@@ -22361,13 +22361,13 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      EXIT_DATE would not work: a kernel node has none, it is -1.  */
   int kfirst = -1, mainep = -1;
   for (unsigned k = 0; k < nnode; k++)
-    if (nodes[k].kind == LVX_CMS_NODE_KERNEL)
+    if (nodes[k].kind == LVX_LMS_NODE_KERNEL)
       {
 	kfirst = (int) k;
 	break;
       }
   for (unsigned k = 0; k < nnode; k++)
-    if (nodes[k].kind == LVX_CMS_NODE_EPILOGUE && nodes[k].main_epilogue)
+    if (nodes[k].kind == LVX_LMS_NODE_EPILOGUE && nodes[k].main_epilogue)
       mainep = (int) k;
   *why = "no kernel node or no main epilogue";
   if (kfirst < 0 || mainep < 0)
@@ -22443,7 +22443,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 
       if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
 	continue;
-      if (nodes[nd].kind != LVX_CMS_NODE_PROLOGUE)
+      if (nodes[nd].kind != LVX_LMS_NODE_PROLOGUE)
 	continue;
 
       /* A CALL IS STILL REFUSED OUTRIGHT.  Loop eligibility declines a body
@@ -22498,7 +22498,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	     blocks; each early exit is paired with its own epilogue node by
 	     (exit_date, exit_iter, exit_insn); and that epilogue's block is
 	     redirected with `redirect_edge_and_branch_force' to
-	     `lvx_cms_jump_exit_dest', the destination the original jump had.
+	     `lvx_lms_jump_exit_dest', the destination the original jump had.
 	     So the branch really is emitted as a branch out, and a later node
 	     is on its fall-through path.
 
@@ -22516,7 +22516,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		  || j >= seq.length () || !JUMP_P (seq[j]))
 		continue;
 	      for (unsigned e = 0; e < nnode; e++)
-		if (nodes[e].kind == LVX_CMS_NODE_EPILOGUE
+		if (nodes[e].kind == LVX_LMS_NODE_EPILOGUE
 		    && !nodes[e].main_epilogue
 		    && nodes[e].exit_date == slots[r].date
 		    && nodes[e].exit_iter == slots[r].iter
@@ -22529,7 +22529,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  if (guarded)
 	    {
 	      nse0g++;
-	      lvx_cms_dump (";; lvx cms:   prologue iter0 side effect insn=%u"
+	      lvx_lms_dump (";; lvx cms:   prologue iter0 side effect insn=%u"
 			    " date=%d guarded by an earlier exit\n", i,
 			    slots[q].date);
 	      continue;
@@ -22546,7 +22546,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	     and iteration 0 begins exactly when the loop is entered.
 
 	     The prologue is where that becomes exact rather than plausible.
-	     lvx_cms_make_nodes puts every prologue block on
+	     lvx_lms_make_nodes puts every prologue block on
 	     `split_edge (find_edge (preheader, header))', so control reaches the
 	     prologue on precisely the paths that reached the header.  Performing
 	     iteration 0's ungoverned side effect there is therefore not
@@ -22554,7 +22554,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	     already performed.
 
 	     PROGRAM ORDER IS THE TEST, not the schedule's.  SEQ is ONE body copy
-	     -- lvx_cms_build_plan replicates it for KUNROLL -- so `no jump below
+	     -- lvx_lms_build_plan replicates it for KUNROLL -- so `no jump below
 	     I' is a per-iteration statement, and an insn in a later unrolled copy
 	     still has the earlier copy's jumps before it and is refused.  With
 	     JOINS refused at admission the body is a chain with exits off it, so
@@ -22584,7 +22584,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	    if (!governed)
 	      {
 		nse0u++;
-		lvx_cms_dump (";; lvx cms:   prologue iter0 side effect insn=%u"
+		lvx_lms_dump (";; lvx cms:   prologue iter0 side effect insn=%u"
 			      " date=%d ungoverned, entering performs it\n", i,
 			      slots[q].date);
 		continue;
@@ -22594,7 +22594,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  if (!site->entry_admits)
 	    {
 	      *why = "the prologue would speculate iteration 0's side effect";
-	      lvx_cms_dump (";; lvx cms:   prologue iter0 side effect insn=%u"
+	      lvx_lms_dump (";; lvx cms:   prologue iter0 side effect insn=%u"
 			    " date=%d, entry does not admit it\n", i,
 			    slots[q].date);
 	      return false;
@@ -22616,7 +22616,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	    admit = slots[r].date;
 	if (admit < 0 || admit >= slots[q].date)
 	  {
-	    lvx_cms_dump (";; lvx cms:   prologue side effect insn=%u iter=%d"
+	    lvx_lms_dump (";; lvx cms:   prologue side effect insn=%u iter=%d"
 			  " date=%d admit=%d\n", i, slots[q].iter,
 			  slots[q].date, admit);
 	    return false;
@@ -22627,7 +22627,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   /* How many prologue side effects each kind of admission covered.  A zero
      NSEL would mean the iteration >= 1 case is unexercised by the corpus,
      which is worth knowing about a path that is trusted to the arc.  */
-  lvx_cms_dump (";; lvx cms:   prologue sideeffects iter0=%d iter0guarded=%d"
+  lvx_lms_dump (";; lvx cms:   prologue sideeffects iter0=%d iter0guarded=%d"
 		" iter0ungoverned=%d iterN=%d\n", nse0, nse0g, nse0u, nsel);
 
   /* THE EPILOGUES LEAVE THE CHAIN FIRST, before any insn is emitted: once
@@ -22667,10 +22667,10 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      are noted at their site.  */
   for (unsigned g = 0; g < lr.length (); g++)
     {
-      lvx_cms_lrange_part *q = lr[g];
+      lvx_lms_lrange_part *q = lr[g];
 
       if (q->effects.is_empty () || !q->exit_live
-	  || lvx_cms_lrange_root (lr, (int) g) != (int) g
+	  || lvx_lms_lrange_root (lr, (int) g) != (int) g
 	  || !q->effects[0].is_def)
 	continue;
       /* A TUPLE IS NOT REFUSED.  §7tricies.73: a tuple copy IS the parallel
@@ -22678,7 +22678,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	 the register-level sequentialisation does the rest.  */
       *why = "a live-out range's definition has no operand";
       if (q->effects[0].insn >= seq.length ()
-	  || !lvx_cms_reg_at (&PATTERN (seq[q->effects[0].insn]),
+	  || !lvx_lms_reg_at (&PATTERN (seq[q->effects[0].insn]),
 			      q->effects[0].slot))
 	return false;
     }
@@ -22696,7 +22696,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      of zlib's inflate_fast made it look like (`8:1/0J 9:1/0J', two jumps at
      one date).  Measured on the gate's own earlyexit.c the node carries ONE
      jump slot and the blocked slot is an ORDINARY instruction: a node spans a
-     range of dates, lvx_cms_slot_order puts the terminator last only WITHIN A
+     range of dates, lvx_lms_slot_order puts the terminator last only WITHIN A
      CYCLE (§7tricies.35), and an ordinary slot at a later date in the same
      node therefore follows it.  Two branches in one cycle is a real and
      separate question -- the architecture allows it, BCU availability being 2
@@ -22705,7 +22705,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 
      SO THE TEST IS THE EMITTER'S OWN: walk the order emission will walk, and
      refuse if any slot follows a jump on its node.  Asking
-     lvx_cms_slot_order here rather than reasoning about dates means the check
+     lvx_lms_slot_order here rather than reasoning about dates means the check
      cannot drift from the order it is checking.
 
      AND IT IS TAKEN HERE because two earlier attempts refused from inside the
@@ -22720,7 +22720,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
     auto_vec<bool> closed;
 
     *why = "a cycle's reads and writes cannot be linearised";
-    if (!lvx_cms_slot_order (seq, slots, lr, loopback, probe_order))
+    if (!lvx_lms_slot_order (seq, slots, lr, loopback, probe_order))
       return false;
 
     auto_vec<int> closedby, closedat;
@@ -22743,10 +22743,10 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  {
 	    /* WHICH slot followed WHICH terminator, and on what node.  The
 	       node boundaries were assigned by the plan walk in (date, iter)
-	       order; this check walks lvx_cms_slot_order, the order emission
+	       order; this check walks lvx_lms_slot_order, the order emission
 	       uses.  Where the two disagree a slot can land after its own
 	       node's jump, and only the pair tells which it was.  */
-	    lvx_cms_dump (";; lvx cms:   TWOTERM node=%d kind=%d blocked"
+	    lvx_lms_dump (";; lvx cms:   TWOTERM node=%d kind=%d blocked"
 			  " insn=%u date=%d iter=%d jmp=%d, closed by insn=%d"
 			  " date=%d\n", nd, (int) nodes[nd].kind, i,
 			  slots[q].date, slots[q].iter,
@@ -22773,12 +22773,12 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	 belong to the latch.  */
       basic_block dest = site->exit_dest;
 
-      if (nodes[k].kind != LVX_CMS_NODE_EPILOGUE)
+      if (nodes[k].kind != LVX_LMS_NODE_EPILOGUE)
 	continue;
       if (!nodes[k].main_epilogue && nodes[k].exit_insn >= 0
 	  && nodes[k].exit_insn < (int) seq.length ())
 	{
-	  dest = lvx_cms_jump_exit_dest (site, seq[nodes[k].exit_insn]);
+	  dest = lvx_lms_jump_exit_dest (site, seq[nodes[k].exit_insn]);
 	  if (!dest)
 	    return false;
 	}
@@ -22807,15 +22807,15 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
   auto_vec<int> order;
 
   *why = "a cycle's reads and writes cannot be linearised";
-  if (!lvx_cms_slot_order (seq, slots, lr, loopback, order))
+  if (!lvx_lms_slot_order (seq, slots, lr, loopback, order))
     return false;
   for (unsigned oq = 0; oq < order.length (); oq++)
     {
       unsigned q = (unsigned) order[oq];
       int nd = slots[q].node;
       unsigned i = (unsigned) slots[q].insn;
-      lvx_cms_ufread_node = nd;
-      lvx_cms_ufread_kind = (nd >= 0 && nd < (int) nnode) ? nodes[nd].kind : -1;
+      lvx_lms_ufread_node = nd;
+      lvx_lms_ufread_kind = (nd >= 0 && nd < (int) nnode) ? nodes[nd].kind : -1;
       if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
 	continue;
       basic_block bb = blocks[nd];
@@ -22848,7 +22848,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	 verifier rejects outright ("flow control insn inside a basic block",
 	 rtl_verify_bb_insns).
 
-	 lvx_cms_slot_order puts the terminator last, but it does so WITHIN A
+	 lvx_lms_slot_order puts the terminator last, but it does so WITHIN A
 	 CYCLE (§7tricies.35), and that is not the same thing: in a multi-exit
 	 body a data-dependent exit can be scheduled in an earlier cycle than
 	 other slots on its own path, and then the order is correct per cycle
@@ -22903,7 +22903,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		 JUMP_LABEL is left as it was set above: delete_insn reads it
 		 to drop the LABEL_NUSES this emission had just claimed.  */
 	      delete_insn (j);
-	      lvx_cms_dump (";; lvx cms:   closing branch dropped, the"
+	      lvx_lms_dump (";; lvx cms:   closing branch dropped, the"
 			    " remainder copy falls into the drain\n");
 	      continue;
 	    }
@@ -22938,19 +22938,19 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		 has not got (validation/cms/twoexit.c).  */
 	      int ep = -1;
 	      rtx cnt = SET_DEST (XVECEXP (PATTERN (seq[i]), 0, 1));
-	      int cslot = lvx_cms_reg_index (PATTERN (seq[i]),
+	      int cslot = lvx_lms_reg_index (PATTERN (seq[i]),
 					     &SET_DEST (XVECEXP (PATTERN
 								   (seq[i]),
 								 0, 1)));
 	      bool cdly = false;
-	      lvx_cms_lrange_part *cg = lvx_cms_lrange_of (lr, i, cslot, &cdly);
-	      int creg = cg ? lvx_cms_lrange_reg (cg, slots[q].iter, cdly)
+	      lvx_lms_lrange_part *cg = lvx_lms_lrange_of (lr, i, cslot, &cdly);
+	      int creg = cg ? lvx_lms_lrange_reg (cg, slots[q].iter, cdly)
 			    : (REG_P (cnt) ? (int) REGNO (cnt) : -1);
 	      machine_mode cm = GET_MODE (cnt);
 	      rtx creg_rtx;
 
 	      for (unsigned e = 0; e < nnode; e++)
-		if (nodes[e].kind == LVX_CMS_NODE_EPILOGUE
+		if (nodes[e].kind == LVX_LMS_NODE_EPILOGUE
 		    && !nodes[e].main_epilogue
 		    && nodes[e].exit_date == slots[q].date
 		    && nodes[e].exit_iter == slots[q].iter
@@ -22993,17 +22993,17 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		      fe->probability = profile_probability::even ();
 		  }
 		/* §7tricies.218: an EPILOGUE insn is left untagged, which is
-		   what leaves its block to SCHED2 -- lvx_cms_own_blocks
+		   what leaves its block to SCHED2 -- lvx_lms_own_blocks
 		   derives BB_DISABLE_SCHEDULE from these tags, and the group
 		   invariant must not be asserted over a block CMS no longer
 		   owns.  */
-		if (!lvx_cms_sched2_epilogue
-		    || nodes[nd].kind != LVX_CMS_NODE_EPILOGUE)
-		  lvx_cms_group_tag (after, nd, slots[q].date,
+		if (!lvx_lms_sched2_epilogue
+		    || nodes[nd].kind != LVX_LMS_NODE_EPILOGUE)
+		  lvx_lms_group_tag (after, nd, slots[q].date,
 				     slots[q].iter * 65536 + (int) i);
 		tail[nd] = cj;
 		nemit++;
-		lvx_cms_dump (";; lvx cms:   doloop early exit insn=%u iter=%d"
+		lvx_lms_dump (";; lvx cms:   doloop early exit insn=%u iter=%d"
 			      " counter=r%d -> node %d\n", i, slots[q].iter,
 			      creg, ep);
 		continue;
@@ -23018,7 +23018,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		 same one (§7tricies.45).  */
 	      int ep = -1;
 	      for (unsigned e = 0; e < nnode; e++)
-		if (nodes[e].kind == LVX_CMS_NODE_EPILOGUE
+		if (nodes[e].kind == LVX_LMS_NODE_EPILOGUE
 		    && !nodes[e].main_epilogue
 		    && nodes[e].exit_date == slots[q].date
 		    && nodes[e].exit_iter == slots[q].iter
@@ -23034,7 +23034,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		 loopback does, so leaving has to become the taken direction.
 		 A top test does not -- it already exits when taken -- and
 		 inverting it would send the CONTINUING case to the drain.  */
-	      if (lvx_cms_jump_taken_stays_p (site, seq[i]))
+	      if (lvx_lms_jump_taken_stays_p (site, seq[i]))
 		{
 		  if (!invert_jump (jj, block_label (target), 0))
 		    {
@@ -23063,7 +23063,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	     substitution walks only REGs.  */
 	  {
 	    int n = 0;
-	    if (!lvx_cms_rename_lr_insn_p (seq[i], j, i, slots[q].iter, lr,
+	    if (!lvx_lms_rename_lr_insn_p (seq[i], j, i, slots[q].iter, lr,
 					   &n, true))
 	      {
 		*why = "the renamed branch does not recognise";
@@ -23086,9 +23086,9 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		fe->probability = profile_probability::even ();
 	    }
 	  /* §7tricies.218: see above -- an epilogue insn carries no group.  */
-	  if (!lvx_cms_sched2_epilogue
-	      || nodes[nd].kind != LVX_CMS_NODE_EPILOGUE)
-	    lvx_cms_group_tag (after, nd, slots[q].date,
+	  if (!lvx_lms_sched2_epilogue
+	      || nodes[nd].kind != LVX_LMS_NODE_EPILOGUE)
+	    lvx_lms_group_tag (after, nd, slots[q].date,
 			       slots[q].iter * 65536 + (int) i);
 	  tail[nd] = j;
 	  nemit++;
@@ -23102,13 +23102,13 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       /* RESOLVED ON THE ORIGINAL, APPLIED TO THE COPY.  copy_insn produces an
 	 insn DF has never seen, so the references are looked up on SEQ[I] and
 	 written to C by operand position (§7tricies.27).  */
-      if (!lvx_cms_rename_lr_insn_p (seq[i], c, i, slots[q].iter, lr, &n,
-				     true, lvx_cms_probe != 0))
+      if (!lvx_lms_rename_lr_insn_p (seq[i], c, i, slots[q].iter, lr, &n,
+				     true, lvx_lms_probe != 0))
 	{
 	  *why = "the renamed copy does not recognise";
 	  return false;
 	}
-      lvx_cms_group_tag (after, nd, slots[q].date,
+      lvx_lms_group_tag (after, nd, slots[q].date,
 			     slots[q].iter * 65536 + (int) i);
       tail[nd] = c;
       nemit++;
@@ -23125,7 +23125,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      Which name is known exactly and needs no analysis -- it is
      reg[(L + use_first - delayed) & (p2unroll - 1)] with L the greatest
      iteration whose heading definition appears on the path into this
-     epilogue, taken with the same path filter lvx_cms_verify_slots uses so
+     epilogue, taken with the same path filter lvx_lms_verify_slots uses so
      the two agree about what a path is.  If no definition appears at all the
      live-out value is the preheader's, which a USE_FIRST live range's pinned
      name 0 already holds, and nothing is copied.
@@ -23144,18 +23144,18 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
       int scratch = -1;
       rtx_insn *after;
 
-      if (nodes[k].kind != LVX_CMS_NODE_EPILOGUE)
+      if (nodes[k].kind != LVX_LMS_NODE_EPILOGUE)
 	continue;
 
       for (unsigned g = 0; g < lr.length (); g++)
 	{
-	  lvx_cms_lrange_part *q = lr[g];
+	  lvx_lms_lrange_part *q = lr[g];
 	  unsigned dins;
 	  int dslot, best = -1, nm, nr;
 	  rtx *dloc;
 
 	  if (q->effects.is_empty () || !q->exit_live
-	      || lvx_cms_lrange_root (lr, (int) g) != (int) g
+	      || lvx_lms_lrange_root (lr, (int) g) != (int) g
 	      || !q->effects[0].is_def)
 	    continue;
 	  dins = q->effects[0].insn;
@@ -23172,7 +23172,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	      if (nd < 0 || nd >= (int) nnode
 		  || (unsigned) slots[z].insn != dins)
 		continue;
-	      is_ep = (nodes[nd].kind == LVX_CMS_NODE_EPILOGUE);
+	      is_ep = (nodes[nd].kind == LVX_LMS_NODE_EPILOGUE);
 	      if (is_ep && nd != (int) k)
 		continue;
 	      if (!is_ep
@@ -23205,14 +23205,14 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		 which has five use-headed ranges and seven exit paths out of
 		 a five-slot prologue, so most of its drains are exactly this
 		 case.  */
-	      if (!lvx_cms_preheader_copy || !(lvx_cms_ph_parts & 1)
+	      if (!lvx_lms_preheader_copy || !(lvx_lms_ph_parts & 1)
 		  || !q->use_first || !q->renamed
 		  || q->reg[0] < 0 || q->reg[0] == (int) q->regno)
 		continue;
 	      nm = q->reg[0];
 	    }
 	  else
-	    nm = lvx_cms_lrange_reg (q, best, q->effects[0].delayed);
+	    nm = lvx_lms_lrange_reg (q, best, q->effects[0].delayed);
 	  if (nm < 0 || nm == (int) q->regno)
 	    continue;		/* already in the architectural register */
 	  nr = MAX (q->nregs, 1);
@@ -23220,7 +23220,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	     (§7tricies.72); these are the same conditions, asserted rather
 	     than decided, so that a change on one side cannot silently
 	     reintroduce a late refusal.  */
-	  dloc = lvx_cms_reg_at (&PATTERN (seq[dins]), dslot);
+	  dloc = lvx_lms_reg_at (&PATTERN (seq[dins]), dslot);
 	  gcc_checking_assert (dloc && *dloc && REG_P (*dloc));
 	  if (!dloc || !*dloc || !REG_P (*dloc))
 	    continue;
@@ -23266,7 +23266,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	 initialise_arrays loop 58, a 256-bit vectorised body: the address
 	 register came out holding packed float data.  */
       for (unsigned g = 0; g < lr.length (); g++)
-	for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
+	for (int x = 0; x < LVX_LMS_MAX_KUNROLL; x++)
 	  if (lr[g]->reg[x] >= 0 && lr[g]->reg[x] < 64)
 	    for (int t = 0; t < MAX (lr[g]->nregs, 1)
 			    && lr[g]->reg[x] + t < 64; t++)
@@ -23285,7 +23285,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  }
 
       *why = "a live-out parallel copy cannot be sequentialised";
-      if (!lvx_cms_seq_pcopy (psrc, pdst, pmode, scratch, &osrc, &odst,
+      if (!lvx_lms_seq_pcopy (psrc, pdst, pmode, scratch, &osrc, &odst,
 			      &omode))
 	return false;
 
@@ -23317,16 +23317,16 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  tail[k] = mv;
 	  nemit++;
 	}
-      lvx_cms_dump (";; lvx cms:   live-out node%u bb%d: %u parallel copies"
+      lvx_lms_dump (";; lvx cms:   live-out node%u bb%d: %u parallel copies"
 		    " -> %u sequential, scratch r%d\n", k, blocks[k]->index,
 		    psrc.length (), osrc.length (), scratch);
-      if (lvx_cms_preheader_copy)
+      if (lvx_lms_preheader_copy)
        for (unsigned z = 0; z < psrc.length (); z++)
-	lvx_cms_dump (";; lvx cms:     LOCOPY node%u kind=%d r%d <- r%d\n",
+	lvx_lms_dump (";; lvx cms:     LOCOPY node%u kind=%d r%d <- r%d\n",
 		      k, (int) nodes[k].kind, pdst[z], psrc[z]);
-      if (lvx_cms_preheader_copy)
+      if (lvx_lms_preheader_copy)
        for (unsigned z = 0; z < osrc.length (); z++)
-	lvx_cms_dump (";; lvx cms:     LOSEQ  node%u kind=%d r%d <- r%d\n",
+	lvx_lms_dump (";; lvx cms:     LOSEQ  node%u kind=%d r%d <- r%d\n",
 		      k, (int) nodes[k].kind, odst[z], osrc[z]);
     }
 
@@ -23354,7 +23354,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      every constraint group and spent 1352 of them on about five needs,
      taking emitted from 949 to 877.  The set is a PARALLEL copy -- two
      use-headed ranges can want each other's registers -- so it goes through
-     lvx_cms_seq_pcopy and the scratch machinery the drain already uses,
+     lvx_lms_seq_pcopy and the scratch machinery the drain already uses,
      including the tuple-span fix of §7tricies.154, since a loop-carried
      value can be a register tuple.
 
@@ -23363,7 +23363,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      the case the phase exists for; where the kernel comes first there is no
      prologue to hide it in and the copy would execute every iteration, so
      the loop is refused instead of being given a copy in the wrong place.  */
-  if (lvx_cms_preheader_copy && (lvx_cms_ph_parts & 1))
+  if (lvx_lms_preheader_copy && (lvx_lms_ph_parts & 1))
     {
       auto_vec<int> psrc, pdst, osrc, odst;
       auto_vec<machine_mode> pmode, omode;
@@ -23373,7 +23373,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 
       for (unsigned g = 0; g < lr.length (); g++)
 	{
-	  lvx_cms_lrange_part *q = lr[g];
+	  lvx_lms_lrange_part *q = lr[g];
 	  rtx *uloc;
 	  int nr, nm;
 
@@ -23382,10 +23382,10 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	     invariant one -- every reference a read, so nothing in the body
 	     ever writes it.  Keyed on use_first alone it missed the second.  */
 	  if (q->effects.is_empty ()
-	      || lvx_cms_lrange_root (lr, (int) g) != (int) g
+	      || lvx_lms_lrange_root (lr, (int) g) != (int) g
 	      || !q->renamed
 	      || !(q->use_first
-		   || lvx_cms_lrange_invariant_p (lr, (int) g)))
+		   || lvx_lms_lrange_invariant_p (lr, (int) g)))
 	    continue;
 	  nm = q->reg[0];
 	  /* Nothing to do where the colouring took the architected register
@@ -23394,13 +23394,13 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	  if (nm < 0 || nm == (int) q->regno)
 	    continue;
 	  if (q->effects[0].insn >= seq.length ()
-	      || q->effects[0].slot == LVX_CMS_SLOT_INDIRECT)
+	      || q->effects[0].slot == LVX_LMS_SLOT_INDIRECT)
 	    {
 	      *why = "a range from outside the loop has no operand to copy"
 		     " through";
 	      return false;
 	    }
-	  uloc = lvx_cms_reg_at (&PATTERN (seq[q->effects[0].insn]),
+	  uloc = lvx_lms_reg_at (&PATTERN (seq[q->effects[0].insn]),
 				 q->effects[0].slot);
 	  if (!uloc || !*uloc || !REG_P (*uloc))
 	    {
@@ -23427,7 +23427,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	    return false;
 
 	  for (unsigned g = 0; g < lr.length (); g++)
-	    for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
+	    for (int x = 0; x < LVX_LMS_MAX_KUNROLL; x++)
 	      if (lr[g]->reg[x] >= 0 && lr[g]->reg[x] < 64)
 		for (int t = 0; t < MAX (lr[g]->nregs, 1)
 				&& lr[g]->reg[x] + t < 64; t++)
@@ -23446,7 +23446,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	      }
 
 	  *why = "an entry parallel copy cannot be sequentialised";
-	  if (!lvx_cms_seq_pcopy (psrc, pdst, pmode, scratch, &osrc, &odst,
+	  if (!lvx_lms_seq_pcopy (psrc, pdst, pmode, scratch, &osrc, &odst,
 				  &omode))
 	    return false;
 
@@ -23507,7 +23507,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		      bitmap_set_bit (seen, e->dest->index);
 		      if (bitmap_bit_p (pipe, e->dest->index))
 			{
-			  lvx_cms_dump (";; lvx cms:   ENTRYBYPASS bb%d"
+			  lvx_lms_dump (";; lvx cms:   ENTRYBYPASS bb%d"
 					" reached without bb%d\n",
 					e->dest->index, blocks[0]->index);
 			  bad++;
@@ -23519,14 +23519,14 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	    if (bad)
 	      return false;
 	  }
-	  lvx_cms_dump (";; lvx cms:   entry bb%d: %u parallel copies -> %u"
+	  lvx_lms_dump (";; lvx cms:   entry bb%d: %u parallel copies -> %u"
 			" sequential, scratch r%d\n", blocks[0]->index,
 			psrc.length (), osrc.length (), scratch);
 	  for (unsigned z = 0; z < psrc.length (); z++)
-	    lvx_cms_dump (";; lvx cms:     ENTRYCOPY r%d <- r%d\n",
+	    lvx_lms_dump (";; lvx cms:     ENTRYCOPY r%d <- r%d\n",
 			  pdst[z], psrc[z]);
 	  for (unsigned z = 0; z < osrc.length (); z++)
-	    lvx_cms_dump (";; lvx cms:     ENTRYSEQ  r%d <- r%d\n",
+	    lvx_lms_dump (";; lvx cms:     ENTRYSEQ  r%d <- r%d\n",
 			  odst[z], osrc[z]);
 	}
     }
@@ -23555,11 +23555,11 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
     {
       rtx cpat = PATTERN (seq[loopback]);
       rtx cnt = SET_DEST (XVECEXP (cpat, 0, 1));
-      int cslot = lvx_cms_reg_index (cpat, &SET_DEST (XVECEXP (cpat, 0, 1)));
+      int cslot = lvx_lms_reg_index (cpat, &SET_DEST (XVECEXP (cpat, 0, 1)));
       bool cdly = false;
-      lvx_cms_lrange_part *cg = lvx_cms_lrange_of (lr, loopback, cslot, &cdly);
+      lvx_lms_lrange_part *cg = lvx_lms_lrange_of (lr, loopback, cslot, &cdly);
       machine_mode cm = GET_MODE (cnt);
-      int creg = cg ? lvx_cms_lrange_reg (cg, 0, cdly)
+      int creg = cg ? lvx_lms_lrange_reg (cg, 0, cdly)
 		    : (REG_P (cnt) ? (int) REGNO (cnt) : -1);
       unsigned HOST_WIDE_INT free_regs = avail;
       int hwreg = -1, k2 = site->kunroll, logk = 0;
@@ -23578,8 +23578,8 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	 use; what it did not take is free across the whole pipeline.  */
       for (unsigned g = 0; g < lr.length (); g++)
 	{
-	  lvx_cms_lrange_part *q = lr[g];
-	  for (int x = 0; x < LVX_CMS_MAX_KUNROLL; x++)
+	  lvx_lms_lrange_part *q = lr[g];
+	  for (int x = 0; x < LVX_LMS_MAX_KUNROLL; x++)
 	    if (q->reg[x] >= 0 && q->reg[x] < 64)
 	      /* NREGS, not one -- §7tricies.154, as above.  */
 	      for (int t = 0; t < MAX (q->nregs, 1) && q->reg[x] + t < 64; t++)
@@ -23655,7 +23655,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	*why = "no NOTE_INSN_BASIC_BLOCK in the exit-free kernel";
 	if (!at || !NOTE_INSN_BASIC_BLOCK_P (at))
 	  return false;
-	lvx_cms_dump (";; lvx cms:   K0 trace (exit-free copy):");
+	lvx_lms_dump (";; lvx cms:   K0 trace (exit-free copy):");
 	for (unsigned oq = 0; oq < order.length (); oq++)
 	  {
 	    unsigned q = (unsigned) order[oq];
@@ -23666,7 +23666,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 
 	    if (nd < 0 || nd >= (int) nnode || i >= seq.length ())
 	      continue;
-	    if (nodes[nd].kind != LVX_CMS_NODE_KERNEL)
+	    if (nodes[nd].kind != LVX_LMS_NODE_KERNEL)
 	      continue;
 
 	    if (JUMP_P (seq[i]))
@@ -23679,7 +23679,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		if ((int) i == loopback)
 		  continue;		/* no counted instance at all */
 		for (unsigned z = 0; z < nnode; z++)
-		  if (nodes[z].kind == LVX_CMS_NODE_EPILOGUE
+		  if (nodes[z].kind == LVX_LMS_NODE_EPILOGUE
 		      && !nodes[z].main_epilogue
 		      && nodes[z].exit_date == slots[q].date
 		      && nodes[z].exit_iter == slots[q].iter
@@ -23696,7 +23696,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		if (JUMP_LABEL (j) && LABEL_P (JUMP_LABEL (j)))
 		  LABEL_NUSES (JUMP_LABEL (j))++;
 		jj = as_a <rtx_jump_insn *> (j);
-		if (lvx_cms_jump_taken_stays_p (site, seq[i]))
+		if (lvx_lms_jump_taken_stays_p (site, seq[i]))
 		  {
 		    *why = "cannot invert an exit of the exit-free kernel";
 		    if (!invert_jump (jj, block_label (target), 0))
@@ -23709,7 +23709,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		      return false;
 		  }
 		*why = "the renamed branch does not recognise";
-		if (!lvx_cms_rename_lr_insn_p (seq[i], j, i, slots[q].iter,
+		if (!lvx_lms_rename_lr_insn_p (seq[i], j, i, slots[q].iter,
 					       lr, &n, true))
 		  return false;
 		if (!find_edge (cur, target))
@@ -23722,7 +23722,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 		    if (fe)
 		      fe->probability = profile_probability::even ();
 		  }
-		lvx_cms_dump (" bb%d:%u/%d@%dX->bb%d", cur->index, i,
+		lvx_lms_dump (" bb%d:%u/%d@%dX->bb%d", cur->index, i,
 			      slots[q].iter, slots[q].date, target->index);
 		nemit++;
 		nx++;
@@ -23743,16 +23743,16 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 
 	    c = emit_insn_after_noloc (copy_insn (PATTERN (seq[i])), at, NULL);
 	    *why = "the renamed copy does not recognise";
-	    if (!lvx_cms_rename_lr_insn_p (seq[i], c, i, slots[q].iter, lr,
+	    if (!lvx_lms_rename_lr_insn_p (seq[i], c, i, slots[q].iter, lr,
 					   &n, true))
 	      return false;
-	    lvx_cms_dump (" bb%d:%u/%d@%d", cur->index, i, slots[q].iter,
+	    lvx_lms_dump (" bb%d:%u/%d@%d", cur->index, i, slots[q].iter,
 			  slots[q].date);
 	    at = c;
 	    nemit++;
 	    nk++;
 	  }
-	lvx_cms_dump ("\n");
+	lvx_lms_dump ("\n");
 	*why = "the exit-free kernel came out empty";
 	if (nk == 0)
 	  return false;
@@ -23775,7 +23775,7 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 	    if (fe)
 	      fe->probability = profile_probability::even ();
 	  }
-	lvx_cms_dump (";; lvx cms:   hwloop kernel bb%d..bb%d: %d insns,"
+	lvx_lms_dump (";; lvx cms:   hwloop kernel bb%d..bb%d: %d insns,"
 		      " %d data exits, counter r%d, trips (M-1)>>%d,"
 		      " leftover in r%d bb%d\n", kbb->index, cur->index, nk,
 		      nx, hwreg, logk, creg, blocks[kfirst]->index);
@@ -23786,14 +23786,14 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
      be traced against the plan rather than reasoned about.  §7tricies.69.
      One line per node: its kind, its block, and every (insn/iteration@date)
      it holds in emission order, with X marking a jump.  */
-  if (lvx_cms_probe)
+  if (lvx_lms_probe)
     for (unsigned k = 0; k < nnode; k++)
       {
-	const char *kind = (nodes[k].kind == LVX_CMS_NODE_PROLOGUE ? "pro"
-			    : nodes[k].kind == LVX_CMS_NODE_KERNEL ? "ker"
+	const char *kind = (nodes[k].kind == LVX_LMS_NODE_PROLOGUE ? "pro"
+			    : nodes[k].kind == LVX_LMS_NODE_KERNEL ? "ker"
 			    : nodes[k].main_epilogue ? "mainep" : "exitep");
 
-	lvx_cms_dump (";; lvx cms:   trace node%u %s bb%d:", k, kind,
+	lvx_lms_dump (";; lvx cms:   trace node%u %s bb%d:", k, kind,
 		      blocks[k]->index);
 	for (unsigned oq = 0; oq < order.length (); oq++)
 	  {
@@ -23801,33 +23801,33 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
 
 	    if (slots[q].node != (int) k)
 	      continue;
-	    lvx_cms_dump (" %d/%d@%d%s", slots[q].insn, slots[q].iter,
+	    lvx_lms_dump (" %d/%d@%d%s", slots[q].insn, slots[q].iter,
 			  slots[q].date,
 			  (slots[q].insn >= 0
 			   && (unsigned) slots[q].insn < seq.length ()
 			   && JUMP_P (seq[slots[q].insn])) ? "X" : "");
 	  }
-	lvx_cms_dump ("\n");
+	lvx_lms_dump ("\n");
       }
 
   /* THE CFG AS BUILT, printed rather than inferred from the assembly.  Four
      diagnoses of the remaining fault were made by reading emitted code and
      all four were wrong; the edges are what the fault is about, so they are
      what gets dumped.  */
-  if (lvx_cms_probe)
+  if (lvx_lms_probe)
     for (unsigned k = 0; k < nnode; k++)
       {
 	edge e;
 	edge_iterator ei;
-	const char *kind = (nodes[k].kind == LVX_CMS_NODE_PROLOGUE ? "pro"
-			    : nodes[k].kind == LVX_CMS_NODE_KERNEL ? "ker"
+	const char *kind = (nodes[k].kind == LVX_LMS_NODE_PROLOGUE ? "pro"
+			    : nodes[k].kind == LVX_LMS_NODE_KERNEL ? "ker"
 			    : nodes[k].main_epilogue ? "mainep" : "exitep");
-	lvx_cms_dump (";; lvx cms:   cfg node%u %s bb%d ->", k, kind,
+	lvx_lms_dump (";; lvx cms:   cfg node%u %s bb%d ->", k, kind,
 		      blocks[k]->index);
 	FOR_EACH_EDGE (e, ei, blocks[k]->succs)
-	  lvx_cms_dump (" bb%d%s", e->dest->index,
+	  lvx_lms_dump (" bb%d%s", e->dest->index,
 			(e->flags & EDGE_FALLTHRU) ? "f" : "");
-	lvx_cms_dump ("\n");
+	lvx_lms_dump ("\n");
       }
 
   *nemit_out = nemit;
@@ -23857,18 +23857,18 @@ lvx_cms_emit_pipeline (const struct lvx_cms_site *site,
    per expansion copy, per the author -- which the frame pays for and the
    register file does not, so it does not enter this test.  */
 
-#define LVX_CMS_RELOAD_LATENCY 3
+#define LVX_LMS_RELOAD_LATENCY 3
 
 static int
-lvx_cms_spill_until_colourable (const auto_vec<rtx_insn *> &seq,
-				const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_spill_until_colourable (const auto_vec<rtx_insn *> &seq,
+				const auto_vec<lvx_lms_arc> &arcs,
 				const auto_vec<int> &sigma,
 				const struct lvx_sched_resources *demand,
 				int ii, int lo, int *spill_out, int *nodes_out,
 				int *spill0_out)
 {
   auto_vec<int> cdef, clast, cdeg, cnr, cec, cown;
-  lvx_cms_collect_values (seq, arcs, sigma, ii, cdef, clast, cdeg, cnr, cec,
+  lvx_lms_collect_values (seq, arcs, sigma, ii, cdef, clast, cdeg, cnr, cec,
 			  &cown);
 
   auto_vec<int> tiny, lsu;
@@ -23878,7 +23878,7 @@ lvx_cms_spill_until_colourable (const auto_vec<rtx_insn *> &seq,
     {
       struct lvx_sched_resources one;
       memset (&one, 0, sizeof (one));
-      lvx_cms_resources_add (&one, seq[i]);
+      lvx_lms_resources_add (&one, seq[i]);
       tiny[(sigma[i] - lo) % ii] += (int) one.tiny_count;
       lsu[(sigma[i] - lo) % ii] += (int) one.lsu_count;
     }
@@ -23895,7 +23895,7 @@ lvx_cms_spill_until_colourable (const auto_vec<rtx_insn *> &seq,
   for (int attempt = 0; attempt <= 8; attempt++)
     {
       int nn, ne, msq, spl, per, kun;
-      lvx_cms_colour (cdef, clast, cdeg, cnr, cec, ii, lo,
+      lvx_lms_colour (cdef, clast, cdeg, cnr, cec, ii, lo,
 		      &nn, &ne, &msq, &spl, &per, &kun);
       if (attempt == 0)
 	*spill0_out = spl;
@@ -23963,9 +23963,9 @@ lvx_cms_spill_until_colourable (const auto_vec<rtx_insn *> &seq,
 	  continue;
 	}
 
-      int latd = MAX (1, lvx_cms_latency (seq[i]));
+      int latd = MAX (1, lvx_lms_latency (seq[i]));
       int ts = (gp == d) ? d + latd : gp + 1;
-      int tr = gq - LVX_CMS_RELOAD_LATENCY;
+      int tr = gq - LVX_LMS_RELOAD_LATENCY;
       if (tr <= ts)
 	{
 	  why_nogap++;
@@ -23977,8 +23977,8 @@ lvx_cms_spill_until_colourable (const auto_vec<rtx_insn *> &seq,
       dem2.tiny_count += added_tiny;
       dem2.lsu_count += added_lsu;
       dem2.ninsns_count += added_tiny;
-      if (!lvx_cms_repair_fits_ii_p (seq, arcs, &dem2, i, ii,
-				     LVX_CMS_RELOAD_LATENCY, 2 * nr,
+      if (!lvx_lms_repair_fits_ii_p (seq, arcs, &dem2, i, ii,
+				     LVX_LMS_RELOAD_LATENCY, 2 * nr,
 				     2 * nr, nr))
 	{
 	  why_ii++;
@@ -24020,7 +24020,7 @@ lvx_cms_spill_until_colourable (const auto_vec<rtx_insn *> &seq,
 
    Each split replaces one value by two -- definition..copy and copy..last use
    -- and costs one COPYD per register at the copy's cycle.  A candidate is
-   taken only if it keeps the II (lvx_cms_repair_fits_ii_p: the extra TINY must
+   taken only if it keeps the II (lvx_lms_repair_fits_ii_p: the extra TINY must
    fit the resource budget and the extra cycle of latency must not push the
    parametric period past the II), and only if a cycle exists inside the
    producer-latency window with a free TINY in the cumulative table.
@@ -24032,15 +24032,15 @@ lvx_cms_spill_until_colourable (const auto_vec<rtx_insn *> &seq,
    splits, after Ruttenberg's cap on escalation.  */
 
 static int
-lvx_cms_split_until_colourable (const auto_vec<rtx_insn *> &seq,
-				const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_split_until_colourable (const auto_vec<rtx_insn *> &seq,
+				const auto_vec<lvx_lms_arc> &arcs,
 				const auto_vec<int> &sigma,
 				const struct lvx_sched_resources *demand,
 				int ii, int lo, int *spill_out, int *nodes_out,
 				int *spill0_out)
 {
   auto_vec<int> cdef, clast, cdeg, cnr, cec, cown;
-  lvx_cms_collect_values (seq, arcs, sigma, ii, cdef, clast, cdeg, cnr, cec,
+  lvx_lms_collect_values (seq, arcs, sigma, ii, cdef, clast, cdeg, cnr, cec,
 			  &cown);
 
   /* Modulo TINY occupancy of the schedule, which the copies draw down.  */
@@ -24051,7 +24051,7 @@ lvx_cms_split_until_colourable (const auto_vec<rtx_insn *> &seq,
     {
       struct lvx_sched_resources one;
       memset (&one, 0, sizeof (one));
-      lvx_cms_resources_add (&one, seq[i]);
+      lvx_lms_resources_add (&one, seq[i]);
       tiny[(sigma[i] - lo) % ii] += (int) one.tiny_count;
     }
   int tinycap = (int) lvx_issue_availability.tiny;
@@ -24070,7 +24070,7 @@ lvx_cms_split_until_colourable (const auto_vec<rtx_insn *> &seq,
   for (int attempt = 0; attempt <= 8; attempt++)
     {
       int nn, ne, msq, spl, per, kun;
-      lvx_cms_colour (cdef, clast, cdeg, cnr, cec, ii, lo,
+      lvx_lms_colour (cdef, clast, cdeg, cnr, cec, ii, lo,
 		      &nn, &ne, &msq, &spl, &per, &kun);
       /* The colouring BEFORE any split, over the complete value list, so the
 	 caller can see whether that list agrees with the one the report built
@@ -24104,14 +24104,14 @@ lvx_cms_split_until_colourable (const auto_vec<rtx_insn *> &seq,
       struct lvx_sched_resources dem2 = *demand;
       dem2.tiny_count += added_tiny;
       dem2.ninsns_count += added_tiny;
-      if (!lvx_cms_repair_fits_ii_p (seq, arcs, &dem2, i, ii, 1, nr))
+      if (!lvx_lms_repair_fits_ii_p (seq, arcs, &dem2, i, ii, 1, nr))
 	{
 	  declined[best] = true;	/* look at the next one */
 	  continue;
 	}
 
       /* A cycle in the producer-latency window with NR free TINY.  */
-      int lat = MAX (1, lvx_cms_latency (seq[i]));
+      int lat = MAX (1, lvx_lms_latency (seq[i]));
       int t = -1;
       for (int c = d + lat; c <= last - 1 && t < 0; c++)
 	if (tiny[(c - lo) % ii] + nr <= tinycap)
@@ -24140,25 +24140,25 @@ lvx_cms_split_until_colourable (const auto_vec<rtx_insn *> &seq,
 }
 
 static int
-lvx_cms_latency (rtx_insn *insn)
+lvx_lms_latency (rtx_insn *insn)
 {
   if (lvx_doloop_end_p (insn))
     return 1;
   return MAX (1, insn_default_latency (insn)
-		 + lvx_cms_load_latency_delta (insn));
+		 + lvx_lms_load_latency_delta (insn));
 }
 
 static bool
-lvx_cms_slot_fits_p (const struct lvx_sched_resources *slot, rtx_insn *insn)
+lvx_lms_slot_fits_p (const struct lvx_sched_resources *slot, rtx_insn *insn)
 {
   struct lvx_sched_resources trial = *slot;
-  lvx_cms_resources_add (&trial, insn);
+  lvx_lms_resources_add (&trial, insn);
 
   if (trial.ninsns_count > (unsigned) lvx_sched_issue_rate ())
     return false;
-#define LVX_CMS_FITS(R)							  if (trial.R##_count > (unsigned) lvx_issue_availability.R)		    return false;
-  LVX_ISSUE_RESOURCES (LVX_CMS_FITS)
-#undef LVX_CMS_FITS
+#define LVX_LMS_FITS(R)							  if (trial.R##_count > (unsigned) lvx_issue_availability.R)		    return false;
+  LVX_ISSUE_RESOURCES (LVX_LMS_FITS)
+#undef LVX_LMS_FITS
   return true;
 }
 
@@ -24176,7 +24176,7 @@ lvx_cms_slot_fits_p (const struct lvx_sched_resources *slot, rtx_insn *insn)
 
 
 static int
-lvx_cms_earliest_cycle (const auto_vec<lvx_cms_arc> &arcs,
+lvx_cms_earliest_cycle (const auto_vec<lvx_lms_arc> &arcs,
 			const auto_vec<int> &release,
 			const auto_vec<int> &date,
 			unsigned n, int ncopy, int ii, unsigned bi, int bc)
@@ -24234,8 +24234,8 @@ lvx_cms_earliest_cycle (const auto_vec<lvx_cms_arc> &arcs,
 /* The convergence ORACLE, defined below: it answers whether a candidate
    periodic schedule satisfies every arc (omega included) and fits the modulo
    reservation table.  §7tricies.128.  */
-static const char *lvx_cms_verify (const auto_vec<rtx_insn *> &,
-				   const auto_vec<lvx_cms_arc> &, int,
+static const char *lvx_lms_verify (const auto_vec<rtx_insn *> &,
+				   const auto_vec<lvx_lms_arc> &, int,
 				   const auto_vec<int> &,
 				   auto_vec<int> * = NULL);
 
@@ -24274,7 +24274,7 @@ lvx_cms_rnd (unsigned *state)
 
 static bool
 lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
-		  const auto_vec<lvx_cms_arc> &arcs,
+		  const auto_vec<lvx_lms_arc> &arcs,
 		  const auto_vec<int> &prio,
 		  const auto_vec<int> &release,
 		  int ii, int delta, auto_vec<int> &sigma,
@@ -24301,7 +24301,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
      recovers at HALF the budget.
 
      So Δ2 is not computed and the budget stays at Δ1 + 4.  The acceptance
-     test below asks lvx_cms_verify directly, which is the property Δ2 was
+     test below asks lvx_lms_verify directly, which is the property Δ2 was
      standing in for.  Exhausting this budget means `not settled' and never
      `II infeasible': no bound on copies could establish the latter, since
      deciding modulo schedulability at a fixed II under resource constraints
@@ -24319,7 +24319,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
      the only signal left was `when - earliest', the delay a placement
      suffered, attributed to a RESOURCE TYPE rather than to an instruction --
      which cannot say which task to move.  The real failure is in the
-     PROJECTION, and lvx_cms_verify knows exactly which instructions caused
+     PROJECTION, and lvx_lms_verify knows exactly which instructions caused
      it.  Every copy that completes asks the oracle, and every refusal names
      its culprits here; what survives when the budget runs out is the squeak,
      accumulated over the whole construction rather than over one copy.  */
@@ -24336,7 +24336,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
   ready_at.safe_grow_cleared (cells);
   for (unsigned k = 0; k < cells; k++)
     ready_at[k] = -1;
-  if (lvx_cms_place_trace && dump_file && lvx_cms_probe)
+  if (lvx_cms_place_trace && dump_file && lvx_lms_probe)
     {
       HOST_WIDE_INT tmin = 0, tmax = 0;
       unsigned nneg = 0, nzero = 0;
@@ -24347,7 +24347,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	  if (arcs[a2].theta < 0) nneg++;
 	  else if (arcs[a2].theta == 0) nzero++;
 	}
-      lvx_cms_dump (";; lvx cms: PLACEARCS ii=%d narcs=%u thetamin=" HOST_WIDE_INT_PRINT_DEC
+      lvx_lms_dump (";; lvx cms: PLACEARCS ii=%d narcs=%u thetamin=" HOST_WIDE_INT_PRINT_DEC
 		    " thetamax=" HOST_WIDE_INT_PRINT_DEC " nneg=%u nzero=%u\n",
 		    ii, arcs.length (), tmin, tmax, nneg, nzero);
     }
@@ -24379,7 +24379,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 
   memset (&curcyc, 0, sizeof (curcyc));
   /* THE SAME TABLE WITH THE DOLOOP_END UNCHARGED.  §7tricies.87.
-     lvx_cms_resources_add charges a doloop_end as a decrement plus a branch,
+     lvx_lms_resources_add charges a doloop_end as a decrement plus a branch,
      and on a loop that gets mapped it occupies no slot (it emits
      `# loopdo end').  Measuring that on ResMII measured the harmless half: the
      bound only seeds the II search, which increments until CONVERGE succeeds,
@@ -24459,7 +24459,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 least-clock-advance was systematically taking the one that did not.  */
       while (best < 0)
 	{
-	  unsigned cur = mrt.is_empty () ? 0 : lvx_cms_mrt_violations (mrt);
+	  unsigned cur = mrt.is_empty () ? 0 : lvx_lms_mrt_violations (mrt);
 	  auto_vec<unsigned> elig;
 	  auto_vec<bool> ovf;
 	  unsigned nok = 0;
@@ -24478,13 +24478,13 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 					     i, c);
 		if (e0 < 0 || e0 > clock)
 		  continue;			/* unready, or not released */
-		if (!lvx_cms_slot_fits_p (&curcyc, seq[i]))
+		if (!lvx_lms_slot_fits_p (&curcyc, seq[i]))
 		  continue;			/* no room in this cycle */
 		{
 		  bool bad = false;
 
 		  if (!mrt.is_empty ())
-		    bad = lvx_cms_mrt_trial (mrt, mrow, seq[i], i,
+		    bad = lvx_lms_mrt_trial (mrt, mrow, seq[i], i,
 					     ((clock % ii) + ii) % ii) > cur;
 		  elig.safe_push (k);
 		  ovf.safe_push (bad);
@@ -24578,8 +24578,8 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		}
 	  }
 	  stall = 0;
-	  if (lvx_cms_clock_trace && dump_file && lvx_cms_probe)
-	    lvx_cms_dump (";; lvx cms:   CLOCKPICK ii=%d clock=%d elig=%u"
+	  if (lvx_cms_clock_trace && dump_file && lvx_lms_probe)
+	    lvx_lms_dump (";; lvx cms:   CLOCKPICK ii=%d clock=%d elig=%u"
 			  " ok=%u forced=%d insn=%d\n", ii, clock,
 			  elig.length (), nok, take_bad ? 1 : 0, best % (int) n);
 	}
@@ -24598,7 +24598,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 (docs/dfa-resource-interfaces.md).  Trace only; decides nothing.  */
       /* Where it lands, from the same function the selection used, so the two
 	 cannot disagree.  The release-date rationale that used to sit here is
-	 kept below; the arithmetic itself moved into lvx_cms_place_cycle.  */
+	 kept below; the arithmetic itself moved into lvx_lms_place_cycle.  */
       /* The RELEASE DATE, II-PERIODIC, enforced here rather than by an arc
       	 from the dependence graph's source node.
 
@@ -24623,7 +24623,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 §7tricies.187.  The cell was admitted because its earliest is at or
 	 before CLOCK and CLOCK had room for it.  */
       when = clock;
-      lvx_cms_resources_add (&curcyc, seq[bi]);
+      lvx_lms_resources_add (&curcyc, seq[bi]);
       date[(unsigned) best] = when;
 
       /* ROLLING MRT: retire this task's previous instance, install the new
@@ -24633,12 +24633,12 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	  int row = ((when % ii) + ii) % ii;
 
 	  if (mrow[bi] >= 0)
-	    lvx_cms_resources_sub (&mrt[(unsigned) mrow[bi]], seq[bi]);
-	  lvx_cms_resources_add (&mrt[(unsigned) row], seq[bi]);
+	    lvx_lms_resources_sub (&mrt[(unsigned) mrow[bi]], seq[bi]);
+	  lvx_lms_resources_add (&mrt[(unsigned) row], seq[bi]);
 	  mrow[bi] = row;
 
 	  {
-	    unsigned v = lvx_cms_mrt_violations (mrt);
+	    unsigned v = lvx_lms_mrt_violations (mrt);
 	    bool full = true;
 
 	    for (unsigned i = 0; i < n && full; i++)
@@ -24657,8 +24657,8 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	       table describes a partial sigma.  */
 	    if (full && v == 0 && !mrt_saw_zero)
 	      mrt_saw_zero = true, mrt_first_zero = (unsigned) placed;
-	    if (lvx_cms_rolling_mrt > 1 && dump_file && lvx_cms_probe)
-	      lvx_cms_dump (";; lvx cms:   MRTROLL ii=%d step=%d insn=%u"
+	    if (lvx_cms_rolling_mrt > 1 && dump_file && lvx_lms_probe)
+	      lvx_lms_dump (";; lvx cms:   MRTROLL ii=%d step=%d insn=%u"
 			    " row=%d viol=%u full=%d\n", ii, placed, bi, row,
 			    v, full ? 1 : 0);
 	  }
@@ -24667,8 +24667,8 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	 out monotone, which decides whether this construction could drive an
 	 automaton resource model -- one can be advanced but never reversed
 	 (docs/dfa-resource-interfaces.md).  Trace only; decides nothing.  */
-      if (lvx_cms_place_trace && dump_file && lvx_cms_probe)
-	lvx_cms_dump (";; lvx cms: PLACE ii=%d step=%d insn=%u copy=%d"
+      if (lvx_cms_place_trace && dump_file && lvx_lms_probe)
+	lvx_lms_dump (";; lvx cms: PLACE ii=%d step=%d insn=%u copy=%d"
 		      " date=%d rdy=%d\n", ii, placed, bi, bc, when,
 		      ready_at[(unsigned) best]);
       placed++;
@@ -24737,7 +24737,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 
 	     What convergence must establish is that the PROJECTION is a legal
 	     modulo schedule: every arc satisfied at distance omega, and the
-	     modulo reservation table fitting.  lvx_cms_verify computes exactly
+	     modulo reservation table fitting.  lvx_lms_verify computes exactly
 	     that from a candidate SIGMA, so it can be asked directly instead
 	     of waiting for a structural property that implies it.
 
@@ -24767,17 +24767,17 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		auto_vec<int> cand;
 		for (unsigned i = 0; i < n; i++)
 		  cand.safe_push (date[(unsigned) bc * n + i] - bc * ii);
-		settled = lvx_cms_verify (seq, arcs, ii, cand, &guilty) == NULL;
+		settled = lvx_lms_verify (seq, arcs, ii, cand, &guilty) == NULL;
 	      }
 	  }
-	  if (settled && lvx_cms_rolling_mrt && dump_file && lvx_cms_probe)
-	    lvx_cms_dump (";; lvx cms: MRTFIT fn=%s ii=%d oracle_at=%d"
+	  if (settled && lvx_cms_rolling_mrt && dump_file && lvx_lms_probe)
+	    lvx_lms_dump (";; lvx cms: MRTFIT fn=%s ii=%d oracle_at=%d"
 			  " mrt_zero_at=%s rises=%u falls=%u steps=%u\n",
 			  current_function_name (), ii, placed,
 			  mrt_saw_zero ? "yes" : "never", mrt_rises, mrt_falls,
 			  mrt_placed);
-	  if (mrt_saw_zero && dump_file && lvx_cms_probe && settled)
-	    lvx_cms_dump (";; lvx cms: MRTZERO fn=%s ii=%d first_zero=%u"
+	  if (mrt_saw_zero && dump_file && lvx_lms_probe && settled)
+	    lvx_lms_dump (";; lvx cms: MRTZERO fn=%s ii=%d first_zero=%u"
 			  " oracle=%d\n", current_function_name (), ii,
 			  mrt_first_zero, placed);
 	  if (settled)
@@ -24813,8 +24813,8 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	  if (guilty[i] > 0)
 	    named++, total += guilty[i];
 	}
-      if (dump_file && lvx_cms_probe)
-	lvx_cms_dump (";; lvx cms: fn=%s II=%d SQUEAK named=%u/%u"
+      if (dump_file && lvx_lms_probe)
+	lvx_lms_dump (";; lvx cms: fn=%s II=%d SQUEAK named=%u/%u"
 		      " accusations=%u\n", current_function_name (), ii,
 		      named, n, total);
     }
@@ -24835,8 +24835,8 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
    the inputs, TOSINK descending issues the critical path first.  */
 
 static void
-lvx_cms_path_metrics (const auto_vec<rtx_insn *> &seq,
-		      const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_path_metrics (const auto_vec<rtx_insn *> &seq,
+		      const auto_vec<lvx_lms_arc> &arcs,
 		      const auto_vec<int> &asap,
 		      auto_vec<int> &tosink, auto_vec<int> &slack)
 {
@@ -24848,7 +24848,7 @@ lvx_cms_path_metrics (const auto_vec<rtx_insn *> &seq,
   slack.safe_grow_cleared (n);
 
   for (unsigned i = 0; i < n; i++)
-    tosink[i] = lvx_cms_latency (seq[i]);
+    tosink[i] = lvx_lms_latency (seq[i]);
 
   /* Reverse relaxation.  An omega = 0 arc runs forward in chain order, so one
      reverse sweep settles it; a second costs nothing at these sizes and makes
@@ -24865,7 +24865,7 @@ lvx_cms_path_metrics (const auto_vec<rtx_insn *> &seq,
 
   int makespan = 1;
   for (unsigned i = 0; i < n; i++)
-    makespan = MAX (makespan, asap[i] + lvx_cms_latency (seq[i]));
+    makespan = MAX (makespan, asap[i] + lvx_lms_latency (seq[i]));
   for (unsigned i = 0; i < n; i++)
     slack[i] = (makespan - tosink[i]) - asap[i];
 }
@@ -24910,7 +24910,7 @@ lvx_cms_path_metrics (const auto_vec<rtx_insn *> &seq,
 
 static bool
 lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
-		   const auto_vec<lvx_cms_arc> &arcs,
+		   const auto_vec<lvx_lms_arc> &arcs,
 		   const auto_vec<int> &height,
 		   int ii, int delta, auto_vec<int> &sigma,
 		   int budget, int *passes, const char **last_bad,
@@ -24928,7 +24928,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
   release.safe_grow_cleared (n);
   cumulative.safe_grow_cleared (n);
   base.safe_grow_cleared (n);
-  lvx_cms_path_metrics (seq, arcs, height, tosink, slack);
+  lvx_lms_path_metrics (seq, arcs, height, tosink, slack);
 
   /* THE MCRL DATES AS THE FIRST RELEASE DATES (author, 2026-10-27).
 
@@ -24964,14 +24964,14 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
     {
       auto_vec<int> es, ls, nodates;
       int wfirst = -1, wmake = 0, wempty = 0;
-      lvx_cms_dates_in_window (seq, arcs, nodates, tosink, ii,
+      lvx_lms_dates_in_window (seq, arcs, nodates, tosink, ii,
 			       &wfirst, &wmake, &wempty, &es, &ls, 0);
       if (!wempty && es.length () == n && ls.length () == n)
 	{
 	  HOST_WIDE_INT mcost;
 	  unsigned nn, ne;
 	  auto_vec<int> md;
-	  if (lvx_cms_mcrl_dates (seq, arcs, es, ls, ii, md, &mcost, &nn, &ne)
+	  if (lvx_lms_mcrl_dates (seq, arcs, es, ls, ii, md, &mcost, &nn, &ne)
 	      == LVX_NETWORK_SOLVED)
 	    {
 	      for (unsigned i = 0; i < n; i++)
@@ -25027,7 +25027,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		 can stretch the schedule -- which is the trade to measure.  */
 	      int m = 1;
 	      for (unsigned i = 0; i < n; i++)
-		m = MAX (m, height[i] + lvx_cms_latency (seq[i]));
+		m = MAX (m, height[i] + lvx_lms_latency (seq[i]));
 	      int stages = (m + ii - 1) / ii;
 	      branch_floor = MAX (stages - 1, 0) * ii;
 	    }
@@ -25071,7 +25071,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	/* There was a case 3 here, "latest start first", meant as a PRESSURE
 	   priority after Dehnert's remedy of placing definitions close to
 	   their uses.  It is removed because it is VACUOUS: ALAP is
-	   makespan - tosink (see lvx_cms_path_metrics, where
+	   makespan - tosink (see lvx_lms_path_metrics, where
 	   slack = makespan - tosink - asap and asap is HEIGHT), so
 	   height + slack = makespan - tosink, and ordering by that is
 	   ordering by -tosink -- which is case 1.  The dumps were
@@ -25111,7 +25111,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 
       memset (&dem, 0, sizeof (dem));
       for (unsigned i = 0; i < n; i++)
-	lvx_cms_resources_add (&dem, seq[i]);
+	lvx_lms_resources_add (&dem, seq[i]);
       own.safe_grow_cleared (n);
       rwc.safe_grow_cleared (n);
       for (unsigned i = 0; i < n; i++)
@@ -25128,9 +25128,9 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	      }
       for (unsigned i = 0; i < n; i++)
 	base[i] -= (lvx_cms_rwc * rwc[i]) / 256;
-      if (lvx_cms_rwc_probe && dump_file && lvx_cms_probe)
+      if (lvx_cms_rwc_probe && dump_file && lvx_lms_probe)
 	for (unsigned i = 0; i < n; i++)
-	  lvx_cms_dump (";; lvx cms:   RWC ii=%d insn=%u own=%d chain=%d"
+	  lvx_lms_dump (";; lvx cms:   RWC ii=%d insn=%u own=%d chain=%d"
 			" tosink=%d base=%d\n", ii, i, own[i], rwc[i],
 			tosink[i], base[i]);
     }
@@ -25165,7 +25165,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
      whereas delaying a task OFF it frees issue slots for free.  So hold
      exactly the off-recurrence tasks.
 
-     CRIT comes from lvx_cms_bounds, which already computes the critical
+     CRIT comes from lvx_lms_bounds, which already computes the critical
      circuit for the RecMII bound and reports it in the `RecMII circuit' dump;
      entries are task indices, with -1 where a circuit node is not a task.
      When it is unavailable the set is empty, so policy 6 degenerates to
@@ -25174,7 +25174,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
   auto_vec<bool> oncrit;
   oncrit.safe_grow_cleared (n);
   unsigned ncrit = 0;
-  /* CRIT HOLDS ARC INDICES, NOT TASK INDICES.  lvx_cms_bounds maps the PLC
+  /* CRIT HOLDS ARC INDICES, NOT TASK INDICES.  lvx_lms_bounds maps the PLC
      critical circuit back onto ARCS -- "PLC arc N + J is ARCS[J], and a root
      arc, which cannot be part of a circuit, maps to -1" -- so an entry is an
      index into ARCS and a task is ON the recurrence when it is an ENDPOINT of
@@ -25199,8 +25199,8 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
   int bestspan = -1;
   bool have_best = false;
 
-  if (dump_file && lvx_cms_probe && lvx_cms_release_policy == 6)
-    lvx_cms_dump (";; lvx cms: ONCRIT ii=%d n=%u oncrit=%u holdable=%u\n",
+  if (dump_file && lvx_lms_probe && lvx_cms_release_policy == 6)
+    lvx_lms_dump (";; lvx cms: ONCRIT ii=%d n=%u oncrit=%u holdable=%u\n",
 		  ii, n, ncrit, n - ncrit);
 
   for (int pass = 0; pass < budget; pass++)
@@ -25249,7 +25249,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
       if (lvx_cms_converge (seq, arcs, prio, release, ii, delta, sigma,
 			    &blame, &culprit, vseed))
 	{
-	  const char *bad = lvx_cms_verify (seq, arcs, ii, sigma);
+	  const char *bad = lvx_lms_verify (seq, arcs, ii, sigma);
 	  if (!bad)
 	    {
 	      /* ALLOCATION IS PART OF ACCEPTANCE, AT THIS II.
@@ -25266,7 +25266,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		 allocates.  Only when the budget runs out does the II rise, by
 		 the ordinary path.  */
 	      bool allocates = true;
-	      if (lvx_cms_regalloc_feasible)
+	      if (lvx_lms_regalloc_feasible)
 		{
 		  /* ONE MODEL FOR THE SEARCH AND FOR CODEGEN.  §7tricies.40.
 
@@ -25285,22 +25285,22 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		     per candidate II, and it raises II where the registers are
 		     genuinely not there, which is the honest answer: the lower
 		     II was not achievable, it was only unmeasured.  */
-		  auto_vec<lvx_cms_lrange_part *> flr;
+		  auto_vec<lvx_lms_lrange_part *> flr;
 		  auto_vec<int> fstuck;
 		  HARD_REG_SET fresv;
 		  unsigned HOST_WIDE_INT favail = 0;
 		  int fnn = 0, fst = 0, fmx = -1, fkun = 1;
 		  int fpin = 0, fpinf = 0, fwide = 0;
 
-		  lvx_cms_build_lranges (seq, flr, NULL, NULL, NULL);
-		  lvx_cms_set_lrange_dates (seq, flr, sigma, ii, NULL);
-		  lvx_cms_lrange_reserved (seq, flr, livein, &fresv);
+		  lvx_lms_build_lranges (seq, flr, NULL, NULL, NULL);
+		  lvx_lms_set_lrange_dates (seq, flr, sigma, ii, NULL);
+		  lvx_lms_lrange_reserved (seq, flr, livein, &fresv);
 		  for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
 		    if (!TEST_HARD_REG_BIT (fresv, r))
 		      favail |= (unsigned HOST_WIDE_INT) 1 << r;
 
-		  if (!lvx_cms_colour_lranges (seq, flr, ii,
-					       lvx_cms_sigma_min (sigma),
+		  if (!lvx_lms_colour_lranges (seq, flr, ii,
+					       lvx_lms_sigma_min (sigma),
 					       favail, &fnn, &fst, &fmx,
 					       &fkun, &fpin, &fpinf, &fwide,
 					       false, &fstuck))
@@ -25340,7 +25340,7 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		  /* Keep the shortest local schedule seen, and carry on
 		     spending the budget.  SIGMA is overwritten by every later
 		     construction, so the winner has to be copied out.  */
-		  int sp = lvx_cms_sigma_span (sigma);
+		  int sp = lvx_lms_sigma_span (sigma);
 		  if (!have_best || sp < bestspan)
 		    {
 		      bestspan = sp;
@@ -25349,8 +25349,8 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		      for (unsigned q = 0; q < sigma.length (); q++)
 			bestsig.safe_push (sigma[q]);
 		    }
-		  if (dump_file && lvx_cms_probe)
-		    lvx_cms_dump (";; lvx cms: BESTOFN ii=%d pass=%d span=%d"
+		  if (dump_file && lvx_lms_probe)
+		    lvx_lms_dump (";; lvx cms: BESTOFN ii=%d pass=%d span=%d"
 				  " best=%d\n", ii, pass, sp, bestspan);
 		}
 	    }
@@ -25613,8 +25613,8 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	 cannot touch -- the next construction is then identical and SWO spins.
 	 Reported because it is the question that decides whether the signal is
 	 useful or merely correct.  */
-      if (dump_file && lvx_cms_probe && lvx_cms_squeak != 0 && sqk_named)
-	lvx_cms_dump (";; lvx cms: fn=%s II=%d SQUEAK pass=%d named=%u"
+      if (dump_file && lvx_lms_probe && lvx_cms_squeak != 0 && sqk_named)
+	lvx_lms_dump (";; lvx cms: fn=%s II=%d SQUEAK pass=%d named=%u"
 		      " movable=%u\n", current_function_name (), ii, pass,
 		      sqk_named, sqk_movable);
 
@@ -25648,8 +25648,8 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
    II cycles the same slot comes round.  */
 
 static const char *
-lvx_cms_verify (const auto_vec<rtx_insn *> &seq,
-		const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_verify (const auto_vec<rtx_insn *> &seq,
+		const auto_vec<lvx_lms_arc> &arcs,
 		int ii, const auto_vec<int> &sigma,
 		auto_vec<int> *guilty)
 {
@@ -25681,7 +25681,7 @@ lvx_cms_verify (const auto_vec<rtx_insn *> &seq,
   for (unsigned i = 0; i < seq.length (); i++)
     {
       int at = ((sigma[i] % ii) + ii) % ii;
-      if (!lvx_cms_slot_fits_p (&slot[at], seq[i]))
+      if (!lvx_lms_slot_fits_p (&slot[at], seq[i]))
 	{
 	  /* THE SQUEAK, NAMED.  §7tricies.129.  An overflow is a COMPETITION
 	     for one residue, so everything already standing in it is as guilty
@@ -25694,7 +25694,7 @@ lvx_cms_verify (const auto_vec<rtx_insn *> &seq,
 	      (*guilty)[j]++;
 	  return "modulo reservation overflows";
 	}
-      lvx_cms_resources_add (&slot[at], seq[i]);
+      lvx_lms_resources_add (&slot[at], seq[i]);
     }
   return NULL;
 }
@@ -25711,12 +25711,12 @@ lvx_cms_verify (const auto_vec<rtx_insn *> &seq,
    PolyBench is -- reaches CMS and never reached the unfold's probe.  */
 
 static bool
-lvx_cms_build_graph (class loop *loop, basic_block *body,
+lvx_lms_build_graph (class loop *loop, basic_block *body,
 		     auto_vec<rtx_insn *> &seq,
-		     auto_vec<lvx_cms_arc> &arcs,
+		     auto_vec<lvx_lms_arc> &arcs,
 		     auto_vec<int> &height,
 		     int *dropped_safelen, int *lrdrop_out /* [4] */ = NULL,
-		    const auto_vec<lvx_cms_prop> *prop = NULL,
+		    const auto_vec<lvx_lms_prop> *prop = NULL,
 		    const char **why = NULL)
 {
   /* EVERY EXIT NAMES ITSELF.  §7tricies.143.  The caller used to print one
@@ -25743,7 +25743,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 
   if (maxtrip <= 0)
     {
-      maxtrip = lvx_cms_doloop_trip_count (loop, body);
+      maxtrip = lvx_lms_doloop_trip_count (loop, body);
       tripsrc = maxtrip > 0 ? "doloop" : "none";
     }
 
@@ -25792,12 +25792,12 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
   /* Addresses as affine functions of the iteration, for the stride test that
      the memory arcs below use to disprove what the alias oracle cannot.  */
   auto_vec<lvx_mem_iv> mivs;
-  lvx_cms_collect_mem_ivs (loop, seq, mivs);
+  lvx_lms_collect_mem_ivs (loop, seq, mivs);
 
   /* Simple inductions, for inductive relaxation below.  */
   auto_vec<HOST_WIDE_INT> ivdelta;
   auto_bitmap inductions;
-  lvx_cms_find_simple_inductions (seq, ivdelta, inductions);
+  lvx_lms_find_simple_inductions (seq, ivdelta, inductions);
 
   /* The intra-iteration arcs, kept to compute the dependence height.  */
   height.safe_grow_cleared (n);
@@ -25848,19 +25848,19 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     several values, and for a loop-carried read the reader precedes
 	     the copy, so the nearest earlier definition is generally not the
 	     one that fed it.  */
-	  const lvx_cms_prop *pe
-	    = lvx_cms_prop_lookup (prop, q,
-				   lvx_cms_reg_index (PATTERN (seq[q]),
+	  const lvx_lms_prop *pe
+	    = lvx_lms_prop_lookup (prop, q,
+				   lvx_lms_reg_index (PATTERN (seq[q]),
 						      DF_REF_LOC (use)));
 	  if (pe)
 	    {
 	      int lat = lvx_arc_latency (seq[pe->producer], seq[q],
 					 REG_DEP_TRUE);
 
-	      lvx_cms_push_arc (arcs, pe->producer, q, lat, pe->omega,
+	      lvx_lms_push_arc (arcs, pe->producer, q, lat, pe->omega,
 				LVX_ARC_REG_RAW);
 	      arcs.last ().useidx
-		= lvx_cms_reg_index (PATTERN (seq[q]), DF_REF_LOC (use));
+		= lvx_lms_reg_index (PATTERN (seq[q]), DF_REF_LOC (use));
 	      if (pe->omega == 0 && height[q] < height[pe->producer] + lat)
 		height[q] = height[pe->producer] + lat;
 	      continue;
@@ -25896,7 +25896,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     remainder comes from the previous iteration, which is what the
 	     `p < 0' path below already handles, so the loop-carried arc is
 	     left to it.  */
-	  if (partial_def && lvx_cms_partial_arcs)
+	  if (partial_def && lvx_lms_partial_arcs)
 	    {
 	      bool full_seen = false;
 	      int nc = 0;
@@ -25910,10 +25910,10 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		  {
 		    int lat2 = lvx_arc_latency (seq[i], seq[q], REG_DEP_TRUE);
 
-		    lvx_cms_push_arc (arcs, (unsigned) i, q, lat2, 0,
+		    lvx_lms_push_arc (arcs, (unsigned) i, q, lat2, 0,
 				      LVX_ARC_REG_RAW);
 		    arcs.last ().useidx
-		      = lvx_cms_reg_index (PATTERN (seq[q]), DF_REF_LOC (use));
+		      = lvx_lms_reg_index (PATTERN (seq[q]), DF_REF_LOC (use));
 		    if (height[q] < height[i] + lat2)
 		      height[q] = height[i] + lat2;
 		    nc++;
@@ -25924,8 +25924,8 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		      break;
 		    }
 		}
-	      if (dump_file && lvx_cms_probe)
-		lvx_cms_dump (";; lvx cms:   PARTIALARCS r%u use=%u arcs=%d"
+	      if (dump_file && lvx_lms_probe)
+		lvx_lms_dump (";; lvx cms:   PARTIALARCS r%u use=%u arcs=%d"
 			      " full=%d\n", regno, q, nc, full_seen ? 1 : 0);
 	      /* Covered by the contributors above, or by the previous
 		 iteration if no full definition was found -- which the
@@ -25938,7 +25938,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	      if (why)
 		*why = "a partial definition reaches a use";
 	      if (dump_file)
-		lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, partial"
+		lvx_lms_dump (";; lvx cms: fn=%s loop %d declined, partial"
 			      " definition of r%u reaches a use\n",
 			      current_function_name (), loop->num, regno);
 	      return false;
@@ -25964,26 +25964,26 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     definition.  Dropping the arc is only sound if codegen then adjusts
 	     that displacement -- the paper's fixRelaxed step -- which is why
 	     this is behind a flag and not yet on by default.  */
-	  if (lvx_cms_inductive_relaxation
+	  if (lvx_lms_inductive_relaxation
 	      && regno < FIRST_PSEUDO_REGISTER
 	      && bitmap_bit_p (inductions, regno)
-	      && lvx_cms_relaxed_base_use_p (seq[q], regno, ivdelta[regno]))
+	      && lvx_lms_relaxed_base_use_p (seq[q], regno, ivdelta[regno]))
 	    {
 	      nrelaxed++;
 	      continue;
 	    }
 
 	  int lat = lvx_arc_latency (seq[p], seq[q], REG_DEP_TRUE);
-	  lvx_cms_push_arc (arcs, (unsigned) p, q, lat, w, LVX_ARC_REG_RAW);
+	  lvx_lms_push_arc (arcs, (unsigned) p, q, lat, w, LVX_ARC_REG_RAW);
 	  arcs.last ().useidx
-	    = lvx_cms_reg_index (PATTERN (seq[q]), DF_REF_LOC (use));
+	    = lvx_lms_reg_index (PATTERN (seq[q]), DF_REF_LOC (use));
 	  if (w == 0 && height[q] < height[p] + lat)
 	    height[q] = height[p] + lat;
 	}
     }
 
-  if (dump_file && lvx_cms_probe)
-    lvx_cms_dump (";; lvx cms: fn=%s loop %d, %u simple inductions,"
+  if (dump_file && lvx_lms_probe)
+    lvx_lms_dump (";; lvx cms: fn=%s loop %d, %u simple inductions,"
 		  " %u relaxed arcs dropped\n", current_function_name (), loop->num,
 		  (unsigned) bitmap_count_bits (inductions), nrelaxed);
 
@@ -25991,11 +25991,11 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
      below are made from it (§7tricies.29).  It needs the body and nothing
      else -- no schedule, no arcs -- which is exactly why it can come first.
      Dates and the expansion degree are set later, by
-     lvx_cms_set_lrange_dates, once SIGMA exists.  */
-  auto_vec<lvx_cms_lrange_part *> lrange;
+     lvx_lms_set_lrange_dates, once SIGMA exists.  */
+  auto_vec<lvx_lms_lrange_part *> lrange;
   int ndrop = 0, awhy[3] = { 0, 0, 0 };
 
-  lvx_cms_build_lranges (seq, lrange, NULL, NULL, NULL);
+  lvx_lms_build_lranges (seq, lrange, NULL, NULL, NULL);
 
   /* WAR, to the KILLING definition only -- the same correction RAW needs, and
      for the same reason.  A use is anti-dependent on the definition that
@@ -26022,9 +26022,9 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     miscompile: the renaming had the right register and nothing
 	     stopped a later writer of it being scheduled in between.  */
 	  {
-	    const lvx_cms_prop *pq
-	      = lvx_cms_prop_lookup (prop, q,
-				     lvx_cms_reg_index (PATTERN (seq[q]),
+	    const lvx_lms_prop *pq
+	      = lvx_lms_prop_lookup (prop, q,
+				     lvx_lms_reg_index (PATTERN (seq[q]),
 							DF_REF_LOC (use)));
 	    if (pq)
 	      regno = pq->regno;
@@ -26063,7 +26063,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    if (wpartial)
 	      {
 		awhy[2]++;
-		lvx_cms_push_arc (arcs, q, (unsigned) p,
+		lvx_lms_push_arc (arcs, q, (unsigned) p,
 				  lvx_arc_latency (seq[q], seq[p],
 						   REG_DEP_ANTI),
 				  w, LVX_ARC_REG_WAR);
@@ -26077,20 +26077,20 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     `lvx_insn_def_reads_dest_p (seq[p])', an approximation of
 	     `one live range' -- and that predicate was answering FALSE for every
 	     instruction, so no register anti-dependence was kept at all.  */
-	  if (!lvx_cms_antidep_real_p
+	  if (!lvx_lms_antidep_real_p
 		 (lrange,
-		  lvx_cms_lrange_of (lrange, q,
-				     lvx_cms_reg_index (PATTERN (seq[q]),
+		  lvx_lms_lrange_of (lrange, q,
+				     lvx_lms_reg_index (PATTERN (seq[q]),
 							DF_REF_LOC (use)),
 				     NULL),
-		  lvx_cms_lrange_def_of (lrange, (unsigned) p, regno), awhy,
+		  lvx_lms_lrange_def_of (lrange, (unsigned) p, regno), awhy,
 		  w, q, (unsigned) p))
 	    {
 	      ndrop++;
 	      continue;
 	    }
 
-	  lvx_cms_push_arc (arcs, q, (unsigned) p,
+	  lvx_lms_push_arc (arcs, q, (unsigned) p,
 			    lvx_arc_latency (seq[q], seq[p], REG_DEP_ANTI),
 			    w, LVX_ARC_REG_WAR);
 	}
@@ -26140,16 +26140,16 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     unconditionally -- it leaves part of the old value in place,
 	     which no live range question captures.  */
 	  if (!partial
-	      && !lvx_cms_antidep_real_p
-		    (lrange, lvx_cms_lrange_def_of (lrange, p, regno),
-		     lvx_cms_lrange_def_of (lrange, (unsigned) q, regno),
+	      && !lvx_lms_antidep_real_p
+		    (lrange, lvx_lms_lrange_def_of (lrange, p, regno),
+		     lvx_lms_lrange_def_of (lrange, (unsigned) q, regno),
 		     awhy, w, p, (unsigned) q, true))
 	    {
 	      ndrop++;
 	      continue;
 	    }
 
-	  lvx_cms_push_arc (arcs, p, (unsigned) q,
+	  lvx_lms_push_arc (arcs, p, (unsigned) q,
 			    lvx_arc_latency (seq[p], seq[q], REG_DEP_OUTPUT),
 			    w, LVX_ARC_REG_WAW);
 	}
@@ -26189,7 +26189,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  if (q > p && !lvx_mems_disjoint_p (seq, p, q))
 	    {
 	      int lat = 0;
-	      if (lvx_cms_mem_independent_p (mivs[p], mivs[q], 0))
+	      if (lvx_lms_mem_independent_p (mivs[p], mivs[q], 0))
 		continue;
 
 	      bool have = false;
@@ -26201,7 +26201,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		lat = lvx_arc_latency (a, b, REG_DEP_ANTI), have = true;
 	      if (have)
 		{
-		  lvx_cms_push_arc (arcs, p, q, lat, 0, LVX_ARC_MEM_INTRA);
+		  lvx_lms_push_arc (arcs, p, q, lat, 0, LVX_ARC_MEM_INTRA);
 		  if (height[q] < height[p] + lat)
 		    height[q] = height[p] + lat;
 		}
@@ -26229,10 +26229,10 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     SAFELEN is a floor on the distance, not the distance: the stride
 	     test below scans upward from it for the first distance that can
 	     actually conflict.  */
-	  int sl = lvx_cms_assume_ivdep ? INT_MAX
+	  int sl = lvx_lms_assume_ivdep ? INT_MAX
 		   : (loop->safelen > 1 ? loop->safelen : 1);
 
-	  if (sl > LVX_CMS_MAX_DELTA)
+	  if (sl > LVX_LMS_MAX_DELTA)
 	    /* Farther away than the iterations this scheduler ever keeps in
 	       flight, so it cannot bind and is dropped rather than carried as
 	       a huge distance -- which would be arcs that never bind, and
@@ -26270,8 +26270,8 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     nstages -- the same check that already guards the SL > MAX_DELTA
 	     case above.  */
 	  HOST_WIDE_INT mw = sl;
-	  while (mw <= LVX_CMS_MAX_DELTA
-		 && lvx_cms_mem_independent_p (mivs[p], mivs[q], mw))
+	  while (mw <= LVX_LMS_MAX_DELTA
+		 && lvx_lms_mem_independent_p (mivs[p], mivs[q], mw))
 	    mw++;
 
 	  /* THE TRIP-COUNT RULE.  §7tricies.83.
@@ -26308,7 +26308,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	      continue;
 	    }
 
-	  if (mw > LVX_CMS_MAX_DELTA)
+	  if (mw > LVX_LMS_MAX_DELTA)
 	    {
 	      if (*dropped_safelen == 0 || *dropped_safelen > mw)
 		*dropped_safelen = mw;
@@ -26316,19 +26316,19 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    }
 
 	  if (a_w && b_r)
-	    lvx_cms_push_arc (arcs, p, q,
+	    lvx_lms_push_arc (arcs, p, q,
 			 lvx_arc_latency (a, b, REG_DEP_TRUE), mw,
 			 LVX_ARC_MEM_CROSS);
 	  else if (a_w && b_w && p != q)
-	    lvx_cms_push_arc (arcs, p, q,
+	    lvx_lms_push_arc (arcs, p, q,
 			 lvx_arc_latency (a, b, REG_DEP_OUTPUT), mw,
 			 LVX_ARC_MEM_CROSS);
 	  else if (a_r && b_w && p != q)
 	    {
-	      lvx_cms_push_arc (arcs, p, q,
+	      lvx_lms_push_arc (arcs, p, q,
 			   lvx_arc_latency (a, b, REG_DEP_ANTI), mw,
 			   LVX_ARC_MEM_CROSS);
-	      lvx_cms_push_arc (arcs, q, p,
+	      lvx_lms_push_arc (arcs, q, p,
 			   lvx_arc_latency (b, a, REG_DEP_TRUE), mw,
 			   LVX_ARC_MEM_CROSS);
 	    }
@@ -26339,8 +26339,8 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
      printed before the memory arcs exist, so folding TRIPDROP into that line
      would have printed zero always.  MAXTRIP is reported even when nothing was
      dropped, because "the bound is unknown here" is the finding.  */
-  if (dump_file && lvx_cms_probe)
-    lvx_cms_dump (";; lvx cms: fn=%s loop %d maxtrip="
+  if (dump_file && lvx_lms_probe)
+    lvx_lms_dump (";; lvx cms: fn=%s loop %d maxtrip="
 		  HOST_WIDE_INT_PRINT_DEC " tripsrc=%s tripdrop=%u\n",
 		  current_function_name (), loop->num, maxtrip, tripsrc,
 		  ntripdrop);
@@ -26418,7 +26418,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
   int npinned = 0;
   /* §7tricies.224: the body's own definitions -- what makes a load's address
      loop-variant, and so makes it one CMS is going to promote to `.s'.  The
-     same set lvx_cms_force_speculative_loads builds; built again here because
+     same set lvx_lms_force_speculative_loads builds; built again here because
      the fixpoint below runs BEFORE that promotion and has to judge a load by
      what it is going to be rather than by what it still is.  */
   auto_bitmap bodydef;
@@ -26438,7 +26438,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
   pinned_load.safe_grow_cleared (n);
   for (unsigned i = 0; i < n; i++)
     taint_via[i] = -1;
-  if (lvx_cms_pin_tainted_loads)
+  if (lvx_lms_pin_tainted_loads)
     {
       bool changed = true;
 
@@ -26464,7 +26464,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 			continue;
 
 		      taints = (tainted[j]
-				|| !lvx_cms_speculatable_after_promotion_p
+				|| !lvx_lms_speculatable_after_promotion_p
 				     (seq[j], bodydef));
 
 		      /* §7tricies.222: a consumer that constraint (1) has
@@ -26486,7 +26486,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 			 tainted[j] still propagates: an exempt consumer that
 			 is itself tainted stays conservative.  */
 		      if (taints && !tainted[j]
-			  && !lvx_cms_taint_through_stores
+			  && !lvx_lms_taint_through_stores
 			  && (lvx_mem_write_insn_p (seq[j])
 			      || volatile_insn_p (PATTERN (seq[j]))))
 			taints = false;
@@ -26560,7 +26560,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	 it costs loops -- the loops it costs are the ones whose groups were
 	 being split.  */
       if (prev_branch >= 0)
-	lvx_cms_push_arc (arcs, prev_branch, p, 1, 0, LVX_ARC_CTRL_ORDER);
+	lvx_lms_push_arc (arcs, prev_branch, p, 1, 0, LVX_ARC_CTRL_ORDER);
       else
 	first_branch = (int) p;
       prev_branch = (int) p;
@@ -26603,19 +26603,19 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     consumes what a speculated one read.  */
 	  if ((lvx_mem_write_insn_p (seq[q])
 	       || volatile_insn_p (PATTERN (seq[q]))
-	       || (lvx_cms_pin_tainted_loads && tainted[q]
+	       || (lvx_lms_pin_tainted_loads && tainted[q]
 		   && lvx_mem_read_insn_p (seq[q])
 		   && !lvx_mem_write_insn_p (seq[q])))
 	      && BLOCK_FOR_INSN (seq[q]) == nextbb)
 	    {
-	      if (lvx_cms_pin_tainted_loads && tainted[q]
+	      if (lvx_lms_pin_tainted_loads && tainted[q]
 		  && lvx_mem_read_insn_p (seq[q])
 		  && !lvx_mem_write_insn_p (seq[q]))
 		{
 		  npinned++;
 		  pinned_load[q] = true;
 		}
-	      lvx_cms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_STORE);
+	      lvx_lms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_STORE);
 	    }
 
 	  /* (2) */
@@ -26631,7 +26631,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	     The lever exists to size the OPPORTUNITY before building the
 	     phase, which is the step skipped twice (§7tricies.82, .97), and
 	     lvx_option_override refuses it with codegen.  */
-	  if (lvx_cms_drop_liveout_arcs)
+	  if (lvx_lms_drop_liveout_arcs)
 	    continue;
 	  /* THE SPLIT, WHICH THE RENAMING ALREADY PERFORMS.  §7tricies.112.
 
@@ -26655,7 +26655,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    if (DF_REF_REGNO (def) < FIRST_PSEUDO_REGISTER
 		&& bitmap_bit_p (df_get_live_in (exitbb), DF_REF_REGNO (def)))
 	      {
-		lvx_cms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_LIVEOUT);
+		lvx_lms_push_arc (arcs, p, q, 1, w, LVX_ARC_CTRL_LIVEOUT);
 		/* §7tricies.114: whether this arc is DROPPED is decided after
 		   the bounds, not here -- it turns on RecMII exceeding
 		   ResMII, and neither exists yet.  What is decided here is
@@ -26675,7 +26675,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
      an assumption.  Printed even at zero: "no load in this loop feeds a
      branch or a store" is the finding for most loops, and the number only
      means something against the loops where it is not.  */
-  if (dump_file && lvx_cms_probe && lvx_cms_pin_tainted_loads)
+  if (dump_file && lvx_lms_probe && lvx_lms_pin_tainted_loads)
     {
       int ntaint = 0, nloads = 0;
 
@@ -26686,7 +26686,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	  if (pinned_load[i])
 	    nloads++;
 	}
-      lvx_cms_dump (";; lvx cms: fn=%s loop %d PINNED loads=%d arcs=%d of %d"
+      lvx_lms_dump (";; lvx cms: fn=%s loop %d PINNED loads=%d arcs=%d of %d"
 		    " tainted insns, body=%u\n", current_function_name (),
 		    loop->num, nloads, npinned, ntaint, n);
 
@@ -26713,7 +26713,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    int qcode = INSN_CODE (seq[q]), rcode;
 
 	    while (root >= 0 && guard++ < n
-		   && !strcmp (lvx_cms_unspec_reason (seq[root], bodydef),
+		   && !strcmp (lvx_lms_unspec_reason (seq[root], bodydef),
 			       "speculatable"))
 	      {
 		prev = root;
@@ -26722,18 +26722,18 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    if (root < 0)
 	      root = prev;
 	    rcode = INSN_CODE (seq[root]);
-	    lvx_cms_dump (";; lvx cms:   PINWHY fn=%s loop %d load uid=%d %s"
+	    lvx_lms_dump (";; lvx cms:   PINWHY fn=%s loop %d load uid=%d %s"
 			  " <- uid=%d %s %s\n", current_function_name (),
 			  loop->num, INSN_UID (seq[q]),
 			  qcode >= 0 ? insn_data[qcode].name : "?",
 			  INSN_UID (seq[root]),
-			  lvx_cms_unspec_reason (seq[root], bodydef),
+			  lvx_lms_unspec_reason (seq[root], bodydef),
 			  rcode >= 0 ? insn_data[rcode].name : "?");
 	  }
     }
 
   if (first_branch >= 0 && prev_branch > first_branch)
-    lvx_cms_push_arc (arcs, prev_branch, first_branch, 0, 1,
+    lvx_lms_push_arc (arcs, prev_branch, first_branch, 0, 1,
 		      LVX_ARC_CTRL_BACKEDGE);
 
   for (unsigned k = 0; k < lrange.length (); k++)
@@ -26762,9 +26762,9 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
    recurrence bound unknown and so the lower bound unknown.  */
 
 static bool
-lvx_cms_bounds (class loop *loop, basic_block *body,
+lvx_lms_bounds (class loop *loop, basic_block *body,
 		const auto_vec<rtx_insn *> &seq,
-		const auto_vec<lvx_cms_arc> &arcs,
+		const auto_vec<lvx_lms_arc> &arcs,
 		const auto_vec<int> &height, int *pm, int *pr, int *pk,
 		auto_vec<int> *crit = NULL)
 {
@@ -26774,19 +26774,19 @@ lvx_cms_bounds (class loop *loop, basic_block *body,
   /* M, the MAKESPAN of one iteration with no overlap: the last instruction's
      start date plus its own processing time, not plus one.  HEIGHT[i] is a
      start date, so a schedule is finished when every instruction has had its
-     processing time, which is what lvx_cms_latency gives -- an issue slot is
+     processing time, which is what lvx_lms_latency gives -- an issue slot is
      what an instruction takes, but a multi-cycle result is not ready when the
      slot closes.  Taking + 1 instead measured the span as if every instruction
      retired in the cycle it issued, which understates any body ending in a
      load, a multiply or a reduction's FP add.  */
   int m = 1;
   for (unsigned i = 0; i < n; i++)
-    m = MAX (m, height[i] + lvx_cms_latency (seq[i]));
+    m = MAX (m, height[i] + lvx_lms_latency (seq[i]));
 
   /* R, from the machine description.  */
   struct lvx_sched_resources resources;
   /* And the same counters with the doloop_end charged NOTHING, to measure what
-     charging it costs.  §7tricies.86: lvx_cms_resources_add charges a
+     charging it costs.  §7tricies.86: lvx_lms_resources_add charges a
      doloop_end as ISSUE_TINY + ISSUE_BCU_BRRP -- a decrement and a branch --
      but if reorg_loops maps the loop, that insn emits `# loopdo end' and
      occupies no slot at all, so the charge is an OVERCHARGE for exactly the
@@ -26800,9 +26800,9 @@ lvx_cms_bounds (class loop *loop, basic_block *body,
   for (unsigned i = 0; i < loop->num_nodes; i++)
     FOR_BB_INSNS (body[i], insn)
       {
-	lvx_cms_resources_add (&resources, insn);
+	lvx_lms_resources_add (&resources, insn);
 	if (!lvx_doloop_end_p (insn))
-	  lvx_cms_resources_add (&nodl, insn);
+	  lvx_lms_resources_add (&nodl, insn);
       }
   int r = (int) lvx_sched_resources_full_bundles (&resources);
   r = r ? r : 1;
@@ -26810,8 +26810,8 @@ lvx_cms_bounds (class loop *loop, basic_block *body,
     int rnodl = (int) lvx_sched_resources_full_bundles (&nodl);
 
     rnodl = rnodl ? rnodl : 1;
-    if (dump_file && lvx_cms_probe && rnodl != r)
-      lvx_cms_dump (";; lvx cms: fn=%s loop %d ResMII=%d, uncharged doloop_end"
+    if (dump_file && lvx_lms_probe && rnodl != r)
+      lvx_lms_dump (";; lvx cms: fn=%s loop %d ResMII=%d, uncharged doloop_end"
 		    " would give %d\n", current_function_name (), loop->num,
 		    r, rnodl);
   }
@@ -26921,9 +26921,9 @@ lvx_cms_bounds (class loop *loop, basic_block *body,
 
 /* RECOMPUTE THE DEPENDENCE HEIGHTS FROM THE ARCS.  §7tricies.106.
 
-   lvx_cms_build_graph fills HEIGHT as it walks the body, in one forward pass
+   lvx_lms_build_graph fills HEIGHT as it walks the body, in one forward pass
    (`height[q] = height[p] + lat' for every intra-iteration arc), and
-   lvx_cms_bounds then READS it to form M.  Redirecting an arc therefore leaves
+   lvx_lms_bounds then READS it to form M.  Redirecting an arc therefore leaves
    HEIGHT describing the graph as it was -- and since a redirection only ever
    shortens a path, the stale value over-states M rather than under-stating it,
    which is conservative and still wrong.  A comment here first claimed the
@@ -26936,7 +26936,7 @@ lvx_cms_bounds (class loop *loop, basic_block *body,
    values byte for byte.  */
 
 static void
-lvx_cms_recompute_heights (const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_recompute_heights (const auto_vec<lvx_lms_arc> &arcs,
 			   auto_vec<int> &height)
 {
   unsigned n = height.length ();
@@ -26986,9 +26986,9 @@ lvx_cms_recompute_heights (const auto_vec<lvx_cms_arc> &arcs,
    dead copy still occupies its slot until emission omits it.  */
 
 static int
-lvx_cms_find_copy_prop (const auto_vec<rtx_insn *> &seq,
-			const auto_vec<lvx_cms_arc> &arcs,
-			auto_vec<lvx_cms_prop> *prop)
+lvx_lms_find_copy_prop (const auto_vec<rtx_insn *> &seq,
+			const auto_vec<lvx_lms_arc> &arcs,
+			auto_vec<lvx_lms_prop> *prop)
 {
   int ndone = 0;
 
@@ -27013,19 +27013,19 @@ lvx_cms_find_copy_prop (const auto_vec<rtx_insn *> &seq,
 	{
 	  if (arcs[a].src != c || arcs[a].kind != LVX_ARC_REG_RAW)
 	    continue;
-	  if (lvx_cms_operand_tied_p (seq[arcs[a].dst], arcs[a].useidx))
+	  if (lvx_lms_operand_tied_p (seq[arcs[a].dst], arcs[a].useidx))
 	    continue;
 	  /* ONE OPERAND, ONE ANSWER.  Two arcs reaching one operand from
 	     different copies is the graph describing something this rewrite
 	     cannot express, and the lookup would answer with whichever was
 	     recorded first.  Decline the second rather than lose it.  */
-	  if (lvx_cms_prop_lookup (prop, arcs[a].dst, arcs[a].useidx))
+	  if (lvx_lms_prop_lookup (prop, arcs[a].dst, arcs[a].useidx))
 	    continue;
 	  /* One iteration back is all DELAYED can say.  */
 	  if (arcs[a].omega + arcs[pidx].omega > 1)
 	    continue;
 	  {
-	    lvx_cms_prop pe;
+	    lvx_lms_prop pe;
 
 	    pe.insn = arcs[a].dst;
 	    pe.slot = arcs[a].useidx;
@@ -27037,7 +27037,7 @@ lvx_cms_find_copy_prop (const auto_vec<rtx_insn *> &seq,
 	    pe.delayed = pe.omega != 0;
 	    prop->safe_push (pe);
 	  }
-	  lvx_cms_dump (";; lvx cms:   cprop insn %u slot %d: r%u<-r%u"
+	  lvx_lms_dump (";; lvx cms:   cprop insn %u slot %d: r%u<-r%u"
 			" from insn %u omega %d\n",
 			arcs[a].dst, arcs[a].useidx,
 			REGNO (SET_DEST (set)), REGNO (SET_SRC (set)),
@@ -27050,8 +27050,8 @@ lvx_cms_find_copy_prop (const auto_vec<rtx_insn *> &seq,
 }
 
 static void
-lvx_cms_count_copy_prop (const auto_vec<rtx_insn *> &seq,
-			 const auto_vec<lvx_cms_arc> &arcs,
+lvx_lms_count_copy_prop (const auto_vec<rtx_insn *> &seq,
+			 const auto_vec<lvx_lms_arc> &arcs,
 			 int *ncand_out, int *ntied_out, int *nmultidef_out,
 			 int *nmultip_out, int *nwide_out)
 {
@@ -27093,7 +27093,7 @@ lvx_cms_count_copy_prop (const auto_vec<rtx_insn *> &seq,
 	{
 	  if (arcs[a].src != c || arcs[a].kind != LVX_ARC_REG_RAW)
 	    continue;
-	  if (lvx_cms_operand_tied_p (seq[arcs[a].dst], arcs[a].useidx))
+	  if (lvx_lms_operand_tied_p (seq[arcs[a].dst], arcs[a].useidx))
 	    ntied++;
 	  else
 	    ncand++;
@@ -27108,7 +27108,7 @@ lvx_cms_count_copy_prop (const auto_vec<rtx_insn *> &seq,
 }
 
 static void
-lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
+lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 {
   /* BISECTING A WRONG ANSWER DOWN TO ONE LOOP.  §7tricies.133.  Scoping CMS
      to one translation unit is as fine as the flags went, and a function with
@@ -27116,9 +27116,9 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      is how `CMS miscompiles inflate_fast' stayed unattributed.  Numbered by
      loop->num, which is what every dump line already prints, so a dump and a
      bisect arm name the same loop.  */
-  if (lvx_cms_only_loop != 0 && loop->num != (int) lvx_cms_only_loop)
+  if (lvx_lms_only_loop != 0 && loop->num != (int) lvx_lms_only_loop)
     {
-      lvx_cms_dump (";; lvx cms: fn=%s loop %d skipped by -mcms-only-loop\n",
+      lvx_lms_dump (";; lvx cms: fn=%s loop %d skipped by -mcms-only-loop\n",
 		    current_function_name (), loop->num);
       return;
     }
@@ -27127,17 +27127,17 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      cost then sits inside the bounds the II search respects, which is the
      same discipline as the live-out arc drop: bound, transform, re-bound --
      and not a promise emission has to keep afterwards.  */
-  if (lvx_cms_tied_copy)
+  if (lvx_lms_tied_copy)
     {
-      int nc = lvx_cms_tied_copies (loop, body);
+      int nc = lvx_lms_tied_copies (loop, body);
 
-      if (nc && dump_file && lvx_cms_probe)
-	lvx_cms_dump (";; lvx cms: fn=%s loop %d %d tied copy(ies) inserted\n",
+      if (nc && dump_file && lvx_lms_probe)
+	lvx_lms_dump (";; lvx cms: fn=%s loop %d %d tied copy(ies) inserted\n",
 		      current_function_name (), loop->num, nc);
     }
 
   auto_vec<rtx_insn *> seq;
-  auto_vec<lvx_cms_arc> arcs;
+  auto_vec<lvx_lms_arc> arcs;
   auto_vec<int> height;
   int dropped_safelen = 0;
 
@@ -27145,10 +27145,10 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
   {
     const char *gwhy = "the body graph cannot be built";
 
-    if (!lvx_cms_build_graph (loop, body, seq, arcs, height, &dropped_safelen,
+    if (!lvx_lms_build_graph (loop, body, seq, arcs, height, &dropped_safelen,
 			      lrdropped, NULL, &gwhy))
       {
-	lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, %s\n",
+	lvx_lms_dump (";; lvx cms: fn=%s loop %d declined, %s\n",
 		      current_function_name (), loop->num, gwhy);
 	return;
       }
@@ -27170,14 +27170,14 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      description of the dependences, derived once, with the flow arc and the
      anti-dependences both coming out of the same walks -- and HEIGHT out of
      the rebuild rather than needing its own repair.  */
-  auto_vec<lvx_cms_prop> prop;
-  if (lvx_cms_copy_prop && lvx_cms_find_copy_prop (seq, arcs, &prop))
+  auto_vec<lvx_lms_prop> prop;
+  if (lvx_lms_copy_prop && lvx_lms_find_copy_prop (seq, arcs, &prop))
     {
-      lvx_cms_dump (";; lvx cms: fn=%s loop %d cprop found=%u, rebuilding\n",
+      lvx_lms_dump (";; lvx cms: fn=%s loop %d cprop found=%u, rebuilding\n",
 		    current_function_name (), loop->num, prop.length ());
       arcs.truncate (0);
       height.truncate (0);
-      if (!lvx_cms_build_graph (loop, body, seq, arcs, height,
+      if (!lvx_lms_build_graph (loop, body, seq, arcs, height,
 				&dropped_safelen, lrdropped, &prop))
 	{
 	  /* The propagated graph need not walk where the original did: the
@@ -27185,7 +27185,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	     intra-iteration arc runs backward.  Declining is correct -- and
 	     it is a decline, not a different graph, because the producer is
 	     pinned rather than searched for.  */
-	  lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, the propagated"
+	  lvx_lms_dump (";; lvx cms: fn=%s loop %d declined, the propagated"
 			" graph does not walk\n",
 			current_function_name (), loop->num);
 	  return;
@@ -27194,7 +27194,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 
   /* THE HEIGHTS, SEPARATELY.  §7tricies.107.
 
-     The propagation needs these recomputed -- lvx_cms_bounds READS HEIGHT
+     The propagation needs these recomputed -- lvx_lms_bounds READS HEIGHT
      rather than deriving it, so a redirected arc would otherwise leave the
      makespan describing the graph as it was.  But recomputing only on that
      path confounded the experiment, because the recompute does not agree with
@@ -27209,14 +27209,14 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      against a baseline that shares it.  Whether construction's under-estimate
      is worth fixing on its own account is a separate question with its own
      answer -- M feeds the stage count and the span.  */
-  if (lvx_cms_recompute_heights_p)
-    lvx_cms_recompute_heights (arcs, height);
+  if (lvx_lms_recompute_heights_p)
+    lvx_lms_recompute_heights (arcs, height);
 
   int m, r, k;
   auto_vec<int> crit;
-  if (!lvx_cms_bounds (loop, body, seq, arcs, height, &m, &r, &k, &crit))
+  if (!lvx_lms_bounds (loop, body, seq, arcs, height, &m, &r, &k, &crit))
     {
-      lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, the recurrence"
+      lvx_lms_dump (";; lvx cms: fn=%s loop %d declined, the recurrence"
 		    " bound did not solve\n", current_function_name (), loop->num);
       return;
     }
@@ -27243,34 +27243,34 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 
      Kept only if the bound STRICTLY improves.  Equal is the perturbation
      without the gain.  */
-  if (lvx_cms_liveout_split && k > r)
+  if (lvx_lms_liveout_split && k > r)
     {
-      auto_vec<lvx_cms_arc> kept;
+      auto_vec<lvx_lms_arc> kept;
       auto_vec<int> crit2;
-      auto_vec<lvx_cms_lrange_part *> dlr;
+      auto_vec<lvx_lms_lrange_part *> dlr;
       int m2, r2, k2, ndrop = 0;
 
       /* The same function on the same body, for the same reason
 	 §7tricies.110 gives: the drop must read the partition the drain
 	 will act on, not a different description of the program.  Only
 	 EXIT_LIVE, EFFECTS[0] and USE_FIRST are consulted, all of which
-	 lvx_cms_build_lranges settles without dates.  */
-      lvx_cms_build_lranges (seq, dlr, NULL, NULL, NULL, NULL, NULL, &prop);
+	 lvx_lms_build_lranges settles without dates.  */
+      lvx_lms_build_lranges (seq, dlr, NULL, NULL, NULL, NULL, NULL, &prop);
 
       for (unsigned a = 0; a < arcs.length (); a++)
 	{
 	  /* §7tricies.155: BOTH keeps express the same pin, so the lever has
-	     to lift both or it measures nothing.  LVX_CMS_LIVEOUT_ARC_PINNED_P
+	     to lift both or it measures nothing.  LVX_LMS_LIVEOUT_ARC_PINNED_P
 	     keeps the arc of an insn defining a register live-in at the loop
 	     HEADER -- the loop-carried case, which is the use-headed case --
 	     so a lever that only relaxed RECONCILED_P's USE_FIRST clause was
 	     unreachable for exactly the arcs it meant to free, and both arms
 	     measured identically.  */
 	  if (arcs[a].kind == LVX_ARC_CTRL_LIVEOUT
-	      && (lvx_cms_usefirst_unpinned
-		  || (lvx_cms_preheader_copy && (lvx_cms_ph_parts & 4))
-		  || !lvx_cms_liveout_arc_pinned_p (loop, seq, arcs[a].dst))
-	      && lvx_cms_liveout_arc_reconciled_p (dlr, arcs[a].dst))
+	      && (lvx_lms_usefirst_unpinned
+		  || (lvx_lms_preheader_copy && (lvx_lms_ph_parts & 4))
+		  || !lvx_lms_liveout_arc_pinned_p (loop, seq, arcs[a].dst))
+	      && lvx_lms_liveout_arc_reconciled_p (dlr, arcs[a].dst))
 	    {
 	      ndrop++;
 	      continue;
@@ -27281,11 +27281,11 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	delete dlr[z];
       dlr.truncate (0);
       if (ndrop
-	  && lvx_cms_bounds (loop, body, seq, kept, height, &m2, &r2, &k2,
+	  && lvx_lms_bounds (loop, body, seq, kept, height, &m2, &r2, &k2,
 			     &crit2)
 	  && MAX (k2, r2) < MAX (k, r))
 	{
-	  lvx_cms_dump (";; lvx cms: fn=%s loop %d liveout split: dropped %d"
+	  lvx_lms_dump (";; lvx cms: fn=%s loop %d liveout split: dropped %d"
 			" arc(s), lower %d -> %d\n", current_function_name (),
 			loop->num, ndrop, MAX (k, r), MAX (k2, r2));
 	  arcs.truncate (0);
@@ -27298,7 +27298,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	}
     }
 
-  int delta = lvx_cms_delta (arcs);
+  int delta = lvx_lms_delta (arcs);
   int lower = MAX (k, r);
 
   /* How tight the resource bound is at LOWER: for the most-demanded counter,
@@ -27313,12 +27313,12 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
     {
       rtx_insn *bi;
       FOR_BB_INSNS (body[i], bi)
-	lvx_cms_resources_add (&rdem, bi);
+	lvx_lms_resources_add (&rdem, bi);
     }
   const char *tight_name = "none";
   int tight_dem = 0, tight_cap = 0;
   double tight_frac = 0.0;
-#define LVX_CMS_TIGHT(R)						\
+#define LVX_LMS_TIGHT(R)						\
   {									\
     unsigned avail = lvx_issue_availability.R;				\
     if (avail > 0 && rdem.R##_count > 0)				\
@@ -27334,8 +27334,8 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	  }								\
       }									\
   }
-  LVX_ISSUE_RESOURCES (LVX_CMS_TIGHT)
-#undef LVX_CMS_TIGHT
+  LVX_ISSUE_RESOURCES (LVX_LMS_TIGHT)
+#undef LVX_LMS_TIGHT
   auto_vec<int> sigma;
   int found = 0;
   const char *last_bad = NULL;
@@ -27357,7 +27357,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      question the ordinary search cannot: when two schedulers disagree only
      because one of them had to take a larger II, comparing them needs both to
      be at the SAME larger II.  §7quinvicies.  */
-  int first_ii = lower + (int) lvx_cms_ii_bias;
+  int first_ii = lower + (int) lvx_lms_ii_bias;
   /* THE MCRL GATE (§7septvicies.4).  MCRL release dates reduce pressure 12.8%
      and recover the dependence-only makespan on the loops that overshot it
      most -- cholesky, lu and ludcmp from 18 stages to 10 -- but applied
@@ -27420,10 +27420,10 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
     {
       auto_vec<int> ts, sl, nodates;
       int wfirst = -1, wmake = 0, wempty = 0;
-      lvx_cms_path_metrics (seq, arcs, height, ts, sl);
-      lvx_cms_dates_in_window (seq, arcs, nodates, ts, found, &wfirst, &wmake,
+      lvx_lms_path_metrics (seq, arcs, height, ts, sl);
+      lvx_lms_dates_in_window (seq, arcs, nodates, ts, found, &wfirst, &wmake,
 			       &wempty);
-      int have = lvx_cms_sigma_span (sigma);
+      int have = lvx_lms_sigma_span (sigma);
       if (wmake > 0 && have > wmake)
 	{
 	  auto_vec<int> alt;
@@ -27432,7 +27432,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	  if (lvx_cms_swo_at_ii (seq, arcs, height, found, delta, alt, budget,
 				 &p2, &b2, pin == 3 ? 1 : pin, 2,
 				 df_get_live_in (loop->header), &crit)
-	      && lvx_cms_sigma_span (alt) < have)
+	      && lvx_lms_sigma_span (alt) < have)
 	    {
 	      sigma.truncate (0);
 	      for (unsigned i = 0; i < alt.length (); i++)
@@ -27461,11 +27461,11 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
   bool hw = lvx_loop_has_doloop_p (loop);
   /* §7tricies.196: and whether the mapping has ALREADY happened, which is what
      decides whether the doloop_end costs anything.  */
-  rtx_insn *loopdo = lvx_cms_find_loopdo (loop);
+  rtx_insn *loopdo = lvx_lms_find_loopdo (loop);
 
   if (!found)
     {
-      lvx_cms_dump (";; lvx cms: fn=%s loop %d NO schedule through II=%d"
+      lvx_lms_dump (";; lvx cms: fn=%s loop %d NO schedule through II=%d"
 		    " (lower=%d delta=%d M=%d passes=%d, %u nodes %u arcs)%s%s%s\n",
 		    current_function_name (), loop->num, lower + 8, lower, delta, m,
 		    passes,
@@ -27487,7 +27487,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      this is the author's point (2026-10-27): a makespan runs from the first
      schedule date to the last cycle a RESOURCE is in use, and under CMS's
      model every reservation occupies exactly one cycle
-     (lvx_cms_slot_fits_p tests a single cycle's counters), so that last cycle
+     (lvx_lms_slot_fits_p tests a single cycle's counters), so that last cycle
      is the last ISSUE and the makespan is hi - lo + 1.  `kvx-unfold.cc' has
      it right: `makespan = max_sched_date - min_sched_date + 1'.
 
@@ -27516,10 +27516,10 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 
      SPANLAT is the latency-inclusive figure, kept for the DROP_OK gate below
      and to measure the difference.  §7quinvicies.5.  */
-  int lo = sigma[0], hi = sigma[0], hilat = sigma[0] + lvx_cms_latency (seq[0]);
+  int lo = sigma[0], hi = sigma[0], hilat = sigma[0] + lvx_lms_latency (seq[0]);
   for (unsigned i = 1; i < sigma.length (); i++)
     {
-      int done = sigma[i] + lvx_cms_latency (seq[i]);
+      int done = sigma[i] + lvx_lms_latency (seq[i]);
       if (lo > sigma[i])
 	lo = sigma[i];
       if (hi < sigma[i])
@@ -27620,7 +27620,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	continue;
       mven++;
       sp_def.safe_push (sigma[i]);
-      sp_lat.safe_push (lvx_cms_latency (seq[i]));
+      sp_lat.safe_push (lvx_lms_latency (seq[i]));
       sp_last.safe_push (last);
       sp_deg.safe_push (m_i);
       /* How many 64-bit registers the value occupies, which is how many copy
@@ -27696,19 +27696,19 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
     }
   int spec = 0;
   for (unsigned i = 0; i < seq.length (); i++)
-    if (lvx_cms_speculated_load_p (seq[i], bodydef))
+    if (lvx_lms_speculated_load_p (seq[i], bodydef))
       spec++;
 
-  if (lvx_cms_force_spec_loads && spec)
-    spec = -lvx_cms_force_speculative_loads (seq, bodydef);
+  if (lvx_lms_force_spec_loads && spec)
+    spec = -lvx_lms_force_speculative_loads (seq, bodydef);
 
   /* Stage scheduling, if asked: shift operations by whole periods to shorten
      live ranges.  Done here, after the II search has converged and before
      anything measures the result, because it cannot change the II or the
      resource feasibility -- only the stages.  §7octodecies.2.  */
   int staged = 0;
-  if (lvx_cms_stage_sched)
-    staged = lvx_cms_stage_schedule (arcs, seq.length (), sigma, found);
+  if (lvx_lms_stage_sched)
+    staged = lvx_lms_stage_schedule (arcs, seq.length (), sigma, found);
 
   /* REGISTER PRESSURE of the modulo kernel: MaxLive, in registers.
      (Author, 2026-10-27: the name count is not a useful measure; what counts
@@ -27793,7 +27793,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
       {
 	struct lvx_sched_resources one;
 	memset (&one, 0, sizeof (one));
-	lvx_cms_resources_add (&one, seq[i]);
+	lvx_lms_resources_add (&one, seq[i]);
 	tinyuse[(sigma[i] - lo) % found] += (int) one.tiny_count;
 	liteuse[(sigma[i] - lo) % found] += (int) one.lite_count;
       }
@@ -27854,7 +27854,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	   t >= sigma (def) + latency (def)        the value exists to be copied
 	   t <= last_use - 1                       the copy lands before its reader
 
-       LAT comes from lvx_cms_latency, the producer's own processing time.  That
+       LAT comes from lvx_lms_latency, the producer's own processing time.  That
        is the right number here rather than lvx_arc_latency's bypassed one,
        and the reason is worth recording: the bypasses in scheduling.md shorten
        a producer's latency only into a STORE's data operand or an imadd
@@ -27912,7 +27912,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	       round: TINY is the binding counter on this corpus (§7septies.3's
 	       tight= field names it in 46 of 51 missing loops).  */
 	    int need_t = nr, need_l = 0;
-	    if (lvx_cms_split_wide == 1 && nr >= 2)
+	    if (lvx_lms_split_wide == 1 && nr >= 2)
 	      {
 		int cat = nr / 2;
 		if (luse[slot] + cat <= litecap && use[slot] + cat <= tinycap)
@@ -27996,12 +27996,12 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      and this is where they can be read apart.  */
   if (!seq.is_empty ())
     {
-      lvx_cms_dump (";; lvx cms: fn=%s loop %d schedule II=%d:",
+      lvx_lms_dump (";; lvx cms: fn=%s loop %d schedule II=%d:",
 		    current_function_name (), loop->num, found);
       for (unsigned i = 0; i < seq.length (); i++)
-	lvx_cms_dump (" %u:%d/%d%s", i, (sigma[i] - lo) % found,
+	lvx_lms_dump (" %u:%d/%d%s", i, (sigma[i] - lo) % found,
 		      (sigma[i] - lo) / found, JUMP_P (seq[i]) ? "J" : "");
-      lvx_cms_dump ("\n");
+      lvx_lms_dump ("\n");
     }
 
   int igmaxreg = -1, igassigned = 0, igpinned = 0, igpinfail = 0;
@@ -28014,7 +28014,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
   {
     /* Re-collect with the original regno and the USE_FIRST flag, which the
        assignment needs and the feasibility test never did (§7ter.14).  */
-    lvx_cms_collect_values (seq, arcs, sigma, found, q_def, q_last, q_deg,
+    lvx_lms_collect_values (seq, arcs, sigma, found, q_def, q_last, q_deg,
 			    q_nr, q_ec, &q_own, &q_regno, &q_uf);
     /* AVAIL IS THE ALLOCATABLE SET MINUS WHAT THE LOOP ALREADY HOLDS, not all
        ones.  Passing all ones is what §7ter.10 calls the OPTIMISTIC
@@ -28027,13 +28027,13 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
        between them is a figure to measure rather than a thing to assume
        away.  */
     HARD_REG_SET resv;
-    lvx_cms_reserved_regs (seq, q_def, q_last, q_nr, q_ec, q_regno, q_uf,
+    lvx_lms_reserved_regs (seq, q_def, q_last, q_nr, q_ec, q_regno, q_uf,
 			   df_get_live_in (loop->header), &resv);
     unsigned HOST_WIDE_INT avail = 0;
     for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
       if (!TEST_HARD_REG_BIT (resv, r))
 	avail |= (unsigned HOST_WIDE_INT) 1 << r;
-    lvx_cms_colour (q_def, q_last, q_deg, q_nr, q_ec, found, lo,
+    lvx_lms_colour (q_def, q_last, q_deg, q_nr, q_ec, found, lo,
 		    &ignodes, &igedges, &igmaxsq, &igspill, &igperiod,
 		    &igkunroll, NULL, &av, &an, &ar, &igmaxreg,
 		    avail, &q_regno, &q_uf,
@@ -28050,42 +28050,42 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      the precondition make_insns has no way around.  */
   {
     int rc = 0, ru = 0, ra_ = 0, rn = 0, rm = 0, rd = 0, rr = 0, rx = 0;
-    bool rok = lvx_cms_verify_rename (seq, arcs, q_def, q_last, q_nr, q_ec,
+    bool rok = lvx_lms_verify_rename (seq, arcs, q_def, q_last, q_nr, q_ec,
 				      q_own, q_regno, q_uf,
 				      df_get_live_in (loop->header),
 				      av, an, ar, found,
 				      lo, igkunroll > 0 ? igkunroll : 1,
 				      &rc, &ru, &ra_, &rn, &rm, &rd, &rr, &rx);
-    lvx_cms_dump (";; lvx cms: fn=%s loop %d rename %s anodes=%u assigned=%d"
+    lvx_lms_dump (";; lvx cms: fn=%s loop %d rename %s anodes=%u assigned=%d"
 		  " values=%u conflicts=%d unseen=%d ambig=%d unassigned=%d"
 		  " misaligned=%d nondiv=%d reserved=%d clash=%d\n",
 		  current_function_name (), loop->num, rok ? "ok" : "BAD",
 		  ar.length (), igassigned, q_def.length (), rc, ru, ra_, rn,
 		  rm, rd, rr, rx);
-    if (lvx_cms_probe && !q_def.is_empty ())
+    if (lvx_lms_probe && !q_def.is_empty ())
       {
 	/* The map itself, one entry per value: the defining instruction, the
 	   register RA gave it, its width, and the registers its expansion
 	   copies were given in name order.  An aggregate cannot be checked
 	   against the kernel it describes (§7sedecies.1), and this is what
 	   the per-insn schedule line above has to be read against.  */
-	lvx_cms_dump (";; lvx cms: fn=%s loop %d rename map:",
+	lvx_lms_dump (";; lvx cms: fn=%s loop %d rename map:",
 		      current_function_name (), loop->num);
 	for (unsigned v = 0; v < q_def.length (); v++)
 	  {
-	    int p2 = lvx_cms_value_p2 (av, (int) v);
-	    lvx_cms_dump (" %u@%d:r%dx%d%s", v, q_own[v], q_regno[v], q_nr[v],
+	    int p2 = lvx_lms_value_p2 (av, (int) v);
+	    lvx_lms_dump (" %u@%d:r%dx%d%s", v, q_own[v], q_regno[v], q_nr[v],
 			  q_uf[v] ? "F" : "");
 	    for (int j = 0; j < p2; j++)
 	      {
-		int q = lvx_cms_anode_of (av, an, (int) v, j);
-		lvx_cms_dump ("%sr%d", j ? "," : "->",
+		int q = lvx_lms_anode_of (av, an, (int) v, j);
+		lvx_lms_dump ("%sr%d", j ? "," : "->",
 			      q < 0 ? -1 : ar[q]);
 	      }
 	    if (p2 == 0)
-	      lvx_cms_dump ("->=");
+	      lvx_lms_dump ("->=");
 	  }
-	lvx_cms_dump ("\n");
+	lvx_lms_dump ("\n");
       }
   }
 
@@ -28096,9 +28096,9 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      a slightly-off one.  Called eleven lines too early at first, which put
      kunroll at its initial 1 and understated every figure -- caught by hand
      arithmetic on one loop's schedule, not by anything in the dump.  */
-  struct lvx_cms_plan pl;
-  auto_vec<lvx_cms_slot> plslots;
-  auto_vec<lvx_cms_node> plnodes;
+  struct lvx_lms_plan pl;
+  auto_vec<lvx_lms_slot> plslots;
+  auto_vec<lvx_lms_node> plnodes;
   /* THE PLAN'S KUNROLL MUST BE THE RENAMING'S.  §7tricies.47.
 
      This was IGKUNROLL, from the VALUE colouring, and that was right while
@@ -28129,7 +28129,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      left the two disagreeing on two loops, which the check below then had to
      refuse.
 
-     The decision needs LVX_CMS_SLOT_ORDER, which needs slots, which need a
+     The decision needs LVX_LMS_SLOT_ORDER, which needs slots, which need a
      plan: so the negotiation builds a THROWAWAY plan at each candidate
      kunroll and asks the order of it.  A plan is a walk over the schedule and
      costs nothing to discard, which is what makes trying rather than
@@ -28139,7 +28139,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
   int plkun = 1;
   int plclaimed = 0;
   {
-    auto_vec<lvx_cms_lrange_part *> klr;
+    auto_vec<lvx_lms_lrange_part *> klr;
     HARD_REG_SET kresv;
     unsigned HOST_WIDE_INT kavail = 0;
     int klb = -1;
@@ -28155,12 +28155,12 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	      klb = (int) z;
 	}
 
-    lvx_cms_build_lranges (seq, klr, NULL, NULL, NULL, NULL, NULL,
+    lvx_lms_build_lranges (seq, klr, NULL, NULL, NULL, NULL, NULL,
 			   &prop);
     /* No LIVEOUT here: it sets EXIT_LIVE only, which the epilogue copy wants
        and the unroll factor does not, and the bitmap is not in scope yet.  */
-    lvx_cms_set_lrange_dates (seq, klr, sigma, found, NULL);
-    lvx_cms_lrange_reserved (seq, klr, df_get_live_in (loop->header), &kresv);
+    lvx_lms_set_lrange_dates (seq, klr, sigma, found, NULL);
+    lvx_lms_lrange_reserved (seq, klr, df_get_live_in (loop->header), &kresv);
     for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
       if (!TEST_HARD_REG_BIT (kresv, r))
 	kavail |= (unsigned HOST_WIDE_INT) 1 << r;
@@ -28172,7 +28172,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
        The order matters, and it is NOT least-to-most conservative, which is
        what this comment claimed until §7tricies.210: attempt 1 claims for
        EVERY range and attempt 2 withholds the claim from tie-carrying ranges,
-       as the `ec' expression in lvx_cms_colour_lranges says and as the
+       as the `ec' expression in lvx_lms_colour_lranges says and as the
        comment beside it has always said.  So the order is no claim, then the
        MOST conservative model, then the middle one -- which is still
        monotone in what it accepts, because 2 is tried only when 1 has been
@@ -28181,47 +28181,47 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
        between are unchanged, so a loop that settled before can only settle
        the same way or earlier.
 
-       And the acceptance test now asks LVX_CMS_RENAME_LR_DRYRUN as well as
-       LVX_CMS_SLOT_ORDER.  Asking only whether the model linearises is what
+       And the acceptance test now asks LVX_LMS_RENAME_LR_DRYRUN as well as
+       LVX_LMS_SLOT_ORDER.  Asking only whether the model linearises is what
        let the negotiation choose a model whose renaming the target then
        refused: five loops linearised under the full claim, were accepted on
        that basis, and lost their whole pipeline at emission when `recog'
        rejected an FMA whose tie the claim had split.  A model that cannot be
        emitted is not a model, and the plan it needs is a throwaway walk --
        which is what makes asking affordable.  */
-    for (int attempt = (int) lvx_cms_claim_floor; attempt < 3; attempt++)
+    for (int attempt = (int) lvx_lms_claim_floor; attempt < 3; attempt++)
       {
 	int claim = attempt;
 	int knn = 0, kst = 0, kmx = -1, kkun = 1;
 	int kpin = 0, kpinf = 0, kwide = 0;
 
-	if (!lvx_cms_colour_lranges (seq, klr, found, lo, kavail, &knn, &kst,
+	if (!lvx_lms_colour_lranges (seq, klr, found, lo, kavail, &knn, &kst,
 				     &kmx, &kkun, &kpin, &kpinf, &kwide,
 				     claim))
 	  continue;
 	{
-	  struct lvx_cms_plan tp;
-	  auto_vec<lvx_cms_slot> tslots;
-	  auto_vec<lvx_cms_node> tnodes;
+	  struct lvx_lms_plan tp;
+	  auto_vec<lvx_lms_slot> tslots;
+	  auto_vec<lvx_lms_node> tnodes;
 	  auto_vec<int> torder;
 	  int tsubst = 0, trefused = 0;
 
-	  lvx_cms_build_plan (seq, sigma, found, kkun > 0 ? kkun : 1, nstages,
+	  lvx_lms_build_plan (seq, sigma, found, kkun > 0 ? kkun : 1, nstages,
 			      loop->num_nodes, &tp, &tslots, &tnodes);
 	  bool torw = false;
-	  bool tlin = lvx_cms_slot_order (seq, tslots, klr, klb, torder,
+	  bool tlin = lvx_lms_slot_order (seq, tslots, klr, klb, torder,
 					  &torw);
 	  /* THE TWO TESTS SIDE BY SIDE.  §7tricies.182.  CYCLIC is what
 	     decides today; PAIR is the direct allocation condition.  Reported
 	     per attempt so the two sets can be compared loop by loop before
 	     either replaces the other.  */
-	  if (dump_file && lvx_cms_probe)
-	    lvx_cms_dump (";; lvx cms: CLAIMTEST fn=%s loop %d claim=%d"
+	  if (dump_file && lvx_lms_probe)
+	    lvx_lms_dump (";; lvx cms: CLAIMTEST fn=%s loop %d claim=%d"
 			  " kunroll=%d cyclic=%d pair=%d\n",
 			  current_function_name (), loop->num, claim,
 			  kkun > 0 ? kkun : 1, tlin ? 0 : 1, torw ? 1 : 0);
 	  if (tlin
-	      && lvx_cms_rename_lr_dryrun (seq, tslots, klr, &tsubst,
+	      && lvx_lms_rename_lr_dryrun (seq, tslots, klr, &tsubst,
 					   &trefused))
 	    {
 	      plkun = kkun > 0 ? kkun : 1;
@@ -28238,7 +28238,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
     for (unsigned z = 0; z < klr.length (); z++)
       delete klr[z];
   }
-  lvx_cms_build_plan (seq, sigma, found, plkun,
+  lvx_lms_build_plan (seq, sigma, found, plkun,
 		      nstages, loop->num_nodes, &pl, &plslots, &plnodes);
 
   /* THE LOCAL SCHEDULE, ONE BODY INSTANCE WITH ITS CYCLES.  §7tricies.146.
@@ -28246,7 +28246,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      recurrence and the resource bounds are both statements about, and the
      thing a reader needs to see to judge either.  Printed in cycle order
      rather than program order, since that is what a VLIW schedule means.  */
-  if (dump_file && lvx_cms_probe)
+  if (dump_file && lvx_lms_probe)
     {
       int last = 0;
 
@@ -28258,7 +28258,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	    {
 	      int code = INSN_CODE (seq[i]);
 
-	      lvx_cms_dump (";; lvx cms:   LOCALSCHED fn=%s loop %d cycle=%d"
+	      lvx_lms_dump (";; lvx cms:   LOCALSCHED fn=%s loop %d cycle=%d"
 			    " i=%u uid=%d %s\n", current_function_name (),
 			    loop->num, c, i, INSN_UID (seq[i]),
 			    code >= 0 ? insn_data[code].name : "?");
@@ -28274,18 +28274,18 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      coloured and still deliver an undefined operand -- a wrong answer rather
      than a crash.  §7quinquies.9.  */
   int slundef = 0, slorder = 0, slpaths = 0;
-  bool slok = lvx_cms_verify_slots (seq, arcs, plslots, plnodes,
+  bool slok = lvx_lms_verify_slots (seq, arcs, plslots, plnodes,
 				    &slundef, &slorder, &slpaths);
   /* §7tricies.136.  The slot table itself, so an abutment in the circular-arc
      model can be checked against the BLOCK each of its two slots lands in:
      the read-before-write exemption that lets two arcs abut is only valid
      inside one bundle, and a cycle's slots are distributed over SKELETON
-     BLOCKS -- see the definition at lvx_cms_make_nodes.  */
-  if (dump_file && lvx_cms_probe)
+     BLOCKS -- see the definition at lvx_lms_make_nodes.  */
+  if (dump_file && lvx_lms_probe)
     for (unsigned z = 0; z < plslots.length (); z++)
       {
 	int nd = plslots[z].node;
-	lvx_cms_dump (";; lvx cms:   SLOT fn=%s loop %d z=%u insn=%d iter=%d"
+	lvx_lms_dump (";; lvx cms:   SLOT fn=%s loop %d z=%u insn=%d iter=%d"
 		      " date=%d node=%d kind=%d\n", current_function_name (),
 		      loop->num, z, plslots[z].insn, plslots[z].iter,
 		      plslots[z].date,
@@ -28293,7 +28293,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 			   ? (int) plnodes[nd].kind : -1));
       }
 
-  lvx_cms_dump (";; lvx cms: fn=%s loop %d slots %s n=%u nodes=%u paths=%d"
+  lvx_lms_dump (";; lvx cms: fn=%s loop %d slots %s n=%u nodes=%u paths=%d"
 		" undef=%d order=%d pro=%d ker=%d epi=%d episym=%d"
 		" exitslots=%d exep=%d steadybad=%d\n", current_function_name (),
 		loop->num, slok ? "ok" : "BAD", plslots.length (),
@@ -28305,7 +28305,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 
      A tied operand makes two values one register, so they cannot be given
      different expansion names.  The classes are found by asking the target
-     (lvx_cms_tie_classes), then COLOURED AS VALUES IN THEIR OWN RIGHT: one
+     (lvx_lms_tie_classes), then COLOURED AS VALUES IN THEIR OWN RIGHT: one
      entry per class with the union of its members' ranges, which is the whole
      cost of the merge -- a longer range means a higher degree and possibly an
      extra name.
@@ -28343,7 +28343,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
   auto_vec<int> cgi2c, cgcregno, cgav, cgan, cgar;
   {
     auto_vec<int> tparent;
-    lvx_cms_tie_classes (seq, arcs, q_own, q_regno, av, an, ar, tparent,
+    lvx_lms_tie_classes (seq, arcs, q_own, q_regno, av, an, ar, tparent,
 			 &tnclass, &tnmerged, &tbiggest, &torphan);
 
     /* Dense class indices, and the per-class table: the earliest definition,
@@ -28356,7 +28356,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
       v2c[v] = -1;
     for (unsigned v = 0; v < q_own.length (); v++)
       {
-	int r = lvx_cms_tie_find (tparent, (int) v);
+	int r = lvx_lms_tie_find (tparent, (int) v);
 	if (v2c[r] < 0)
 	  {
 	    v2c[r] = (int) c_def.length ();
@@ -28382,7 +28382,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	  c_uf[ci] = 1;
       }
     for (unsigned v = 0; v < q_own.length (); v++)
-      v2c[v] = v2c[lvx_cms_tie_find (tparent, (int) v)];
+      v2c[v] = v2c[lvx_lms_tie_find (tparent, (int) v)];
 
     /* Insn -> class, which is all the substitution needs: the defining insn
        of every member maps to the class, so a use found through an arc and a
@@ -28500,7 +28500,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
        computed over values and stays correct, since a class's register is a
        member's register and the freeable rule counts definitions.  */
     HARD_REG_SET cresv;
-    lvx_cms_reserved_regs (seq, q_def, q_last, q_nr, q_ec, q_regno, q_uf,
+    lvx_lms_reserved_regs (seq, q_def, q_last, q_nr, q_ec, q_regno, q_uf,
 			   df_get_live_in (loop->header), &cresv);
     unsigned HOST_WIDE_INT cavail = 0;
     for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
@@ -28550,7 +28550,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	ckunroll = 1;
 	cmaxreg = -1;
 	cassigned = 0;
-	lvx_cms_colour (c_def, c_last, c_deg, c_nr, c_ec, found, lo,
+	lvx_lms_colour (c_def, c_last, c_deg, c_nr, c_ec, found, lo,
 			&cnodes, &cedges, &cmsq, &cspill, &cperiod, &ckunroll,
 			NULL, &cav, &can, &car, &cmaxreg, cavail, &c_regno,
 			&c_uf, NULL, NULL);
@@ -28558,7 +28558,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	  if (car[q] >= 0)
 	    cassigned++;
 
-	rnok = lvx_cms_rename_dryrun (seq, arcs, plslots, insn2cls_pre,
+	rnok = lvx_lms_rename_dryrun (seq, arcs, plslots, insn2cls_pre,
 				      c_regno, cav, can, car, &rnsubst,
 				      &rnfail, &cref);
 	if (rnok || cref.is_empty ())
@@ -28618,7 +28618,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
     cgsurv = cresv;
     /* Regno -> the number of names its class was given, so the check knows
        how often the register is actually revisited.  */
-    /* VERIFY THE CLASS ASSIGNMENT'S OCCUPANCY.  lvx_cms_verify_rename had
+    /* VERIFY THE CLASS ASSIGNMENT'S OCCUPANCY.  lvx_lms_verify_rename had
        only ever run on the VALUE-level assignment -- the one the study
        reports -- while the CLASS-level assignment is the one codegen renames
        from, and it was never checked at all.
@@ -28641,7 +28641,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
       for (unsigned v = 0; v < q_own.length (); v++)
 	if (v2c[v] >= 0 && c_own[v2c[v]] < 0)
 	  c_own[v2c[v]] = q_own[v];
-      cgocc = lvx_cms_verify_rename (seq, arcs, c_def, c_last, c_nr, c_ec,
+      cgocc = lvx_lms_verify_rename (seq, arcs, c_def, c_last, c_nr, c_ec,
 				     c_own, c_regno, c_uf,
 				     df_get_live_in (loop->header),
 				     cav, can, car,
@@ -28657,7 +28657,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
     cgperiod.safe_grow_cleared (FIRST_PSEUDO_REGISTER);
     for (unsigned c = 0; c < c_regno.length (); c++)
       {
-	int p2 = lvx_cms_value_p2 (cav, (int) c);
+	int p2 = lvx_lms_value_p2 (cav, (int) c);
 	cglife.safe_push (c_last[c] - c_def[c] + (c_ec[c] ? 1 : 0));
 	cgnames.safe_push (p2);
 	for (int w2 = 0; w2 < MAX (c_nr[c], 1); w2++)
@@ -28672,7 +28672,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
     cgan.safe_splice (can);
     cgar.safe_splice (car);
   }
-  lvx_cms_dump (";; lvx cms: fn=%s loop %d renameable %s subst=%d refused=%d"
+  lvx_lms_dump (";; lvx cms: fn=%s loop %d renameable %s subst=%d refused=%d"
 		" slots=%u values=%u classes=%d merged=%d biggest=%d"
 		" orphan=%d cnodes=%d cassigned=%d cmaxreg=%d ckunroll=%d"
 		" pinpasses=%d pinned=%d\n",
@@ -28685,7 +28685,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      the structure the renaming is being moved onto, verified against DF
      before anything is renamed from it.  */
   {
-    auto_vec<lvx_cms_lrange_part *> lr;
+    auto_vec<lvx_lms_lrange_part *> lr;
     int nrange = 0, lrorph = 0, lrdup = 0, lrnoloc = 0;
     int lrmaxp2 = 0, lruf = 0, lrxl = 0;
     int lrtie = 0, lrunit = 0, lrheld = 0;
@@ -28716,12 +28716,12 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
        partition the anti-dependence decisions were made from.  */
     /* §7tricies.110: the same record for every set built here, or two
        of them would describe different programs.  */
-    lvx_cms_build_lranges (seq, lr, &lrtie, &lrunit, &lrheld, NULL,
+    lvx_lms_build_lranges (seq, lr, &lrtie, &lrunit, &lrheld, NULL,
 			   NULL, &prop);
-    lvx_cms_set_lrange_dates (seq, lr, sigma, found, liveout);
-    bool lrok = lvx_cms_verify_lranges (seq, lr, &nrange, &lrorph, &lrdup,
+    lvx_lms_set_lrange_dates (seq, lr, sigma, found, liveout);
+    bool lrok = lvx_lms_verify_lranges (seq, lr, &nrange, &lrorph, &lrdup,
 					&lrnoloc);
-    int lrovl = lvx_cms_lrange_overlaps (lr);
+    int lrovl = lvx_lms_lrange_overlaps (lr);
     for (unsigned k = 0; k < lr.length (); k++)
       if (!lr[k]->effects.is_empty ())
 	{
@@ -28739,21 +28739,21 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	     renamed with nothing to copy it back -- the code after the loop
 	     then reads an architectural register the pipeline stopped
 	     writing.  */
-	  if (dump_file && lvx_cms_probe)
+	  if (dump_file && lvx_lms_probe)
 	    {
 	      bool lo = false;
 	      for (int w = 0; w < MAX (lr[k]->nregs, 1); w++)
 		if (liveout && bitmap_bit_p (liveout, lr[k]->regno + w))
 		  lo = true;
 	      if (lo != lr[k]->exit_live)
-		lvx_cms_dump (";; lvx cms:   XL-DISAGREE g%u r%u nregs=%d"
+		lvx_lms_dump (";; lvx cms:   XL-DISAGREE g%u r%u nregs=%d"
 			      " exit_live=%d liveout=%d uf=%d p2=%d\n", k,
 			      lr[k]->regno, MAX (lr[k]->nregs, 1),
 			      lr[k]->exit_live ? 1 : 0, lo ? 1 : 0,
 			      lr[k]->use_first ? 1 : 0, lr[k]->p2unroll);
 	    }
 	}
-    lvx_cms_dump (";; lvx cms: fn=%s loop %d lranges %s n=%d orphan=%d"
+    lvx_lms_dump (";; lvx cms: fn=%s loop %d lranges %s n=%d orphan=%d"
 		  " dup=%d noloc=%d overlap=%d maxp2=%d usefirst=%d"
 		  " exitlive=%d tie=%d units=%d held=%d nwar=%d nwaw=%d"
 		  " nlo=%d/%d"
@@ -28771,16 +28771,16 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
     {
       int pcand, ptied, pmdef, pmp, pwide;
 
-      lvx_cms_count_copy_prop (seq, arcs, &pcand, &ptied, &pmdef, &pmp,
+      lvx_lms_count_copy_prop (seq, arcs, &pcand, &ptied, &pmdef, &pmp,
 			       &pwide);
-      lvx_cms_dump (";; lvx cms: fn=%s loop %d cprop=%d tiedop=%d"
+      lvx_lms_dump (";; lvx cms: fn=%s loop %d cprop=%d tiedop=%d"
 		    " otherrange=%d multip=%d wide=%d\n",
 		    current_function_name (), loop->num, pcand, ptied, pmdef,
 		    pmp, pwide);
     }
 
-    if (lvx_cms_probe && dump_file)
-      lvx_cms_dump_lranges (seq, lr, "probe");
+    if (lvx_lms_probe && dump_file)
+      lvx_lms_dump_lranges (seq, lr, "probe");
 
     /* STAGE TWO (a): COLOUR THE RANGES, and report the assignment beside the
        class one.  Nothing is renamed from it yet -- the comparison is the
@@ -28794,16 +28794,16 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	int lrpin = 0, lrpinf = 0, lrwide = 0;
 	bool lrcok;
 
-	lvx_cms_lrange_reserved (seq, lr, df_get_live_in (loop->header),
+	lvx_lms_lrange_reserved (seq, lr, df_get_live_in (loop->header),
 				 &lrresv);
 	for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
 	  if (!TEST_HARD_REG_BIT (lrresv, r))
 	    lravail |= (unsigned HOST_WIDE_INT) 1 << r;
 
-	lrcok = lvx_cms_colour_lranges (seq, lr, found, lo, lravail, &lrnn,
+	lrcok = lvx_lms_colour_lranges (seq, lr, found, lo, lravail, &lrnn,
 					&lrstuck, &lrmax, &lrkun, &lrpin,
 					&lrpinf, &lrwide);
-	lvx_cms_dump (";; lvx cms: fn=%s loop %d lrcolour %s nodes=%d"
+	lvx_lms_dump (";; lvx cms: fn=%s loop %d lrcolour %s nodes=%d"
 		      " stuck=%d maxreg=%d kunroll=%d pinned=%d pinfail=%d"
 		      " wide=%d avail=%d cmaxreg=%d ckunroll=%d\n",
 		      current_function_name (), loop->num,
@@ -28817,10 +28817,10 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	if (lrcok)
 	  {
 	    int lrsub = 0, lrfail = 0;
-	    bool lrrok = lvx_cms_rename_lr_dryrun (seq, plslots, lr, &lrsub,
+	    bool lrrok = lvx_lms_rename_lr_dryrun (seq, plslots, lr, &lrsub,
 						   &lrfail);
 
-	    lvx_cms_dump (";; lvx cms: fn=%s loop %d lrrename %s subst=%d"
+	    lvx_lms_dump (";; lvx cms: fn=%s loop %d lrrename %s subst=%d"
 			  " refused=%d slots=%u csubst=%d crefused=%d\n",
 			  current_function_name (), loop->num,
 			  lrrok ? "ok" : "BAD", lrsub, lrfail,
@@ -28837,16 +28837,16 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      which is the pair of arcs the graph would have carried had it kept
      them.  */
   int adshort = 0, adpair = 0, ada = -1, adb = -1, adc = -1;
-  bool adok = lvx_cms_verify_antidep (seq, sigma, found, &cgsurv, cgperiod,
+  bool adok = lvx_lms_verify_antidep (seq, sigma, found, &cgsurv, cgperiod,
 				      cglife, cgnames, &adshort, &adpair,
 				      &ada, &adb, &adc);
-  lvx_cms_dump (";; lvx cms: fn=%s loop %d antidep %s short=%d pairs=%d"
+  lvx_lms_dump (";; lvx cms: fn=%s loop %d antidep %s short=%d pairs=%d"
 		" first=%d/%d/%d\n", current_function_name (), loop->num,
 		adok ? "ok" : "BAD", adshort, adpair, ada, adb, adc);
-  lvx_cms_dump (";; lvx cms: fn=%s loop %d liveoutrenamed=%d"
+  lvx_lms_dump (";; lvx cms: fn=%s loop %d liveoutrenamed=%d"
 		" ambigclasses=%d\n", current_function_name (), loop->num,
 		cgliveout_renamed, cgambig_classes);
-  lvx_cms_dump (";; lvx cms: fn=%s loop %d classocc %s conf=%d unseen=%d"
+  lvx_lms_dump (";; lvx cms: fn=%s loop %d classocc %s conf=%d unseen=%d"
 		" ambig=%d unass=%d misal=%d nondiv=%d clash=%d\n",
 		current_function_name (), loop->num, cgocc ? "ok" : "BAD",
 		cgconf, cgunseen, cgambig, cgunass, cgmisal, cgnondiv,
@@ -28871,7 +28871,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
   /* And the per-branch exit liveness, for the same reason and at the same
      point: §7tricies.104.  */
   auto_vec<HARD_REG_SET> xlcap;
-  lvx_cms_capture_exit_live (seq, xlcap);
+  lvx_lms_capture_exit_live (seq, xlcap);
 
   struct lvx_sched_resources dem;
   memset (&dem, 0, sizeof (dem));
@@ -28881,7 +28881,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
       {
 	rtx_insn *bi;
 	FOR_BB_INSNS (dbody[i], bi)
-	  lvx_cms_resources_add (&dem, bi);
+	  lvx_lms_resources_add (&dem, bi);
       }
     free (dbody);
   }
@@ -28898,10 +28898,10 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      susan_smoothing at 0.4880 -- and then withdrawn, because compiling libgcc
      with it segfaults the compiler in two separate places:
 
-       lvx_cms_pipeline_loop  a resource walk over the caller's BODY array,
+       lvx_lms_pipeline_loop  a resource walk over the caller's BODY array,
 			      whose blocks emission had replaced (fixed:
 			      §7tricies.103 computes it before emission)
-       lvx_cms_build_lranges  df_get_live_in (e->dest) on an exit edge whose
+       lvx_lms_build_lranges  df_get_live_in (e->dest) on an exit edge whose
 			      destination make_nodes had just created, so the
 			      block has no DF info at all -- NULL dereference
 
@@ -28912,13 +28912,13 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
      threaded in from before make_nodes, not a null check -- a null check
      would silently drop a range's exit_live flag and miscompile instead of
      crashing.  So the default waits for the boundary, not for another patch.  */
-  if (lvx_cms_codegen && pl.ok && nstages >= 2)
+  if (lvx_lms_codegen && pl.ok && nstages >= 2)
     {
       /* RECORD, do not transform: the loop structures are finalized before
 	 anything is built (§7quinquies.10), so what is captured is raw basic
 	 blocks -- a `class loop *' does not survive that, and neither does
 	 anything reached through it.  */
-      struct lvx_cms_site site;
+      struct lvx_lms_site site;
       memset (&site, 0, sizeof (site));
       site.header = loop->header;
       site.latch = loop->latch;
@@ -28983,7 +28983,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		basic_block zb = BLOCK_FOR_INSN (seq[z]);
 		int code = INSN_CODE (seq[z]);
 
-		lvx_cms_dump (";; lvx cms:   body %u uid=%d bb=%d%s%s %s",
+		lvx_lms_dump (";; lvx cms:   body %u uid=%d bb=%d%s%s %s",
 			      z, INSN_UID (seq[z]), zb ? zb->index : -1,
 			      zb == loop->header ? " HDR" : "",
 			      zb == loop->latch ? " LATCH" : "",
@@ -28993,19 +28993,19 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		    edge e;
 		    edge_iterator ei;
 
-		    lvx_cms_dump (" JUMP label=%d succs=",
+		    lvx_lms_dump (" JUMP label=%d succs=",
 				  JUMP_LABEL (seq[z])
 				  ? INSN_UID (JUMP_LABEL (seq[z])) : -1);
 		    if (zb)
 		      FOR_EACH_EDGE (e, ei, zb->succs)
-			lvx_cms_dump ("%d%s ", e->dest->index,
+			lvx_lms_dump ("%d%s ", e->dest->index,
 				      flow_bb_inside_loop_p (loop, e->dest)
 				      ? "(in)" : "(OUT)");
 		  }
-		lvx_cms_dump ("\n");
+		lvx_lms_dump ("\n");
 	      }
 	}
-	lvx_cms_dump (";; lvx cms: fn=%s loop %d entryadmits=%d exits=%d"
+	lvx_lms_dump (";; lvx cms: fn=%s loop %d entryadmits=%d exits=%d"
 		      " notlatch=%d jumpislatch=%d\n",
 		      current_function_name (), loop->num,
 		      site.entry_admits ? 1 : 0, nexit, nelse,
@@ -29016,7 +29016,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
       edge_iterator ei;
       {
 	/* §7tricies.157: HOW MANY ENTRIES DOES THE HEADER HAVE?
-	   lvx_cms_eligible_loop_p never asks, and the loop below takes the
+	   lvx_lms_eligible_loop_p never asks, and the loop below takes the
 	   LAST non-latch predecessor as the preheader with no uniqueness
 	   check -- so a two-entry loop would have one edge split by
 	   make_nodes and the other reaching the header with the whole
@@ -29028,7 +29028,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	  if (!flow_bb_inside_loop_p (loop, e->src))
 	    nent++;
 	if (nent != 1)
-	  lvx_cms_dump (";; lvx cms: fn=%s loop %d ENTRIES=%u"
+	  lvx_lms_dump (";; lvx cms: fn=%s loop %d ENTRIES=%u"
 			" *** NOT ONE ***\n", current_function_name (),
 			loop->num, nent);
 	/* §7tricies.162: IS THE BODY A TRACE AT ALL?  A superblock is
@@ -29053,7 +29053,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	      if (inpred > 1)
 		njoin++;
 	    }
-	  lvx_cms_dump (";; lvx cms: fn=%s loop %d JOINS=%u blocks=%u\n",
+	  lvx_lms_dump (";; lvx cms: fn=%s loop %d JOINS=%u blocks=%u\n",
 			current_function_name (), loop->num, njoin,
 			(unsigned) loop->num_nodes);
 	}
@@ -29075,7 +29075,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	 reorg_loops' process_incoming_edges has restructured the header's
 	 incoming edges to give the LOOPDO a dedicated preheader.  Two entries
 	 leave it NULL and the loop is declined, which is what
-	 lvx_cms_pipeline_loop's own entry search already does for the same
+	 lvx_lms_pipeline_loop's own entry search already does for the same
 	 reason.  */
       site.preheader = NULL;
       FOR_EACH_EDGE (e, ei, loop->header->preds)
@@ -29089,7 +29089,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	    site.preheader = e->src;
 	  }
       /* The drain goes on the LATCH's exit -- the edge the kernel falls out
-	 of.  See lvx_cms_make_nodes on why "the loop's single exit" was the
+	 of.  See lvx_lms_make_nodes on why "the loop's single exit" was the
 	 wrong criterion.  */
       FOR_EACH_EDGE (e, ei, loop->latch->succs)
 	if (!flow_bb_inside_loop_p (loop, e->dest))
@@ -29124,7 +29124,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	 branch two ways inside the loop -- so there is no layout order to
 	 appeal to, while SEQ is exactly what the slots and the plan were
 	 built from.  */
-      if (!site.exit_dest && lvx_cms_drain_from_exit)
+      if (!site.exit_dest && lvx_lms_drain_from_exit)
 	{
 	  for (unsigned z = 0; z < seq.length (); z++)
 	    {
@@ -29140,7 +29140,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		  }
 	    }
 	  if (site.exit_dest)
-	    lvx_cms_dump (";; lvx cms: fn=%s loop %d drain from exit bb%d ->"
+	    lvx_lms_dump (";; lvx cms: fn=%s loop %d drain from exit bb%d ->"
 			  " bb%d (latch bb%d has none)\n",
 			  current_function_name (), loop->num,
 			  site.exit_src->index, site.exit_dest->index,
@@ -29167,7 +29167,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	  /* THE SKELETON IS BUILT LAST, AFTER EVERY CHECK HAS PASSED.
 	     §7tricies.145.
 
-	     lvx_cms_make_nodes CREATES BASIC BLOCKS and redirects edges, and
+	     lvx_lms_make_nodes CREATES BASIC BLOCKS and redirects edges, and
 	     it used to run HERE -- before the colouring, the linearisation and
 	     the rename dry run, each of which can refuse.  A refusal then left
 	     the blocks behind: §7tricies.72's defect exactly, "a refusal that
@@ -29190,11 +29190,11 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	  auto_vec<basic_block> cgblocks;
 	  bool built = true;
 
-	  if (!lvx_cms_pipeline)
+	  if (!lvx_lms_pipeline)
 	    {
-	      built = lvx_cms_make_nodes (&site, loop, &plnodes, &cgblocks,
+	      built = lvx_lms_make_nodes (&site, loop, &plnodes, &cgblocks,
 					  &nwhy);
-	      lvx_cms_dump (";; lvx cms: fn=%s loop %d make_nodes %s blocks=%u"
+	      lvx_lms_dump (";; lvx cms: fn=%s loop %d make_nodes %s blocks=%u"
 			    " nodes=%u\n", current_function_name (),
 			    loop->num, built ? "built" : nwhy,
 			    cgblocks.length (), plnodes.length ());
@@ -29204,7 +29204,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	     the body is only put into schedule order, which is verified
 	     (§7tricies.7).  Two flags rather than one so that a broken
 	     pipeline cannot regress the reordering.  */
-	  if (built && lvx_cms_pipeline)
+	  if (built && lvx_lms_pipeline)
 	    {
 	      const char *iwhy = NULL;
 	      int nemit = 0;
@@ -29228,7 +29228,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		 is asked of the live range assignment itself and now refuses
 		 nothing on any of the 124 loops measured.  */
 	      {
-		auto_vec<lvx_cms_lrange_part *> cglr;
+		auto_vec<lvx_lms_lrange_part *> cglr;
 		HARD_REG_SET cgresv;
 		unsigned HOST_WIDE_INT cgavail = 0, cgentry = 0;
 		int nn = 0, nst = 0, mx = -1, kun = 1, pin = 0, pinf = 0;
@@ -29252,12 +29252,12 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		    cgloopback = (int) z;
 
 		/* §7tricies.104: the exit liveness from before make_nodes.  */
-		lvx_cms_build_lranges (seq, cglr, NULL, NULL, NULL, NULL,
+		lvx_lms_build_lranges (seq, cglr, NULL, NULL, NULL, NULL,
 				       &xlcap, &prop);
-		lvx_cms_set_lrange_dates (seq, cglr, sigma, found, liveout);
-		vok = lvx_cms_verify_lranges (seq, cglr, &nr, &orph, &dupl,
+		lvx_lms_set_lrange_dates (seq, cglr, sigma, found, liveout);
+		vok = lvx_lms_verify_lranges (seq, cglr, &nr, &orph, &dupl,
 					      &nol);
-		lvx_cms_lrange_reserved (seq, cglr,
+		lvx_lms_lrange_reserved (seq, cglr,
 					 df_get_live_in (loop->header),
 					 &cgresv, &pool);
 		for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
@@ -29267,11 +29267,11 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		   register live on entry to the header may still be holding
 		   an incoming value the prologue reads, even though AVAIL
 		   frees it because the body's writer of it gets renamed.  */
-		if (lvx_cms_preheader_copy)
+		if (lvx_lms_preheader_copy)
 		  for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
 		    if (bitmap_bit_p (df_get_live_in (loop->header), r))
 		      cgentry |= (unsigned HOST_WIDE_INT) 1 << r;
-		cok = lvx_cms_colour_lranges (seq, cglr, found, lo, cgavail,
+		cok = lvx_lms_colour_lranges (seq, cglr, found, lo, cgavail,
 					      &nn, &nst, &mx, &kun, &pin,
 					      &pinf, &wide, 0, NULL, cgentry);
 		/* §7tricies.158: AND NO ASSIGNED REGISTER MAY LIE OUTSIDE
@@ -29286,18 +29286,18 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		if (dump_file)
 		  for (unsigned g = 0; g < cglr.length (); g++)
 		    for (int x = 0;
-			 x < cglr[g]->p2unroll && x < LVX_CMS_MAX_KUNROLL; x++)
+			 x < cglr[g]->p2unroll && x < LVX_LMS_MAX_KUNROLL; x++)
 		      {
 			int rg = cglr[g]->reg[x];
 
 			if (rg < 0 || cglr[g]->effects.is_empty ()
-			    || lvx_cms_lrange_root (cglr, (int) g) != (int) g
+			    || lvx_lms_lrange_root (cglr, (int) g) != (int) g
 			    || !cglr[g]->renamed)
 			  continue;
 			for (int w = 0; w < MAX (cglr[g]->nregs, 1); w++)
 			  if (rg + w >= 64
 			      || !((cgavail >> (rg + w)) & 1))
-			    lvx_cms_dump (";; lvx cms:   REGNOTAVAIL lr%u"
+			    lvx_lms_dump (";; lvx cms:   REGNOTAVAIL lr%u"
 					  " name%d r%d (+%d) OUTSIDE"
 					  " AVAIL\n", g, x, rg, w);
 		      }
@@ -29305,7 +29305,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		/* §7tricies.157: NO ASSIGNED REGISTER MAY BE LIVE ACROSS THE
 		   LOOP WITHOUT THE BODY REFERENCING IT.
 
-		   lvx_cms_lrange_reserved is supposed to make this impossible
+		   lvx_lms_lrange_reserved is supposed to make this impossible
 		   twice over -- a live-in register goes into HARD and HARD is
 		   re-applied after the freeing, and the freeing itself needs
 		   `nrange[r] > 0' so a register with no range on it is never
@@ -29331,7 +29331,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		      }
 		    for (unsigned g = 0; g < cglr.length (); g++)
 		      for (int x = 0;
-			   x < cglr[g]->p2unroll && x < LVX_CMS_MAX_KUNROLL;
+			   x < cglr[g]->p2unroll && x < LVX_LMS_MAX_KUNROLL;
 			   x++)
 			{
 			  int rg = cglr[g]->reg[x];
@@ -29342,7 +29342,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 			     both arms.  */
 			  if (rg < 0 || rg >= 64
 			      || cglr[g]->effects.is_empty ()
-			      || lvx_cms_lrange_root (cglr, (int) g) != (int) g
+			      || lvx_lms_lrange_root (cglr, (int) g) != (int) g
 			      || !cglr[g]->renamed)
 			    continue;
 			  for (int w = 0; w < MAX (cglr[g]->nregs, 1); w++)
@@ -29353,7 +29353,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 				break;
 			      if (li && bitmap_bit_p (li, rr2))
 				{
-				  lvx_cms_dump (";; lvx cms:   REGLIVEIN lr%u"
+				  lvx_lms_dump (";; lvx cms:   REGLIVEIN lr%u"
 						" name%d r%d LIVE-IN%s\n", g,
 						x, rr2,
 						TEST_HARD_REG_BIT (refd, rr2)
@@ -29370,13 +29370,13 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 				     handed out a register that is not free
 				     and the entry copy would destroy a live
 				     value.  */
-				  if (lvx_cms_preheader_copy)
+				  if (lvx_lms_preheader_copy)
 				    cok = false;
 				}
 			    }
 			}
 		  }
-		lvx_cms_dump (";; lvx cms: fn=%s loop %d ENTRYBUSY avail=%d"
+		lvx_lms_dump (";; lvx cms: fn=%s loop %d ENTRYBUSY avail=%d"
 			      " entry=%d first8=%c%c%c%c%c%c%c%c\n",
 			      current_function_name (), loop->num,
 			      (int) popcount_hwi (cgavail),
@@ -29400,7 +29400,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		if (plclaimed)
 		  {
 		    claimed = true;
-		    cok = lvx_cms_colour_lranges (seq, cglr, found, lo,
+		    cok = lvx_lms_colour_lranges (seq, cglr, found, lo,
 						  cgavail, &nn, &nst, &mx,
 						  &kun, &pin, &pinf, &wide,
 						  plclaimed, NULL, cgentry);
@@ -29408,24 +29408,24 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		{
 		  auto_vec<int> probe_order;
 
-		  lok = lvx_cms_slot_order (seq, plslots, cglr, cgloopback,
+		  lok = lvx_lms_slot_order (seq, plslots, cglr, cgloopback,
 					    probe_order);
 		}
-		rok2 = lvx_cms_rename_lr_dryrun (seq, plslots, cglr, &subst,
+		rok2 = lvx_lms_rename_lr_dryrun (seq, plslots, cglr, &subst,
 						 &refused);
-		aok = lvx_cms_verify_lr_antidep (seq, cglr, found, lo,
+		aok = lvx_lms_verify_lr_antidep (seq, cglr, found, lo,
 						 kun > 0 ? kun : 1, &nconf,
 						 &ca, &cb, &creg, &ccyc,
 						 &cnheld, &cninv, &cnocc);
 		/* §7tricies.112: and the commitment the dropped CTRL_LIVEOUT
 		   arcs were made on.  Before emission, with the rest.  */
-		if (lvx_cms_liveout_split)
+		if (lvx_lms_liveout_split)
 		  {
 		    int losbad = 0;
 
-		    if (!lvx_cms_verify_liveout_split (cglr, &losbad))
+		    if (!lvx_lms_verify_liveout_split (cglr, &losbad))
 		      {
-			lvx_cms_dump (";; lvx cms: fn=%s loop %d liveout"
+			lvx_lms_dump (";; lvx cms: fn=%s loop %d liveout"
 				      " split BAD, %d range(s) kept the"
 				      " architected register\n",
 				      current_function_name (), loop->num,
@@ -29433,21 +29433,21 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 			losok = false;
 		      }
 		  }
-		if (!aok && lvx_cms_probe && dump_file)
+		if (!aok && lvx_lms_probe && dump_file)
 		  {
 		    /* The two live ranges as the CODEGEN assignment left them,
 		       which is not what the probe's dump shows.  */
-		    lvx_cms_dump (";; lvx cms:   conflict at r%d cycle %d"
+		    lvx_lms_dump (";; lvx cms:   conflict at r%d cycle %d"
 				  " between:\n", creg, ccyc);
 		    for (int z = 0; z < 2; z++)
 		      {
 			int kk = z ? cb : ca;
-			lvx_cms_lrange_part *g;
+			lvx_lms_lrange_part *g;
 
 			if (kk < 0 || kk >= (int) cglr.length ())
 			  continue;
 			g = cglr[kk];
-			lvx_cms_dump (";; lvx cms:     lr%d r%u+%d p2=%d"
+			lvx_lms_dump (";; lvx cms:     lr%d r%u+%d p2=%d"
 				      " uf=%d ren=%d ec=%d [%d,%d] regs=",
 				      kk, g->regno, g->nregs, g->p2unroll,
 				      g->use_first ? 1 : 0,
@@ -29457,16 +29457,16 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 					   (seq[g->effects[0].insn]) ? 1 : 0),
 				      g->first_date, g->last_date);
 			for (int j = 0; j < g->p2unroll
-					&& j < LVX_CMS_MAX_KUNROLL; j++)
-			  lvx_cms_dump ("%sr%d", j ? "," : "", g->reg[j]);
-			lvx_cms_dump (" eff=");
+					&& j < LVX_LMS_MAX_KUNROLL; j++)
+			  lvx_lms_dump ("%sr%d", j ? "," : "", g->reg[j]);
+			lvx_lms_dump (" eff=");
 			for (unsigned e = 0; e < g->effects.length (); e++)
-			  lvx_cms_dump ("%s%u/%d%s%s", e ? "," : "",
+			  lvx_lms_dump ("%s%u/%d%s%s", e ? "," : "",
 					g->effects[e].insn,
 					g->effects[e].slot,
 					g->effects[e].is_def ? "D" : "U",
 					g->effects[e].delayed ? "~" : "");
-			lvx_cms_dump ("\n");
+			lvx_lms_dump ("\n");
 		      }
 		  }
 
@@ -29499,9 +29499,9 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		  {
 		    /* Every check has passed: now the CFG may be touched.
 		       §7tricies.145.  */
-		    built = lvx_cms_make_nodes (&site, loop, &plnodes,
+		    built = lvx_lms_make_nodes (&site, loop, &plnodes,
 						&cgblocks, &nwhy);
-		    lvx_cms_dump (";; lvx cms: fn=%s loop %d make_nodes %s"
+		    lvx_lms_dump (";; lvx cms: fn=%s loop %d make_nodes %s"
 				  " blocks=%u nodes=%u\n",
 				  current_function_name (), loop->num,
 				  built ? "built" : nwhy, cgblocks.length (),
@@ -29509,12 +29509,12 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		    if (!built)
 		      iwhy = nwhy;
 		    else
-		      emitted = lvx_cms_emit_pipeline (&site, seq, plslots,
+		      emitted = lvx_lms_emit_pipeline (&site, seq, plslots,
 						       plnodes, cgblocks,
 						       cglr, cgavail, &nemit,
 						       &iwhy);
 		  }
-		lvx_cms_dump (";; lvx cms: fn=%s loop %d cgcolour %s nodes=%d"
+		lvx_lms_dump (";; lvx cms: fn=%s loop %d cgcolour %s nodes=%d"
 			      " maxreg=%d kunroll=%d subst=%d refused=%d"
 			      " linear=%d claimed=%d lrantidep=%s losplit=%s"
 			      " conf=%d"
@@ -29531,8 +29531,8 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		   and the two are built at different stages from different
 		   schedules -- reading the probe set as if it were this one
 		   produced two wrong diagnoses (§7tricies.71).  */
-		if (lvx_cms_probe && dump_file)
-		  lvx_cms_dump_lranges (seq, cglr, "cg");
+		if (lvx_lms_probe && dump_file)
+		  lvx_lms_dump_lranges (seq, cglr, "cg");
 		for (unsigned k = 0; k < cglr.length (); k++)
 		  delete cglr[k];
 	      }
@@ -29553,14 +29553,14 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 		 hardware-loop arm failed all eight tests.  */
 	      if (emitted && site.loopdo != NULL)
 		{
-		  lvx_cms_dump (";; lvx cms: fn=%s loop %d LOOPDODROP uid=%d,"
+		  lvx_lms_dump (";; lvx cms: fn=%s loop %d LOOPDODROP uid=%d,"
 				" the second mapping will remap the kernel\n",
 				current_function_name (), loop->num,
 				INSN_UID (site.loopdo));
 		  delete_insn (site.loopdo);
 		  site.loopdo = NULL;
 		}
-	      lvx_cms_dump (";; lvx cms: fn=%s loop %d pipeline %s emitted=%d"
+	      lvx_lms_dump (";; lvx cms: fn=%s loop %d pipeline %s emitted=%d"
 			    " slots=%u\n", current_function_name (),
 			    loop->num, emitted ? "built" : iwhy, nemit,
 			    plslots.length ());
@@ -29568,7 +29568,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 
 	}
       else if (dump_file)
-	lvx_cms_dump (";; lvx cms: fn=%s loop %d codegen declined, %s\n",
+	lvx_lms_dump (";; lvx cms: fn=%s loop %d codegen declined, %s\n",
 		      current_function_name (), loop->num,
 		      !site.preheader ? "no preheader" : "latch has no exit edge");
     }
@@ -29586,7 +29586,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	defines[arcs[a].src] = true;
 
     auto_vec<int> lin;
-    lvx_cms_lineages (arcs, seq.length (), defines, lin, &nlin, &nseq);
+    lvx_lms_lineages (arcs, seq.length (), defines, lin, &nlin, &nseq);
 
     /* A lineage's live range runs from the definition of its head to the last
        use of its tail -- the concatenation of its members' ranges, which is
@@ -29633,8 +29633,8 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	    cec.safe_push (0);
 	  }
 	int per, kun;
-	lvx_cms_colour (cdef, clast, cdeg, cnr, cec, found,
-			lvx_cms_sigma_min (sigma), &linnodes, &linedges,
+	lvx_lms_colour (cdef, clast, cdeg, cnr, cec, found,
+			lvx_lms_sigma_min (sigma), &linnodes, &linedges,
 			&linsq, &linspill, &per, &kun);
       }
   }
@@ -29676,9 +29676,9 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	rtx ds = single_set (seq[i]);
 	int nr = (ds && REG_P (SET_DEST (ds))) ? REG_NREGS (SET_DEST (ds)) : 1;
 	nr = MAX (nr, 1);
-	if (lvx_cms_repair_fits_ii_p (seq, arcs, &dem, i, found, 1, nr))
+	if (lvx_lms_repair_fits_ii_p (seq, arcs, &dem, i, found, 1, nr))
 	  splitok++;
-	if (lvx_cms_repair_fits_ii_p (seq, arcs, &dem, i, found, rl, 2 * nr))
+	if (lvx_lms_repair_fits_ii_p (seq, arcs, &dem, i, found, rl, 2 * nr))
 	  spillok++;
       }
 
@@ -29686,13 +29686,13 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
        it was not, since otherwise there is nothing to repair.  */
     if (igspill > 0)
       {
-	nsplit = lvx_cms_split_until_colourable (seq, arcs, sigma, &dem, found,
-						 lvx_cms_sigma_min (sigma),
+	nsplit = lvx_lms_split_until_colourable (seq, arcs, sigma, &dem, found,
+						 lvx_lms_sigma_min (sigma),
 						 &spl_after, &spl_nodes,
 						 &spl_before);
 	int dummy;
-	nspill = lvx_cms_spill_until_colourable (seq, arcs, sigma, &dem, found,
-						 lvx_cms_sigma_min (sigma),
+	nspill = lvx_lms_spill_until_colourable (seq, arcs, sigma, &dem, found,
+						 lvx_lms_sigma_min (sigma),
 						 &sp_after, &sp_why, &dummy);
       }
   }
@@ -29717,13 +29717,13 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
   HOST_WIDE_INT mcrllife = -1, mcrllife2 = -1, mcrlsigma = -1;
   {
     auto_vec<int> ts, sl, nodates;
-    lvx_cms_path_metrics (seq, arcs, height, ts, sl);
+    lvx_lms_path_metrics (seq, arcs, height, ts, sl);
     for (int round = 0; round < 2; round++)
       {
 	auto_vec<int> es, ls;
 	int floor_ = round ? span : 0;
 	int wempty = 0, wfirst = -1, wmake = 0;
-	lvx_cms_dates_in_window (seq, arcs, nodates, ts, found,
+	lvx_lms_dates_in_window (seq, arcs, nodates, ts, found,
 				 &wfirst, &wmake, &wempty, &es, &ls, floor_);
 	if (round == 0)
 	  {
@@ -29741,7 +29741,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	HOST_WIDE_INT mcost;
 	unsigned nn, ne;
 	enum lvx_network_result r
-	  = lvx_cms_mcrl_dates (seq, arcs, es, ls, found, md, &mcost, &nn, &ne);
+	  = lvx_lms_mcrl_dates (seq, arcs, es, ls, found, md, &mcost, &nn, &ne);
 	if (round == 0)
 	  {
 	    mcrl = (int) r;
@@ -29754,7 +29754,7 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	  continue;
 
 	HOST_WIDE_INT life
-	  = lvx_cms_cumulative_lifetime (seq, arcs, md, found);
+	  = lvx_lms_cumulative_lifetime (seq, arcs, md, found);
 	if (round == 0)
 	  {
 	    mcrllife = life;
@@ -29772,17 +29772,17 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	    mcrldep = dep;
 	    /* What the achieved schedule costs on the same objective.  */
 	    auto_vec<int> sg;
-	    int slo = lvx_cms_sigma_min (sigma);
+	    int slo = lvx_lms_sigma_min (sigma);
 	    for (unsigned i = 0; i < sigma.length (); i++)
 	      sg.safe_push (sigma[i] - slo);
-	    mcrlsigma = lvx_cms_cumulative_lifetime (seq, arcs, sg, found);
+	    mcrlsigma = lvx_lms_cumulative_lifetime (seq, arcs, sg, found);
 	  }
 	else
 	  mcrllife2 = life;
       }
   }
 
-  lvx_cms_dump (";; lvx cms: fn=%s loop %d II=%d lower=%d excess=%d M=%d"
+  lvx_lms_dump (";; lvx cms: fn=%s loop %d II=%d lower=%d excess=%d M=%d"
 		" ResMII=%d RecMII=%d span=%d spanlat=%d nstages=%d BS=%d preps=%d"
 		" mvemax=%d mvep2=%d mvelcm=%d mven=%d mvetop=%d mve2nd=%d"
 		" mvesplit0=%d mvesplit=%d mvesplitr=%d mvesplitx=%d"
@@ -29846,16 +29846,16 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	    sw += arcs[crit[i]].omega;
 	    nreal++;
 	  }
-      lvx_cms_dump (";; lvx cms: fn=%s loop %d RecMII circuit, %u arcs,"
+      lvx_lms_dump (";; lvx cms: fn=%s loop %d RecMII circuit, %u arcs,"
 		    " sum theta=" HOST_WIDE_INT_PRINT_DEC
 		    " sum omega=" HOST_WIDE_INT_PRINT_DEC ":",
 		    current_function_name (), loop->num, nreal, st, sw);
       for (unsigned i = 0; i < crit.length (); i++)
 	if (crit[i] >= 0)
 	  {
-	    const lvx_cms_arc &a = arcs[crit[i]];
-	    lvx_cms_dump (" %s(%d->%d,%d,%d)",
-			  lvx_cms_arc_kind_name[(int) a.kind],
+	    const lvx_lms_arc &a = arcs[crit[i]];
+	    lvx_lms_dump (" %s(%d->%d,%d,%d)",
+			  lvx_lms_arc_kind_name[(int) a.kind],
 			  INSN_UID (seq[a.src]), INSN_UID (seq[a.dst]),
 			  (int) a.theta, (int) a.omega);
 	  }
@@ -29894,9 +29894,9 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 	      if (lvx_insn_has_tied_operand_p (seq[arcs[crit[i]].dst]))
 		ntied++;
 	    }
-	lvx_cms_dump (" copies=%d tied=%d", ncopy, ntied);
+	lvx_lms_dump (" copies=%d tied=%d", ncopy, ntied);
       }
-      lvx_cms_dump ("\n");
+      lvx_lms_dump ("\n");
     }
 }
 
@@ -29929,16 +29929,16 @@ lvx_cms_pipeline_loop (class loop *loop, basic_block *body)
 
    What this does NOT equalise, and must be said rather than discovered: SMS
    builds this graph BEFORE register allocation, so its register arcs are true
-   dataflow over pseudos, while lvx_cms_build_graph reconstructs them after
+   dataflow over pseudos, while lvx_lms_build_graph reconstructs them after
    allocation from reaching definitions.  Comparing the two K values for one
    loop is therefore a test of that reconstruction against ground truth, which
    is the most valuable thing this arrangement buys.  */
 
 static void
-lvx_cms_probe_ddg (struct ddg *g, int r)
+lvx_lms_probe_ddg (struct ddg *g, int r)
 {
   auto_vec<rtx_insn *> seq;
-  auto_vec<lvx_cms_arc> arcs;
+  auto_vec<lvx_lms_arc> arcs;
   auto_vec<int> height;
   unsigned n = (unsigned) g->num_nodes;
 
@@ -29954,7 +29954,7 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
       {
 	unsigned src = (unsigned) g->nodes[i].cuid;
 	unsigned dst = (unsigned) e->dest->cuid;
-	enum lvx_cms_arc_kind kind;
+	enum lvx_lms_arc_kind kind;
 
 	if (e->data_type == REG_DEP)
 	  kind = (e->type == TRUE_DEP ? LVX_ARC_REG_RAW
@@ -29963,7 +29963,7 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
 	else
 	  kind = e->distance ? LVX_ARC_MEM_CROSS : LVX_ARC_MEM_INTRA;
 
-	lvx_cms_push_arc (arcs, src, dst, e->latency, e->distance, kind);
+	lvx_lms_push_arc (arcs, src, dst, e->latency, e->distance, kind);
 
 	/* The dependence height, relaxed forward.  An intra-iteration edge runs
 	   forward in program order -- create_ddg asserts src->cuid <
@@ -29985,16 +29985,16 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
 		 arcs[i].omega);
   if (plc.solve (1) != LVX_PLC_SOLVED)
     {
-      lvx_cms_dump (";; lvx cms-on-ddg: recurrence bound did not solve\n");
+      lvx_lms_dump (";; lvx cms-on-ddg: recurrence bound did not solve\n");
       return;
     }
   int k = (int) plc.period ();
 
   int m = 1;
   for (unsigned i = 0; i < n; i++)
-    m = MAX (m, height[i] + lvx_cms_latency (seq[i]));
+    m = MAX (m, height[i] + lvx_lms_latency (seq[i]));
 
-  int delta = lvx_cms_delta (arcs);
+  int delta = lvx_lms_delta (arcs);
   int lower = MAX (k, r);
   auto_vec<int> sigma;
   int passes = 0, found = 0;
@@ -30010,7 +30010,7 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
 
   if (!found)
     {
-      lvx_cms_dump (";; lvx cms-on-ddg: NO schedule through II=%d"
+      lvx_lms_dump (";; lvx cms-on-ddg: NO schedule through II=%d"
 		    " lower=%d ResMII=%d RecMII=%d M=%d passes=%d,"
 		    " %u nodes %u arcs%s%s\n", lower + 8, lower, r, k, m, passes,
 		    n, arcs.length (),
@@ -30032,7 +30032,7 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
   int span = hi - lo + 1;
   int nstages = (span + found - 1) / found;
 
-  lvx_cms_dump (";; lvx cms-on-ddg: II=%d lower=%d excess=%d ResMII=%d"
+  lvx_lms_dump (";; lvx cms-on-ddg: II=%d lower=%d excess=%d ResMII=%d"
 		" RecMII=%d M=%d span=%d nstages=%d delta=%d passes=%d,"
 		" %u nodes %u arcs\n", found, lower, found - lower, r, k, m, span,
 		nstages, delta, passes, n, arcs.length ());
@@ -30058,7 +30058,7 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
 
    - Hardware loops are ALLOWED.  The unfold refuses them because halving a
      trip count means peeling; a pipeliner has to adjust the trip count
-     anyway, and an implicit loopback branch is a help.  lvx_cms_pipeline_loop
+     anyway, and an implicit loopback branch is a help.  lvx_lms_pipeline_loop
      reports which loops have one so the measurement can separate them.
 
    What CMS genuinely requires, and this gate establishes: a single latch, so
@@ -30066,7 +30066,7 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
    volatile reference or asm, none of which can be moved across an iteration
    boundary or priced; and no computed jump or complex edge, which the chain
    walk cannot follow.  The chain property itself is left to
-   lvx_cms_build_graph, which is the code that needs it and so is the code that
+   lvx_lms_build_graph, which is the code that needs it and so is the code that
    should report it.
 
    Note the ORDER against the unfold's gate: the call scan comes before the
@@ -30077,14 +30077,14 @@ lvx_cms_probe_ddg (struct ddg *g, int r)
    the disqualifier a reader can act on.  */
 
 static bool
-lvx_cms_eligible_loop_p (class loop *loop, basic_block *body, unsigned insns,
+lvx_lms_eligible_loop_p (class loop *loop, basic_block *body, unsigned insns,
 			 const char **why)
 {
   *why = "multiple latches";
   if (loop->latch == NULL)
     return false;
   *why = "too many insns";
-  if (insns > (unsigned) lvx_cms_max_insns)
+  if (insns > (unsigned) lvx_lms_max_insns)
     return false;
 
   /* The contents of every block before the shape of any, so the reason
@@ -30168,7 +30168,7 @@ lvx_cms_eligible_loop_p (class loop *loop, basic_block *body, unsigned insns,
 
 /* CAN THE PIPELINE'S NODE STRUCTURE BE BUILT FOR THIS LOOP?  §7quinquies.7.
 
-   This is deliberately NOT part of lvx_cms_eligible_loop_p, and §7.5a says why:
+   This is deliberately NOT part of lvx_lms_eligible_loop_p, and §7.5a says why:
    the reference interleaves three concerns in one 29-reason gate --
    transformation legality, analysis feasibility, and PIPELINE CODEGEN
    feasibility -- and importing the whole thing cost the unfold 1.6 measured
@@ -30200,7 +30200,7 @@ lvx_cms_eligible_loop_p (class loop *loop, basic_block *body, unsigned insns,
    diagnostic naming only a symptom already cost one misdiagnosis here.  */
 
 static bool
-lvx_cms_codegen_feasible_p (class loop *loop, basic_block *body,
+lvx_lms_codegen_feasible_p (class loop *loop, basic_block *body,
 			    const char **why)
 {
   *why = "no preheader";
@@ -30302,15 +30302,15 @@ lvx_cms_codegen_feasible_p (class loop *loop, basic_block *body,
    is how the PolyBench run first came back with 10 loops instead of 380.  */
 
 static void
-lvx_cms_pipeline_loops (void)
+lvx_lms_pipeline_loops (void)
 {
   /* The dump is one consumer and codegen is the other, so the walk runs for
-     either.  Reporting below goes through lvx_cms_dump, which is null-safe:
+     either.  Reporting below goes through lvx_lms_dump, which is null-safe:
      on the codegen path there is no dump file at all, and the claim that
      every fprintf was "already guarded" -- written here, unverified -- was
      false for fifteen of seventeen of them.  The compiler segfaulted inside
      vfprintf on the gate's own test file.  */
-  if (!dump_file && !lvx_cms_codegen)
+  if (!dump_file && !lvx_lms_codegen)
     return;
 
   /* Self-contained, so the probe does not depend on -msuperblock-loops having
@@ -30333,10 +30333,10 @@ lvx_cms_pipeline_loops (void)
 
      So the transformation is deferred instead: the walk below only ANALYSES,
      records what each pipelineable loop needs as raw basic blocks, and
-     lvx_cms_pipeline_loops finalizes the loop structures before building
+     lvx_lms_pipeline_loops finalizes the loop structures before building
      anything.  §7quinquies.10.  */
   loop_optimizer_init (AVOID_CFG_MODIFICATIONS);
-  /* lvx_cms_build_graph reads df_get_live_in to find what a branch implicitly
+  /* lvx_lms_build_graph reads df_get_live_in to find what a branch implicitly
      uses on its exit edge, so the liveness problem has to be solved first.  */
   df_analyze ();
   /* The arc latencies come from the DFA, which needs the insn-code cache the
@@ -30354,8 +30354,8 @@ lvx_cms_pipeline_loops (void)
 
       /* §7tricies.153: the per-function companion to -mcms-only-loop, for
 	 bisecting a wrong answer down to the function that produces it.  */
-      if (lvx_cms_only_fn && lvx_cms_only_fn[0]
-	  && !strstr (current_function_name (), lvx_cms_only_fn))
+      if (lvx_lms_only_fn && lvx_lms_only_fn[0]
+	  && !strstr (current_function_name (), lvx_lms_only_fn))
 	continue;
 
       body = get_loop_body (loop);
@@ -30367,8 +30367,8 @@ lvx_cms_pipeline_loops (void)
 	      insns++;
 	}
 
-      if (!lvx_cms_eligible_loop_p (loop, body, insns, &why))
-	lvx_cms_dump (";; lvx cms: fn=%s loop %d declined, %s\n",
+      if (!lvx_lms_eligible_loop_p (loop, body, insns, &why))
+	lvx_lms_dump (";; lvx cms: fn=%s loop %d declined, %s\n",
 		      current_function_name (), loop->num, why);
       else
 	{
@@ -30377,11 +30377,11 @@ lvx_cms_pipeline_loops (void)
 	     (§7quinquies.7), and a loop CMS can schedule but not yet emit for
 	     is a codegen limit to size, not an analysis failure to hide.  */
 	  const char *cwhy = NULL;
-	  bool cfeas = lvx_cms_codegen_feasible_p (loop, body, &cwhy);
-	  lvx_cms_dump (";; lvx cms: fn=%s loop %d codegen %s\n",
+	  bool cfeas = lvx_lms_codegen_feasible_p (loop, body, &cwhy);
+	  lvx_lms_dump (";; lvx cms: fn=%s loop %d codegen %s\n",
 			current_function_name (), loop->num,
 			cfeas ? "feasible" : cwhy);
-	  lvx_cms_pipeline_loop (loop, body);
+	  lvx_lms_pipeline_loop (loop, body);
 	}
 
       free (body);
@@ -30519,7 +30519,7 @@ lvx_cms_pipeline_loops (void)
    LOOPDO's 17-bit end-address range untouched.  */
 
 static void
-lvx_cms_restore_preheaders (void)
+lvx_lms_restore_preheaders (void)
 {
   int made = 0;
 
@@ -30537,8 +30537,8 @@ lvx_cms_restore_preheaders (void)
 
   if (made)
     df_analyze ();
-  if (dump_file && lvx_cms_probe)
-    lvx_cms_dump (";; lvx cms: restored %d single-entry preheader%s after"
+  if (dump_file && lvx_lms_probe)
+    lvx_lms_dump (";; lvx cms: restored %d single-entry preheader%s after"
 		  " reorg_loops\n", made, made == 1 ? "" : "s");
 }
 
@@ -30612,7 +30612,7 @@ lvx_superblock_inner_loops (void)
      Only where the body is a TRACE, which §7tricies.162 made an explicit
      requirement: a block with two in-loop predecessors is a side entry, and
      rotation cannot remove one.  */
-  if (lvx_cms_rotate_bottom_test)
+  if (lvx_lms_rotate_bottom_test)
     {
       auto_vec<class loop *> cand;
       auto_vec<basic_block> mergea, mergeb;
@@ -30682,7 +30682,7 @@ lvx_superblock_inner_loops (void)
 	  /* FOUND, NOT ASKED FOR: loop_preheader_edge asserts on
 	     LOOPS_HAVE_PREHEADERS, which AVOID_CFG_MODIFICATIONS does not
 	     set -- Phase A creates the preheaders without setting the state.
-	     The same reason lvx_cms_pipeline_loop finds its entry edge by hand.  */
+	     The same reason lvx_lms_pipeline_loop finds its entry edge by hand.  */
 	  FOR_EACH_EDGE (e2, ei2, loop->header->preds)
 	    if (!flow_bb_inside_loop_p (loop, e2->src))
 	      pre = e2;
@@ -30720,7 +30720,7 @@ lvx_superblock_inner_loops (void)
 	 768 of the 962 pipelined loops already have.
 
 	 The merge is not optional: without it the body is two blocks whose
-	 first has a single successor, and `lvx_cms_codegen_feasible_p'
+	 first has a single successor, and `lvx_lms_codegen_feasible_p'
 	 refuses that with "block does not have exactly two successors".  */
       if (!cand.is_empty ())
 	{
@@ -31178,11 +31178,11 @@ lvx_machine_dependent_reorg (void)
 	 work this ordering simply avoids.  */
   /* CODE GENERATION ENABLES ITS OWN WALK.  §7tricies.100.
 
-     This read `lvx_cms_probe' alone, so `-mcms-codegen -mcms-pipeline' without
+     This read `lvx_lms_probe' alone, so `-mcms-codegen -mcms-pipeline' without
      `-mcms-probe' compiled exactly like no option at all: the walk never ran,
      nothing was built, nothing was said.  The function below is already
      written for that caller -- its first test is
-     `if (!dump_file && !lvx_cms_codegen) return;', i.e. the dump is one
+     `if (!dump_file && !lvx_lms_codegen) return;', i.e. the dump is one
      consumer and codegen the other -- so only this gate disagreed.
 
      It cost a measurement: a five-arm unfold-versus-CMS comparison whose two
@@ -31203,7 +31203,7 @@ lvx_machine_dependent_reorg (void)
      (§7tricies.85), an unmappable one has been converted by lvx_hwloop_fail --
      so the charge is exact and no prediction is needed, at the price of
      maintaining the LOOPDO that CMS inherits.  */
-  bool cms_ok = (optimize && (lvx_cms_probe || lvx_cms_codegen)
+  bool cms_ok = (optimize && (lvx_lms_probe || lvx_lms_codegen)
 		 && optimize_function_for_speed_p (cfun));
 
   /* §7tricies.217: CMS BEFORE reorg_loops IS RETIRED.  The call that stood
@@ -31220,8 +31220,8 @@ lvx_machine_dependent_reorg (void)
   if (optimize)
     {
       lvx_check_doloop_discoverable ();
-      if (lvx_cms_probe_cfg)
-	lvx_cms_dump_cfg ("reorg: before reorg_loops");
+      if (lvx_lms_probe_cfg)
+	lvx_lms_dump_cfg ("reorg: before reorg_loops");
       /* §7tricies.219: charged to TV_SMS with the pipeliner.  The mapping is
 	 not modulo scheduling, but it is what the pipeliner's exact
 	 doloop_end charge depends on, and the pair is what §7tricies.217
@@ -31230,8 +31230,8 @@ lvx_machine_dependent_reorg (void)
       timevar_push (TV_SMS);
       reorg_loops (true, &lvx_doloop_hooks);
       timevar_pop (TV_SMS);
-      if (lvx_cms_probe_cfg)
-	lvx_cms_dump_cfg ("reorg: after reorg_loops");
+      if (lvx_lms_probe_cfg)
+	lvx_lms_dump_cfg ("reorg: after reorg_loops");
 
       /* THE MAPPING USED TO LEAVE AN ILLEGAL CFG HERE, AND NOTHING VERIFIED
 	 IT.  §7tricies.197-198.  FIXED IN lvx_hwloop_optimize, which is where
@@ -31282,7 +31282,7 @@ lvx_machine_dependent_reorg (void)
       /* §7tricies.216: reorg_loops has just undone Phase A's straightening,
 	 and CMS refuses a loop with two entries.  Put them back before it
 	 looks.  */
-      lvx_cms_restore_preheaders ();
+      lvx_lms_restore_preheaders ();
 
       /* TV_SMS, GCC'S OWN MODULO-SCHEDULING TIMEVAR, REUSED.  §7tricies.219.
 	 Everything in machine_dependent_reorg was charged to TV_MACH_DEP as
@@ -31303,7 +31303,7 @@ lvx_machine_dependent_reorg (void)
 	 mapping's share was at most 0.02s against the pipeliner's 0.57s on
 	 tsvc.c, so the figure moves very little.  */
       timevar_push (TV_SMS);
-      lvx_cms_pipeline_loops ();
+      lvx_lms_pipeline_loops ();
       timevar_pop (TV_SMS);
 
       /* AND MAP WHAT THE PIPELINER JUST BUILT.  §7tricies.201.  This is the
@@ -31328,11 +31328,11 @@ lvx_machine_dependent_reorg (void)
 	 The hooks differ from the first pass's in one callback: a doloop_end
 	 the first pass already mapped must not be DISCOVERED here, or the
 	 loops CMS left alone would be mapped twice.  */
-      if (optimize && lvx_cms_reorg2)
+      if (optimize && lvx_lms_reorg2)
 	{
 	  lvx_check_doloop_discoverable ();
-	  if (lvx_cms_probe_cfg)
-	    lvx_cms_dump_cfg ("reorg: before the second reorg_loops");
+	  if (lvx_lms_probe_cfg)
+	    lvx_lms_dump_cfg ("reorg: before the second reorg_loops");
 	  /* do_reorder STAYS TRUE.  §7tricies.215.  It was turned off in
 	     §7tricies.214 because `true' gates reorder_loops, which enters
 	     cfg_layout_initialize and merges blocks on finalisation -- the
@@ -31350,15 +31350,15 @@ lvx_machine_dependent_reorg (void)
 	  timevar_push (TV_SMS);
 	  reorg_loops (true, &lvx_doloop_hooks_pass2);
 	  timevar_pop (TV_SMS);
-	  if (lvx_cms_probe_cfg)
-	    lvx_cms_dump_cfg ("reorg: after the second reorg_loops");
+	  if (lvx_lms_probe_cfg)
+	    lvx_lms_dump_cfg ("reorg: after the second reorg_loops");
 	}
     }
 
   /* AFTER reorg_loops, because its cleanup_cfg renumbers and merges blocks:
      the mark is derived from the tagged insns, which survive that, and not
      from the plan's block array, which does not.  §7tricies.193.  */
-  lvx_cms_own_blocks ();
+  lvx_lms_own_blocks ();
 
   lvx_fix_pcreljump_ranges ();
 
@@ -31367,7 +31367,7 @@ lvx_machine_dependent_reorg (void)
      are seeded for them.  Still conditional, so a build with neither SCHED2
      nor an owned block keeps the state it had: an absent insn_cycle, which
      the emission reads as "one bundle per insn".  */
-  if ((optimize && flag_schedule_insns_after_reload) || lvx_cms_owns_blocks)
+  if ((optimize && flag_schedule_insns_after_reload) || lvx_lms_owns_blocks)
     lvx_sched2_ctor (get_max_uid () + 1);
 
   df_analyze ();
