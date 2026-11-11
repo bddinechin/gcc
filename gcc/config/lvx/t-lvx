@@ -53,3 +53,12 @@ lvx-cms.o: $(srcdir)/config/lvx/lvx-cms.cc \
   $(RECOG_H) $(srcdir)/config/lvx/lvx-issue-table.inc
 	$(COMPILE) $<
 	$(POSTCOMPILE)
+
+# The LMS framework: everything a modulo scheduler needs except the
+# scheduling itself.  Its own object since 2026-11-11.
+lvx-lms.o: $(srcdir)/config/lvx/lvx-lms.cc \
+  $(srcdir)/config/lvx/lvx-lms.h $(CONFIG_H) $(SYSTEM_H) coretypes.h \
+  $(BACKEND_H) $(RTL_H) $(TREE_H) $(TARGET_H) $(DF_H) insn-attr.h \
+  $(RECOG_H) $(srcdir)/config/lvx/lvx-issue-table.inc
+	$(COMPILE) $<
+	$(POSTCOMPILE)

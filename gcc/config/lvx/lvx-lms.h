@@ -113,6 +113,23 @@ struct lvx_lms_arc
   int useidx;
 };
 
+/* The BCU prefix kinds that share a bundle's two BCU syllables.  Tagging each
+   occupied slot with its kind keeps a MASKS mask keyed on $rN from aliasing a
+   GUARD condition, or a MASKM byte-enable, on the same register: a slot is
+   shared only when kind, lanetodo and the key register all match.  */
+enum lvx_bcu_kind { BCU_PLAIN, BCU_GUARD, BCU_MASKS, BCU_MASKM };
+
+/* A memory reference's address as an affine function of the iteration number,
+   SYM + OFF + STEP * k over SIZE bytes.  */
+struct lvx_mem_iv
+{
+  rtx sym;
+  HOST_WIDE_INT off;
+  HOST_WIDE_INT step;
+  HOST_WIDE_INT size;
+  bool valid;
+};
+
 /* The framework, as an engine sees it.  */
 
 extern const char *
@@ -195,5 +212,90 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 		   int pin, int mcrl_release = -1,
 		   bitmap livein = NULL,
 		   const auto_vec<int> *crit = NULL);
+
+/* Helpers the framework shares with the rest of the back end.  */
+
+extern int
+lvx_arc_latency (rtx_insn *prod, rtx_insn *cons, enum reg_note dep_type);
+
+extern bool
+lvx_doloop_end_p (rtx_insn *insn);
+
+extern bool
+lvx_fp_insn_p (rtx_insn *insn);
+
+extern rtx
+lvx_hwloop_pattern_reg (rtx_insn *insn);
+
+extern bool
+lvx_insn_defs_regno_p (rtx_insn *insn, unsigned regno, bool *partial = NULL);
+
+extern bool
+lvx_insn_dest_earlyclobber_p (rtx_insn *insn);
+
+extern bool
+lvx_insn_has_tied_operand_p (rtx_insn *insn);
+
+extern bool
+lvx_insns_may_alias_p (rtx_insn *insn1, rtx_insn *insn2);
+
+extern bool
+lvx_load_class_p (enum attr_type type);
+
+extern bool
+lvx_loop_has_doloop_p (class loop *loop);
+
+extern bool
+lvx_masked_prefix (rtx_insn *insn, enum lvx_bcu_kind *kind, rtx *mask,
+		   int *lanetodo);
+
+extern bool
+lvx_mem_read_insn_p (rtx_insn *insn);
+
+extern bool
+lvx_mem_write_insn_p (rtx_insn *insn);
+
+extern bool
+lvx_mems_disjoint_p (const vec<rtx_insn *> &seq, unsigned p, unsigned q);
+
+extern int
+lvx_sched_issue_rate (void);
+
+extern void
+lvx_sched_resources_add (struct lvx_sched_resources *resources, rtx_insn *insn);
+
+extern unsigned
+lvx_sched_resources_full_bundles (struct lvx_sched_resources *resources);
+
+extern bool
+lvx_speculatable_p (rtx_insn *insn);
+
+extern rtx
+lvx_split_plus_const (rtx x, HOST_WIDE_INT *c);
+
+extern void
+lvx_lms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def,
+		     bool dly, int p2);
+
+extern void
+lvx_lms_group_tag (rtx_insn *after, int node, int date, int key);
+
+extern int lvx_lms_flow_region;
+
+/* The framework, as the back end sees it.  */
+
+extern void lvx_lms_probe_ddg (struct ddg *, int);
+
+extern void
+lvx_lms_dump_cfg (const char *when);
+
+extern int
+lvx_lms_load_latency_delta (rtx_insn *insn);
+
+extern void
+lvx_lms_pipeline_loops (void);
+
+extern void
+lvx_lms_restore_preheaders (void);
 
 #endif /* GCC_LVX_LMS_H */
