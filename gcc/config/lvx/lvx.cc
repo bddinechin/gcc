@@ -235,7 +235,7 @@ static int lvx_lms_group_recs_max;
 
 /* WHAT THE PLAN MEANT EACH OPERAND TO READ.  §7tricies.209.
 
-   Every check CMS has validates the MODEL against itself, and all of them
+   Every check LMS has validates the MODEL against itself, and all of them
    passed on the loop of §7tricies.190 while the emitted code was wrong: the
    colouring is consistent, the intervals are right, no parallel group spans
    two bundles.  What none of them asks is the one question that matters --
@@ -324,7 +324,7 @@ lvx_lms_group_tag (rtx_insn *after, int node, int date, int key)
 /* THE BLOCKS THE PIPELINER OWNS, AND THE BUNDLES IT WANTS IN THEM.
    §7tricies.193.
 
-   WHY CMS HAS TO OWN THEM.  Its cycles are otherwise advisory: SCHED2 is
+   WHY LMS HAS TO OWN THEM.  Its cycles are otherwise advisory: SCHED2 is
    LVX's own late schedule_ebbs call (TARGET_DELAY_SCHED2 disables the generic
    pass), it rebuilds the dependence graph from the RTL and reschedules, and
    only its hooks write insn_cycle/insn_flags.  So "these two slots share a
@@ -332,7 +332,7 @@ lvx_lms_group_tag (rtx_insn *after, int node, int date, int key)
    never guaranteed -- §7tricies.191 measured 77 corpus files where it does
    not hold.  Marking the blocks BB_DISABLE_SCHEDULE keeps SCHED2 out
    (sched-ebb.cc) and regrename out (regrename.cc, given include_all_block_p
-   false at the call), after which a CMS cycle IS a bundle.
+   false at the call), after which a LMS cycle IS a bundle.
 
    THE MARK IS DERIVED FROM THE INSNS, NOT FROM THE PLAN'S BLOCK ARRAY,
    because reorg_loops runs cleanup_cfg in between: it renumbers and merges,
@@ -475,7 +475,7 @@ lvx_lms_region_start_p (basic_block bb)
    region's first insn or that repair would compare across regions.
 
    AND IT IS THE PLAN'S OWN DATE, not a bundle index, so that the
-   `# (end cycle N)' the emission prints names the cycle CMS scheduled and the
+   `# (end cycle N)' the emission prints names the cycle LMS scheduled and the
    plan can be read off the assembly.  The group carries it, `(g - 1) &
    0xffff', rebased on the region's first tagged group since a date is
    absolute across the plan.  Two cases cannot take their date, and take one
@@ -605,7 +605,7 @@ lvx_lms_group_free (void)
    bundles are all decided.  §7tricies.191.
 
    A split group is not by itself a wrong answer: SCHED2 re-schedules and
-   re-bundles every block CMS emitted, so CMS's cycles are ADVISORY and its
+   re-bundles every block LMS emitted, so LMS's cycles are ADVISORY and its
    groups are separated routinely in code that is correct.  What a bundle gives
    and a split takes away is READ-BEFORE-WRITE -- inside one bundle every
    operand is read before any is written, so a slot may read the register
@@ -627,7 +627,7 @@ static void
 lvx_lms_group_check (FILE *file)
 {
   /* IS THE TABLE EVEN POPULATED?  "Zero splits" is only evidence when there
-     were pairs to test: with -mlms-own-bundles the default, CMS places its own
+     were pairs to test: with -mlms-own-bundles the default, LMS places its own
      boundaries and a group should never span two, so a vacuous check and a
      clean one look identical from the outside.  §7tricies.200.  */
   if (lvx_lms_probe_groups && file)
@@ -782,7 +782,7 @@ lvx_lms_flow_record (rtx_insn *insn, int root, int reg, int nregs, bool is_def,
 }
 
 /* DOES EVERY EMITTED USE RECEIVE THE VALUE THE PLAN ASSIGNED IT?
-   §7tricies.209.  The one question none of CMS's other checks can ask.
+   §7tricies.209.  The one question none of LMS's other checks can ask.
 
    The flow records say, per emitted operand, which live range the plan meant
    it to be -- `lvx_lms_flow_record', filled at renaming.  The group records
@@ -959,7 +959,7 @@ lvx_lms_flow_check (FILE *file)
 
       /* AND THE WRITES THE MODEL DOES NOT TRACK.  §7tricies.213.
 
-	 CMS emits insns inside a region that never go through the renamer --
+	 LMS emits insns inside a region that never go through the renamer --
 	 the entry copies, the hardware-loop setup, the drain's reconciliation
 	 -- built with `gen_rtx_SET' directly.  They are group-tagged, they
 	 write registers, and they leave NO flow record, so OWNER kept naming
@@ -5871,7 +5871,7 @@ lvx_hwloop_pattern_reg (rtx_insn *insn)
    And the mark cannot live in lvx_hwloop_pattern_reg itself, because
    lvx_lms_doloop_trip_count calls that same function to find the counter --
    in the after order the loop IS mapped, so blinding it there would blind
-   CMS's own trip-count detection.  Hence a second hooks struct, used only by
+   LMS's own trip-count detection.  Hence a second hooks struct, used only by
    the second pass.  */
 static bitmap lvx_hwloop_mapped_ends;
 
@@ -6113,8 +6113,8 @@ lvx_hwloop_optimize (hwloop_info loop)
 	 It went unseen because NOTHING BETWEEN HERE AND THE END OF COMPILATION
 	 VERIFIES THE CFG: the illegal graph was carried silently to the end of
 	 reorg.  It surfaced only when -mcms-after-hwloop made the pipeliner's
-	 `loop_optimizer_init' the first reader of it -- so CMS reported a bug
-	 it did not create.  Proven in the SHIPPED order with no CMS work at
+	 `loop_optimizer_init' the first reader of it -- so LMS reported a bug
+	 it did not create.  Proven in the SHIPPED order with no LMS work at
 	 all, on takehiro.c's `count_bits' and infblock.c's `inflate_blocks'.
 	 §7tricies.198.
 
@@ -9976,7 +9976,7 @@ lvx_sched_reorder2 (FILE *, int, rtx_insn **ready, int *nreadyp, int)
    This used to also pin a modulo-scheduled kernel in place, by threading its
    instructions with cost-0 ANTI dependences so that schedule_ebbs would bundle
    the block without reordering it.  That was SMS scaffolding and it is gone:
-   see docs/cms-foundations.md §7quindecies.  CMS has no need of it -- its
+   see docs/cms-foundations.md §7quindecies.  LMS has no need of it -- its
    kernel schedule already satisfies every dependence and resource constraint,
    so it annotates insn_cycle/insn_flags itself and marks the kernel
    BB_DISABLE_SCHEDULE to keep this pass away.  */
@@ -10688,7 +10688,7 @@ lvx_final_prescan_insn (rtx_insn *insn)
       /* IS A BUNDLE EVER LEFT OPEN ACROSS A BOUNDARY?  §7tricies.216.
 	 Asked before the fixup below, so it sees what the fixup would repair,
 	 and asked UNCONDITIONALLY -- the fixup is scoped to lvx_bundle_per_block
-	 and to blocks CMS owns, on the stated assumption that a scheduled
+	 and to blocks LMS owns, on the stated assumption that a scheduled
 	 region is already closed by TARGET_SCHED_INIT.  The report says which
 	 side of that scope each case falls on, so the assumption is tested
 	 rather than trusted.  */
@@ -11484,7 +11484,7 @@ lvx_option_override (void)
      are legal only once codegen performs the displacement adjustment of
      PaCT 1997 §4 (`fixRelaxed'), which does not exist yet.
 
-     Both are harmless only while the probe emits nothing.  The moment CMS
+     Both are harmless only while the probe emits nothing.  The moment LMS
      generates code each becomes a flag that silently produces wrong programs,
      so they are tied to the probe HERE, before any codegen exists to be
      endangered -- an error a user cannot miss rather than a miscompile they
@@ -11531,8 +11531,8 @@ lvx_option_override (void)
 	   "measurement only and is incompatible with %<-mlms-codegen%>");
 
   /* THE SAME HOLE AGAIN, AND THIS ONE IS REACHABLE FROM THE SHIPPED FLAGS.
-     §7tricies.198.  -mcms-after-hwloop lets CMS pipeline a loop that
-     reorg_loops has ALREADY mapped, and CMS does not maintain the LOOPDO it
+     §7tricies.198.  -mcms-after-hwloop lets LMS pipeline a loop that
+     reorg_loops has ALREADY mapped, and LMS does not maintain the LOOPDO it
      then inherits: site->loopdo is recorded and never read, so the kernel is
      unrolled by KUNROLL and overlapped by NSTAGES while the LOOPDO still
      holds the ORIGINAL trip count.  1134 loops in the corpus are in that
@@ -11546,14 +11546,14 @@ lvx_option_override (void)
      So the combination is refused rather than merely documented.  The order
      remains measurable where it is CORRECT -- with -fno-hwloop there is no
      LOOPDO to go stale, and the zlib round trip passes there -- and the
-     refusal goes away by itself once CMS maintains the count, which is the
+     refusal goes away by itself once LMS maintains the count, which is the
      same `hw = M - 1' range shift the before-mapping order already computes.
      Note it cannot be fixed by declining mapped loops: that was measured at
      emitted 743 -> 230.  */
   /* THE REFUSAL IS BACK, FOR A DIFFERENT REASON THAN BEFORE.  §7tricies.202.
 
      §7tricies.201 fixed the WRONG CODE: the second reorg_loops maps the
-     kernels CMS builds, and the gate's hardware-loop arm went from 0/8 wrong
+     kernels LMS builds, and the gate's hardware-loop arm went from 0/8 wrong
      answers to 8/8 PASS.  That part stands.
 
      What it did not fix is LABEL LIFETIME, and the corpus says so where the
@@ -13241,7 +13241,7 @@ lvx_superblock_inner_loops (void)
      already have -- unfold 0.9961 against regrename alone 0.9896 -- while
      costing 9.5% on bitcnts, the one program where its duplication fires.
      Software pipelining is what pays on the loops unfold was reaching for:
-     CMS 0.9551, and 0.9459 with renaming.  Straightening (Phase A) and the
+     LMS 0.9551, and 0.9459 with renaming.  Straightening (Phase A) and the
      renaming stay; only the duplication goes.  */
 
   /* Phase B': ROTATE A LOOP WHOSE LATCH CARRIES NO EXIT.  §7tricies.163.
@@ -13746,7 +13746,7 @@ lvx_run_selftests (void)
    through after one pass, which is a silent wrong answer rather than a
    diagnostic.
 
-   AND CMS MAKES THE CONSEQUENCE WORSE.  Its hardware-loop kernel is built by
+   AND LMS MAKES THE CONSEQUENCE WORSE.  Its hardware-loop kernel is built by
    hand -- split_edge for the block, then slots emitted into it and a
    doloop_end appended -- so §7tricies.130's "nothing may follow a path's
    terminator", which guards the plan's own nodes, does not cover it.  The
@@ -13807,7 +13807,7 @@ lvx_machine_dependent_reorg (void)
   if (optimize && lvx_superblock_loops && optimize_function_for_speed_p (cfun))
     lvx_superblock_inner_loops ();
 
-  /* The CMS measurement, on its own walk.  Before reorg_loops, and the reason
+  /* The LMS measurement, on its own walk.  Before reorg_loops, and the reason
      is NOT the one this comment used to give.  §7tricies.85.
 
      It claimed that "after it, a hardware loop is indistinguishable from any
@@ -13847,7 +13847,7 @@ lvx_machine_dependent_reorg (void)
      consumer and codegen the other -- so only this gate disagreed.
 
      It cost a measurement: a five-arm unfold-versus-CMS comparison whose two
-     CMS arms were byte-identical to the baseline on all fourteen programs,
+     LMS arms were byte-identical to the baseline on all fourteen programs,
      while the static counts beside them reported twenty pipelines built,
      because that step passed -mlms-probe and the timed arms did not.  The
      name invites it -- a `probe' reads as reporting, not as the master
@@ -13857,24 +13857,24 @@ lvx_machine_dependent_reorg (void)
      are UNSOUND; this one was silently INERT, which is worse to debug because
      a wrong answer looks like a measurement.  */
   /* THE ORDER OF THESE TWO IS THE QUESTION §7tricies.196 asks.  Before:
-     CMS must PREDICT whether reorg_loops will map the loop, because it has to
+     LMS must PREDICT whether reorg_loops will map the loop, because it has to
      pre-arrange a kernel the mapping will accept, and it charges a doloop_end
      resources it may not cost.  After: the decision is already made -- a
      mapped loop carries an lvx_loopdo over an intact software loop
      (§7tricies.85), an unmappable one has been converted by lvx_hwloop_fail --
      so the charge is exact and no prediction is needed, at the price of
-     maintaining the LOOPDO that CMS inherits.  */
+     maintaining the LOOPDO that LMS inherits.  */
   bool cms_ok = (optimize && (lvx_lms_probe || lvx_lms_codegen)
 		 && optimize_function_for_speed_p (cfun));
 
-  /* §7tricies.217: CMS BEFORE reorg_loops IS RETIRED.  The call that stood
+  /* §7tricies.217: LMS BEFORE reorg_loops IS RETIRED.  The call that stood
      here is gone, and so is the choice: the pipeliner runs after the mapping,
      below.  Measured equal or better on everything the project measures --
      validation 72/72 on lvx-1 and 69/72 on lvx-2 in BOTH orders, both zlib
      round trips correct, census 886 failures either way with 8 MORE pipelines
      emitted and 4 more at depth >= 3, 0 label drift over 48 hardware loops,
      and polybench within 0.5% on every row.  What it buys is that the
-     hardware-loop decision is already made when CMS sees the loop, so a
+     hardware-loop decision is already made when LMS sees the loop, so a
      doloop_end is charged exactly instead of predicted.  */
 
   /* Doloop optimization. */
@@ -13904,15 +13904,15 @@ lvx_machine_dependent_reorg (void)
 	 bb55, the branch to bb22 where label 913 actually lives, and A
 	 SPURIOUS EDGE TO ITSELF; takehiro.c's count_bits had the same shape.
 	 verify_flow_info calls that "too many outgoing branch edges".  Both
-	 were reproducible with NO CMS WORK AT ALL and in the SHIPPED ORDER,
+	 were reproducible with NO LMS WORK AT ALL and in the SHIPPED ORDER,
 	 and both came from `make_edge (hwloop_body, hwloop_body, 0)' firing
 	 for a multi-block loop, whose back edge is the TAIL's and not the
 	 body's -- see the surgery for the full account.
 
 	 It went unnoticed because NOTHING BETWEEN THE MAPPING AND THE END OF
 	 COMPILATION LOOKS.  It surfaced only when something did, which is why
-	 it appeared as two files failing under -mcms-after-hwloop: CMS's own
-	 loop_optimizer_init verifies, and CMS was then the first reader of a
+	 it appeared as two files failing under -mcms-after-hwloop: LMS's own
+	 loop_optimizer_init verifies, and LMS was then the first reader of a
 	 bug it did not create.  THE LESSON IS THE MISSING CHECK, not the
 	 edge: a mapping that rewrites the CFG and is never verified again can
 	 carry anything, so -mcms-after-hwloop is worth having as much for
@@ -13932,7 +13932,7 @@ lvx_machine_dependent_reorg (void)
      rearrange the blocks it had just conditioned -- and it was tried and makes
      things WORSE: it adds a failure mode of its own.  With the pass in its
      original place the new order fails 2 of 276 files; moving it too, the pass
-     fails on its own account with no CMS work at all, leaving bb55 of
+     fails on its own account with no LMS work at all, leaving bb55 of
      infblock.c carrying a stale second branch edge off an ordinary `cbdi'
      whose fall-through block had insns deleted from its head.  So the
      superblock pass's edge surgery depends on the layout reorg_loops changes,
@@ -13941,7 +13941,7 @@ lvx_machine_dependent_reorg (void)
   if (cms_ok)
     {
       /* §7tricies.216: reorg_loops has just undone Phase A's straightening,
-	 and CMS refuses a loop with two entries.  Put them back before it
+	 and LMS refuses a loop with two entries.  Put them back before it
 	 looks.  */
       lvx_lms_restore_preheaders ();
 
@@ -13954,7 +13954,7 @@ lvx_machine_dependent_reorg (void)
 
 	 Reused rather than newly declared: TV_SMS is `sms modulo scheduling',
 	 and modulo-sched.cc is the only other user -- a pass this port does
-	 not run, CMS being the pipeliner here.  The one way the two could
+	 not run, LMS being the pipeliner here.  The one way the two could
 	 merge is an explicit -fmodulo-sched, which would then report the sum;
 	 that is the price of not adding a line to timevar.def.
 
@@ -13971,7 +13971,7 @@ lvx_machine_dependent_reorg (void)
 	 whole of what the after-mapping order was missing, and the reason it
 	 produced wrong code rather than merely slower code.
 
-	 In the BEFORE order reorg_loops runs after CMS and maps the kernels
+	 In the BEFORE order reorg_loops runs after LMS and maps the kernels
 	 as a matter of course -- measured, 932 of the corpus's 1120 loopdo
 	 instructions survive pipelining.  In the AFTER order nothing did, so
 	 every kernel's doloop_end copy printed `# loopdo end' and emitted no
@@ -13988,7 +13988,7 @@ lvx_machine_dependent_reorg (void)
 
 	 The hooks differ from the first pass's in one callback: a doloop_end
 	 the first pass already mapped must not be DISCOVERED here, or the
-	 loops CMS left alone would be mapped twice.  */
+	 loops LMS left alone would be mapped twice.  */
       if (optimize && lvx_lms_reorg2)
 	{
 	  lvx_check_doloop_discoverable ();
@@ -14006,7 +14006,7 @@ lvx_machine_dependent_reorg (void)
 	     zlib round trips correct with 30 pipelines each.  Keeping it off
 	     would discard the layout this pass exists to produce for no
 	     remaining reason.  */
-	  /* §7tricies.219: and this one too -- it exists only because CMS
+	  /* §7tricies.219: and this one too -- it exists only because LMS
 	     created the kernels it maps.  */
 	  timevar_push (TV_SMS);
 	  reorg_loops (true, &lvx_doloop_hooks_pass2);

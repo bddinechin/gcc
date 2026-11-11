@@ -22,7 +22,7 @@ along with GCC; see the file COPYING3.  If not see
    resource-free relaxations (Estart/Lstart and the minimum cumulative
    register lifetime), the resource model, acceptance, live ranges, register
    allocation and renaming, and the construction and emission of the software
-   pipeline.  The engines -- CMS in lvx-cms.cc, and SMS and an integer program
+   pipeline.  The engines -- LMS in lvx-cms.cc, and SMS and an integer program
    intended to follow -- decide DATES at a given initiation interval and
    nothing else.
 
@@ -150,8 +150,12 @@ static const char *const lvx_lms_arc_kind_name[] = {
    lets each of these steps be verified by a BYTE-IDENTICAL census rather than
    by reading.
 
-   The comments below still say CMS in many places where they now mean LMS.
-   That is a reading pass, not a correctness one.  */
+   The prose below was brought over in §7tricies.225: CMS now appears in a
+   comment only where the ENGINE is meant -- its Squeaky Wheel cycle, its
+   convergence, its options -- and LMS everywhere the framework is.  The two
+   that remain in lvx.cc and in this file are deliberate: one names a past
+   measurement (`unfold-versus-CMS'), the others contrast the engine with the
+   framework on purpose.  */
 
 /* THE TRIP COUNT, RECOVERED AFTER RELOAD.  §7tricies.84.
 
@@ -159,14 +163,17 @@ static const char *const lvx_lms_arc_kind_name[] = {
    sets at TREE level, while loop_optimizer_init here re-discovers loops from the
    CFG and hands back fresh structures.  Measured: maxtrip was -1 for all 294
    loop analyses in TSVC2 and all three in FFT -- the field is never set by the
-   time CMS runs, so every rule that needs a trip count was dead.
+   time LMS runs, so every rule that needs a trip count was dead.
 
    What survives reload is the DOLOOP COUNTER.  LVX's doloop_end_<mode> tests
    `(ne (match_operand 0) (const_int 1))' and decrements match_dup 0, and that
    register holds the iterations still to start (§7tricies.62) -- so when the
    loop's entry block initialises it from a constant, that constant IS the trip
-   count.  The pattern is still present here because CMS deliberately runs
-   before reorg_loops.
+   count.  The pattern is still present here whichever side of reorg_loops LMS
+   runs on: a mapped loop keeps its doloop_end as the latch, and an unmappable
+   one has been converted back to a decrement and a branch.  It read `because
+   LMS deliberately runs before reorg_loops' until §7tricies.217 retired that
+   order, which was true then and is not the reason now.
 
    Deliberately narrow, because a wrong trip count is a miscompile and a missing
    one only costs an optimisation: a single_set of the counter to a CONST_INT in
@@ -188,7 +195,7 @@ lvx_lms_doloop_trip_count (class loop *loop, basic_block *body)
      it recognises the insn by CODE_FOR_doloop_end_si/di rather than by pattern
      shape, and takes the register from the DECREMENT's SET_DEST, which is where
      the counter is defined.  Calling the same callback here is not tidiness --
-     it makes CMS and reorg_loops agree on which insn ends the loop and which
+     it makes LMS and reorg_loops agree on which insn ends the loop and which
      register counts it, by construction rather than by two derivations that
      can drift.  The REG_P test inside it also covers doloop_end_<mode>'s
      second alternative, which allows the counter in memory.  */
@@ -197,7 +204,7 @@ lvx_lms_doloop_trip_count (class loop *loop, basic_block *body)
   if (cnt == NULL_RTX)
     return -1;
 
-  /* The entry edge, found rather than taken from loop_preheader_edge: CMS runs
+  /* The entry edge, found rather than taken from loop_preheader_edge: LMS runs
      loop_optimizer_init with AVOID_CFG_MODIFICATIONS, so there may be no
      preheader to ask for.  */
   FOR_EACH_EDGE (e, ei, loop->header->preds)
@@ -237,7 +244,7 @@ lvx_lms_doloop_trip_count (class loop *loop, basic_block *body)
 
 /* The LOOPDO reorg_loops has ALREADY put on LOOP, or NULL.  §7tricies.196.
 
-   Only non-NULL when CMS runs second (-mcms-after-hwloop), and then it is the
+   Only non-NULL when LMS runs second (-mcms-after-hwloop), and then it is the
    whole of the hardware-loop decision: an insn here means the loop IS mapped,
    its doloop_end survives as a decoration over an intact software loop
    (§7tricies.85) and emits no instruction, so charging it is wrong; its
@@ -246,7 +253,7 @@ lvx_lms_doloop_trip_count (class loop *loop, basic_block *body)
 
    Searched in the block the loop is entered from, which is where
    lvx_hwloop_optimize emits it -- and the entry is found by hand for the same
-   reason lvx_lms_pipeline_loop finds its own: CMS runs loop_optimizer_init
+   reason lvx_lms_pipeline_loop finds its own: LMS runs loop_optimizer_init
    with AVOID_CFG_MODIFICATIONS, so there may be no preheader to ask for.  */
 static rtx_insn *
 lvx_lms_find_loopdo (class loop *loop)
@@ -295,16 +302,16 @@ lvx_lms_find_loopdo (class loop *loop)
    DO NOT replace this with dep_cost.  It was considered and rejected
    (2026-10-22, docs/cms-foundations.md §7sedecies.8).  dep_cost takes a dep_t,
    which exists only in sched_analyze's lists, and those carry the omega = 0
-   dependences and nothing else; CMS is the single-copy design and computes
+   dependences and nothing else; LMS is the single-copy design and computes
    omega itself from reaching definitions, so sourcing arcs from sched_analyze
    would mean giving that up and going back to two loop copies, which cannot
    represent omega > 1.  And the substitution is measured as a null change:
-   §7nonies ran CMS on the SMS ddg, whose latencies are dep_cost-derived, and
+   §7nonies ran LMS on the SMS ddg, whose latencies are dep_cost-derived, and
    the recurrence bound agreed on 336 of 336 loops.  */
 
 /* Dump to DUMP_FILE if there is one.
 
-   The CMS probe was written when `-fdump-rtl-mach' was its only entry, so
+   The LMS probe was written when `-fdump-rtl-mach' was its only entry, so
    DUMP_FILE could be assumed non-null after the one early return at the top
    of lvx_lms_pipeline_loops.  `-mlms-codegen' broke that assumption: it runs the
    probe for its side effect -- the schedule -- with no dump requested, and
@@ -357,7 +364,7 @@ lvx_lms_load_latency_delta (rtx_insn *insn)
   return (int) lvx_lms_load_latency > have ? (int) lvx_lms_load_latency - have : 0;
 }
 
-/* Declared here, defined with the rest of the promotion machinery: a load CMS
+/* Declared here, defined with the rest of the promotion machinery: a load LMS
    is going to rewrite to its dismissible form.  §7tricies.224.  */
 
 static bool lvx_lms_promotable_load_p (rtx_insn *, bitmap);
@@ -374,7 +381,7 @@ lvx_lms_unspec_reason (rtx_insn *insn, bitmap bodydef)
 {
   if (!NONDEBUG_INSN_P (insn))
     return "not-an-insn";
-  /* §7tricies.224: a load CMS will promote is speculatable, and saying
+  /* §7tricies.224: a load LMS will promote is speculatable, and saying
      otherwise is what made crc32 pin 16 loads against consumers that the
      emitted code issues as `ld.s'.  */
   if (bodydef != NULL && lvx_lms_promotable_load_p (insn, bodydef))
@@ -821,7 +828,7 @@ lvx_lms_speculated_load_p (rtx_insn *insn, bitmap bodydef)
   return false;
 }
 
-/* True if INSN is a load CMS IS GOING TO REWRITE to `.s'/`.us'.
+/* True if INSN is a load LMS IS GOING TO REWRITE to `.s'/`.us'.
    §7tricies.224.
 
    This exists because of an ORDERING, not a capability: the taint fixpoint
@@ -854,7 +861,7 @@ lvx_lms_promotable_load_p (rtx_insn *insn, bitmap bodydef)
   return true;
 }
 
-/* True if INSN may be speculated once CMS has promoted what it promotes.  The
+/* True if INSN may be speculated once LMS has promoted what it promotes.  The
    taint fixpoint asks THIS, not lvx_speculatable_p, because it runs before the
    promotion.  §7tricies.224.  */
 
@@ -921,7 +928,7 @@ lvx_lms_force_speculative_loads (const auto_vec<rtx_insn *> &seq,
 /* Delta: the largest iteration distance any arc spans that can bind.  This is what replaces
    kvx-unfold.cc's `max_distance = 1; // FIXME' -- that literal was the two-copy
    structure asserting nothing spans more than one instance, which is an
-   artefact of having two physical copies rather than anything CMS requires.
+   artefact of having two physical copies rather than anything LMS requires.
    LVX's graph carries omega explicitly, so Delta is simply measured.  */
 
 static int
@@ -954,7 +961,7 @@ lvx_lms_delta (const auto_vec<lvx_lms_arc> &arcs)
    target with no counted resources, but where the counters exist they give the
    exact subset bound instead of an order-dependent greedy fit.  */
 
-/* Accumulate INSN's demand on a bundle for CMS, which is the machine
+/* Accumulate INSN's demand on a bundle for LMS, which is the machine
    description's answer for everything EXCEPT a doloop_end.
 
    A doloop_end carries no `issue' attribute, so it takes the default, which is
@@ -962,7 +969,7 @@ lvx_lms_delta (const auto_vec<lvx_lms_arc> &arcs)
    entire exclusive bundle.  As a description of the code that is emitted that
    is badly wrong in one direction: the instruction prints `# loopdo end', a
    comment, and the loop engine does the decrement and the branch for free.  As
-   a description of what CMS would emit it is wrong in the other, because a
+   a description of what LMS would emit it is wrong in the other, because a
    modulo schedule cannot keep the hardware loop as it stands: the trip count
    changes by the stages in flight, and a prolog and epilog need somewhere to
    branch, which an implicit loopback has not got.
@@ -990,22 +997,22 @@ lvx_lms_delta (const auto_vec<lvx_lms_arc> &arcs)
    COND_EXEC's guard condition is the key and a mask register with its lanetodo
    is the key for the masked form, and lvx_bcu_prefix_shared_p makes a prefix
    already in the bundle cost nothing more, so every op under ONE GUARD spends
-   one BCU slot between them.  None of that reaches CMS, whose
-   lvx_sched_resources_add charges only get_attr_issue, the bare insn.  So CMS
+   one BCU slot between them.  None of that reaches LMS, whose
+   lvx_sched_resources_add charges only get_attr_issue, the bare insn.  So LMS
    could build a cycle the bundler then had to split -- invisible while SCHED2
-   owns the bundles, and an assembler error the moment a CMS cycle IS one:
+   owns the bundles, and an assembler error the moment a LMS cycle IS one:
    mad's libz inftrees.c wanted 3 BRRP of 2 from a guarded store plus a ccb.
 
    DELIBERATELY CONSERVATIVE: one BCU_BRRP per prefixed op, with no sharing.
    That OVER-charges where the bundler would have shared -- two ops under the
    same guard pay twice here and once there -- which costs II and never
    legality.  Under-charging is the direction that cannot be allowed: it lets
-   CMS emit a cycle that does not fit a bundle, and splitting a parallel group
+   LMS emit a cycle that does not fit a bundle, and splitting a parallel group
    is the irrecoverable error (§7tricies.191).  Modelling the sharing properly
    means keying on the guard condition across a whole cycle, which is the
    bundler's bookkeeping and not a resource count.
 
-   Charged only when CMS owns the bundles.  Otherwise SCHED2 still decides
+   Charged only when LMS owns the bundles.  Otherwise SCHED2 still decides
    them and enforces the real rule, so the charge would buy nothing and cost
    II on every pipelined loop.  */
 static void
@@ -2338,7 +2345,7 @@ lvx_lms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
    in exactly this way to buy slack and reduce backtracking (§7tervicies).
 
    WHAT THIS MUST AND MUST NOT BE APPLIED TO (author, 2026-10-27: "it is not
-   the CMS dates, it is the first dates from Bellman-Ford at the current II").
+   the LMS dates, it is the first dates from Bellman-Ford at the current II").
    The window is a DEPENDENCE-ONLY object.  A resource-feasible schedule may
    legitimately sit outside it, because resources stretch a schedule past the
    dependence critical path -- measured on PolyBench lvx-2, SIGMA lies outside
@@ -5539,7 +5546,7 @@ lvx_lms_antidep_real_p (const auto_vec<lvx_lms_lrange_part *> &lr,
   /* A KILLING DEF OF A RENAMEABLE RANGE CANNOT BE THE DESTINATION OF A WAR OR
      A WAW.  §7tricies.126.
 
-     CMS runs after register allocation, so every register anti- and output
+     LMS runs after register allocation, so every register anti- and output
      dependence is an artefact of the allocator having reused a register --
      not a fact about the dataflow.  GB is the destination at both call sites
      (the WAR pushes src=read dst=write, the WAW pushes src=p dst=q).  If the
@@ -5769,7 +5776,7 @@ static int lvx_lms_anode_of (const auto_vec<int> &, const auto_vec<int> &,
 
    With it, every reader can be rewritten and the group's range is split
    unconditionally, so `tied AND delayed' stops costing a pipeline at all.
-   Not built yet: it needs the preheader CMS's phase A already creates
+   Not built yet: it needs the preheader LMS's phase A already creates
    (create_preheader with CP_SIMPLE_PREHEADERS) and its own validation, and
    mixing it with the dominated case would have left neither measured.
 
@@ -8110,7 +8117,7 @@ struct lvx_lms_site
   bool entry_admits;
   /* The lvx_loopdo reorg_loops had already put on this loop, or NULL.
      RECORDED HERE because it must be found BEFORE make_nodes splits the
-     preheader edge: after that the header's non-loop predecessor is CMS's own
+     preheader edge: after that the header's non-loop predecessor is LMS's own
      prologue block and the LOOPDO is no longer reachable from it.
      §7tricies.196.  */
   rtx_insn *loopdo;
@@ -8163,7 +8170,7 @@ lvx_lms_jump_taken_stays_p (const struct lvx_lms_site *site, rtx_insn *jmp)
 /* THE SKELETON BLOCKS.  §7tricies.136.
 
    This is what `lvx_lms_node' is, and the name is unfortunate because two
-   different things in CMS are called nodes:
+   different things in LMS are called nodes:
 
      SKELETON BLOCK   one lvx_lms_node, one BASIC BLOCK of the emitted
 		      pipeline.  BLOCKS[k] is the block, NODES[k].kind says
@@ -8297,7 +8304,7 @@ lvx_lms_make_nodes (const struct lvx_lms_site *site, class loop *loop,
   /* THE DRAIN GOES ON THE LATCH'S EXIT EDGE, not on "the loop's single exit".
      The first version tested that the loop had exactly one edge leaving it,
      which rejected all four trmm loops and would reject every multi-block one:
-     a chain body has one exit per block, which IS the superblock shape CMS
+     a chain body has one exit per block, which IS the superblock shape LMS
      exists for (§7.5a).  What the drain actually needs is the edge the kernel
      falls out of, which is the latch's.  */
   edge exit_e = find_edge (site->exit_src, site->exit_dest);
@@ -9033,7 +9040,7 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
          { for (int i = 0; i < n; i++) A[i] = B[i] * 1.25 + Cc[i]; }
 
      at -O2 -ffast-math -mlms-pipeline, where the base compiles to a LOOPDO.
-     That is why every CMS study passes -fno-hwloop, and it is the whole of
+     That is why every LMS study passes -fno-hwloop, and it is the whole of
      what TSVC2's s312 was: an ordinary hardware loop.
 
      Declined HERE, before anything is touched, so the loop keeps the hardware
@@ -9690,7 +9697,7 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	 so what is missing is the ability to express it, which needs the block
 	 split after the branch and the remaining slots emitted into the
 	 fall-through successor -- what the hardware-loop chain already does
-	 for its own exits.  Until then CMS gives this II up rather than
+	 for its own exits.  Until then LMS gives this II up rather than
 	 emitting RTL the verifier will reject.  */
       if (after && JUMP_P (after))
 	{
@@ -9826,7 +9833,7 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 		/* §7tricies.218: an EPILOGUE insn is left untagged, which is
 		   what leaves its block to SCHED2 -- lvx_lms_own_blocks
 		   derives BB_DISABLE_SCHEDULE from these tags, and the group
-		   invariant must not be asserted over a block CMS no longer
+		   invariant must not be asserted over a block LMS no longer
 		   owns.  */
 		if (!lvx_lms_sched2_epilogue
 		    || nodes[nd].kind != LVX_LMS_NODE_EPILOGUE)
@@ -11214,15 +11221,15 @@ lvx_lms_verify (const auto_vec<rtx_insn *> &seq,
 }
 
 
-/* Build the CMS dependence graph of innermost LOOP over BODY: the body's
+/* Build the LMS dependence graph of innermost LOOP over BODY: the body's
    instructions in chain order into SEQ, the (theta, omega) arcs over them into
    ARCS -- numbered 0-based over SEQ -- and the intra-iteration dependence depth
    of each into HEIGHT.  False if the body is not a chain the walk can cover.
 
-   Extracted from the unfold's profitability test so CMS can build the graph
+   Extracted from the unfold's profitability test so LMS can build the graph
    itself: the two have DIFFERENT candidate sets.  The unfold declines a
    hardware loop and sends it here, so every doloop -- which is most of what
-   PolyBench is -- reaches CMS and never reached the unfold's probe.  */
+   PolyBench is -- reaches LMS and never reached the unfold's probe.  */
 
 static bool
 lvx_lms_build_graph (class loop *loop, basic_block *body,
@@ -11931,7 +11938,7 @@ lvx_lms_build_graph (class loop *loop, basic_block *body,
   auto_vec<bool> pinned_load;
   int npinned = 0;
   /* §7tricies.224: the body's own definitions -- what makes a load's address
-     loop-variant, and so makes it one CMS is going to promote to `.s'.  The
+     loop-variant, and so makes it one LMS is going to promote to `.s'.  The
      same set lvx_lms_force_speculative_loads builds; built again here because
      the fixpoint below runs BEFORE that promotion and has to judge a load by
      what it is going to be rather than by what it still is.  */
@@ -12267,7 +12274,7 @@ lvx_lms_build_graph (class loop *loop, basic_block *body,
    bound and the recurrence bound.
 
    R and K bound the RATE -- both are lower bounds on II, and max (K, R) is
-   the lower bound CMS searches upward from.  M is a LENGTH, the span of one
+   the lower bound LMS searches upward from.  M is a LENGTH, the span of one
    iteration scheduled alone, and is not a bound on II at all: it is the
    numerator of nstages = ceil (span / II), which is why K >= M is the test
    that says pipelining can buy nothing.  The unfold compares all three.
@@ -12304,7 +12311,7 @@ lvx_lms_bounds (class loop *loop, basic_block *body,
      doloop_end as ISSUE_TINY + ISSUE_BCU_BRRP -- a decrement and a branch --
      but if reorg_loops maps the loop, that insn emits `# loopdo end' and
      occupies no slot at all, so the charge is an OVERCHARGE for exactly the
-     loops that become hardware loops.  It is deliberately conservative, CMS
+     loops that become hardware loops.  It is deliberately conservative, LMS
      being unable to know whether the mapping will succeed (LOOPDO's reach and
      ITER_REG_USED can still refuse it), but "deliberately conservative" and
      "free" are different claims and this is the one that says which.  */
@@ -12624,10 +12631,10 @@ lvx_lms_count_copy_prop (const auto_vec<rtx_insn *> &seq,
 static void
 lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 {
-  /* BISECTING A WRONG ANSWER DOWN TO ONE LOOP.  §7tricies.133.  Scoping CMS
+  /* BISECTING A WRONG ANSWER DOWN TO ONE LOOP.  §7tricies.133.  Scoping LMS
      to one translation unit is as fine as the flags went, and a function with
      several pipelined loops then gives one verdict for all of them -- which
-     is how `CMS miscompiles inflate_fast' stayed unattributed.  Numbered by
+     is how `LMS miscompiles inflate_fast' stayed unattributed.  Numbered by
      loop->num, which is what every dump line already prints, so a dump and a
      bisect arm name the same loop.  */
   if (lvx_lms_only_loop != 0 && loop->num != (int) lvx_lms_only_loop)
@@ -12872,7 +12879,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
      integer program would branch and bound -- is behind SCHEDULE_AT_II, so
      that two engines asked for the same II differ in one thing only.  PREPARE
      holds the per-loop work that must not be redone per interval, which for
-     CMS is its path metrics and for SMS will be the node ordering its cost
+     LMS is its path metrics and for SMS will be the node ordering its cost
      argument rests on.  */
   const struct lvx_lms_engine *eng = &lvx_cms_engine;
   struct lvx_lms_problem prob;
@@ -12931,7 +12938,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 
      THE CYCLIC MAKESPAN DOES NOT CARRY THE LAST INSTRUCTION'S LATENCY, and
      this is the author's point (2026-10-27): a makespan runs from the first
-     schedule date to the last cycle a RESOURCE is in use, and under CMS's
+     schedule date to the last cycle a RESOURCE is in use, and under LMS's
      model every reservation occupies exactly one cycle
      (lvx_lms_slot_fits_p tests a single cycle's counters), so that last cycle
      is the last ISSUE and the makespan is hi - lo + 1.  `kvx-unfold.cc' has
@@ -14340,7 +14347,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 
      AND BECAUSE IT STILL READS PRE-MUTATION STATE AFTER MUTATING.
      §7tricies.104.  Turning it on by default was measured to be worth it --
-     CMS 0.9551 on MiBench against 0.9961 for the unfold it replaces, and
+     LMS 0.9551 on MiBench against 0.9961 for the unfold it replaces, and
      susan_smoothing at 0.4880 -- and then withdrawn, because compiling libgcc
      with it segfaults the compiler in two separate places:
 
@@ -15350,7 +15357,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
    schedulers can be compared from identical input.  R is what this target just
    answered for ResMII, and is reused rather than recomputed: the point of
    feeding one graph to both is that the bounds are the same by construction,
-   and recomputing R from the ddg with the CMS resource model would reintroduce
+   and recomputing R from the ddg with the LMS resource model would reintroduce
    the one difference worth eliminating.
 
    The conversion is mechanical because a ddg node IS an insn and a ddg edge
@@ -15484,21 +15491,21 @@ lvx_lms_probe_ddg (struct ddg *g, int r)
 		nstages, delta, passes, n, arcs.length ());
 }
 
-/* Whether CMS may consider LOOP at all.  This was NOT the unfold's own test
+/* Whether LMS may consider LOOP at all.  This was NOT the unfold's own test
    (removed with it, §7tricies.101):
    that gate is sized for code duplication and asks for things a modulo
-   schedule does not need, while missing nothing CMS does need.  The
+   schedule does not need, while missing nothing LMS does need.  The
    differences, each deliberate:
 
    - No `can_duplicate_loop_p'.  The unfold duplicates the body through the
-     CFG; CMS replicates the KERNEL by its stage count during modulo
+     CFG; LMS replicates the KERNEL by its stage count during modulo
      expansion, which is a different operation on a different object.
 
    - No block-count bound.  The unfold's is there because duplication doubles
-     the blocks; CMS linearises the chain and schedules instructions, so what
+     the blocks; LMS linearises the chain and schedules instructions, so what
      bounds it is instruction count, not block count.
 
-   - Its own instruction bound, -mlms-max-insns, because the cost of a CMS
+   - Its own instruction bound, -mlms-max-insns, because the cost of a LMS
      attempt is the convergence loop over DELTA + 4 copies of the body, not a
      doubling of code size.
 
@@ -15507,7 +15514,7 @@ lvx_lms_probe_ddg (struct ddg *g, int r)
      anyway, and an implicit loopback branch is a help.  lvx_lms_pipeline_loop
      reports which loops have one so the measurement can separate them.
 
-   What CMS genuinely requires, and this gate establishes: a single latch, so
+   What LMS genuinely requires, and this gate establishes: a single latch, so
    the chain walk has one back edge to measure distance against; no call,
    volatile reference or asm, none of which can be moved across an iteration
    boundary or priced; and no computed jump or complex edge, which the chain
@@ -15585,7 +15592,7 @@ lvx_lms_eligible_loop_p (class loop *loop, basic_block *body, unsigned insns,
 	 for the masked-store hammock -- so such a loop is not pipelineable by
 	 this emission at all.
 
-	 CMS never asked.  Measured: all 962 loops that emit are join-free, so
+	 LMS never asked.  Measured: all 962 loops that emit are join-free, so
 	 the requirement has always held in fact, and what enforced it was an
 	 unrelated test -- "latch has no exit edge", which 22 of its 49
 	 refusals owe to the body having joins rather than to the latch.  An
@@ -15618,7 +15625,7 @@ lvx_lms_eligible_loop_p (class loop *loop, basic_block *body, unsigned insns,
    the reference interleaves three concerns in one 29-reason gate --
    transformation legality, analysis feasibility, and PIPELINE CODEGEN
    feasibility -- and importing the whole thing cost the unfold 1.6 measured
-   points by refusing loops it could have taken.  CMS needs the third column
+   points by refusing loops it could have taken.  LMS needs the third column
    back, but "as its own predicate, because it will be answering a different
    question (can this loop's node structure be built?) from the one the unfold
    asks".  So this answers only that, and the analysis gate answers only its
@@ -15738,7 +15745,7 @@ lvx_lms_codegen_feasible_p (class loop *loop, basic_block *body,
   return true;
 }
 
-/* CMS's own walk over the innermost loops, independent of the unfold.
+/* LMS's own walk over the innermost loops, independent of the unfold.
 
    It used to ride lvx_loop_profitable_to_unfold_p, which meant the probe only
    saw loops that had already passed the unfold's candidacy -- so it needed
@@ -15820,7 +15827,7 @@ lvx_lms_pipeline_loops (void)
 	{
 	  /* Can code be emitted for this loop, as against analysed?  Reported
 	     rather than gated: the two predicates answer different questions
-	     (§7quinquies.7), and a loop CMS can schedule but not yet emit for
+	     (§7quinquies.7), and a loop LMS can schedule but not yet emit for
 	     is a codegen limit to size, not an analysis failure to hide.  */
 	  const char *cwhy = NULL;
 	  bool cfeas = lvx_lms_codegen_feasible_p (loop, body, &cwhy);
@@ -15838,9 +15845,9 @@ lvx_lms_pipeline_loops (void)
 
   /* THE TIDY-UP reorg_loops USED TO PROVIDE.  §7tricies.196.
 
-     CMS's emission creates blocks and redirects edges, leaving a stale
+     LMS's emission creates blocks and redirects edges, leaving a stale
      dominator tree and -- the part that actually bites -- blocks no longer
-     reachable.  While CMS ran BEFORE reorg_loops, that pass's own cleanup_cfg
+     reachable.  While LMS ran BEFORE reorg_loops, that pass's own cleanup_cfg
      swept both; running after, nothing does, and the first symptom was
      verify_dominators ("dominator of 10 should be 7, not 9"), then
      calc_dfs_tree asserting outright on the unreachable blocks, across 127 of
@@ -15848,7 +15855,7 @@ lvx_lms_pipeline_loops (void)
 
      After loop_optimizer_finalize, not before: it verifies the loop structure
      under checking and reads the tree, so the tree must still exist -- stale
-     is survivable there, absent is not, which is the order CMS already relied
+     is survivable there, absent is not, which is the order LMS already relied
      on when it ran first.  */
   /* §7tricies.217: unconditional.  This ran only in the after order; the
      after order is now the only order.  */
@@ -15860,7 +15867,7 @@ lvx_lms_pipeline_loops (void)
 	 the jump that controls it still carries its REG_BR_PROB note -- which
 	 verify_flow_info rejects outright, "REG_BR_PROB is set but cfg
 	 probability is not", on eight PolyBench files.  The note is the
-	 stale half: CMS sets the edges it creates to `even', so the profile is
+	 stale half: LMS sets the edges it creates to `even', so the profile is
 	 already approximate, and dropping a note it cannot honour says so
 	 rather than inventing a figure.  */
       FOR_EACH_BB_FN (bb, cfun)
@@ -15944,7 +15951,7 @@ lvx_lms_pipeline_loops (void)
    loop to a single-entry preheader, because "7.3% of innermost loops have a
    header with two or more out-of-loop predecessors and are refused outright
    by the pipeliner for it" -- but it runs BEFORE reorg_loops, and reorg_loops
-   undoes it.  In the before order that does not matter: CMS has already run.
+   undoes it.  In the before order that does not matter: LMS has already run.
    In the AFTER order it is the whole of the throughput gap.  Measured on
    syrk at MINI/double: 6 pipelines in the before order, 4 in the after one,
    the two lost loops reported as
