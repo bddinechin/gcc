@@ -13353,6 +13353,11 @@ lvx_speculatable_p (rtx_insn *insn)
   return true;
 }
 
+/* Declared here, defined with the rest of the promotion machinery: a load CMS
+   is going to rewrite to its dismissible form.  §7tricies.224.  */
+
+static bool lvx_cms_promotable_load_p (rtx_insn *, bitmap);
+
 /* WHY INSN cannot be speculated, as one word for the probe, and
    "speculatable" when it can be.  §7tricies.223.  The tests are in the SAME
    ORDER as lvx_speculatable_p above and test the same things, so the two
@@ -13361,10 +13366,15 @@ lvx_speculatable_p (rtx_insn *insn)
    Keep them together if either changes.  */
 
 static const char *
-lvx_cms_unspec_reason (rtx_insn *insn)
+lvx_cms_unspec_reason (rtx_insn *insn, bitmap bodydef)
 {
   if (!NONDEBUG_INSN_P (insn))
     return "not-an-insn";
+  /* §7tricies.224: a load CMS will promote is speculatable, and saying
+     otherwise is what made crc32 pin 16 loads against consumers that the
+     emitted code issues as `ld.s'.  */
+  if (bodydef != NULL && lvx_cms_promotable_load_p (insn, bodydef))
+    return "speculatable";
   if (CALL_P (insn))
     return "call";
   if (JUMP_P (insn))
@@ -13962,6 +13972,50 @@ lvx_cms_speculated_load_p (rtx_insn *insn, bitmap bodydef)
   return false;
 }
 
+/* True if INSN is a load CMS IS GOING TO REWRITE to `.s'/`.us'.
+   §7tricies.224.
+
+   This exists because of an ORDERING, not a capability: the taint fixpoint
+   runs in lvx_cms_build_graph, the promotion below runs after the II search,
+   so every promotable load looked NON-dismissible to the analysis and tainted
+   whatever fed its address.  Measured in crc32 loop 1: 16 loads pinned and
+   16 loads forced to `.s' -- the same sixteen, and the emitted kernel issues
+   those consumers as `ld.s'.  The pins were against a state the code does not
+   have.
+
+   THE CONDITIONS MIRROR THE PROMOTER EXACTLY and must keep doing so: it is a
+   candidate by lvx_cms_speculated_load_p, and every MEM in it is in the
+   generic address space, because that is the only one set_mem_addr_space is
+   applied to below.  If they ever drift apart the taint under-approximates
+   and the divmodvx class of wrong code comes back, so the promoter asserts
+   that nothing promotable survives it.  */
+
+static bool
+lvx_cms_promotable_load_p (rtx_insn *insn, bitmap bodydef)
+{
+  subrtx_iterator::array_type array;
+
+  if (!lvx_cms_force_spec_loads || bodydef == NULL)
+    return false;
+  if (!lvx_cms_speculated_load_p (insn, bodydef))
+    return false;
+  FOR_EACH_SUBRTX (iter, array, PATTERN (insn), NONCONST)
+    if (MEM_P (*iter) && MEM_ADDR_SPACE (*iter) != ADDR_SPACE_GENERIC)
+      return false;
+  return true;
+}
+
+/* True if INSN may be speculated once CMS has promoted what it promotes.  The
+   taint fixpoint asks THIS, not lvx_speculatable_p, because it runs before the
+   promotion.  §7tricies.224.  */
+
+static bool
+lvx_cms_speculatable_after_promotion_p (rtx_insn *insn, bitmap bodydef)
+{
+  return (lvx_speculatable_p (insn)
+	  || lvx_cms_promotable_load_p (insn, bodydef));
+}
+
 /* Promote the loop-variant-address loads of SEQ to their dismissible variant.
 
    This is not an optimisation: the dependence graph's branch constraint (1)
@@ -13998,6 +14052,16 @@ lvx_cms_force_speculative_loads (const auto_vec<rtx_insn *> &seq,
 	  promoted++;
 	}
     }
+
+  /* §7tricies.224: THE TIE.  lvx_cms_build_graph's taint fixpoint treated
+     every promotable load as speculatable on the strength of this function
+     promoting it.  If one survives, that assumption was false for it and the
+     graph is missing a constraint -- which is the divmodvx bug.  Checked
+     rather than commented.  */
+  if (flag_checking)
+    for (unsigned i = 0; i < seq.length (); i++)
+      gcc_assert (!lvx_cms_promotable_load_p (seq[i], bodydef));
+
   return promoted;
 }
 
@@ -26359,6 +26423,22 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
   auto_vec<int> taint_via;
   auto_vec<bool> pinned_load;
   int npinned = 0;
+  /* §7tricies.224: the body's own definitions -- what makes a load's address
+     loop-variant, and so makes it one CMS is going to promote to `.s'.  The
+     same set lvx_cms_force_speculative_loads builds; built again here because
+     the fixpoint below runs BEFORE that promotion and has to judge a load by
+     what it is going to be rather than by what it still is.  */
+  auto_bitmap bodydef;
+
+  for (unsigned i = 0; i < n; i++)
+    {
+      df_ref bd;
+
+      if (!NONDEBUG_INSN_P (seq[i]))
+	continue;
+      FOR_EACH_INSN_DEF (bd, seq[i])
+	bitmap_set_bit (bodydef, DF_REF_REGNO (bd));
+    }
 
   tainted.safe_grow_cleared (n);
   taint_via.safe_grow (n);
@@ -26390,7 +26470,9 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 		      if (j == i || !NONDEBUG_INSN_P (seq[j]))
 			continue;
 
-		      taints = tainted[j] || !lvx_speculatable_p (seq[j]);
+		      taints = (tainted[j]
+				|| !lvx_cms_speculatable_after_promotion_p
+				     (seq[j], bodydef));
 
 		      /* §7tricies.222: a consumer that constraint (1) has
 			 ALREADY pinned does not taint what feeds it.  (1)
@@ -26638,7 +26720,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 	    int qcode = INSN_CODE (seq[q]), rcode;
 
 	    while (root >= 0 && guard++ < n
-		   && !strcmp (lvx_cms_unspec_reason (seq[root]),
+		   && !strcmp (lvx_cms_unspec_reason (seq[root], bodydef),
 			       "speculatable"))
 	      {
 		prev = root;
@@ -26652,7 +26734,7 @@ lvx_cms_build_graph (class loop *loop, basic_block *body,
 			  loop->num, INSN_UID (seq[q]),
 			  qcode >= 0 ? insn_data[qcode].name : "?",
 			  INSN_UID (seq[root]),
-			  lvx_cms_unspec_reason (seq[root]),
+			  lvx_cms_unspec_reason (seq[root], bodydef),
 			  rcode >= 0 ? insn_data[rcode].name : "?");
 	  }
     }
