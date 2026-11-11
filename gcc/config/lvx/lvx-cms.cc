@@ -1473,3 +1473,133 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 
   return false;
 }
+
+/* THE ENGINE OBJECT.  §7tricies.224.
+
+   CMS as one engine of the LMS framework: PREPARE does the per-loop work that
+   was being redone at every candidate interval, SCHEDULE_AT_II does one
+   interval, and everything that is CMS's SEARCH rather than the driver's
+   policy now lives behind that call -- the Squeaky Wheel passes, the branch
+   pin's policy 3, and the two MCRL arms.  The driver's ladder is then a loop
+   over II and nothing else, which is what makes a second engine comparable
+   with this one.  */
+
+struct lvx_cms_state
+{
+  const struct lvx_lms_problem *p;
+  auto_vec<int> tosink, slack;	/* per-loop, and formerly recomputed per II */
+  int budget;
+};
+
+static void *
+lvx_cms_prepare (const struct lvx_lms_problem *p)
+{
+  struct lvx_cms_state *st = new lvx_cms_state;
+
+  st->p = p;
+  st->budget = MAX (1, lvx_cms_swo_budget);
+  lvx_lms_path_metrics (*p->seq, *p->arcs, *p->height, st->tosink, st->slack);
+  return st;
+}
+
+static void
+lvx_cms_finish (void *state)
+{
+  delete (struct lvx_cms_state *) state;
+}
+
+static bool
+lvx_cms_schedule_at_ii (void *state, int ii, auto_vec<int> &sigma,
+			const char **why, int *passes)
+{
+  struct lvx_cms_state *st = (struct lvx_cms_state *) state;
+  const struct lvx_lms_problem *p = st->p;
+  /* The branch pin can raise II -- it is a release floor, so it cannot make
+     the problem infeasible, but it can make THIS II infeasible and push the
+     search on.  Measured on PolyBench it improves 17 loops and costs one
+     (syr2k's loop 8, II 3 -> 6).  Policy 3 therefore takes the pin only where
+     it is free: try the II pinned, and before giving up on it, try it again
+     unpinned.  II is never lost and the epilogue saving is taken wherever it
+     costs nothing.  */
+  int pin = lvx_cms_branch_stage;
+  bool found = false;
+  int arm = 0;
+
+  /* The un-seeded attempt -- un-seeded by DEFAULT, since lvx_cms_mcrl_release
+     is 0 unless asked for.  Passing a literal 0 here instead made
+     `-mcms-mcrl-release=' dead, which the normalised lever sweep caught by
+     reading it as bit-identical to the baseline in every column
+     (§7octovicies.4).  */
+  if (lvx_cms_swo_at_ii (*p->seq, *p->arcs, *p->height, ii, p->delta, sigma,
+			 st->budget, passes, why, pin == 3 ? 1 : pin,
+			 lvx_cms_mcrl_release, p->livein, p->crit))
+    found = true;
+  else if (pin == 3
+	   && lvx_cms_swo_at_ii (*p->seq, *p->arcs, *p->height, ii, p->delta,
+				 sigma, st->budget, passes, why, 0,
+				 lvx_cms_mcrl_release, p->livein, p->crit))
+    found = true;
+  /* ARM A (§7septvicies.4).  MCRL release dates reduce pressure 12.8% and
+     recover the dependence-only makespan on the loops that overshot it most
+     -- cholesky, lu and ludcmp from 18 stages to 10 -- but applied
+     unconditionally they cost II in 43 of 162 loops, because a release date is
+     a floor and a loop that was not register-constrained pays for pressure
+     that was not binding.  So they are gated in the shape policy 3 already
+     uses: try the II WITHOUT them first, and only reach for them before giving
+     up on it.  II is never lost.
+
+     ARM A IS ONLY SOUND WITH THE COLOURING IN ACCEPTANCE, and measurement
+     showed why rather than argument: with -mno-lms-regalloc-feasible the
+     acceptance test is verification alone, so arm A happily takes a SMALLER II
+     with a kernel that cannot be coloured -- fdtd-2d's loop 14 went II 9 -> 7
+     and 0 -> 20 uncolourable values, a smaller II being more stages and so
+     more pressure (§7octodecies).  With the colouring in acceptance the same
+     loop goes 11 -> 9 and stays colourable.  That is why
+     -mlms-regalloc-feasible defaults ON: the two are one mechanism, and the
+     gate is what pays back most of what the colouring costs in II.
+     §7septvicies.5.  */
+  else if (lvx_cms_mcrl_gate
+	   && lvx_cms_swo_at_ii (*p->seq, *p->arcs, *p->height, ii, p->delta,
+				 sigma, st->budget, passes, why,
+				 pin == 3 ? 1 : pin, 2, p->livein, p->crit))
+    found = true, arm = 1;
+
+  /* ARM B: the span overshoots the graph's makespan bound, so a shorter one
+     exists as far as the dependences are concerned and list scheduling simply
+     did not find it.  Of the 18 PolyBench loops in that state, MCRL recovers
+     the bound on five -- and those five are the deep pipelines whose stage
+     count is what the expansion pays for.  The first arm cannot see this case
+     because here the un-seeded construction SUCCEEDS.  */
+  if (found && lvx_cms_mcrl_gate && arm == 0 && !lvx_cms_mcrl_release)
+    {
+      auto_vec<int> nodates;
+      int wfirst = -1, wmake = 0, wempty = 0;
+
+      lvx_lms_dates_in_window (*p->seq, *p->arcs, nodates, st->tosink, ii,
+			       &wfirst, &wmake, &wempty);
+      int have = lvx_lms_sigma_span (sigma);
+      if (wmake > 0 && have > wmake)
+	{
+	  auto_vec<int> alt;
+	  int p2 = 0;
+	  const char *b2 = NULL;
+
+	  if (lvx_cms_swo_at_ii (*p->seq, *p->arcs, *p->height, ii, p->delta,
+				 alt, st->budget, &p2, &b2,
+				 pin == 3 ? 1 : pin, 2, p->livein, p->crit)
+	      && lvx_lms_sigma_span (alt) < have)
+	    {
+	      sigma.truncate (0);
+	      for (unsigned i = 0; i < alt.length (); i++)
+		sigma.safe_push (alt[i]);
+	      *passes += p2;
+	    }
+	}
+    }
+
+  return found;
+}
+
+const struct lvx_lms_engine lvx_cms_engine = {
+  "cms", lvx_cms_prepare, lvx_cms_schedule_at_ii, lvx_cms_finish
+};

@@ -12858,105 +12858,37 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
      one is a single greedy construction, which is what this did before the SWO
      cycle existed, so the baseline is reproducible with -mcms-swo-budget=1.  */
   int passes = 0;
-  int budget = MAX (1, lvx_cms_swo_budget);
-  /* The branch pin can raise II -- it is a release floor, so it cannot make the
-     problem infeasible, but it can make this II infeasible and push the search
-     on.  Measured on PolyBench it improves 17 loops and costs one (syr2k's
-     loop 8, II 3 -> 6).  Policy 3 therefore takes the pin only where it is
-     free: try each II pinned, and before giving up on that II, try it again
-     unpinned.  II is never lost and the epilogue saving is taken wherever it
-     costs nothing.  */
-  int pin = lvx_cms_branch_stage;
   /* -mlms-ii-bias starts the search above the bound.  It exists to answer a
      question the ordinary search cannot: when two schedulers disagree only
      because one of them had to take a larger II, comparing them needs both to
      be at the SAME larger II.  §7quinvicies.  */
   int first_ii = lower + (int) lvx_lms_ii_bias;
-  /* THE MCRL GATE (§7septvicies.4).  MCRL release dates reduce pressure 12.8%
-     and recover the dependence-only makespan on the loops that overshot it
-     most -- cholesky, lu and ludcmp from 18 stages to 10 -- but applied
-     unconditionally they cost II in 43 of 162 loops, because a release date is
-     a floor and a loop that was not register-constrained pays for pressure
-     that was not binding.  So they are gated, in the shape the branch pin's
-     policy 3 already uses: try each II WITHOUT them first, and only reach for
-     them before giving up on that II.  II is never lost.
 
-     That is arm A, the register case.  Arm B is the makespan case, which the
-     first arm cannot see because there the un-seeded construction SUCCEEDS:
-     if its span overshoots the graph's own makespan bound, MCRL is tried at
-     the same II and kept only if it verifies and the span is shorter.  */
-  int mcrl_used = 0, mcrl_arm = 0;
+  /* THE LADDER, AND IT IS ALL THE DRIVER DOES.  §7tricies.224.
+
+     Ask the engine for a schedule at each interval from the bound upward, and
+     take the first it accepts.  Whatever search the engine does at one
+     interval -- CMS spends a Squeaky Wheel budget and tries two MCRL arms, an
+     integer program would branch and bound -- is behind SCHEDULE_AT_II, so
+     that two engines asked for the same II differ in one thing only.  PREPARE
+     holds the per-loop work that must not be redone per interval, which for
+     CMS is its path metrics and for SMS will be the node ordering its cost
+     argument rests on.  */
+  const struct lvx_lms_engine *eng = &lvx_cms_engine;
+  struct lvx_lms_problem prob;
+
+  prob.seq = &seq;
+  prob.arcs = &arcs;
+  prob.height = &height;
+  prob.crit = &crit;
+  prob.livein = df_get_live_in (loop->header);
+  prob.delta = delta;
+
+  void *est = eng->prepare (&prob);
   for (int try_ii = first_ii; try_ii <= first_ii + 8 && !found; try_ii++)
-    {
-      /* The un-seeded attempt -- un-seeded by DEFAULT, since
-	 lvx_cms_mcrl_release is 0 unless asked for.  Passing a literal 0 here
-	 instead made `-mcms-mcrl-release=' dead, which the normalised lever
-	 sweep caught by reading it as bit-identical to the baseline in every
-	 column (§7octovicies.4).  */
-      if (lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
-			     budget, &passes, &last_bad,
-			     pin == 3 ? 1 : pin, lvx_cms_mcrl_release,
-			     df_get_live_in (loop->header), &crit))
-	found = try_ii;
-      else if (pin == 3
-	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
-				     budget, &passes, &last_bad, 0,
-				     lvx_cms_mcrl_release,
-				     df_get_live_in (loop->header), &crit))
-	found = try_ii;
-      /* Arm A: this II refused an un-seeded construction.  Before raising it,
-	 ask MCRL where the tasks want to go.
-
-	 ARM A IS ONLY SOUND WITH THE COLOURING IN ACCEPTANCE, and measurement
-	 showed why rather than argument: with -mno-lms-regalloc-feasible the
-	 acceptance test is verification alone, so arm A happily takes a
-	 SMALLER II with a kernel that cannot be coloured -- fdtd-2d's loop 14
-	 went II 9 -> 7 and 0 -> 20 uncolourable values, a smaller II being more
-	 stages and so more pressure (§7octodecies).  With the colouring in
-	 acceptance the same loop goes 11 -> 9 and stays colourable.  That is
-	 why -mlms-regalloc-feasible now defaults ON: the two are one mechanism,
-	 and the gate is what pays back most of what the colouring costs in II.
-	 §7septvicies.5.  */
-      else if (lvx_cms_mcrl_gate
-	       && lvx_cms_swo_at_ii (seq, arcs, height, try_ii, delta, sigma,
-				     budget, &passes, &last_bad,
-				     pin == 3 ? 1 : pin, 2,
-				     df_get_live_in (loop->header), &crit))
-	found = try_ii, mcrl_used = 1, mcrl_arm = 1;
-    }
-
-  /* Arm B: the span overshoots the graph's makespan bound, so a shorter one
-     exists as far as the dependences are concerned and list scheduling simply
-     did not find it.  Of the 18 PolyBench loops in that state, MCRL recovers
-     the bound on five -- and those five are the deep pipelines whose stage
-     count is what the expansion pays for.  */
-  if (found && lvx_cms_mcrl_gate && !mcrl_used && !lvx_cms_mcrl_release)
-    {
-      auto_vec<int> ts, sl, nodates;
-      int wfirst = -1, wmake = 0, wempty = 0;
-      lvx_lms_path_metrics (seq, arcs, height, ts, sl);
-      lvx_lms_dates_in_window (seq, arcs, nodates, ts, found, &wfirst, &wmake,
-			       &wempty);
-      int have = lvx_lms_sigma_span (sigma);
-      if (wmake > 0 && have > wmake)
-	{
-	  auto_vec<int> alt;
-	  int p2 = 0;
-	  const char *b2 = NULL;
-	  if (lvx_cms_swo_at_ii (seq, arcs, height, found, delta, alt, budget,
-				 &p2, &b2, pin == 3 ? 1 : pin, 2,
-				 df_get_live_in (loop->header), &crit)
-	      && lvx_lms_sigma_span (alt) < have)
-	    {
-	      sigma.truncate (0);
-	      for (unsigned i = 0; i < alt.length (); i++)
-		sigma.safe_push (alt[i]);
-	      passes += p2;
-	      mcrl_used = 1;
-	      mcrl_arm = 2;
-	    }
-	}
-    }
+    if (eng->schedule_at_ii (est, try_ii, sigma, &last_bad, &passes))
+      found = try_ii;
+  eng->finish (est);
 
   /* BLAMED= IS RETIRED.  §7tricies.188.  It named the counter that cost the
      most displacement across the search, which required the per-resource

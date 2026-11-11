@@ -201,7 +201,52 @@ extern const char *lvx_lms_verify (const auto_vec<rtx_insn *> &,
 				   const auto_vec<int> &,
 				   auto_vec<int> * = NULL);
 
+/* THE PROBLEM ONE ENGINE IS ASKED TO SCHEDULE.  §7tricies.224.
+
+   Everything an engine needs about the loop, and nothing about how to search:
+   the body in chain order, the arcs with their (theta, omega), the
+   intra-iteration dependence depth, the circuit that set RecMII, the
+   registers live into the header, and the unwinding budget Delta.  An
+   engine's own knobs are its own options, read where it reads them.  */
+
+struct lvx_lms_problem
+{
+  const auto_vec<rtx_insn *> *seq;
+  const auto_vec<lvx_lms_arc> *arcs;
+  const auto_vec<int> *height;
+  const auto_vec<int> *crit;
+  bitmap livein;
+  int delta;
+};
+
+/* AN ENGINE, WHICH IS ASKED FOR A SCHEDULE AT A GIVEN II AND NOTHING ELSE.
+
+   Two phases, because the ordering an engine computes is a property of the
+   LOOP and not of the period: SMS's cost argument is that the nodes are
+   ordered once however many initiation intervals are tried, and CMS has its
+   own per-loop work (the path metrics) that was being redone at every II.
+   PREPARE returns an opaque state, SCHEDULE_AT_II is called once per
+   candidate interval, FINISH releases it.
+
+   SCHEDULE_AT_II returns true with SIGMA filled, having already satisfied
+   lvx_lms_accept_p; on failure it leaves WHY naming the last obstacle.  Any
+   search of its own -- CMS's Squeaky Wheel passes and its two MCRL arms, an
+   integer program's branch and bound -- happens inside it, so that two
+   engines asked for the same II differ in one thing only.  PASSES accumulates
+   whatever the engine wants to report as work done.  */
+
+struct lvx_lms_engine
+{
+  const char *name;
+  void *(*prepare) (const struct lvx_lms_problem *);
+  bool (*schedule_at_ii) (void *state, int ii, auto_vec<int> &sigma,
+			  const char **why, int *passes);
+  void (*finish) (void *state);
+};
+
 /* The engines.  */
+
+extern const struct lvx_lms_engine lvx_cms_engine;
 
 extern bool
 lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
