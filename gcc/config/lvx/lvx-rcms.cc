@@ -345,9 +345,46 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
      notation): the zero objective, so any schedule satisfying every row
      will do.  1 minimises the makespan.  Both are solved over exactly the
      same rows, which is what makes the difference attributable.  */
+  /* Which operations define a value some other operation reads?  A REG_RAW
+     arc IS that relation, so the lifetime variables need no new analysis:
+     one killer per producer, bounded below by each consumer's date.  */
+  auto_vec<bool> producer;
+  bool any_life = false;
+  producer.safe_grow_cleared (n);
+  for (unsigned a = 0; a < arcs.length (); a++)
+    if (arcs[a].kind == LVX_ARC_REG_RAW
+	&& arcs[a].src < n && arcs[a].dst < n)
+      producer[arcs[a].src] = true, any_life = true;
+
+  const bool mcrl = (lvx_lms_rcms_objective == 2 && any_life);
+  const bool want_span = !mcrl;
+
   if (f)
-    fprintf (f, "Minimize\n obj: %sspan\nSubject To\n",
-	     lvx_lms_rcms_objective == 0 ? "0 " : "");
+    {
+      if (mcrl)
+	{
+	  /* MINIMUM CUMULATIVE REGISTER LIFETIME.  Sum over producers of
+	     (killer - definition), which is what the register allocator
+	     actually has to fit.  The makespan objective minimises the
+	     opposite quantity in effect: a shorter schedule at the same
+	     interval is a MORE parallel one, so it holds more values in
+	     flight, and measurement said the commonest reason a solved
+	     schedule was thrown away is that its kernel would not colour.  */
+	  fprintf (f, "Minimize\n obj:");
+	  for (unsigned i = 0; i < n; i++)
+	    if (producer[i])
+	      fprintf (f, " + k_%u", i);
+	  for (unsigned i = 0; i < n; i++)
+	    if (producer[i])
+	      for (t = st->win[i].lo; t <= st->win[i].hi; t++)
+		if (t != 0)
+		  fprintf (f, " %+d x_%u_%d", -t, i, t);
+	  fprintf (f, "\nSubject To\n");
+	}
+      else
+	fprintf (f, "Minimize\n obj: %sspan\nSubject To\n",
+		 lvx_lms_rcms_objective == 0 ? "0 " : "");
+    }
 
   /* ---- assignment: sum_t x_i^t = 1 ---- */
   for (i = 0; i < n; i++)
@@ -464,11 +501,32 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
   LVX_ISSUE_RESOURCES (LVX_RCMS_RES_ROWS)
 #undef LVX_RCMS_RES_ROWS
 
+  /* ---- the lifetime rows: k_i >= sigma_j + ii*omega for every RAW arc
+     i -> j.  A use in a later iteration keeps the value alive a whole
+     interval longer, which is what the omega term is; dropping it would
+     price a loop-carried value as though it died in its own iteration.
+     n general integers and |RAW arcs| rows -- the cheap encoding of
+     section 9.1, not a time-indexed node per value.  ---- */
+  if (f && mcrl)
+    for (unsigned a = 0; a < arcs.length (); a++)
+      {
+	const lvx_lms_arc *ar = &arcs[a];
+
+	if (ar->kind != LVX_ARC_REG_RAW || ar->src >= n || ar->dst >= n)
+	  continue;
+	fprintf (f, " life_%u: k_%u", a, ar->src);
+	for (t = st->win[ar->dst].lo; t <= st->win[ar->dst].hi; t++)
+	  if (t != 0)
+	    fprintf (f, " %+d x_%u_%d", -t, ar->dst, t);
+	fprintf (f, " >= " HOST_WIDE_INT_PRINT_DEC "\n",
+		 (HOST_WIDE_INT) ii * ar->omega);
+      }
+
   /* ---- the makespan rows: span >= sigma_i + p_i.  One dummy sink with an
      arc from every operation, which is why this objective costs one
      variable where the cumulative-lifetime one costs a window per value.
      ---- */
-  if (f)
+  if (f && want_span)
     for (i = 0; i < n; i++)
       {
 	fprintf (f, " mk_%u: span", i);
@@ -480,9 +538,20 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 
   if (f)
     {
-      fprintf (f, "Bounds\n 0 <= span <= %d\n",
-	       st->horizon + 1);
-      fprintf (f, "General\n span\n");
+      fprintf (f, "Bounds\n");
+      if (want_span)
+	fprintf (f, " 0 <= span <= %d\n", st->horizon + 1);
+      if (mcrl)
+	for (i = 0; i < n; i++)
+	  if (producer[i])
+	    fprintf (f, " 0 <= k_%u <= %d\n", i, st->horizon + ii + 1);
+      fprintf (f, "General\n");
+      if (want_span)
+	fprintf (f, " span\n");
+      if (mcrl)
+	for (i = 0; i < n; i++)
+	  if (producer[i])
+	    fprintf (f, " k_%u\n", i);
       fprintf (f, "Binaries\n");
       for (i = 0; i < n; i++)
 	for (t = st->win[i].lo; t <= st->win[i].hi; t++)
