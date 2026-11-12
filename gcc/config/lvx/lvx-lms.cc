@@ -12650,73 +12650,6 @@ lvx_lms_count_copy_prop (const auto_vec<rtx_insn *> &seq,
   *nwide_out = nwide;
 }
 
-/* DOES THE PIPELINE BEAT THE SAME LOOP NOT PIPELINED?  §7tricies.228.
-
-   The only profitability test was `nstages > 1' -- whether any overlap was
-   achieved -- which says nothing about whether the overlap pays for the
-   prologue and epilogue it costs.  A loop running five iterations was
-   pipelined on the same terms as one running five million.
-
-   THE COMPARISON IS AGAINST THE nstages=1 COST, per the author.  A pipeline
-   issues one iteration every II and needs nstages - 1 stages of fill before
-   the steady state and as many to drain, so it costs about
-
-       (trips + nstages - 1) * II
-
-   while the same body with no overlap costs one makespan per iteration,
-
-       trips * span
-
-   and the test is simply that the first beat the second.  Note what makes
-   this bite only on short loops: as trips grows both sides grow linearly and
-   the fill term washes out, so the test passes for every long loop and can
-   only ever decline one entered often and run briefly.
-
-   Measured, ghostscript's zlib, 2026-11-11: six loops admitted by
-   §7tricies.227 cost 2.24% of cycles while leaving nstages>=3 unchanged --
-   Huffman-tree loops in `_tr_flush_block', `_tr_init' and `build_tree', trip
-   counts 5, 7, 9 and 16, entered once per compressed block.  The margin is a
-   knob because the model under-predicts their cost: it counts stages and not
-   the body doubled by kunroll, nor the fill and drain code itself executed on
-   every entry, nor its footprint in a function called per block.
-
-   AN UNKNOWN TRIP COUNT NEVER DECLINES THE LOOP.  Most loops here have none
-   -- crc32's are `tripsrc=none' and are among the best pipelines in the
-   corpus -- so refusing them would cost far more than this recovers.  The
-   test is deliberately only as wide as its evidence.  */
-
-static bool
-lvx_lms_pipeline_pays_p (class loop *loop, basic_block *body, int nstages,
-			 int ii, int span)
-{
-  HOST_WIDE_INT maxtrip, pipelined, sequential;
-
-  if (lvx_lms_min_gain == 0 || ii <= 0 || span <= 0)
-    return true;
-  /* THE ESTIMATE, NOT THE BOUND.  get_max_loop_iterations_int is an UPPER
-     bound: the six loops this test was written for carry 5, 7, 9 and 16, and
-     at those counts the model below says the pipeline wins by 2x while the
-     measurement says it loses 2.24%.  A loop bounded by 7 may typically run
-     once, and at one iteration the fill and drain ARE the loop.  So ask what
-     the loop is expected to do -- the profile where there is one, GCC's own
-     estimate otherwise -- and fall back to the bound only when there is no
-     estimate at all.  */
-  maxtrip = get_estimated_loop_iterations_int (loop);
-  if (maxtrip < 0)
-    maxtrip = get_likely_max_loop_iterations_int (loop);
-  if (maxtrip < 0)
-    maxtrip = get_max_loop_iterations_int (loop);
-  if (maxtrip <= 0)
-    maxtrip = lvx_lms_doloop_trip_count (loop, body);
-  if (maxtrip <= 0)
-    return true;
-
-  pipelined = (maxtrip + nstages - 1) * (HOST_WIDE_INT) ii;
-  sequential = maxtrip * (HOST_WIDE_INT) span;
-  return (pipelined * 100
-	  <= sequential * (HOST_WIDE_INT) (100 - MIN (lvx_lms_min_gain, 99)));
-}
-
 static void
 lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 {
@@ -14511,15 +14444,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
      threaded in from before make_nodes, not a null check -- a null check
      would silently drop a range's exit_live flag and miscompile instead of
      crashing.  So the default waits for the boundary, not for another patch.  */
-  bool pays = lvx_lms_pipeline_pays_p (loop, body, nstages, found, span);
-
-  if (!pays && lvx_lms_codegen && pl.ok && nstages >= 2)
-    lvx_lms_dump (";; lvx cms: fn=%s loop %d declined, the pipeline does not"
-		  " beat the unpipelined loop by %u%% (II=%d nstages=%d"
-		  " span=%d)\n", current_function_name (), loop->num,
-		  (unsigned) lvx_lms_min_gain, found, nstages, span);
-
-  if (lvx_lms_codegen && pl.ok && nstages >= 2 && pays)
+  if (lvx_lms_codegen && pl.ok && nstages >= 2)
     {
       /* RECORD, do not transform: the loop structures are finalized before
 	 anything is built (§7quinquies.10), so what is captured is raw basic
