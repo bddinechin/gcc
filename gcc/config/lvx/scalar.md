@@ -1688,7 +1688,7 @@
 (define_insn "addti3"
   [(set (match_operand:TI 0 "register_operand" "=r,r")
         (plus:TI (match_operand:TI 1 "register_operand" "r,r")
-                 (match_operand:TI 2 "reg_or_imm32_operand" "r,I32")))]
+                 (match_operand:TI 2 "register_s32_operand" "r,I32")))]
   ""
   "@
    addq %0 = %1, %2
@@ -1700,7 +1700,7 @@
 
 (define_insn "subti3"
   [(set (match_operand:TI 0 "register_operand" "=r,r")
-        (minus:TI (match_operand:TI 1 "reg_or_imm32_operand" "r,I32")
+        (minus:TI (match_operand:TI 1 "register_s32_operand" "r,I32")
                   (match_operand:TI 2 "register_operand" "r,r")))]
   ""
   "@
@@ -1737,7 +1737,7 @@
 (define_insn "<minmaxq>ti3"
   [(set (match_operand:TI 0 "register_operand" "=r,r")
         (MINMAXQ:TI (match_operand:TI 1 "register_operand" "r,r")
-                    (match_operand:TI 2 "reg_or_imm32_operand" "r,I32")))]
+                    (match_operand:TI 2 "register_s32_operand" "r,I32")))]
   ""
   "@
    <minmaxqm>q %0 = %1, %2
@@ -1750,7 +1750,7 @@
 (define_insn "andti3"
   [(set (match_operand:TI 0 "register_operand" "=r,r")
         (and:TI (match_operand:TI 1 "register_operand" "r,r")
-                (match_operand:TI 2 "reg_or_imm32_operand" "r,I32")))]
+                (match_operand:TI 2 "register_s32_operand" "r,I32")))]
   ""
   "@
    andq %0 = %1, %2
@@ -1763,7 +1763,7 @@
 (define_insn "iorti3"
   [(set (match_operand:TI 0 "register_operand" "=r,r")
         (ior:TI (match_operand:TI 1 "register_operand" "r,r")
-                (match_operand:TI 2 "reg_or_imm32_operand" "r,I32")))]
+                (match_operand:TI 2 "register_s32_operand" "r,I32")))]
   ""
   "@
    iorq %0 = %1, %2
@@ -1776,7 +1776,7 @@
 (define_insn "xorti3"
   [(set (match_operand:TI 0 "register_operand" "=r,r")
         (xor:TI (match_operand:TI 1 "register_operand" "r,r")
-                (match_operand:TI 2 "reg_or_imm32_operand" "r,I32")))]
+                (match_operand:TI 2 "register_s32_operand" "r,I32")))]
   ""
   "@
    eorq %0 = %1, %2

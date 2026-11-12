@@ -88,31 +88,6 @@
   (and (match_code "const_int")
        (match_test "SIGNED_INT_FITS_N_BITS (ival, 43)")))
 
-(define_constraint "S10"
-  "A vector constant whose value fits in signed 10 bits."
-  (and (match_code "const_vector")
-       (match_test "lvx_has_10bit_vector_const_p (op)")))
-
-(define_constraint "S16"
-  "A vector constant whose value fits in signed 16 bits."
-  (and (match_code "const_vector")
-       (match_test "lvx_has_16bit_vector_const_p (op)")))
-
-(define_constraint "S32"
-  "A vector constant whose value fits in signed 32 bits."
-  (and (match_code "const_vector")
-       (match_test "lvx_has_32bit_vector_const_p (op)")))
-
-(define_constraint "S37"
-  "A vector constant whose value fits in signed 37 bits."
-  (and (match_code "const_vector")
-       (match_test "lvx_has_37bit_vector_const_p (op)")))
-
-(define_constraint "S43"
-  "A vector constant whose value fits in signed 43 bits."
-  (and (match_code "const_vector")
-       (match_test "lvx_has_43bit_vector_const_p (op)")))
-
 (define_constraint "SZ0"
   "The zero vector, which a .M format's replicated 32-bit word can build at any
    lane width -- the only value it can build at 64-bit lanes."

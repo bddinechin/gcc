@@ -145,16 +145,6 @@ extern bool lvx_has_27bit_immediate_p (rtx x);
 
 extern HOST_WIDE_INT lvx_const_vector_value (rtx x, int index);
 
-extern bool lvx_has_10bit_vector_const_p (rtx x);
-
-extern bool lvx_has_16bit_vector_const_p (rtx x);
-
-extern bool lvx_has_32bit_vector_const_p (rtx x);
-
-extern bool lvx_has_37bit_vector_const_p (rtx x);
-
-extern bool lvx_has_43bit_vector_const_p (rtx x);
-
 extern bool lvx_uniform_lane_imm_p (rtx x);
 extern HOST_WIDE_INT lvx_uniform_lane_imm_value (rtx x);
 

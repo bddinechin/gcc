@@ -1160,7 +1160,7 @@
         (if_then_else:ALL128 (match_operator 2 "zero_comparison_operator"
                                                [(match_operand:SIDI 3 "register_operand" "r,r")
                                                 (const_int 0)])
-                             (match_operand:ALL128 1 "reg_or_imm32_operand" "r,I32")
+                             (match_operand:ALL128 1 "register_s32_operand" "r,I32")
                              (match_operand:ALL128 4 "register_operand" "0,0")))]
   ""
   "@
@@ -1176,7 +1176,7 @@
         (if_then_else:ALL128 (EQNE (zero_extract:SIDI (match_operand:SIDI 2 "register_operand" "r,r")
                                                       (const_int 1) (const_int 0))
                                    (const_int 0))
-                             (match_operand:ALL128 1 "reg_or_imm32_operand" "r,I32")
+                             (match_operand:ALL128 1 "register_s32_operand" "r,I32")
                              (match_operand:ALL128 3 "register_operand" "0,0")))]
   ""
   "@

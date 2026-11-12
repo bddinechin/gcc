@@ -14,11 +14,6 @@
        (ior (match_test "!strcmp (XSTR (op, 0), \".lt\")")
 	    (match_test "!strcmp (XSTR (op, 0), \".ne\")"))))
 
-;; Constant -1 operand for scalar or vector MODE
-(define_predicate "const_mone_operand"
-  (and (match_code "const_int, const_wide_int,const_vector")
-       (match_test "op == CONSTM1_RTX (mode)")))
-
 ;; Constant 0 or -1 operand for scalar or vector MODE
 (define_predicate "const_zero_mone_operand"
   (and (match_code "const_int, const_wide_int,const_vector")
@@ -32,18 +27,13 @@
 
 ;; Register or constant 0/-1.
 (define_predicate "reg_zero_mone_operand"
-  (and (match_code "reg,subreg,const_int,const_vector")
-       (ior (match_operand 0 "register_operand")
-            (match_test "op == const0_rtx")
-            (match_test "op == constm1_rtx")
-            (match_test "op == CONST0_RTX (mode)")
-            (match_test "op == CONSTM1_RTX (mode)"))))
+  (ior (match_operand 0 "register_operand")
+       (match_operand 0 "const_zero_mone_operand")))
 
 ;; Register or constant 1.0 (floating-point).
 (define_predicate "register_float1_operand"
-  (and (match_code "reg,subreg,const_double,const_vector")
-       (ior (match_operand 0 "register_operand")
-            (match_test "op == CONST1_RTX (mode)"))))
+  (ior (match_operand 0 "register_operand")
+       (match_operand 0 "const_float1_operand")))
 
 ;; Allow for LABELs to be used in the mov expander
 ;; It will split it using add_pcrel insn.
@@ -54,16 +44,14 @@
       (and (match_test "flag_pic")
            (match_code "label_ref"))))
 
-(define_predicate "reg_shift_operand"
- (and (match_code "reg,subreg,const_int")
-      (ior (match_operand 0 "register_operand")
-           (match_test "satisfies_constraint_U06(op)"))))
-
+;; An unsigned 6-bit const_int: the predicate that agrees with U06.
 (define_predicate "sixbits_unsigned_operand"
-  (match_code "const_int")
-{
-  return (INTVAL (op) >= 0 && INTVAL (op) < (1<<6));
-})
+  (and (match_code "const_int")
+       (match_test "satisfies_constraint_U06 (op)")))
+
+(define_predicate "reg_shift_operand"
+  (ior (match_operand 0 "register_operand")
+       (match_operand 0 "sixbits_unsigned_operand")))
 
 (define_predicate "fp_conv_shift_operand"
   (match_code "const_int")
@@ -74,7 +62,7 @@
      and silently dropped.  */
   if (!HAVE_LVX_FP_CONV_WITH_SHIFT)
     return op == const0_rtx;
-  return (INTVAL (op) >= 0 && INTVAL (op) < (1<<6));
+  return satisfies_constraint_U06 (op);
 })
 
 (define_predicate "const_pow2lt64_operand"
@@ -82,20 +70,6 @@
 {
   return (__builtin_popcountll (INTVAL (op)) == 1)
          && (__builtin_ctzll (INTVAL (op)) < 64);
-})
-
-(define_predicate "const_pos32_operand"
-  (and (match_code "const_int")
-       (match_test "satisfies_constraint_I32(op)"))
-{
-  return INTVAL (op) >= 0;
-})
-
-(define_predicate "const_neg32_operand"
-  (and (match_code "const_int")
-       (match_test "satisfies_constraint_I32(op)"))
-{
-  return INTVAL (op) < 0;
 })
 
 ;; A signed 32-bit const_int and nothing else: the predicate that agrees with
@@ -108,17 +82,32 @@
   (and (match_code "const_int")
        (match_test "satisfies_constraint_I32 (op)")))
 
-;; Register or immediate up to signed 32
-(define_predicate "register_s32_operand"
- (and (match_code "reg,subreg,const,const_int")
-      (ior (match_operand 0 "register_operand")
-           (match_test "satisfies_constraint_I32(op)"))))
+;; A non-negative signed 32-bit const_int.
+(define_predicate "const_pos32_operand"
+  (and (match_operand 0 "const_s32_operand")
+       (match_test "INTVAL (op) >= 0")))
 
-;; Register or immediate up to wrapped 32
+;; A register, or a constant the machine sign-extends from a 32-bit word (I32).
+;; This is also the 128-bit scalar source of a .M format -- the TImode
+;; arithmetic and bitwise patterns and CMOVEQ -- which reg_or_imm32_operand
+;; used to spell separately with the same test.  Those once admitted a
+;; replicated word too, via the `.@' modifier; that reading is retired from the
+;; ISA, splatting being a property of a SIMD instruction's lane size, and none
+;; of these users has one.  Admitting a value no alternative can hold is what
+;; makes reload fail rather than diagnose.
+;;
+;; Neither this nor register_w32_operand takes a symbolic CONST: I32 and W32
+;; are const_int only, and the `const' this match_code used to list could never
+;; get past them.
+(define_predicate "register_s32_operand"
+  (ior (match_operand 0 "register_operand")
+       (match_operand 0 "const_s32_operand")))
+
+;; A register, or a 32-bit const_int read either signed or unsigned (W32).
 (define_predicate "register_w32_operand"
- (and (match_code "reg,subreg,const,const_int")
-      (ior (match_operand 0 "register_operand")
-           (match_test "satisfies_constraint_W32(op)"))))
+  (ior (match_operand 0 "register_operand")
+       (and (match_code "const_int")
+            (match_test "satisfies_constraint_W32 (op)"))))
 
 ;; Register or immediate up to float 32
 (define_predicate "register_f32_operand"
@@ -165,27 +154,6 @@
 ;; Floating-point comparisons operators supported.
 (define_predicate "float_comparison_operator"
   (match_code "ne,eq,ge,lt,uneq,unge,unlt,ltgt"))
-
-;; Return 1 if this is predicable unary operator.
-(define_predicate "pred_unary_operator"
-  (ior
-    (match_code "neg,ss_neg,abs,ss_abs,not")
-    (match_code "sign_extend,zero_extend,truncate,bswap,ffs,clrsb,ctz,popcount")
-    (match_code "float_extend,float_truncate,float,fix,unsigned_float,unsigned_fix")))
-
-;; Return 1 if this is predicable shift/rotate operator.
-(define_predicate "pred_shift_operator"
-  (match_code "ashift,ss_ashift,us_ashift,ashiftrt,lshiftrt,rotate,rotatert"))
-
-;; Return 1 if this is predicable binary arithmetic operator (no mult).
-(define_predicate "pred_binarith_operator"
-  (ior
-    (match_code "plus,ss_plus,us_plus,minus,ss_minus,us_minus")
-    (match_code "and,ior,xor,smin,smax,umin,umax")))
-
-;; Return 1 if this is predicable multiply operator.
-(define_predicate "pred_multiply_operator"
-  (match_code "mult"))
 
 ;; Returns TRUE if op is a register or an immediate suitable for sign
 ;; extension from the format signed10, upper27_lower10 or
@@ -246,16 +214,10 @@
   return true;
 })
 
-;; Used to filter the addressing mode of masked memory instructions.
+;; The addressing modes of the masked and the atomic memory instructions, which
+;; are the same two: a bare register (constraint `c') or a 27-bit offset (`d').
+;; mematomic_operand was a second copy of this body.
 (define_predicate "memsimple_operand"
-  (match_code "mem")
-{
-  return indirect_operand (op, mode)
-         || lvx_has_27bit_immediate_p (op);
-})
-
-;; Used to filter the addressing mode of atomic memory instructions.
-(define_predicate "mematomic_operand"
   (match_code "mem")
 {
   return indirect_operand (op, mode)
@@ -354,46 +316,3 @@
   (ior (match_operand 0 "register_operand")
        (match_operand 0 "const_zero_operand")))
 
-;; A 128-bit scalar source for a .M format: a register, or a constant the
-;; machine sign-extends from a 32-bit word.
-;;
-;; IT USED TO ADMIT A REPLICATED WORD TOO, via reg_or_lane_imm_operand, the two
-;; immediate readings being one encoding bit apart -- and an __int128 wanted
-;; both, a small constant and a repeating mask.  The replicating reading was
-;; the `.@' modifier, which is retired from the ISA: splatting is now a
-;; property of a SIMD instruction's LaneSize, and none of this predicate's
-;; users (the TImode arithmetic and bitwise patterns, and CMOVEQ) has a lane
-;; size.  Admitting a value no alternative can hold is what makes reload fail
-;; rather than diagnose, so the arm goes with the alternatives it fed.
-;;
-;; reg_or_lane_imm_operand itself STAYS: its other 66 users in vector.md are
-;; the lane-wise .M forms, where the splat is now implicit.
-(define_predicate "reg_or_imm32_operand"
-  (ior (match_operand 0 "register_operand")
-       (and (match_code "const_int")
-            (match_test "SIGNED_INT_FITS_N_BITS (INTVAL (op), 32)"))))
-
-;; The lane-index ramp { 0, 1, 2, ... n-1 }, which is what GCC's AVX-512-style
-;; partial-vector loop control compares a splatted remaining-count against to
-;; build the loop mask (tree-vect-loop-manip.cc,
-;; vect_set_loop_condition_partial_vectors_avx512, emitting
-;; `_34 = {rem,rem,rem,rem} > {0,1,2,3}').  Recognising it is what lets TAILD
-;; replace that SPLAT*/COMP*/AND triple, since `rem >u i' for every lane i is
-;; exactly TAILD's `0 + i <u rem'.
-(define_predicate "lvx_lane_ramp_operand"
-  (match_code "const_vector")
-{
-  /* CONST_VECTOR_ENCODED_ELT is the wrong accessor here: GCC stores a ramp in
-     a compressed stepped encoding whose encoded element count is smaller than
-     the lane count (three for {0,1,2,3}), so reading the encoding directly
-     both under-counts the lanes and returns the pattern rather than the
-     values.  CONST_VECTOR_ELT decodes.  */
-  unsigned n = GET_MODE_NUNITS (mode);
-  for (unsigned i = 0; i < n; i++)
-    {
-      rtx e = CONST_VECTOR_ELT (op, i);
-      if (!CONST_INT_P (e) || UINTVAL (e) != i)
-        return false;
-    }
-  return true;
-})

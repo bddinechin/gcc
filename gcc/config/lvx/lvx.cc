@@ -5497,41 +5497,6 @@ lvx_float_fits_bits (const REAL_VALUE_TYPE *r, unsigned bitsz,
 }
 
 bool
-lvx_has_10bit_vector_const_p (rtx x)
-{
-  HOST_WIDE_INT value = lvx_const_vector_value (x, 0);
-  return SIGNED_INT_FITS_N_BITS (value, 10);
-}
-
-bool
-lvx_has_16bit_vector_const_p (rtx x)
-{
-  HOST_WIDE_INT value = lvx_const_vector_value (x, 0);
-  return SIGNED_INT_FITS_N_BITS (value, 16);
-}
-
-bool
-lvx_has_32bit_vector_const_p (rtx x)
-{
-  HOST_WIDE_INT value = lvx_const_vector_value (x, 0);
-  return SIGNED_INT_FITS_N_BITS (value, 32);
-}
-
-bool
-lvx_has_37bit_vector_const_p (rtx x)
-{
-  HOST_WIDE_INT value = lvx_const_vector_value (x, 0);
-  return SIGNED_INT_FITS_N_BITS (value, 37);
-}
-
-bool
-lvx_has_43bit_vector_const_p (rtx x)
-{
-  HOST_WIDE_INT value = lvx_const_vector_value (x, 0);
-  return SIGNED_INT_FITS_N_BITS (value, 43);
-}
-
-bool
 lvx_uniform_lane_imm_p (rtx x)
 {
   /* The packed-immediate formats carry one 32-bit field and each lane takes

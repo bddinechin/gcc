@@ -25,7 +25,7 @@
 (define_expand "atomic_compare_and_swap<mode>"
   [(match_operand:SI 0 "register_operand")   ;; bool output
    (match_operand:ACSI 1 "register_operand") ;; val output before CAS
-   (match_operand:ACSI 2 "mematomic_operand");; memory
+   (match_operand:ACSI 2 "memsimple_operand");; memory
    (match_operand:ACSI 3 "register_operand") ;; expected
    (match_operand:ACSI 4 "register_operand") ;; desired
    (match_operand:SI 5 "const_int_operand")     ;; is_weak
@@ -42,7 +42,7 @@
 ;; Atomic load operation with memory model semantics.
 (define_expand "atomic_load<mode>"
   [(match_operand:AI 0 "register_operand" "")   ;; val output
-   (match_operand:AI 1 "mematomic_operand" "")  ;; memory
+   (match_operand:AI 1 "memsimple_operand" "")  ;; memory
    (match_operand:SI 2 "const_int_operand" "")] ;; model
   ""
   {
@@ -69,7 +69,7 @@
 
 ;; Atomic store operation with memory model semantics.
 (define_expand "atomic_store<mode>"
-  [(match_operand:AI 0 "mematomic_operand" "")  ;; memory
+  [(match_operand:AI 0 "memsimple_operand" "")  ;; memory
    (match_operand:AI 1 "register_operand" "")   ;; val to write
    (match_operand:SI 2 "const_int_operand" "")] ;; model
   ""
@@ -84,7 +84,7 @@
 ;; Atomic exchange operation with memory model semantics.
 (define_expand "atomic_exchange<mode>"
   [(match_operand:AMO 0 "register_operand" "") ;; val output (memory content)
-   (match_operand:AMO 1 "mematomic_operand" "");; memory
+   (match_operand:AMO 1 "memsimple_operand" "");; memory
    (match_operand:AMO 2 "register_operand" "") ;; new value
    (match_operand:SI 3 "const_int_operand" "")] ;; model
   ""
@@ -100,7 +100,7 @@
 (define_expand "atomic_<atomic_optab><mode>"
   [(match_operand:AMO 0 "register_operand" "")    ;; op result
    (atomic_op:AMO (match_dup 0)
-     (match_operand:AMO 1 "mematomic_operand" ""));; op1, op2
+     (match_operand:AMO 1 "memsimple_operand" ""));; op1, op2
    (match_operand:SI 2 "const_int_operand" "")]    ;; model
   ""
   {
@@ -115,7 +115,7 @@
 (define_expand "atomic_fetch_<atomic_optab><mode>"
  [(match_operand:AMO 0 "register_operand" "")    ;; output (memory content before op)
   (atomic_op:AMO
-    (match_operand:AMO 1 "mematomic_operand" "") ;; op1, op result
+    (match_operand:AMO 1 "memsimple_operand" "") ;; op1, op result
     (match_operand:AMO 2 "register_operand" "")) ;; op2
    (match_operand:SI 3 "const_int_operand")]      ;; model
   ""
@@ -131,7 +131,7 @@
 (define_expand "atomic_<atomic_optab>_fetch<mode>"
  [(match_operand:AMO 0 "register_operand" "")    ;; output (op result)
   (atomic_op:AMO
-    (match_operand:AMO 1 "mematomic_operand" "") ;; op1, op result
+    (match_operand:AMO 1 "memsimple_operand" "") ;; op1, op result
     (match_operand:AMO 2 "register_operand" "")) ;; op2
   (match_operand:SI 3 "const_int_operand" "")]    ;; model
   ""
@@ -151,7 +151,7 @@
 ;; semantics.
 (define_expand "atomic_test_and_set"
  [(match_operand:QI 0 "register_operand" "")   ;; output (memory content)
-  (match_operand:QI 1 "mematomic_operand" "")  ;; memory
+  (match_operand:QI 1 "memsimple_operand" "")  ;; memory
   (match_operand:SI 2 "const_int_operand" "")] ;; model
   ""
   {
@@ -217,7 +217,7 @@
 ;; property of this ISA.
 (define_insn "lvx_al<lsusize>"
   [(set (match_operand:AMO 0 "register_operand" "=r,r")
-     (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "c,d")
+     (unspec_volatile:AMO [(match_operand:AMO 1 "memsimple_operand" "c,d")
                             (match_operand 2 "" "")] UNSPEC_ALOAD))
    (use (match_dup 1))]
   ""
@@ -230,7 +230,7 @@
 
 ;; Atomic Store
 (define_insn "lvx_as<lsusize>"
-  [(set (match_operand:AMO 1 "mematomic_operand"  "=c,d")
+  [(set (match_operand:AMO 1 "memsimple_operand"  "=c,d")
         (unspec_volatile:AMO [(match_operand:AMO 0 "register_operand" "r,r")
                                (match_operand 2 "" "")] UNSPEC_ASTORE))
    (clobber (match_dup 1))]
@@ -245,7 +245,7 @@
 ;; Atomic Load and Clear
 (define_expand "lvx_alclr<lsusize>"
   [(set (match_operand:AMO 0 "register_operand" "")
-        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "memsimple_operand" "")
                                (match_operand 2 "" "")] UNSPEC_ALCLR))]
   ""
   ""
@@ -255,7 +255,7 @@
 
 (define_insn "alclr<lsusize>_2"
   [(set (match_operand:AMO 0 "register_operand" "=r,r")
-        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "c,d")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "memsimple_operand" "c,d")
                                (match_operand 2 "" "")] UNSPEC_ALCLR))]
   ""
   "alclr<lsusize>%2%X1 %0 = %O1"
@@ -269,7 +269,7 @@
 (define_expand "lvx_aladd<lsusize>"
   [(parallel
     [(set (match_operand:AMO 0 "register_operand" "")
-          (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "")
+          (unspec_volatile:AMO [(match_operand:AMO 1 "memsimple_operand" "")
                                  (match_operand 3 "" "")] UNSPEC_ALADD))
      (set (match_dup 1)
           (plus:AMO (match_dup 1)
@@ -309,7 +309,7 @@
 ;; overlap: `_Atomic' is Local, and the explicit domains are explicit.
 (define_insn "al<amo_mnemonic><lsusize>_amo"
   [(set (match_operand:AMO 0 "register_operand" "=r,r")
-        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "memsimple_operand" "+c,d")
                               (match_operand 3 "" "")] UNSPEC_AMO_FETCH))
    (set (match_dup 1)
         (amo_op:AMO (match_dup 1)
@@ -334,7 +334,7 @@
 ;; Operand order follows lvx_as<lsusize>, because LVX_EXPAND_BUILTIN_ASTORE
 ;; calls gen_<name> (value, memory, modifier).
 (define_insn "lvx_as<amo_mnemonic><lsusize>"
-  [(set (match_operand:AMO 1 "mematomic_operand" "=c,d")
+  [(set (match_operand:AMO 1 "memsimple_operand" "=c,d")
         (unspec_volatile:AMO [(amo_op:AMO (match_dup 1)
                                           (match_operand:AMO 0 "register_operand" "r,r"))
                               (match_operand 2 "" "")] UNSPEC_AMO_NOFETCH))
@@ -381,7 +381,7 @@
 ;; calls gen_<name> (value, memory, modifier).
 (define_insn "lvx_al<amo_mm_mnemonic><lsusize>"
   [(set (match_operand:AMO 0 "register_operand" "=r,r")
-        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "memsimple_operand" "+c,d")
                               (match_operand 3 "" "")] UNSPEC_AMO_FETCH))
    (set (match_dup 1)
         (amo_mm:AMO (match_dup 1)
@@ -395,7 +395,7 @@
 )
 
 (define_insn "lvx_as<amo_mm_mnemonic><lsusize>"
-  [(set (match_operand:AMO 1 "mematomic_operand" "=c,d")
+  [(set (match_operand:AMO 1 "memsimple_operand" "=c,d")
         (unspec_volatile:AMO [(amo_mm:AMO (match_dup 1)
                                           (match_operand:AMO 0 "register_operand" "r,r"))
                               (match_operand 2 "" "")] UNSPEC_AMO_NOFETCH))
@@ -410,7 +410,7 @@
 
 (define_insn "lvx_aldus<lsusize>"
   [(set (match_operand:AMO 0 "register_operand" "=r,r")
-        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "memsimple_operand" "+c,d")
                               (match_operand 3 "" "")] UNSPEC_AMO_FETCH))
    (set (match_dup 1)
         (unspec:AMO [(match_dup 1)
@@ -424,7 +424,7 @@
 )
 
 (define_insn "lvx_asdus<lsusize>"
-  [(set (match_operand:AMO 1 "mematomic_operand" "=c,d")
+  [(set (match_operand:AMO 1 "memsimple_operand" "=c,d")
         (unspec_volatile:AMO [(unspec:AMO [(match_dup 1)
                                            (match_operand:AMO 0 "register_operand" "r,r")]
                                           UNSPEC_AMO_DUS)
@@ -440,7 +440,7 @@
 
 (define_insn "lvx_aswap<lsusize>"
   [(set (match_operand:AMO 0 "register_operand" "=r,r")
-        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "memsimple_operand" "+c,d")
                               (match_operand 3 "" "")] UNSPEC_AMO_FETCH))
    (set (match_dup 1)
         (match_operand:AMO 2 "register_operand" "0,0"))]
@@ -454,7 +454,7 @@
 
 (define_insn "aladd<lsusize>_2"
   [(set (match_operand:AMO 0 "register_operand" "=r,r")
-        (unspec_volatile:AMO [(match_operand:AMO 1 "mematomic_operand" "+c,d")
+        (unspec_volatile:AMO [(match_operand:AMO 1 "memsimple_operand" "+c,d")
                                (match_operand 3 "" "")] UNSPEC_ALADD))
    (set (match_dup 1)
         (plus:AMO (match_dup 1)
@@ -499,7 +499,7 @@
 (define_expand "lvx_acswap<lsusize>"
   [(parallel
     [(set (match_operand:<ACSWAP_EX> 0 "register_operand")
-          (unspec_volatile:<ACSWAP_EX> [(match_operand:ACSWAP_IN 1 "mematomic_operand")
+          (unspec_volatile:<ACSWAP_EX> [(match_operand:ACSWAP_IN 1 "memsimple_operand")
                                (match_operand 2)] UNSPEC_ACSWAP))
      (set (match_dup 1)
           (unspec:ACSWAP_IN [(match_dup 1) (match_dup 0)] UNSPEC_ACSWAP))
@@ -516,7 +516,7 @@
 
 (define_insn "acswap<lsusize>_2"
   [(set (match_operand:<ACSWAP_EX> 0 "register_operand" "+r,r")
-        (unspec_volatile:<ACSWAP_EX> [(match_operand:ACSWAP_IN 1 "mematomic_operand" "+c,d")
+        (unspec_volatile:<ACSWAP_EX> [(match_operand:ACSWAP_IN 1 "memsimple_operand" "+c,d")
                              (match_operand 2 "" "")] UNSPEC_ACSWAP))
    (set (match_dup 1)
         (unspec:ACSWAP_IN [(match_dup 1) (match_dup 0)] UNSPEC_ACSWAP))
