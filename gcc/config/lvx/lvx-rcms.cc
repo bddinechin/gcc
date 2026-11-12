@@ -347,14 +347,39 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
      same rows, which is what makes the difference attributable.  */
   /* Which operations define a value some other operation reads?  A REG_RAW
      arc IS that relation, so the lifetime variables need no new analysis:
-     one killer per producer, bounded below by each consumer's date.  */
-  auto_vec<bool> producer;
+     one killer per producer, bounded below by each consumer's date.
+
+     AND EACH ONE IS WEIGHTED BY THE WIDTH OF THE TUPLE IT PRODUCES.
+     §7tricies.230.  A 128-bit value lives in an aligned GPR PAIR and a
+     256-bit one in a QUAD, so a value is not one register and a lifetime is
+     not one register-cycle: what the allocator has to fit is
+     nregs * (killer - definition).  Weighting every value 1 prices a quad
+     like a single GPR and so under-prices precisely the values whose
+     lifetimes hurt most.
+
+     This is the author's adjustment of 2026-10-27, already in the
+     framework's own MCRL relaxation -- lvx_lms_mcrl_dates makes the flow
+     leaving a producer node NREGS (i) for exactly this reason -- and it is
+     the main difference from the LAO equations.  The criterion for which
+     producers count, and how their width is read, is the same one
+     lvx_lms_mcrl_dates applies, so the ILP and the relaxation price the
+     same quantity.  */
+  auto_vec<int> nregs;
   bool any_life = false;
-  producer.safe_grow_cleared (n);
+  nregs.safe_grow_cleared (n);
+  for (i = 0; i < n; i++)
+    nregs[i] = 0;
   for (unsigned a = 0; a < arcs.length (); a++)
     if (arcs[a].kind == LVX_ARC_REG_RAW
-	&& arcs[a].src < n && arcs[a].dst < n)
-      producer[arcs[a].src] = true, any_life = true;
+	&& arcs[a].src < n && arcs[a].dst < n
+	&& nregs[arcs[a].src] == 0)
+      {
+	rtx ds = single_set (seq[arcs[a].src]);
+	int nr = (ds && REG_P (SET_DEST (ds))) ? REG_NREGS (SET_DEST (ds)) : 1;
+
+	nregs[arcs[a].src] = MAX (nr, 1);
+	any_life = true;
+      }
 
   const bool mcrl = (lvx_lms_rcms_objective == 2 && any_life);
   const bool want_span = !mcrl;
@@ -371,14 +396,14 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 	     flight, and measurement said the commonest reason a solved
 	     schedule was thrown away is that its kernel would not colour.  */
 	  fprintf (f, "Minimize\n obj:");
-	  for (unsigned i = 0; i < n; i++)
-	    if (producer[i])
-	      fprintf (f, " + k_%u", i);
-	  for (unsigned i = 0; i < n; i++)
-	    if (producer[i])
+	  for (i = 0; i < n; i++)
+	    if (nregs[i])
+	      fprintf (f, " + %d k_%u", nregs[i], i);
+	  for (i = 0; i < n; i++)
+	    if (nregs[i])
 	      for (t = st->win[i].lo; t <= st->win[i].hi; t++)
 		if (t != 0)
-		  fprintf (f, " %+d x_%u_%d", -t, i, t);
+		  fprintf (f, " %+d x_%u_%d", -nregs[i] * t, i, t);
 	  fprintf (f, "\nSubject To\n");
 	}
       else
@@ -512,7 +537,8 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
       {
 	const lvx_lms_arc *ar = &arcs[a];
 
-	if (ar->kind != LVX_ARC_REG_RAW || ar->src >= n || ar->dst >= n)
+	if (ar->kind != LVX_ARC_REG_RAW || ar->src >= n || ar->dst >= n
+	    || nregs[ar->src] == 0)
 	  continue;
 	fprintf (f, " life_%u: k_%u", a, ar->src);
 	for (t = st->win[ar->dst].lo; t <= st->win[ar->dst].hi; t++)
@@ -543,14 +569,14 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 	fprintf (f, " 0 <= span <= %d\n", st->horizon + 1);
       if (mcrl)
 	for (i = 0; i < n; i++)
-	  if (producer[i])
+	  if (nregs[i])
 	    fprintf (f, " 0 <= k_%u <= %d\n", i, st->horizon + ii + 1);
       fprintf (f, "General\n");
       if (want_span)
 	fprintf (f, " span\n");
       if (mcrl)
 	for (i = 0; i < n; i++)
-	  if (producer[i])
+	  if (nregs[i])
 	    fprintf (f, " k_%u\n", i);
       fprintf (f, "Binaries\n");
       for (i = 0; i < n; i++)
