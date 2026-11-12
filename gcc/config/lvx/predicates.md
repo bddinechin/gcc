@@ -98,6 +98,16 @@
   return INTVAL (op) < 0;
 })
 
+;; A signed 32-bit const_int and nothing else: the predicate that agrees with
+;; the I32 constraint.  `immediate_operand' against an I32-only alternative
+;; admits a symbolic CONST that no alternative can hold, and LRA cannot reload
+;; a vec_duplicate of a constant -- `lvx_makedp' ICEd in curr_insn_transform on
+;; (vec_duplicate:V2DI (const (plus (symbol_ref) 16))) once its `i' alternative
+;; went.
+(define_predicate "const_s32_operand"
+  (and (match_code "const_int")
+       (match_test "satisfies_constraint_I32 (op)")))
+
 ;; Register or immediate up to signed 32
 (define_predicate "register_s32_operand"
  (and (match_code "reg,subreg,const,const_int")

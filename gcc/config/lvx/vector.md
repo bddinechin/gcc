@@ -132,9 +132,17 @@
 ;; was handed an instruction four bytes shorter than the one emitted.  The `i'
 ;; alternative claimed twelve for a form that does not exist at all, which is
 ;; how `makedp $r32r33 = 0x3ff07ae147ae147b' came to be emitted (§7tricies.205).
+;;
+;; THE PREDICATE MUST SAY I32 TOO.  Narrowing the alternatives to I32 left
+;; `immediate_operand' admitting a symbolic CONST, so combine still formed
+;; (vec_duplicate:V2DI (const (plus (symbol_ref "__malloc_av_") 16))) -- newlib's
+;; _mallocr.c -- and with no alternative to take it LRA ICEd ("unable to
+;; generate reloads").  The `i' alternative had been absorbing that case by
+;; printing an unencodable makedp.  `const_s32_operand' admits exactly what I32
+;; does, so a symbolic splat takes MAKED + SPLATDQ.  gcc.target/lvx/makedp-symbol.c.
 (define_insn "lvx_makedp"
   [(set (match_operand:V2DI 0 "register_operand" "=r")
-        (vec_duplicate:V2DI (match_operand:DI 1 "immediate_operand" "I32")))]
+        (vec_duplicate:V2DI (match_operand:DI 1 "const_s32_operand" "I32")))]
   "LVX_2 && lvx_hardreg_aligned_p (operands[0], V2DImode)"
   "makedp %0 = %1"
   [(set_attr "type" "alu")
