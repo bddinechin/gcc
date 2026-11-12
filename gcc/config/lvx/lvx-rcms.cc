@@ -331,8 +331,23 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
   if (f)
     fprintf (f, "\\ RCMS fn=%s ii=%d n=%u horizon=%d\n",
 	     current_function_name (), ii, n, st->horizon);
+  /* THE OBJECTIVE IS A LEVER, AND IT HAD BETTER BE.  §7tricies.229.
+     Minimising the makespan compresses the schedule, and a compressed
+     modulo schedule holds MORE values in flight at once -- that is what
+     instruction-level parallelism is.  Measured on polybench, the commonest
+     reason a solved RCMS schedule was thrown away is "kernel not
+     colourable": the optimum of (2.1) is a schedule the register allocator
+     cannot realise.  So the objective that looks obviously right is the one
+     fighting the allocator, and section 9.2's order -- feasibility FIRST,
+     makespan second -- is not a formality.
+
+     0 asks for feasibility alone (gamma = . in the habilitation's
+     notation): the zero objective, so any schedule satisfying every row
+     will do.  1 minimises the makespan.  Both are solved over exactly the
+     same rows, which is what makes the difference attributable.  */
   if (f)
-    fprintf (f, "Minimize\n obj: span\nSubject To\n");
+    fprintf (f, "Minimize\n obj: %sspan\nSubject To\n",
+	     lvx_lms_rcms_objective == 0 ? "0 " : "");
 
   /* ---- assignment: sum_t x_i^t = 1 ---- */
   for (i = 0; i < n; i++)
@@ -636,8 +651,11 @@ lvx_rcms_selfcheck (struct lvx_rcms_state *st, int ii)
       return;
     }
 
+  auto_vec<int> cblame, cculprit;
+  cblame.safe_grow_cleared (st->n);
+  cculprit.safe_grow_cleared (st->n);
   const char *acc = lvx_lms_accept_p (*p->seq, *p->arcs, ii, probe,
-				      p->livein, NULL, NULL);
+				      p->livein, &cblame, &cculprit);
   if (acc != NULL)
     {
       if (lvx_lms_rcms_trace)
@@ -707,6 +725,7 @@ lvx_rcms_schedule_at_ii (void *state, int ii, auto_vec<int> &sigma,
 {
   struct lvx_rcms_state *st = (struct lvx_rcms_state *) state;
   const char *model = NULL, *sol = NULL;
+  auto_vec<int> blame, culprit;
   bool ok = false;
 
   if (!st->ok)
@@ -718,7 +737,7 @@ lvx_rcms_schedule_at_ii (void *state, int ii, auto_vec<int> &sigma,
   (*passes)++;
 
   if (!lvx_rcms_windows (st, ii, why))
-    return false;
+    goto out;
 
   if (lvx_lms_rcms_check)
     lvx_rcms_selfcheck (st, ii);
@@ -778,15 +797,36 @@ lvx_rcms_schedule_at_ii (void *state, int ii, auto_vec<int> &sigma,
 
   /* Acceptance is the framework's, not the engine's.  This is what makes an
      external solver safe to trust: whatever it returned is verified against
-     every arc and the modulo table before it can reach code generation.  */
+     every arc and the modulo table before it can reach code generation.
+
+     BLAME AND CULPRIT ARE NOT OPTIONAL.  §7tricies.229.  They look like
+     out-parameters a caller may decline, and the colourability path writes
+     through them WITHOUT a null check (lvx-lms.cc, the flow-record loop).
+     Passing NULL segfaulted the compiler on exactly the loops whose kernel
+     would not colour -- so the engine crashed where it should have reported
+     a refusal, and the refusal diagnostics that did appear were the
+     survivors of the ones that did not.  Allocate them, as SMS does.  */
+  blame.safe_grow_cleared (st->n);
+  culprit.safe_grow_cleared (st->n);
   *why = lvx_lms_accept_p (*st->p->seq, *st->p->arcs, ii, sigma,
-			   st->p->livein, NULL, NULL);
+			   st->p->livein, &blame, &culprit);
   ok = (*why == NULL);
   if (lvx_lms_rcms_trace)
     lvx_lms_dump (";; lvx rcms:   ii=%d acceptance: %s\n", ii,
 		  ok ? "taken" : *why);
 
 out:
+  /* A REFUSAL THAT DOES NOT SAY WHY CANNOT BE DIAGNOSED.  §7tricies.229.
+     RCMS answered on 382 of the 582 loops CMS answered on, and the solver
+     verdicts said the solver was not the bottleneck -- three timeouts in
+     462 -- so the losses are before or after it.  Which of the two, and in
+     what proportion, is not derivable from the counts that existed: this
+     line is what makes it countable.  */
+  if (!ok && dump_file && lvx_lms_probe)
+    lvx_lms_dump (";; lvx rcms: fn=%s ii=%d rcmsrefused: %s\n",
+		  current_function_name (), ii,
+		  (why != NULL && *why != NULL) ? *why : "unstated");
+
   if (!(lvx_lms_rcms_dir != NULL && lvx_lms_rcms_dir[0] != '\0')
       && !lvx_lms_rcms_keep)
     {
