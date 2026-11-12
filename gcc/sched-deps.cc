@@ -1117,7 +1117,12 @@ change_spec_dep_to_hard (sd_iterator_def sd_it)
 
   DEP_STATUS (dep) &= ~SPECULATIVE;
 
-  if (true_dependency_cache != NULL)
+  /* SPEC_DEPENDENCY_CACHE exists only under DO_SPECULATION, as every other
+     use of it checks.  A dependence can be "speculative" without it: under
+     DO_PREDICATION, dep_spec_p counts a REG_DEP_CONTROL one, and when
+     update_dep turns that into a REG_DEP_ANTI it comes here.  */
+  if (true_dependency_cache != NULL
+      && (current_sched_info->flags & DO_SPECULATION))
     /* Clear the cache entry.  */
     bitmap_clear_bit (&spec_dependency_cache[INSN_LUID (insn)],
 		      INSN_LUID (elem));
