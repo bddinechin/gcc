@@ -5453,6 +5453,28 @@ lvx_syscall_addrspace_p (rtx x)
 
 /* Constraints {{{ */
 
+/* Whether the FP constant R of MODE fits the 32-bit immediate of an FCOMP*.W
+   format -- the H32 constraint, whose only user is *fcomp<ALLF>.
+
+   The field is a wrapped32: gas takes any 32-bit word, written signed or
+   unsigned, and the instruction reads it at its own width.  FCOMPW is a
+   32-bit operation, so every SF bit pattern fits, negative ones included --
+   lvx_float_fits_bits zero-extends the pattern and then asks for a SIGNED
+   32-bit fit, which refused every negative float and cost `x < -1.5f' a
+   MAKED.  FCOMPD sign-extends the word to 64 bits, so there a DF fits only
+   when its bit pattern is a sign-extended word, which is what
+   lvx_float_fits_bits tests.  That function stays as it is for the move
+   pattern's H16/H43, where the zero-extended view is the one that matches
+   the unsigned literal the constant is printed as.  */
+
+bool
+lvx_float_fits_imm32 (const REAL_VALUE_TYPE *r, machine_mode mode)
+{
+  if (mode == SFmode)
+    return true;
+  return lvx_float_fits_bits (r, 32, mode);
+}
+
 bool
 lvx_float_fits_bits (const REAL_VALUE_TYPE *r, unsigned bitsz,
 		     enum machine_mode mode)

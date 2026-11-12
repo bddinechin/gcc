@@ -201,6 +201,7 @@ extern bool lvx_insf_topmask_p (machine_mode mode, rtx basemask, rtx shift);
 extern const char *lvx_output_insf (unsigned HOST_WIDE_INT mask,
 				    machine_mode mode, int valop);
 
+extern bool lvx_float_fits_imm32 (const REAL_VALUE_TYPE *r, machine_mode mode);
 extern bool lvx_float_fits_bits (const REAL_VALUE_TYPE *r, unsigned bitsz,
 				 enum machine_mode mode);
 
