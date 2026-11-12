@@ -178,6 +178,12 @@ struct lvx_rcms_state
   int horizon;
   /* Reported back to the driver.  */
   bool ok;
+  /* How many intervals BELOW the one finally taken the solver failed to
+     decide.  §7tricies.231.  The ladder walks upward and stops at the first
+     interval it can accept, so an UNKNOWN at a lower interval means that
+     interval was never ruled out: the answer is an UPPER BOUND wearing a
+     minimum's name.  INFEASIBLE does not count -- that one is a proof.  */
+  int undecided;
 };
 
 /* One accessor per resource column, so that every place below which must
@@ -795,6 +801,7 @@ lvx_rcms_prepare (const struct lvx_lms_problem *p)
   st->n = p->seq->length ();
   st->horizon = 0;
   st->ok = st->n != 0;
+  st->undecided = 0;
 
   /* b_i, charged exactly as every other engine charges it -- the prefix
      conservatism of the GUARD family included.  RCMS being measured against
@@ -888,7 +895,15 @@ lvx_rcms_schedule_at_ii (void *state, int ii, auto_vec<int> &sigma,
   if (!lvx_rcms_solve (model, sol, why))
     goto out;
   if (!lvx_rcms_read (st, sol, sigma, why))
-    goto out;
+    {
+      /* Distinguish the two refusals that look alike from outside: an
+	 interval proved impossible, and an interval the solver simply could
+	 not decide in its budget.  Only the first lets the ladder's step up
+	 be read as a fact about the loop.  */
+      if (*why != NULL && strstr (*why, "unknown") != NULL)
+	st->undecided++;
+      goto out;
+    }
 
   /* Acceptance is the framework's, not the engine's.  This is what makes an
      external solver safe to trust: whatever it returned is verified against
@@ -906,6 +921,15 @@ lvx_rcms_schedule_at_ii (void *state, int ii, auto_vec<int> &sigma,
   *why = lvx_lms_accept_p (*st->p->seq, *st->p->arcs, ii, sigma,
 			   st->p->livein, &blame, &culprit);
   ok = (*why == NULL);
+  if (ok && dump_file && lvx_lms_probe)
+    /* SAY WHICH KIND OF ANSWER THIS IS.  An interval taken with nothing
+       undecided below it is the MINIMUM, proved; one taken after the solver
+       gave up somewhere lower is only an upper bound, and reporting the two
+       the same way is what would let an optimality claim rest on a
+       timeout.  */
+    lvx_lms_dump (";; lvx rcms: fn=%s ii=%d rcmsbound=%s undecided=%d\n",
+		  current_function_name (), ii,
+		  st->undecided == 0 ? "minimum" : "upper", st->undecided);
   if (lvx_lms_rcms_trace)
     lvx_lms_dump (";; lvx rcms:   ii=%d acceptance: %s\n", ii,
 		  ok ? "taken" : *why);

@@ -13976,7 +13976,25 @@ lvx_machine_dependent_reorg (void)
 	 The hooks differ from the first pass's in one callback: a doloop_end
 	 the first pass already mapped must not be DISCOVERED here, or the
 	 loops LMS left alone would be mapped twice.  */
-      if (optimize && lvx_lms_reorg2)
+      /* ONLY IF THE PIPELINER ACTUALLY WALKED.  §7tricies.231.
+	 lvx_lms_pipeline_loops returns immediately when there is neither a
+	 dump file nor codegen -- the walk has no consumer -- so under
+	 -mlms-probe alone it builds nothing and leaves the CFG as it found
+	 it.  Running a second reorg_loops over that CFG is not merely
+	 pointless, which the comment above already says: it ICEs, in
+	 verify_flow_info with "REG_BR_PROB is set but cfg probability is
+	 not", from reorder_loops -> cfg_layout_finalize.
+
+	 The shape of the bug is why it survived so long.  Every census and
+	 every comparison passes -fdump-rtl-mach, which makes dump_file
+	 non-null, which makes the walk run, which makes this safe -- so the
+	 configuration that crashes is the one nobody measures, and the one
+	 that ships.  Measured: tsvc.c ICEs at -O2 -mlms-probe without
+	 -fdump-rtl-mach and compiles with it, on all three engines alike.
+
+	 The condition is the walk's own precondition, written once here, so
+	 the two cannot drift apart.  */
+      if (optimize && lvx_lms_reorg2 && (dump_file || lvx_lms_codegen))
 	{
 	  lvx_check_doloop_discoverable ();
 	  if (lvx_lms_probe_cfg)
