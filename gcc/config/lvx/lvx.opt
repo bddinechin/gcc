@@ -223,6 +223,10 @@ mlms-copy-pref
 Target Var(lvx_lms_copy_pref) Init(0) Optimization
 Prefer a live-out range's own architected register when colouring, so the drain's copy back to it is deleted (Moon & Ebcioglu 1992).
 
+mlms-min-gain=
+Target RejectNegative Joined UInteger Var(lvx_lms_min_gain) Init(0) Optimization
+-mlms-min-gain=N	Require a pipeline to beat the SAME LOOP NOT PIPELINED by N percent, or decline it.  7tricies.228.  The only profitability test was nstages > 1 -- whether any overlap was achieved -- which says nothing about whether the overlap pays for its prologue and epilogue, so a loop running five iterations was pipelined on the same terms as one running five million.  The comparison is against the nstages=1 cost, per the author: a pipeline costs about (trips + nstages - 1) * II while the same body with no overlap costs trips * makespan, and the test is that the first beat the second.  Measured on the ghostscript zlib, admitting six such loops cost 2.24% of cycles while adding no depth -- Huffman-tree loops in _tr_flush_block, _tr_init and build_tree with trip counts of 5, 7, 9 and 16, entered once per compressed block.  0 disables the test.  A trip count that is NOT known never declines the loop: most loops here have none, crc32's among them, and refusing those would cost far more than this recovers.
+
 mlms-liveout-verify-applied
 Target Var(lvx_lms_liveout_verify_applied) Init(1) Optimization
 Check the CTRL_LIVEOUT commitment only on loops that actually dropped an arc.  7tricies.227.  The verifier was gated on this option being enabled rather than on the drop having happened, so a loop that considered the drop and declined it -- because it did not improve the bounds -- was still refused for breaking a promise it never made.  Measured: 126 loops were refused that way, 119 of them having reached the II lower bound, while ELEVEN loops in the whole corpus ever dropped an arc and none of the 126 was among them.  -mno-lms-liveout-verify-applied restores the old ungated check, and exists so the cost of the refusals can be measured on one compiler.
