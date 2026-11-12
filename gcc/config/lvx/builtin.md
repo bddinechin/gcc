@@ -2931,12 +2931,8 @@
         (unspec:SF [(match_operand:SI 1 "register_operand" "r")
                     (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FLOAT))]
-  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "floatw%3 %0 = %1, %2";
-    return "floatw%3 %0 = %1";
-  }
+  ""
+  "floatw%3 %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -2946,12 +2942,8 @@
         (unspec:DF [(match_operand:DI 1 "register_operand" "r")
                     (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FLOAT))]
-  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "floatd%3 %0 = %1, %2";
-    return "floatd%3 %0 = %1";
-  }
+  ""
+  "floatd%3 %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3014,12 +3006,8 @@
         (unspec:SF [(match_operand:SI 1 "register_operand" "r")
                     (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FLOATU))]
-  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "floatuw%3 %0 = %1, %2";
-    return "floatuw%3 %0 = %1";
-  }
+  ""
+  "floatuw%3 %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3029,12 +3017,8 @@
         (unspec:DF [(match_operand:DI 1 "register_operand" "r")
                     (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FLOATU))]
-  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "floatud%3 %0 = %1, %2";
-    return "floatud%3 %0 = %1";
-  }
+  ""
+  "floatud%3 %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3097,12 +3081,8 @@
         (unspec:SI [(match_operand:SF 1 "register_operand" "r")
                     (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FIXED))]
-  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixedw%3 %0 = %1, %2";
-    return "fixedw%3 %0 = %1";
-  }
+  ""
+  "fixedw%3 %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3113,11 +3093,7 @@
                                     (match_operand 2 "fp_conv_shift_operand" "i")
                                     (match_operand 3 "" "")] UNSPEC_FIXED)))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixedw%3 %0 = %1, %2";
-    return "fixedw%3 %0 = %1";
-  }
+  "fixedw%3 %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3127,12 +3103,8 @@
         (unspec:DI [(match_operand:DF 1 "register_operand" "r")
                     (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FIXED))]
-  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixedd%3 %0 = %1, %2";
-    return "fixedd%3 %0 = %1";
-  }
+  ""
+  "fixedd%3 %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3195,12 +3167,8 @@
         (unspec:SI [(match_operand:SF 1 "register_operand" "r")
                     (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FIXEDU))]
-  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixeduw%3 %0 = %1, %2";
-    return "fixeduw%3 %0 = %1";
-  }
+  ""
+  "fixeduw%3 %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3211,11 +3179,7 @@
                                     (match_operand 2 "fp_conv_shift_operand" "i")
                                     (match_operand 3 "" "")] UNSPEC_FIXEDU)))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixeduw%3 %0 = %1, %2";
-    return "fixeduw%3 %0 = %1";
-  }
+  "fixeduw%3 %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3225,12 +3189,8 @@
         (unspec:DI [(match_operand:DF 1 "register_operand" "r")
                     (match_operand 2 "fp_conv_shift_operand" "i")
                     (match_operand 3 "" "")] UNSPEC_FIXEDU))]
-  "HAVE_LVX_FP_CONV_WITH_SHIFT || operands[2] == const0_rtx"
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixedud%3 %0 = %1, %2";
-    return "fixedud%3 %0 = %1";
-  }
+  ""
+  "fixedud%3 %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )

@@ -45,8 +45,6 @@ enum lvx_arch_type
    in trunc<wide><mode>2 takes over.  */
 #define HAVE_LVX_FP_NARROW_VECTOR (1) // fnarrowwho, fnarrowdwq
 
-#define HAVE_LVX_FP_CONV_WITH_SHIFT (0)
-#define HAVE_LVX_SILENT_FP_OPS (0)
 #define HAVE_LVX_ADDRESSING_XS (0)
 
 /* ABDD/ABDW take registerY or upper27_lower5 and nothing wider, on both
@@ -61,7 +59,6 @@ enum lvx_arch_type
    which gas rejects ("expected one of [Immediate_lvx_2_wrapped32,
    RegClass_lvx_2_singleReg]").  */
 #define HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE (1)
-#define HAVE_LVX_COMP_SIDI_ALL_NALL (0)
 #define HAVE_LVX_COMPD_MAX_IMMEDIATE_I32 (1)
 #define HAVE_LVX_CMOVED_MAX_IMMEDIATE_I32 (1)
 
@@ -122,19 +119,6 @@ enum lvx_arch_type
 #define HAVE_LVX_ASHIFTRT_V8SI (1)
 #define HAVE_LVX_ASHIFTRT_V16HI (1)
 #define HAVE_LVX_ASHIFTRT_V32QI (1)
-
-/* 256-bit conditional move: the single-insn form emits four cmoved, but cmoved is
-   LITE and a bundle has only two ALU/LITE slots, so it overflows on both cores.
-   Force the split into two 128-bit cmoves (each two cmoved = one bundle).  OImode
-   is also the only ALL256 mode reachable on lvx-1 at all, where it ICEd. */
-#define HAVE_LVX_COND_MOV_OI (0)
-#define HAVE_LVX_COND_MOV_V32QI (0)
-#define HAVE_LVX_COND_MOV_V16HI (0)
-#define HAVE_LVX_COND_MOV_V16HF (0)
-#define HAVE_LVX_COND_MOV_V8SI (0)
-#define HAVE_LVX_COND_MOV_V8SF (0)
-#define HAVE_LVX_COND_MOV_V4DI (0)
-#define HAVE_LVX_COND_MOV_V4DF (0)
 
 /* The eight CPLX macros a pattern still names.  The other 26 of the 34 that
    were here went with the 64-bit SIMD family and its v2sf/v4hi/v8qi complex

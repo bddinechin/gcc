@@ -2865,11 +2865,7 @@
   [(set (match_operand:SF 0 "register_operand" "=r")
         (float:SF (match_operand:SI 1 "register_operand" "r")))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "floatw.rn %0 = %1, 0";
-    return "floatw.rn %0 = %1";
-  }
+  "floatw.rn %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -2878,11 +2874,7 @@
   [(set (match_operand:SF 0 "register_operand" "=r")
         (unsigned_float:SF (match_operand:SI 1 "register_operand" "r")))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "floatuw.rn %0 = %1, 0";
-    return "floatuw.rn %0 = %1";
-  }
+  "floatuw.rn %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -2891,11 +2883,7 @@
   [(set (match_operand:SF 0 "register_operand" "=r")
         (float:SF (match_operand:DI 1 "register_operand" "r")))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "floatdw.rn %0 = %1, 0";
-    return "floatdw.rn %0 = %1";
-  }
+  "floatdw.rn %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -2904,11 +2892,7 @@
   [(set (match_operand:SF 0 "register_operand" "=r")
         (unsigned_float:SF (match_operand:DI 1 "register_operand" "r")))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "floatudw.rn %0 = %1, 0";
-    return "floatudw.rn %0 = %1";
-  }
+  "floatudw.rn %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -2917,11 +2901,7 @@
   [(set (match_operand:SI 0 "register_operand" "=r")
         (fix:SI (match_operand:SF 1 "register_operand" "r")))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixedw.rz %0 = %1, 0";
-    return "fixedw.rz %0 = %1";
-  }
+  "fixedw.rz %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -2931,11 +2911,7 @@
   [(set (match_operand:DI 0 "register_operand" "=r")
         (zero_extend:DI (fix:SI (match_operand:SF 1 "register_operand" "r"))))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixedw.rz %0 = %1, 0";
-    return "fixedw.rz %0 = %1";
-  }
+  "fixedw.rz %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -2944,11 +2920,7 @@
   [(set (match_operand:SI 0 "register_operand" "=r")
         (unsigned_fix:SI (match_operand:SF 1 "register_operand" "r")))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixeduw.rz %0 = %1, 0";
-    return "fixeduw.rz %0 = %1";
-  }
+  "fixeduw.rz %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -2957,11 +2929,7 @@
   [(set (match_operand:DI 0 "register_operand" "=r")
         (zero_extend:DI (unsigned_fix:SI (match_operand:SF 1 "register_operand" "r"))))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixeduw.rz %0 = %1, 0";
-    return "fixeduw.rz %0 = %1";
-  }
+  "fixeduw.rz %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3174,11 +3142,7 @@
   [(set (match_operand:DF 0 "register_operand" "=r")
         (float:DF (match_operand:DI 1 "register_operand" "r")))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "floatd.rn %0 = %1, 0";
-    return "floatd.rn %0 = %1";
-  }
+  "floatd.rn %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3187,11 +3151,7 @@
   [(set (match_operand:DF 0 "register_operand" "=r")
         (unsigned_float:DF (match_operand:DI 1 "register_operand" "r")))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "floatud.rn %0 = %1, 0";
-    return "floatud.rn %0 = %1";
-  }
+  "floatud.rn %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3200,11 +3160,7 @@
   [(set (match_operand:DI 0 "register_operand" "=r")
         (fix:DI (match_operand:DF 1 "register_operand" "r")))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixedd.rz %0 = %1, 0";
-    return "fixedd.rz %0 = %1";
-  }
+  "fixedd.rz %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )
@@ -3213,11 +3169,7 @@
   [(set (match_operand:DI 0 "register_operand" "=r")
         (unsigned_fix:DI (match_operand:DF 1 "register_operand" "r")))]
   ""
-  {
-    if (HAVE_LVX_FP_CONV_WITH_SHIFT)
-      return "fixedud.rz %0 = %1, 0";
-    return "fixedud.rz %0 = %1";
-  }
+  "fixedud.rz %0 = %1"
   [(set_attr "type" "fcvt")
    (set_attr "issue" "lite")]
 )

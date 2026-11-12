@@ -53,17 +53,14 @@
   (ior (match_operand 0 "register_operand")
        (match_operand 0 "sixbits_unsigned_operand")))
 
+;; The scale of a float<->fixed conversion builtin, which must be zero.  No
+;; FLOAT*/FIXED* instruction has a scale operand -- every one is `%s %s = %s' in
+;; the opcode table -- so a non-zero scale has to be refused here rather than
+;; assembled and silently dropped.  The builtins keep the argument because it
+;; is their signature: newlib calls __builtin_lvx_floatw (x, 0, ".rn").
 (define_predicate "fp_conv_shift_operand"
-  (match_code "const_int")
-{
-  /* The scale of a float<->fixed conversion.  Without the shifted form the
-     instruction has no scale operand at all, so only a zero scale can be
-     honoured; anything else has to be rejected here rather than assembled
-     and silently dropped.  */
-  if (!HAVE_LVX_FP_CONV_WITH_SHIFT)
-    return op == const0_rtx;
-  return satisfies_constraint_U06 (op);
-})
+  (and (match_code "const_int")
+       (match_test "op == const0_rtx")))
 
 (define_predicate "const_pow2lt64_operand"
   (match_code "const_int")

@@ -1187,6 +1187,11 @@
    (set_attr "length"    "4,8")]
 )
 
+;; A 256-bit conditional move is always split into two 128-bit ones.  As one
+;; insn it would be four CMOVEDs, and CMOVED is LITE: a bundle has two LITE
+;; slots, so it overflows on both cores.  OImode is also the only ALL256 mode
+;; reachable on lvx-1, where the unsplit form ICEd.  The *select*_1 patterns
+;; below split the same way for the same reason.
 (define_insn_and_split "*cmov<SIDI:mode>.<ALL256:mode>"
   [(set (match_operand:ALL256 0 "register_operand" "=&r")
         (if_then_else:ALL256 (match_operator 2 "zero_comparison_operator"
@@ -1194,9 +1199,9 @@
                                                  (const_int 0)])
                              (match_operand:ALL256 1 "register_operand" "r")
                              (match_operand:ALL256 4 "register_operand" "0")))]
-  "!HAVE_LVX_COND_MOV_<ALL256:MODE>"
+  ""
   "#"
-  "!HAVE_LVX_COND_MOV_<ALL256:MODE> && reload_completed"
+  "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (if_then_else:<HALF> (match_op_dup 2 [(match_dup 3) (const_int 0)])
                              (subreg:<HALF> (match_dup 1) 0)
@@ -1217,9 +1222,9 @@
                                                  (const_int 0)])
                              (match_operand:ALL256 1 "const_zero_mone_operand" "S01")
                              (match_operand:ALL256 4 "register_operand" "0")))]
-  "!HAVE_LVX_COND_MOV_<ALL256:MODE>"
+  ""
   "#"
-  "!HAVE_LVX_COND_MOV_<ALL256:MODE> && reload_completed"
+  "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (if_then_else:<HALF> (match_op_dup 2 [(match_dup 3) (const_int 0)])
                              (match_dup 1)
@@ -1249,9 +1254,9 @@
                                    (const_int 0))
                              (match_operand:ALL256 1 "register_operand" "r")
                              (match_operand:ALL256 3 "register_operand" "0")))]
-  "!HAVE_LVX_COND_MOV_<ALL256:MODE>"
+  ""
   "#"
-  "!HAVE_LVX_COND_MOV_<ALL256:MODE> && reload_completed"
+  "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (if_then_else:<HALF> (EQNE (zero_extract:SIDI (match_dup 2)
                                                       (const_int 1) (const_int 0))
@@ -1276,9 +1281,9 @@
                                    (const_int 0))
                              (match_operand:ALL256 1 "const_zero_mone_operand" "S01")
                              (match_operand:ALL256 3 "register_operand" "0")))]
-  "!HAVE_LVX_COND_MOV_<ALL256:MODE>"
+  ""
   "#"
-  "!HAVE_LVX_COND_MOV_<ALL256:MODE> && reload_completed"
+  "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (if_then_else:<HALF> (EQNE (zero_extract:SIDI (match_dup 2)
                                                       (const_int 1) (const_int 0))
@@ -1465,9 +1470,9 @@
                                              (match_operand:<MASK> 5 "const_zero_operand" "")])
                             (match_operand:V256B 1 "register_operand" "r")
                             (match_operand:V256B 4 "register_operand" "0")))]
-  "!HAVE_LVX_COND_MOV_<MODE>"
+  ""
   "#"
-  "!HAVE_LVX_COND_MOV_<MODE> && reload_completed"
+  "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (if_then_else:<HALF> (match_op_dup 2 [(subreg:<HMASK> (match_dup 3) 0)
                                               (match_dup 5)])
@@ -1495,9 +1500,9 @@
                                 (match_operand:<MASK> 6 "const_zero_operand" ""))
                             (match_operand:V256B 1 "register_operand" "r")
                             (match_operand:V256B 4 "register_operand" "0")))]
-  "!HAVE_LVX_COND_MOV_<MODE>"
+  ""
   "#"
-  "!HAVE_LVX_COND_MOV_<MODE> && reload_completed"
+  "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (if_then_else:<HALF> (match_op_dup 2 [(subreg:<HMASK> (match_dup 3) 0)
                                               (match_dup 5)])
@@ -1526,9 +1531,9 @@
                                 (match_operand:<MASK> 7 "const_zero_operand" ""))
                             (match_operand:V256B 1 "register_operand" "r")
                             (match_operand:V256B 4 "register_operand" "0")))]
-  "!HAVE_LVX_COND_MOV_<MODE>"
+  ""
   "#"
-  "!HAVE_LVX_COND_MOV_<MODE> && reload_completed"
+  "reload_completed"
   [(set (subreg:<HALF> (match_dup 0) 0)
         (if_then_else:<HALF> (ne (eq:<HMASK> (match_op_dup:<HMASK> 2 [(subreg:<HMASK> (match_dup 3) 0)
                                                                       (match_dup 5)])
