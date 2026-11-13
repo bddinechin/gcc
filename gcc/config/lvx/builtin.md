@@ -1462,7 +1462,7 @@
 (define_insn "lvx_sbmm8d"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (unspec:DI [(match_operand:DI 1 "register_operand" "r,r,r,r")
-                    (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")] UNSPEC_SBMM8D))]
+                    (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")] UNSPEC_SBMM8D))]
   "HAVE_LVX_SBMM8_DI"
   "sbmm8d %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
@@ -1639,7 +1639,7 @@
 (define_insn "lvx_sbmmt8d"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (unspec:DI [(match_operand:DI 1 "register_operand" "r,r,r,r")
-                    (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")] UNSPEC_SBMMT8D))]
+                    (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")] UNSPEC_SBMMT8D))]
   "HAVE_LVX_SBMMT8_DI"
   "sbmmt8d %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")

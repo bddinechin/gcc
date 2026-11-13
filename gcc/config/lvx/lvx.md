@@ -180,13 +180,13 @@
   [(match_parallel 0 "load_multiple_operation"
     [(set (match_operand:DI 1 "register_operand" "=r,r,r")
           (mem:DI (plus:P (match_operand:P 2 "register_operand" "r,r,r")
-                          (match_operand 3 "const_int_operand" "I10,I37,i"))))
+                          (match_operand 3 "const_int_operand" "I10,I32,i"))))
      (set (match_operand:DI 4 "register_operand" "=r,r,r")
-          (mem:DI (plus:P (match_dup 2) (match_operand 5 "const_int_operand" "I10,I37,i"))))
+          (mem:DI (plus:P (match_dup 2) (match_operand 5 "const_int_operand" "I10,I32,i"))))
      (set (match_operand:DI 6 "register_operand" "=r,r,r")
-          (mem:DI (plus:P (match_dup 2) (match_operand 7 "const_int_operand" "I10,I37,i"))))
+          (mem:DI (plus:P (match_dup 2) (match_operand 7 "const_int_operand" "I10,I32,i"))))
      (set (match_operand:DI 8 "register_operand" "=r,r,r")
-          (mem:DI (plus:P (match_dup 2) (match_operand 9 "const_int_operand" "I10,I37,i"))))])]
+          (mem:DI (plus:P (match_dup 2) (match_operand 9 "const_int_operand" "I10,I32,i"))))])]
   "(XVECLEN (operands[0], 0) == 4)"
   {
     /* The mems share one address space, so one suffix covers the bundle.  */
@@ -203,9 +203,9 @@
   [(match_parallel 0 "load_multiple_operation"
     [(set (match_operand:DI 1 "register_operand" "=r,r,r")
           (mem:DI (plus:P (match_operand:P 2 "register_operand" "r,r,r")
-                          (match_operand 3 "const_int_operand" "I10,I37,i"))))
+                          (match_operand 3 "const_int_operand" "I10,I32,i"))))
      (set (match_operand:DI 4 "register_operand" "=r,r,r")
-          (mem:DI (plus:P (match_dup 2) (match_operand 5 "const_int_operand" "I10,I37,i"))))])]
+          (mem:DI (plus:P (match_dup 2) (match_operand 5 "const_int_operand" "I10,I32,i"))))])]
   "(XVECLEN (operands[0], 0) == 2)"
   {
     /* The mems share one address space, so one suffix covers the bundle.  */
@@ -221,10 +221,10 @@
 (define_insn "*sq_multiple"
   [(match_parallel 0 "store_multiple_operation"
     [(set (mem:DI (plus:P (match_operand:P 1 "register_operand" "r,r,r")
-                          (match_operand 2 "const_int_operand" "I10,I37,i")))
+                          (match_operand 2 "const_int_operand" "I10,I32,i")))
           (match_operand:DI 3 "register_operand" "r,r,r"))
 
-     (set (mem:DI (plus:P (match_dup 1) (match_operand 4 "const_int_operand" "I10,I37,i")))
+     (set (mem:DI (plus:P (match_dup 1) (match_operand 4 "const_int_operand" "I10,I32,i")))
           (match_operand:DI 5 "register_operand" "r,r,r"))])]
   "(XVECLEN (operands[0], 0) == 2)"
   "sq %2[%1] = %q3"
@@ -235,16 +235,16 @@
 (define_insn "*so_multiple"
   [(match_parallel 0 "store_multiple_operation"
     [(set (mem:DI (plus:P (match_operand:P 1 "register_operand" "r,r,r")
-                          (match_operand 2 "const_int_operand" "I10,I37,i")))
+                          (match_operand 2 "const_int_operand" "I10,I32,i")))
           (match_operand:DI 3 "register_operand" "r,r,r"))
 
-     (set (mem:DI (plus:P (match_dup 1) (match_operand 4 "const_int_operand" "I10,I37,i")))
+     (set (mem:DI (plus:P (match_dup 1) (match_operand 4 "const_int_operand" "I10,I32,i")))
           (match_operand:DI 5 "register_operand" "r,r,r"))
 
-     (set (mem:DI (plus:P (match_dup 1) (match_operand 6 "const_int_operand" "I10,I37,i")))
+     (set (mem:DI (plus:P (match_dup 1) (match_operand 6 "const_int_operand" "I10,I32,i")))
           (match_operand:DI 7 "register_operand" "r,r,r"))
 
-     (set (mem:DI (plus:P (match_dup 1) (match_operand 8 "const_int_operand" "I10,I37,i")))
+     (set (mem:DI (plus:P (match_dup 1) (match_operand 8 "const_int_operand" "I10,I32,i")))
           (match_operand:DI 9 "register_operand" "r,r,r"))])]
   "(XVECLEN (operands[0], 0) == 4)"
   "so %2[%1] = %o3"
@@ -277,7 +277,7 @@
 ;; FIXME AUTO: refine set insn to bundle it when possible. T7808
 (define_insn "*mov<mode>_all"
     [(set (match_operand:ALLIF 0 "nonimmediate_operand" "=r,      r,      r,  r, a, b, m, r, r, r,   r, SFR,  r,   r")
-          (match_operand:ALLIF 1 "general_operand"       "r, I16H16, I43H43, nF, r, r, r, a, b, m, SFR,   r, Cp, SYM"))]
+          (match_operand:ALLIF 1 "general_operand"       "r, I16H16, I32H32, nF, r, r, r, a, b, m, SFR,   r, Cp, SYM"))]
   "register_operand (operands[0], <MODE>mode) || register_operand (operands[1], <MODE>mode)"
 {
   switch (which_alternative)

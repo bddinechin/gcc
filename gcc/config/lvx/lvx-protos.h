@@ -139,7 +139,7 @@ extern void lvx_make_512bit_const (rtx dst, rtx src);
 
 extern bool lvx_has_10bit_imm_or_reg_p (rtx x);
 extern bool lvx_has_10bit_immediate_p (rtx x);
-extern bool lvx_has_37bit_immediate_p (rtx x);
+extern bool lvx_has_32bit_immediate_p (rtx x);
 extern bool lvx_has_64bit_immediate_p (rtx x);
 extern bool lvx_has_27bit_immediate_p (rtx x);
 

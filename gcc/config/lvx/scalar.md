@@ -1511,7 +1511,7 @@
 (define_insn "adddi3"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (plus:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                 (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+                 (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")))]
   ""
   "addd %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
@@ -1548,7 +1548,7 @@
 
 (define_insn "subdi3"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
-        (minus:DI (match_operand:DI 1 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")
+        (minus:DI (match_operand:DI 1 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")
                   (match_operand:DI 2 "register_operand" "r,r,r,r")))]
   ""
   "sbfd %0 = %2, %1"
@@ -2257,7 +2257,7 @@
 (define_insn "smindi3"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (smin:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                 (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+                 (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")))]
   ""
   "mind %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
@@ -2268,7 +2268,7 @@
 (define_insn "smaxdi3"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (smax:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                 (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+                 (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")))]
   ""
   "maxd %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
@@ -2279,7 +2279,7 @@
 (define_insn "umindi3"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (umin:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                 (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+                 (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")))]
   ""
   "minud %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
@@ -2290,7 +2290,7 @@
 (define_insn "umaxdi3"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (umax:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                 (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+                 (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")))]
   ""
   "maxud %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
@@ -2301,7 +2301,7 @@
 (define_insn "anddi3"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (and:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+                (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")))]
   ""
   "@
    andd %0 = %1, %2
@@ -2316,7 +2316,7 @@
 (define_insn "*nandd"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (ior:DI (not:DI (match_operand:DI 1 "register_operand" "r,r,r,r"))
-                (not:DI (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))))]
+                (not:DI (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i"))))]
   ""
   "nandd %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
@@ -2327,7 +2327,7 @@
 (define_insn "*andnd"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (and:DI (not:DI (match_operand:DI 1 "register_operand" "r,r,r,r"))
-                (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+                (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")))]
   ""
   "andnd %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
@@ -2338,7 +2338,7 @@
 (define_insn "iordi3"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (ior:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+                (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")))]
   ""
   "@
    iord %0 = %1, %2
@@ -2353,7 +2353,7 @@
 (define_insn "*nord"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (and:DI (not:DI (match_operand:DI 1 "register_operand" "r,r,r,r"))
-                (not:DI (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))))]
+                (not:DI (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i"))))]
   ""
   "niord %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
@@ -2364,7 +2364,7 @@
 (define_insn "*ornd"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (ior:DI (not:DI (match_operand:DI 1 "register_operand" "r,r,r,r"))
-                (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+                (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")))]
   ""
   "iornd %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
@@ -2375,7 +2375,7 @@
 (define_insn "xordi3"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (xor:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")))]
+                (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")))]
   ""
   "@
    eord %0 = %1, %2
@@ -2390,7 +2390,7 @@
 (define_insn "*nxord"
   [(set (match_operand:DI 0 "register_operand" "=r,r,r,r")
         (not:DI (xor:DI (match_operand:DI 1 "register_operand" "r,r,r,r")
-                        (match_operand:DI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i"))))]
+                        (match_operand:DI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i"))))]
   ""
   "neord %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")

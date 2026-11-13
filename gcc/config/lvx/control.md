@@ -30,7 +30,7 @@
   [(set (match_operand:DI 0 "register_operand" "")
         (match_operator:DI 1 "comparison_operator"
          [(match_operand:DI 2 "register_operand" "")
-          (match_operand:DI 3 "lvx_r_s10_s37_s64_operand" "")]))]
+          (match_operand:DI 3 "lvx_r_s10_s32_s64_operand" "")]))]
   ""
   {
     if (HAVE_LVX_COMPD_ONLY_I32_IMMEDIATE

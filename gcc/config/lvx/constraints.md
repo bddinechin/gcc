@@ -79,16 +79,6 @@
        (ior (match_test "SIGNED_INT_FITS_N_BITS (ival, 32)")
             (match_test "UNSIGNED_INT_FITS_N_BITS (ival, 32)"))))
 
-(define_constraint "I37"
-  "A signed 37-bit non symbolic constant."
-   (and (match_code "const_int")
-       (match_test "SIGNED_INT_FITS_N_BITS (ival, 37)")))
-
-(define_constraint "I43"
-  "A signed 43-bit non symbolic constant."
-  (and (match_code "const_int")
-       (match_test "SIGNED_INT_FITS_N_BITS (ival, 43)")))
-
 (define_constraint "SZ0"
   "The zero vector, which a .M format's replicated 32-bit word can build at any
    lane width -- the only value it can build at 64-bit lanes."
@@ -111,9 +101,9 @@
        (match_test "lvx_has_10bit_imm_or_reg_p (op)")))
 
 (define_memory_constraint "b"
-  "Memory operands with 37-bit immediate."
+  "Memory operands with 32-bit immediate."
   (and (match_code "mem")
-       (match_test "lvx_has_37bit_immediate_p (op)")))
+       (match_test "lvx_has_32bit_immediate_p (op)")))
 
 (define_memory_constraint "c"
   "Memory operands with pointer register."
@@ -131,7 +121,7 @@
        (match_test "lvx_has_10bit_imm_or_reg_p (op)")))
 
 (define_address_constraint "Ab"
-  "Memory address with 37-bit immediate."
+  "Memory address with 32-bit immediate."
   (and (match_test "address_operand (op, mode)")
-       (match_test "lvx_has_37bit_immediate_p (op)")))
+       (match_test "lvx_has_32bit_immediate_p (op)")))
 

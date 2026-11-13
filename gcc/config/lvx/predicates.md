@@ -153,9 +153,10 @@
   (match_code "ne,eq,ge,lt,uneq,unge,unlt,ltgt"))
 
 ;; Returns TRUE if op is a register or an immediate suitable for sign
-;; extension from the format signed10, upper27_lower10 or
-;; extend27_upper27_lower10
-(define_predicate "lvx_r_s10_s37_s64_operand"
+;; extension from the format signed10, upper27_lower5 or
+;; extend27_upper27_lower10.  The middle rung was upper27_lower10 (37 bits)
+;; until the .X formats retired; it is the .W/.S wrapped32 now.
+(define_predicate "lvx_r_s10_s32_s64_operand"
  (ior (and (match_test "!flag_pic")
            (match_operand 0 "nonmemory_operand"))
       (match_code "const_int")

@@ -5620,7 +5620,7 @@ lvx_has_10bit_immediate_p (rtx x)
 }
 
 bool
-lvx_has_37bit_immediate_p (rtx x)
+lvx_has_32bit_immediate_p (rtx x)
 {
   if (MEM_P (x))
     x = XEXP (x, 0);
@@ -5628,7 +5628,7 @@ lvx_has_37bit_immediate_p (rtx x)
   if (GET_CODE (x) == PLUS && GET_CODE (XEXP (x, 1)) == CONST_INT
       && REG_P (XEXP (x, 0)))
     return !IN_RANGE (INTVAL (XEXP (x, 1)), -512, 511)
-	   && IN_RANGE (INTVAL (XEXP (x, 1)), -(1LL << 36), (1LL << 36) - 1);
+	   && IN_RANGE (INTVAL (XEXP (x, 1)), -(1LL << 31), (1LL << 31) - 1);
 
   return false;
 }

@@ -117,9 +117,9 @@
 ;; ONE IMMEDIATE ALTERNATIVE, 32 BITS, EIGHT BYTES.  §7tricies.206.
 ;;
 ;; This advertised three -- I16/I43/i at lengths 4/8/12 -- and MAKEDP has only
-;; TWO formats, `[ ALU_DPWI, ALU_DPWI.S ]', with NO .X/.Y extension.  Compare
-;; MAKED, which really does have them: `[ ALU_DWI, ALU_DWI.X, ALU_DWI.Y,
-;; ALU_DWR, ALU_DWR.M ]'.  The opcode table lists exactly a register form and
+;; TWO formats, `[ ALU_DPWI, ALU_DPWI.S ]', with NO extension at all.  Compare
+;; MAKED, which really does extend: `[ ALU_DWI, ALU_DWI.Y, ALU_DWR,
+;; ALU_DWR.S ]'.  The opcode table lists exactly a register form and
 ;; an `upper27_lower5' immediate of width 32, and Instruction.yml stores
 ;; `_SX_64(argument2)' into each double word -- so the immediate is a SIGNED
 ;; 32-BIT value, which is what I32 means.
@@ -1029,7 +1029,7 @@
 (define_insn "*andd"
   [(set (match_operand:FITGPR 0 "register_operand" "=r,r,r,r")
         (unspec:FITGPR [(match_operand:SCALAR 1 "register_operand" "r,r,r,r")
-                        (match_operand:WI 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")] UNSPEC_ANDD))]
+                        (match_operand:WI 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")] UNSPEC_ANDD))]
   "LVX_2"
   "andd %0 = %1, %2"
   [(set_attr "type" "alu, alu, alu, alu")
@@ -1088,7 +1088,7 @@
 (define_insn "*xord"
   [(set (match_operand:FITGPR 0 "register_operand" "=r,r,r,r")
         (unspec:FITGPR [(match_operand:FITGPR 1 "register_operand" "r,r,r,r")
-                        (match_operand:SCALAR 2 "lvx_r_s10_s37_s64_operand" "r,I10,I37,i")] UNSPEC_XORD))]
+                        (match_operand:SCALAR 2 "lvx_r_s10_s32_s64_operand" "r,I10,I32,i")] UNSPEC_XORD))]
   "LVX_2"
   "eord %0 = %1, %2"
   [(set_attr "type" "alu")
