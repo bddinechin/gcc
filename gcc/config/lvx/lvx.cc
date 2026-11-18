@@ -4181,242 +4181,19 @@ lvx_expand_any64_eqz (rtx target, rtx source, enum machine_mode mode)
 }
 
 
-/* Helper function to produce manifest _Float16 constants, where the float
- * value represented as integer comes from REAL_VALUE_TO_TARGET_SINGLE.
- * Adapted from http://openkb.fr/Half-precision_floating-point_in_Java */
-static unsigned
-lvx_float_to_half_as_int (unsigned fbits)
-{
-  unsigned sign = fbits >> 16 & 0x8000;	// sign only
-  unsigned val = (fbits & 0x7fffffff) + 0x1000;	// rounded value
-  if (val >= 0x47800000)	// might be or become NaN/Inf
-    {				// avoid Inf due to rounding
-      if ((fbits & 0x7fffffff) >= 0x47800000)
-	{			// is or must become NaN/Inf
-	  if (val < 0x7f800000)	// was value but too large
-	    return sign | 0x7c00;	// make it +/-Inf
-	  return sign | 0x7c00 |	// remains +/-Inf or NaN
-	    (fbits & 0x007fffff) >> 13;	// keep NaN (and Inf) bits
-	}
-      return sign | 0x7bff;	// unrounded not quite Inf
-    }
-  if (val >= 0x38800000)	// remains normalized value
-    return sign | (val - 0x38000000) >> 13;	// exp - 127 + 15
-  if (val < 0x33000000)		// too small for subnormal
-    return sign;		// becomes +/-0
-  val = (fbits & 0x7fffffff) >> 23;	// tmp exp for subnormal calc
-  return sign | ((((fbits & 0x7fffff) | 0x800000)	// add subnormal bit
-		  + (0x800000 >> (val - 102)))	// round depending on cut off
-		 >> (126 - val));	// div by 2^(1-(exp-127+15)) and >> 13 | exp=0
-}
-
+/* The 64-bit word SLICE of the constant vector X, as the target lays it out
+   in memory and in a register tuple.  simplify_subreg encodes any lane mode
+   through native_encode_rtx, floats included, so this needs no arm per lane
+   mode -- it had one, with a hand-written float-to-half conversion.  */
 HOST_WIDE_INT
 lvx_const_vector_value (rtx x, int slice)
 {
-  HOST_WIDE_INT value = 0;
-  if (GET_CODE (x) == CONST_VECTOR)
-    {
-      machine_mode mode = GET_MODE (x);
-      machine_mode inner_mode = GET_MODE_INNER (mode);
-      int index = slice * (UNITS_PER_WORD / GET_MODE_SIZE (inner_mode));
-      if (inner_mode == QImode)
-	{
-	  HOST_WIDE_INT val_0 = INTVAL (CONST_VECTOR_ELT (x, index + 0));
-	  HOST_WIDE_INT val_1 = INTVAL (CONST_VECTOR_ELT (x, index + 1));
-	  HOST_WIDE_INT val_2 = INTVAL (CONST_VECTOR_ELT (x, index + 2));
-	  HOST_WIDE_INT val_3 = INTVAL (CONST_VECTOR_ELT (x, index + 3));
-	  HOST_WIDE_INT val_4 = INTVAL (CONST_VECTOR_ELT (x, index + 4));
-	  HOST_WIDE_INT val_5 = INTVAL (CONST_VECTOR_ELT (x, index + 5));
-	  HOST_WIDE_INT val_6 = INTVAL (CONST_VECTOR_ELT (x, index + 6));
-	  HOST_WIDE_INT val_7 = INTVAL (CONST_VECTOR_ELT (x, index + 7));
-	  value = (val_0 & 0xFF) | (val_1 & 0xFF) << 8 | (val_2 & 0xFF) << 16
-		  | (val_3 & 0xFF) << 24 | (val_4 & 0xFF) << 32
-		  | (val_5 & 0xFF) << 40 | (val_6 & 0xFF) << 48
-		  | (val_7 & 0xFF) << 56;
-	}
-      else if (inner_mode == HImode)
-	{
-	  HOST_WIDE_INT val_0 = INTVAL (CONST_VECTOR_ELT (x, index + 0));
-	  HOST_WIDE_INT val_1 = INTVAL (CONST_VECTOR_ELT (x, index + 1));
-	  HOST_WIDE_INT val_2 = INTVAL (CONST_VECTOR_ELT (x, index + 2));
-	  HOST_WIDE_INT val_3 = INTVAL (CONST_VECTOR_ELT (x, index + 3));
-	  value = (val_0 & 0xFFFF) | (val_1 & 0xFFFF) << 16
-		  | (val_2 & 0xFFFF) << 32 | (val_3 & 0xFFFF) << 48;
-	}
-      else if (inner_mode == SImode)
-	{
-	  HOST_WIDE_INT val_0 = INTVAL (CONST_VECTOR_ELT (x, index + 0));
-	  HOST_WIDE_INT val_1 = INTVAL (CONST_VECTOR_ELT (x, index + 1));
-	  value = (val_0 & 0xFFFFFFFF) | (val_1 & 0xFFFFFFFF) << 32;
-	}
-      else if (inner_mode == DImode)
-	{
-	  value = INTVAL (CONST_VECTOR_ELT (x, index + 0));
-	}
-      else if (inner_mode == CQImode)
-	{
-	  if (CONST_VECTOR_P (CONST_VECTOR_ELT (x, 0)))
-	    {
-	      HOST_WIDE_INT val_0_r = INTVAL (CONST_VECTOR_ELT
-					      (CONST_VECTOR_ELT
-					       (x, index + 0), 0));
-	      HOST_WIDE_INT val_0_i =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 0), 1));
-	      HOST_WIDE_INT val_1_r =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 1), 0));
-	      HOST_WIDE_INT val_1_i =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 1), 1));
-	      HOST_WIDE_INT val_2_r =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 2), 0));
-	      HOST_WIDE_INT val_2_i =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 2), 1));
-	      HOST_WIDE_INT val_3_r =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 3), 0));
-	      HOST_WIDE_INT val_3_i =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 3), 1));
-	      value =
-		(val_0_r & 0xFF) | (val_0_i & 0xFF) << 8 | (val_1_r & 0xFF) <<
-		16 | (val_1_i & 0xFF) << 24 | (val_2_r & 0xFF) << 32 |
-		(val_2_i & 0xFF) << 40 | (val_3_r & 0xFF) << 48 | (val_3_i &
-								   0xFF) <<
-		56;
-	    }
-	  else
-	    {
-	      HOST_WIDE_INT val_0 = INTVAL (CONST_VECTOR_ELT (x, index + 0));
-	      HOST_WIDE_INT val_1 = INTVAL (CONST_VECTOR_ELT (x, index + 1));
-	      HOST_WIDE_INT val_2 = INTVAL (CONST_VECTOR_ELT (x, index + 2));
-	      HOST_WIDE_INT val_3 = INTVAL (CONST_VECTOR_ELT (x, index + 3));
-	      value = (val_0 & 0xFFFF) | (val_1 & 0xFFFF) << 16
-		| (val_2 & 0xFFFF) << 32 | (val_3 & 0xFFFF) << 48;
-	    }
-
-	}
-      else if (inner_mode == CHImode)
-	{
-	  if (CONST_VECTOR_P (CONST_VECTOR_ELT (x, 0)))
-	    {
-	      HOST_WIDE_INT val_0_r =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 0), 0));
-	      HOST_WIDE_INT val_0_i =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 0), 1));
-	      HOST_WIDE_INT val_1_r =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 1), 0));
-	      HOST_WIDE_INT val_1_i =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 1), 1));
-	      value =
-		(val_0_r & 0xFFFF) | (val_0_i & 0xFFFF) << 16 | (val_1_r &
-								 0xFFFF) << 32
-		| (val_1_i & 0xFFFF) << 48;
-	    }
-	  else
-	    {
-	      HOST_WIDE_INT val_0 = INTVAL (CONST_VECTOR_ELT (x, index + 0));
-	      HOST_WIDE_INT val_1 = INTVAL (CONST_VECTOR_ELT (x, index + 1));
-	      value = (val_0 & 0xFFFFFFFF) | (val_1 & 0xFFFFFFFF) << 32;
-	    }
-
-	}
-      else if (inner_mode == CSImode)
-	{
-	  if (CONST_VECTOR_P (CONST_VECTOR_ELT (x, 0)))
-	    {
-	      HOST_WIDE_INT val_0_r =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 0), 0));
-	      HOST_WIDE_INT val_0_i =
-		INTVAL (CONST_VECTOR_ELT
-			(CONST_VECTOR_ELT (x, index + 0), 1));
-	      value = (val_0_r & 0xFFFFFFFF) | (val_0_i & 0xFFFFFFFF) << 32;
-	    }
-	  else
-	    {
-	      value = INTVAL (CONST_VECTOR_ELT (x, index + 0));
-	    }
-	}
-      else if (inner_mode == SCmode)
-	{
-	  if (CONST_VECTOR_P (CONST_VECTOR_ELT (x, 0)))
-	    {
-	      long val_0 = 0, val_1 = 0;
-	      rtx elt_0 =
-		CONST_VECTOR_ELT (CONST_VECTOR_ELT (x, index + 0), 0);
-	      rtx elt_1 =
-		CONST_VECTOR_ELT (CONST_VECTOR_ELT (x, index + 0), 1);
-	      REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (elt_0),
-					   val_0);
-	      REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (elt_1),
-					   val_1);
-	      value =
-		((HOST_WIDE_INT) val_0 & 0xFFFFFFFF) | ((HOST_WIDE_INT) val_1
-							& 0xFFFFFFFF) << 32;
-	    }
-	  else
-	    {
-	      long val[2] = { 0, 0 };
-	      rtx elt_0 = CONST_VECTOR_ELT (x, index + 0);
-	      REAL_VALUE_TO_TARGET_DOUBLE (*CONST_DOUBLE_REAL_VALUE (elt_0),
-					   val);
-	      value =
-		((HOST_WIDE_INT) val[0] & 0xFFFFFFFF) | ((HOST_WIDE_INT)
-							 val[1] & 0xFFFFFFFF)
-		<< 32;
-	    }
-	}
-      else if (inner_mode == HFmode)
-	{
-	  long val_0 = 0, val_1 = 0, val_2 = 0, val_3 = 0;
-	  rtx elt_0 = CONST_VECTOR_ELT (x, index + 0);
-	  rtx elt_1 = CONST_VECTOR_ELT (x, index + 1);
-	  rtx elt_2 = CONST_VECTOR_ELT (x, index + 2);
-	  rtx elt_3 = CONST_VECTOR_ELT (x, index + 3);
-	  REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (elt_0), val_0);
-	  REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (elt_1), val_1);
-	  REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (elt_2), val_2);
-	  REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (elt_3), val_3);
-	  val_0 = lvx_float_to_half_as_int (val_0);
-	  val_1 = lvx_float_to_half_as_int (val_1);
-	  val_2 = lvx_float_to_half_as_int (val_2);
-	  val_3 = lvx_float_to_half_as_int (val_3);
-	  value = (val_0 & 0xFFFF) | (val_1 & 0xFFFF) << 16
-		  | (val_2 & 0xFFFF) << 32 | (val_3 & 0xFFFF) << 48;
-	}
-      else if (inner_mode == SFmode)
-	{
-	  long val_0 = 0, val_1 = 0;
-	  rtx elt_0 = CONST_VECTOR_ELT (x, index + 0);
-	  rtx elt_1 = CONST_VECTOR_ELT (x, index + 1);
-	  REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (elt_0), val_0);
-	  REAL_VALUE_TO_TARGET_SINGLE (*CONST_DOUBLE_REAL_VALUE (elt_1), val_1);
-	  value = ((HOST_WIDE_INT) val_0 & 0xFFFFFFFF)
-		  | ((HOST_WIDE_INT) val_1 & 0xFFFFFFFF) << 32;
-	}
-      else if ((inner_mode == DFmode))
-	{
-	  long val[2] = { 0, 0 };
-	  rtx elt_0 = CONST_VECTOR_ELT (x, index + 0);
-	  REAL_VALUE_TO_TARGET_DOUBLE (*CONST_DOUBLE_REAL_VALUE (elt_0), val);
-	  value = ((HOST_WIDE_INT) val[0] & 0xFFFFFFFF)
-		  | ((HOST_WIDE_INT) val[1] & 0xFFFFFFFF) << 32;
-	}
-      else
-	gcc_unreachable ();
-      return value;
-    }
-  else
-    gcc_unreachable ();
-  return value;
+  gcc_assert (GET_CODE (x) == CONST_VECTOR);
+  machine_mode mode = GET_MODE (x);
+  gcc_assert ((slice + 1) * UNITS_PER_WORD <= GET_MODE_SIZE (mode));
+  rtx word = simplify_subreg (DImode, x, mode, slice * UNITS_PER_WORD);
+  gcc_assert (word && CONST_INT_P (word));
+  return INTVAL (word);
 }
 
 
@@ -5477,47 +5254,29 @@ lvx_float_fits_imm32 (const REAL_VALUE_TYPE *r, machine_mode mode)
   return lvx_float_fits_bits (r, 32, mode);
 }
 
+/* The bit pattern of the FP constant R in the scalar float MODE (HF, SF or
+   DF), zero-extended.  real_to_target encodes in the mode's own format, so an
+   HF needs no detour through SF.  */
+static unsigned HOST_WIDE_INT
+lvx_float_image (const REAL_VALUE_TYPE *r, machine_mode mode)
+{
+  long l[2] = { 0, 0 };
+  unsigned bits = GET_MODE_BITSIZE (as_a <scalar_float_mode> (mode));
+  gcc_assert (bits == 16 || bits == 32 || bits == 64);
+  real_to_target (l, r, mode);
+  if (bits == 64)
+    return ((unsigned HOST_WIDE_INT) l[0] & 0xFFFFFFFF)
+	   | (unsigned HOST_WIDE_INT) l[1] << 32;
+  return (unsigned HOST_WIDE_INT) l[0] & ((HOST_WIDE_INT_1U << bits) - 1);
+}
+
 bool
 lvx_float_fits_bits (const REAL_VALUE_TYPE *r, unsigned bitsz,
 		     enum machine_mode mode)
 {
   if (bitsz >= 64)
     return true;
-
-  long l[2];
-  unsigned long long value = 0;
-  if (mode == HFmode)
-    {
-      REAL_VALUE_TO_TARGET_SINGLE (*r, l[0]);
-      value = lvx_float_to_half_as_int (l[0]);
-    }
-  else if (mode == SFmode)
-    {
-      REAL_VALUE_TO_TARGET_SINGLE (*r, l[0]);
-      value = l[0] & 0xFFFFFFFFULL;
-    }
-  else if (mode == DFmode)
-    {
-      REAL_VALUE_TO_TARGET_DOUBLE (*r, l);
-      value = (l[0] & 0xFFFFFFFFULL) | ((unsigned long long) l[1] << 32);
-    }
-  else if (mode == HCmode)
-    {
-      REAL_VALUE_TO_TARGET_SINGLE (*r, l[0]);
-      value = l[0] & 0xFFFFFFFFULL;
-    }
-  else if (mode == SCmode)
-    {
-      REAL_VALUE_TO_TARGET_SINGLE (*r, l[0]);
-      REAL_VALUE_TO_TARGET_SINGLE (*r, l[1]);
-      value = (l[0] & 0xFFFFFFFFULL) | ((unsigned long long) l[1] << 32);
-    }
-  else if (mode == DCmode)
-    return false;
-  else
-    gcc_unreachable ();
-
-  return SIGNED_INT_FITS_N_BITS (value, bitsz);
+  return SIGNED_INT_FITS_N_BITS (lvx_float_image (r, mode), bitsz);
 }
 
 bool
@@ -5541,18 +5300,6 @@ lvx_uniform_lane_imm_p (rtx x)
   unsigned size = GET_MODE_SIZE (GET_MODE (x));
   if (size != 16 && size != 32)
     return false;
-
-  /* Only the lane modes lvx_const_vector_value has an arm for: it asserts
-     on anything else rather than returning, and this runs from a
-     predicate.  */
-  switch (GET_MODE_INNER (GET_MODE (x)))
-    {
-    case E_QImode: case E_HImode: case E_SImode: case E_DImode:
-    case E_HFmode: case E_SFmode: case E_DFmode:
-      break;
-    default:
-      return false;
-    }
 
   /* Lane-uniform, which is the half the old word test could not express.  */
   rtx elt;
@@ -11180,47 +10927,12 @@ lvx_print_operand (FILE *file, rtx x, int code)
 
     case CONST_DOUBLE:
       {
-	long l[2];
-	REAL_VALUE_TYPE r = *CONST_DOUBLE_REAL_VALUE (operand);
-	if (GET_MODE (x) == HFmode)
-	  {
-	    REAL_VALUE_TO_TARGET_SINGLE (r, l[0]);
-	    l[0] = lvx_float_to_half_as_int (l[0]);
-	    fprintf (file, "0x%04x", (unsigned int) l[0]);
-	    return;
-	  }
-	else if (GET_MODE (x) == SFmode)
-	  {
-	    REAL_VALUE_TO_TARGET_SINGLE (r, l[0]);
-	    fprintf (file, "0x%08x", (unsigned int) l[0]);
-	    return;
-	  }
-	else if (GET_MODE (x) == DFmode)
-	  {
-	    REAL_VALUE_TO_TARGET_DOUBLE (r, l);
-	    fprintf (file, "0x%08x%08x", (unsigned int) l[1],
-		     (unsigned int) l[0]);
-	    return;
-	  }
-	else if (GET_MODE (x) == HCmode)
-	  {
-	    REAL_VALUE_TO_TARGET_SINGLE (r, l[0]);
-	    fprintf (file, "0x%08x", (unsigned int) l[0]);
-	    return;
-	  }
-	else if (GET_MODE (x) == SCmode)
-	  {
-	    REAL_VALUE_TO_TARGET_DOUBLE (r, l);
-	    fprintf (file, "0x%08x%08x", (unsigned int) l[1],
-		     (unsigned int) l[0]);
-	    return;
-	  }
-	else if (GET_MODE (x) == DCmode)
-	  {
-	    gcc_unreachable ();
-	  }
+	/* The bit pattern, at the mode's width: 0x%04x, 0x%08x or 0x%016x.  */
+	machine_mode mode = GET_MODE (operand);
+	unsigned bits = GET_MODE_BITSIZE (as_a <scalar_float_mode> (mode));
+	fprintf (file, "0x%0*" HOST_WIDE_INT_PRINT "x", bits / 4,
+		 lvx_float_image (CONST_DOUBLE_REAL_VALUE (operand), mode));
       }
-      gcc_unreachable ();
       return;
 
 
