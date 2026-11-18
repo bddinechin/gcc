@@ -49,10 +49,19 @@ along with GCC; see the file COPYING3.  If not see
    Search sits in that same ladder and goes with it; the margins it needs
    are a window narrowing, which -mlms-rcms-margin reaches when wanted.
 
-   THE LIFETIME VARIABLES ARE OUT, on purpose.  A killer node per value
-   doubles the binaries and contributes nothing to (2.17); the objective
-   here is the makespan, which needs ONE extra variable rather than one per
-   value.  See docs/modulo-scheduler-interface.md section 9.1.
+   THE OBJECTIVE IS THE CUMULATIVE REGISTER LIFETIME, not the makespan.
+   -mlms-rcms-objective=2 (MCRL) is the default: one integer killer k_i per
+   value-producing operation, bounded by a life_a row k_src >= date(dst) +
+   II*omega for each REG_RAW arc, and the objective minimises
+   sum nregs(i) * (k_i - date(i)), weighted by the REG_NREGS of the
+   destination.  The makespan compresses the schedule and so fights the
+   allocator -- a compressed modulo schedule holds more values in flight,
+   and "kernel not colourable" was the commonest reason a solved schedule
+   was thrown away (§7tricies.229); the width weighting prices a pair or a
+   quad as the registers it really takes (§7tricies.230).  The killer is ONE
+   integer per value, not a time-indexed node, so it costs n variables and
+   not a window per value.  A loop that defines no value falls back to the
+   makespan.  See docs/modulo-scheduler-interface.md section 9.1.
 
    WHY THE SOLVER IS A SEPARATE PROCESS.  No library is linked into cc1:
    no configure dependency, no licence question, and the model file is an
@@ -332,8 +341,8 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
   unsigned n = st->n, i;
   int t;
 
-  /* ---- the objective: minimise the makespan.  (2.1), one sink variable
-     and not one killer per value.  ---- */
+  /* ---- the objective: MCRL by default (one integer killer per value),
+     the makespan (2.1) or feasibility on request.  ---- */
   if (f)
     fprintf (f, "\\ RCMS fn=%s ii=%d n=%u horizon=%d\n",
 	     current_function_name (), ii, n, st->horizon);
