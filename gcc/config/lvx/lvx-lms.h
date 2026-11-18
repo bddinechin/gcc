@@ -218,6 +218,15 @@ struct lvx_lms_problem
   bitmap livein;
   int delta;
   int lower;			/* max (RecMII, ResMII), the bound the ladder starts from */
+  /* Per operation: its destination is live on the loop's exit edge, so its
+     register is held to the end of the schedule (§7tricies.135).  The same
+     test MaxLive uses.  */
+  const auto_vec<bool> *exitlive;
+  /* The registers the loop's own values may use: 64 minus the fixed ones,
+     the call-saved ones the function never touches, and those live THROUGH
+     the loop (live into the header, never defined in the body).  What an
+     in-solver pressure bound at "the real pool" is measured against.  */
+  int pool;
 };
 
 /* AN ENGINE, WHICH IS ASKED FOR A SCHEDULE AT A GIVEN II AND NOTHING ELSE.

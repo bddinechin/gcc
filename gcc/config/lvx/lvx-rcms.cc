@@ -203,6 +203,12 @@ struct lvx_rcms_state
      interval was never ruled out: the answer is an UPPER BOUND wearing a
      minimum's name.  INFEASIBLE does not count -- that one is a proof.  */
   int undecided;
+  /* What the last solution file said: whether it was OPTIMAL, and the
+     value of R, the pressure variable (0 when absent).  */
+  bool sol_optimal;
+  double sol_r;
+  /* The folded pressure the last model check computed, -1 if none.  */
+  int check_press;
 };
 
 /* One accessor per resource column, so that every place below which must
@@ -407,8 +413,41 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 	any_life = true;
       }
 
-  const bool mcrl = (lvx_lms_rcms_objective == 2 && any_life);
-  const bool want_span = !mcrl;
+  /* THE PRESSURE ROWS, MMRP AND RCISP.  Dinechin 2006, "Instruction
+     Scheduling Problems and their Application to the ST200", section 3.6,
+     eqs. (26)-(31): the modulo RCISP, with the register availability R made
+     a variable.  -mlms-rcms-objective=3 minimises R; 4 minimises it with
+     MCRL as the tie-break; -mlms-rcms-max-pressure=N bounds it under any
+     objective.  See docs/rcms-constraint-programming.md section 5.  */
+  int rmax = 64;
+  bool bound = false;
+  if (lvx_lms_rcms_max_pressure != NULL && lvx_lms_rcms_max_pressure[0])
+    {
+      bound = true;
+      rmax = (!strcmp (lvx_lms_rcms_max_pressure, "pool")
+	      ? p->pool : atoi (lvx_lms_rcms_max_pressure));
+      rmax = MAX (rmax, 0);
+    }
+  const bool mmrp = (lvx_lms_rcms_objective == 3
+		     || lvx_lms_rcms_objective == 4);
+  const bool press = mmrp || bound;
+
+  /* Under the pressure rows a value counts as soon as it holds a register
+     past the loop, even with no reader inside it: one live on the exit edge
+     keeps its register to the end of the drain, GCC LMS's occ_last
+     (§7tricies.135).  MaxLive counts the same set.  */
+  if (press)
+    for (i = 0; i < n; i++)
+      if (nregs[i] == 0 && (*p->exitlive)[i])
+	{
+	  rtx ds = single_set (seq[i]);
+	  nregs[i] = MAX (REG_NREGS (SET_DEST (ds)), 1);
+	  any_life = true;
+	}
+
+  const bool mcrl = ((lvx_lms_rcms_objective == 2
+		      || lvx_lms_rcms_objective == 4) && any_life);
+  const bool want_span = !mcrl && !mmrp;
 
   /* AGGREGATED OR DISAGGREGATED.  -mlms-rcms-deps.  LAO's
      buildDependencesDinechin has both forms behind
@@ -419,28 +458,59 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
      between the two forms is a bug, not a result.  */
   const bool disagg = (lvx_lms_rcms_deps == 1);
 
-  /* The killer of value i, disaggregated, is a node like any other: binaries
-     k_i_t over a window.  Its readers j are the REG_RAW arcs leaving i, and
-     each is an arc j -> killer (i) of latency II*omega, so the window is
-     [max_j (lo_j + II*omega), max_j (hi_j + II*omega)], capped where the
-     aggregated integer k_i is bounded.  The killer issues nothing, so it
-     has no resource rows.  */
-  auto_vec<int> klo, khi;
-  if (mcrl && disagg)
+  /* THE KILLERS.  One per value, with no resource demand.  It is a general
+     integer k_i only for aggregated MCRL; disaggregated, or wherever the
+     pressure rows must count it date by date, it is a time-indexed node,
+     binaries k_i_t with kasg_i.  */
+  const bool needk = mcrl || press;
+  const bool timek = press || (mcrl && disagg);
+
+  /* The arcs into the killers.  Each REG_RAW arc i -> j is an arc
+     j -> killer (i) of latency II*omega: a use in a later iteration keeps the
+     value alive a whole interval longer.  Under the pressure rows a value
+     live on the exit edge also takes an arc from EVERY operation, latency
+     II: the drain replays the work in flight, which must not overwrite the
+     register its reconciliation copy reads -- lvx_lms_lrange_part::occ_last,
+     the schedule's last date plus one interval.  */
+  struct kill_arc { unsigned v, j; int l, a; };
+  auto_vec<kill_arc> karcs;
+  if (needk)
     {
-      klo.safe_grow_cleared (n);
-      khi.safe_grow_cleared (n);
-      for (i = 0; i < n; i++)
-	klo[i] = khi[i] = INT_MIN;
       for (unsigned a = 0; a < arcs.length (); a++)
 	{
 	  const lvx_lms_arc *ar = &arcs[a];
 	  if (ar->kind != LVX_ARC_REG_RAW || ar->src >= n || ar->dst >= n
 	      || nregs[ar->src] == 0)
 	    continue;
-	  int l = (int) ((HOST_WIDE_INT) ii * ar->omega);
-	  klo[ar->src] = MAX (klo[ar->src], st->win[ar->dst].lo + l);
-	  khi[ar->src] = MAX (khi[ar->src], st->win[ar->dst].hi + l);
+	  kill_arc k = { ar->src, ar->dst,
+			 (int) ((HOST_WIDE_INT) ii * ar->omega), (int) a };
+	  karcs.safe_push (k);
+	}
+      if (press)
+	for (i = 0; i < n; i++)
+	  if (nregs[i] && (*p->exitlive)[i])
+	    for (unsigned j = 0; j < n; j++)
+	      {
+		kill_arc k = { i, j, ii, -1 };
+		karcs.safe_push (k);
+	      }
+    }
+
+  /* A time-indexed killer's window: [max (lo_j + l), max (hi_j + l)] over
+     its arcs, capped where the aggregated integer k_i is bounded.  */
+  auto_vec<int> klo, khi;
+  int kmax = 0;
+  if (timek)
+    {
+      klo.safe_grow_cleared (n);
+      khi.safe_grow_cleared (n);
+      for (i = 0; i < n; i++)
+	klo[i] = khi[i] = INT_MIN;
+      for (unsigned q = 0; q < karcs.length (); q++)
+	{
+	  const kill_arc *k = &karcs[q];
+	  klo[k->v] = MAX (klo[k->v], st->win[k->j].lo + k->l);
+	  khi[k->v] = MAX (khi[k->v], st->win[k->j].hi + k->l);
 	}
       for (i = 0; i < n; i++)
 	if (nregs[i])
@@ -451,31 +521,42 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 		*why = "rcms: empty killer window";
 		return false;
 	      }
+	    kmax = MAX (kmax, khi[i]);
 	  }
     }
 
-  /* The killer dates a checked schedule implies: the last read, which is
-     the smallest value every lifetime row admits.  */
+  /* The killer dates a checked schedule implies: the last of its arcs'
+     heads, which is the smallest date every lifetime row admits and the end
+     of the interval the colouring occupies.  */
   auto_vec<int> kdate;
-  if (check && mcrl)
+  if (check && needk)
     {
       kdate.safe_grow_cleared (n);
       for (i = 0; i < n; i++)
 	kdate[i] = INT_MIN;
-      for (unsigned a = 0; a < arcs.length (); a++)
-	{
-	  const lvx_lms_arc *ar = &arcs[a];
-	  if (ar->kind != LVX_ARC_REG_RAW || ar->src >= n || ar->dst >= n
-	      || nregs[ar->src] == 0)
-	    continue;
-	  kdate[ar->src]
-	    = MAX (kdate[ar->src],
-		   (int) ((*check)[ar->dst] + (HOST_WIDE_INT) ii * ar->omega));
-	}
+      for (unsigned q = 0; q < karcs.length (); q++)
+	kdate[karcs[q].v] = MAX (kdate[karcs[q].v],
+				 (*check)[karcs[q].j] + karcs[q].l);
     }
 
   if (f)
     {
+      fprintf (f, "Minimize\n obj:");
+      if (mmrp)
+	{
+	  /* MMRP: R alone.  With the MCRL tie-break, one solve of
+	     M*R + MCRL, M above any MCRL the windows allow --
+	     sum_i w_i * (kmax + 1) -- so a unit of R always outweighs it.  */
+	  if (mcrl)
+	    {
+	      HOST_WIDE_INT m = 1;
+	      for (i = 0; i < n; i++)
+		m += (HOST_WIDE_INT) nregs[i] * (kmax + 1);
+	      fprintf (f, " + " HOST_WIDE_INT_PRINT_DEC " R", m);
+	    }
+	  else
+	    fprintf (f, " R");
+	}
       if (mcrl)
 	{
 	  /* MINIMUM CUMULATIVE REGISTER LIFETIME.  Sum over producers of
@@ -485,11 +566,10 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 	     interval is a MORE parallel one, so it holds more values in
 	     flight, and measurement said the commonest reason a solved
 	     schedule was thrown away is that its kernel would not colour.  */
-	  fprintf (f, "Minimize\n obj:");
 	  for (i = 0; i < n; i++)
 	    if (nregs[i])
 	      {
-		if (!disagg)
+		if (!timek)
 		  fprintf (f, " + %d k_%u", nregs[i], i);
 		else
 		  for (t = klo[i]; t <= khi[i]; t++)
@@ -501,11 +581,10 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 	      for (t = st->win[i].lo; t <= st->win[i].hi; t++)
 		if (t != 0)
 		  fprintf (f, " %+d x_%u_%d", -nregs[i] * t, i, t);
-	  fprintf (f, "\nSubject To\n");
 	}
-      else
-	fprintf (f, "Minimize\n obj: %sspan\nSubject To\n",
-		 lvx_lms_rcms_objective == 0 ? "0 " : "");
+      if (want_span)
+	fprintf (f, " %sspan", lvx_lms_rcms_objective == 0 ? "0 " : "");
+      fprintf (f, "\nSubject To\n");
     }
 
   /* ---- assignment: sum_t x_i^t = 1 ---- */
@@ -661,22 +740,22 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
   LVX_ISSUE_RESOURCES (LVX_RCMS_RES_ROWS)
 #undef LVX_RCMS_RES_ROWS
 
-  /* ---- the lifetime rows: k_i >= sigma_j + ii*omega for every RAW arc
-     i -> j.  A use in a later iteration keeps the value alive a whole
-     interval longer, which is what the omega term is; dropping it would
-     price a loop-carried value as though it died in its own iteration.
-     Aggregated: one general integer k_i per value and one row per REG_RAW
-     arc.  Disaggregated: the killer is a time-indexed node, kasg_i makes it
-     take one date, and each REG_RAW arc i -> j is the arc j -> killer (i)
-     of latency ii*omega, disaggregated exactly as a dependence.  ---- */
-  if (mcrl)
+  /* ---- the lifetime rows: killer (i) >= sigma_j + l for every arc into
+     it.  Integer killer, aggregated MCRL: one general integer k_i and one
+     row per REG_RAW arc, life_<a>.  Time-indexed killer: kasg_<i> makes it
+     take one date, and each arc j -> killer (i) is written in the
+     -mlms-rcms-deps form, aggregated (life_<a>, over the weighted dates) or
+     disaggregated exactly as a dependence (life_<a>_<t>).  The exit arcs,
+     from every operation j into the killer of an exit-live value i, are
+     named exit_<i>_<j> and exit_<i>_<j>_<t> the same way.  ---- */
+  if (needk)
     {
       if (check)
 	for (i = 0; i < n; i++)
 	  if (nregs[i])
 	    {
-	      int hi = disagg ? khi[i] : st->horizon + ii + 1;
-	      int lo = disagg ? klo[i] : 0;
+	      int hi = timek ? khi[i] : st->horizon + ii + 1;
+	      int lo = timek ? klo[i] : 0;
 	      if (kdate[i] < lo || kdate[i] > hi)
 		{
 		  *why = "rcms check: killer outside its window";
@@ -684,7 +763,7 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 		}
 	    }
 
-      if (disagg && f)
+      if (timek && f)
 	for (i = 0; i < n; i++)
 	  if (nregs[i])
 	    {
@@ -694,43 +773,61 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 	      fprintf (f, " = 1\n");
 	    }
 
-      for (unsigned a = 0; a < arcs.length (); a++)
+      for (unsigned q = 0; q < karcs.length (); q++)
 	{
-	  const lvx_lms_arc *ar = &arcs[a];
+	  const kill_arc *k = &karcs[q];
+	  int jlo = st->win[k->j].lo, jhi = st->win[k->j].hi;
+	  char name[64];
 
-	  if (ar->kind != LVX_ARC_REG_RAW || ar->src >= n || ar->dst >= n
-	      || nregs[ar->src] == 0)
-	    continue;
+	  if (k->a >= 0)
+	    sprintf (name, "life_%d", k->a);
+	  else
+	    sprintf (name, "exit_%u_%u", k->v, k->j);
 
-	  if (!disagg)
+	  if (!timek)
 	    {
 	      /* The integer k_i is free above the last read, and the checked
 		 killer is that read, so the row holds by construction; the
 		 window test above is the part a schedule can violate.  */
 	      if (f)
 		{
-		  fprintf (f, " life_%u: k_%u", a, ar->src);
-		  for (t = st->win[ar->dst].lo; t <= st->win[ar->dst].hi; t++)
+		  fprintf (f, " %s: k_%u", name, k->v);
+		  for (t = jlo; t <= jhi; t++)
 		    if (t != 0)
-		      fprintf (f, " %+d x_%u_%d", -t, ar->dst, t);
-		  fprintf (f, " >= " HOST_WIDE_INT_PRINT_DEC "\n",
-			   (HOST_WIDE_INT) ii * ar->omega);
+		      fprintf (f, " %+d x_%u_%d", -t, k->j, t);
+		  fprintf (f, " >= %d\n", k->l);
 		}
 	      continue;
 	    }
 
-	  int l = (int) ((HOST_WIDE_INT) ii * ar->omega);
-	  int jlo = st->win[ar->dst].lo, jhi = st->win[ar->dst].hi;
-	  int kl = klo[ar->src], kh = khi[ar->src];
-	  for (t = MAX (jlo, kl - l + 1); t <= jhi; t++)
+	  int kl = klo[k->v], kh = khi[k->v];
+	  if (!disagg)
 	    {
-	      int klast = MIN (t + l - 1, kh);
+	      /* Aggregated over a time-indexed killer, which holds by
+		 construction for the same reason.  */
+	      if (f)
+		{
+		  fprintf (f, " %s:", name);
+		  for (t = kl; t <= kh; t++)
+		    if (t != 0)
+		      fprintf (f, " %+d k_%u_%d", t, k->v, t);
+		  for (t = jlo; t <= jhi; t++)
+		    if (t != 0)
+		      fprintf (f, " %+d x_%u_%d", -t, k->j, t);
+		  fprintf (f, " >= %d\n", k->l);
+		}
+	      continue;
+	    }
+
+	  for (t = MAX (jlo, kl - k->l + 1); t <= jhi; t++)
+	    {
+	      int klast = MIN (t + k->l - 1, kh);
 	      int s;
 	      if (klast < kl)
 		continue;
 	      if (check)
 		{
-		  int sj = (*check)[ar->dst], kd = kdate[ar->src];
+		  int sj = (*check)[k->j], kd = kdate[k->v];
 		  if ((sj >= t && sj <= jhi) + (kd >= kl && kd <= klast) > 1)
 		    {
 		      *why = "rcms check: disaggregated lifetime violated";
@@ -739,14 +836,92 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 		}
 	      if (f)
 		{
-		  fprintf (f, " life_%u_%d:", a, t);
+		  fprintf (f, " %s_%d:", name, t);
 		  for (s = t; s <= jhi; s++)
-		    fprintf (f, " + x_%u_%d", ar->dst, s);
+		    fprintf (f, " + x_%u_%d", k->j, s);
 		  for (s = kl; s <= klast; s++)
-		    fprintf (f, " + k_%u_%d", ar->src, s);
+		    fprintf (f, " + k_%u_%d", k->v, s);
 		  fprintf (f, " <= 1\n");
 		}
 	    }
+	}
+    }
+
+  /* ---- the pressure rows, one per residue: press_<tau>.  A value occupies
+     [sigma_i, kill_i], CLOSED -- the interval lvx_lms_colour occupies at
+     claim level 1, the default, which claims the defining cycle for every
+     range (docs/bundle-linearization.md, "Why GCC's pipeliner allocates on
+     [def, last]").  Claim level 2's exception for tied ranges is NOT
+     modelled: every range claims.  So value i is live at T iff
+     sigma_i <= T and kill_i >= T, which is
+       sum_{s <= T} x_i^s - sum_{s <= T-1} k_i^s
+     (eq. (29) with e_i = 1), and folding T = tau + k*II over the iterations
+     in flight gives
+       sum_i w_i sum_k (sum_{s <= tau+k*II} x_i^s
+			- sum_{s <= tau+k*II-1} k_i^s) <= R
+     with the terms collected, one per variable.  K runs until every window
+     has closed; past that the two sums are both 1 and cancel.  ---- */
+  if (press)
+    {
+      int K = MAX (kmax, st->horizon) / ii + 1;
+      int worst = 0;
+
+      for (int tau = 0; tau < ii; tau++)
+	{
+	  if (check)
+	    {
+	      int live = 0;
+	      for (i = 0; i < n; i++)
+		if (nregs[i])
+		  for (int kk = 0; kk <= K; kk++)
+		    {
+		      int T = tau + kk * ii;
+		      live += nregs[i] * (((*check)[i] <= T) - (kdate[i] <= T - 1));
+		    }
+	      worst = MAX (worst, live);
+	    }
+	  if (f)
+	    {
+	      bool any = false;
+	      fprintf (f, " press_%d:", tau);
+	      for (i = 0; i < n; i++)
+		if (nregs[i])
+		  {
+		    for (t = st->win[i].lo; t <= st->win[i].hi; t++)
+		      {
+			/* #{k <= K : t <= tau + k*II} */
+			int c = 0;
+			for (int kk = 0; kk <= K; kk++)
+			  c += (t <= tau + kk * ii);
+			if (c)
+			  {
+			    fprintf (f, " %+d x_%u_%d", nregs[i] * c, i, t);
+			    any = true;
+			  }
+		      }
+		    for (t = klo[i]; t <= khi[i]; t++)
+		      {
+			int c = 0;
+			for (int kk = 0; kk <= K; kk++)
+			  c += (t <= tau + kk * ii - 1);
+			if (c)
+			  {
+			    fprintf (f, " %+d k_%u_%d", -nregs[i] * c, i, t);
+			    any = true;
+			  }
+		      }
+		  }
+	      if (!any)
+		fprintf (f, " 0 R");
+	      fprintf (f, " - R <= 0\n");
+	    }
+	}
+      if (check)
+	st->check_press = worst;
+      if (check && worst > rmax)
+	{
+	  *why = "rcms check: folded pressure above the R bound";
+	  return false;
 	}
     }
 
@@ -770,17 +945,21 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
       fprintf (f, "Bounds\n");
       if (want_span)
 	fprintf (f, " 0 <= span <= %d\n", st->horizon + 1);
-      if (mcrl && !disagg)
+      if (press)
+	fprintf (f, " 0 <= R <= %d\n", rmax);
+      if (needk && !timek)
 	for (i = 0; i < n; i++)
 	  if (nregs[i])
 	    fprintf (f, " 0 <= k_%u <= %d\n", i, st->horizon + ii + 1);
       /* No section header over nothing: disaggregated MCRL has no general
 	 integer at all.  */
-      if (want_span || (mcrl && !disagg))
+      if (want_span || press || (needk && !timek))
 	fprintf (f, "General\n");
       if (want_span)
 	fprintf (f, " span\n");
-      if (mcrl && !disagg)
+      if (press)
+	fprintf (f, " R\n");
+      if (needk && !timek)
 	for (i = 0; i < n; i++)
 	  if (nregs[i])
 	    fprintf (f, " k_%u\n", i);
@@ -788,7 +967,7 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
       for (i = 0; i < n; i++)
 	for (t = st->win[i].lo; t <= st->win[i].hi; t++)
 	  fprintf (f, " x_%u_%d\n", i, t);
-      if (mcrl && disagg)
+      if (timek)
 	for (i = 0; i < n; i++)
 	  if (nregs[i])
 	    for (t = klo[i]; t <= khi[i]; t++)
@@ -865,6 +1044,8 @@ lvx_rcms_read (struct lvx_rcms_state *st, const char *sol,
   got.safe_grow_cleared (n);
   for (i = 0; i < n; i++)
     got[i] = -1;
+  st->sol_optimal = false;
+  st->sol_r = 0;
 
   while (fgets (line, sizeof (line), f) != NULL)
     {
@@ -877,6 +1058,7 @@ lvx_rcms_read (struct lvx_rcms_state *st, const char *sol,
 	  if (sscanf (line, "STATUS %63s", word) == 1)
 	    {
 	      have_status = true;
+	      st->sol_optimal = !strcmp (word, "OPTIMAL");
 	      if (!strcmp (word, "OPTIMAL") || !strcmp (word, "FEASIBLE"))
 		usable = true;
 	      else if (!strcmp (word, "INFEASIBLE"))
@@ -886,6 +1068,8 @@ lvx_rcms_read (struct lvx_rcms_state *st, const char *sol,
 	      continue;
 	    }
 	}
+      if (sscanf (line, "%255s %lf", name, &v) == 2 && !strcmp (name, "R"))
+	st->sol_r = v;
       if (sscanf (line, "%255s %lf", name, &v) == 2 && v >= 0.5)
 	{
 	  unsigned idx;
@@ -1015,6 +1199,9 @@ lvx_rcms_prepare (const struct lvx_lms_problem *p)
   st->horizon = 0;
   st->ok = st->n != 0;
   st->undecided = 0;
+  st->sol_optimal = false;
+  st->sol_r = 0;
+  st->check_press = -1;
 
   /* b_i, charged exactly as every other engine charges it -- the prefix
      conservatism of the GUARD family included.  RCMS being measured against
@@ -1116,6 +1303,42 @@ lvx_rcms_schedule_at_ii (void *state, int ii, auto_vec<int> &sigma,
       if (*why != NULL && strstr (*why, "unknown") != NULL)
 	st->undecided++;
       goto out;
+    }
+
+  /* THE SOLVER'S ANSWER, CHECKED AGAINST THE ROWS IT WAS GIVEN.  Under
+     -mlms-rcms-check the returned dates go through the same walk as the
+     control arm: a solution that breaks a row is a model or solver bug,
+     named as such, whatever lvx_lms_accept_p goes on to say about it.  And
+     under the pressure rows the folded pressure of those dates, at the
+     killers they imply, must not exceed the bound -- and must EQUAL the R
+     the solver reports when MMRP was solved to optimality, since a lower
+     pressure would be a better R.  */
+  if (lvx_lms_rcms_check || (dump_file && lvx_lms_probe))
+    {
+      const char *swhy = NULL;
+      bool press = (lvx_lms_rcms_objective == 3 || lvx_lms_rcms_objective == 4
+		    || (lvx_lms_rcms_max_pressure != NULL
+			&& lvx_lms_rcms_max_pressure[0]));
+      st->check_press = -1;
+      bool sok = lvx_rcms_model (st, ii, NULL, &sigma, &swhy);
+      if (lvx_lms_rcms_check)
+	lvx_lms_dump (";; lvx rcms: fn=%s ii=%d %s%s\n",
+		      current_function_name (), ii,
+		      sok ? "solutioncheck=ok" : "SOLUTIONCHECK=FAILED ",
+		      sok ? "" : swhy);
+      if (press && st->check_press >= 0)
+	{
+	  int r = (int) (st->sol_r + 0.5);
+	  bool mm = (lvx_lms_rcms_objective == 3
+		     || lvx_lms_rcms_objective == 4);
+	  bool bad = mm && st->sol_optimal && st->check_press != r;
+	  lvx_lms_dump (";; lvx rcms: fn=%s ii=%d rcmspress R=%d press=%d"
+			" pool=%d %s%s\n", current_function_name (), ii, r,
+			st->check_press, st->p->pool,
+			st->sol_optimal ? "optimal" : "feasible",
+			bad ? " PRESSURECHECK=FAILED R differs from the"
+			      " folded pressure" : "");
+	}
     }
 
   /* Acceptance is the framework's, not the engine's.  This is what makes an

@@ -12920,6 +12920,61 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
        : lvx_lms_which_engine == 1 ? &lvx_sms_engine : &lvx_cms_engine);
   struct lvx_lms_problem prob;
 
+  /* The loop's first exit block, and which operations' destinations are
+     live into it: the test MaxLive applies below, shared with RCMS.  */
+  basic_block exitbb = NULL;
+  for (unsigned q = 0; q < loop->num_nodes && exitbb == NULL; q++)
+    {
+      edge e;
+      edge_iterator ei;
+
+      FOR_EACH_EDGE (e, ei, body[q]->succs)
+	if (!flow_bb_inside_loop_p (loop, e->dest)
+	    && e->dest != EXIT_BLOCK_PTR_FOR_FN (cfun))
+	  {
+	    exitbb = e->dest;
+	    break;
+	  }
+    }
+  auto_vec<bool> exitlive;
+  exitlive.safe_grow_cleared (seq.length ());
+  for (unsigned i = 0; i < seq.length (); i++)
+    {
+      rtx dl = single_set (seq[i]);
+      exitlive[i] = (exitbb != NULL && dl != NULL_RTX && REG_P (SET_DEST (dl))
+		     && REGNO (SET_DEST (dl)) < FIRST_PSEUDO_REGISTER
+		     && bitmap_bit_p (df_get_live_in (exitbb),
+				      REGNO (SET_DEST (dl))));
+    }
+  /* The pool, as lvx_lms_lrange_reserved reserves before it knows the
+     renaming: fixed registers, call-saved ones never touched, and anything
+     live into the header -- less what the body defines, since those are the
+     loop's own values and the pressure rows count them.  */
+  {
+    HARD_REG_SET res = fixed_reg_set, defd;
+    CLEAR_HARD_REG_SET (defd);
+    for (int r = 0; r < 64 && r < FIRST_PSEUDO_REGISTER; r++)
+      if (!df_regs_ever_live_p (r) && !crtl->abi->clobbers_full_reg_p (r))
+	SET_HARD_REG_BIT (res, r);
+    for (unsigned i = 0; i < seq.length (); i++)
+      {
+	df_ref d;
+	FOR_EACH_INSN_DEF (d, seq[i])
+	  if (DF_REF_REGNO (d) < FIRST_PSEUDO_REGISTER)
+	    SET_HARD_REG_BIT (defd, DF_REF_REGNO (d));
+      }
+    bitmap_iterator bi;
+    unsigned r;
+    EXECUTE_IF_SET_IN_BITMAP (df_get_live_in (loop->header), 0, r, bi)
+      if (r < FIRST_PSEUDO_REGISTER && !TEST_HARD_REG_BIT (defd, r))
+	SET_HARD_REG_BIT (res, r);
+    prob.pool = 0;
+    for (int q = 0; q < 64 && q < FIRST_PSEUDO_REGISTER; q++)
+      if (!TEST_HARD_REG_BIT (res, q))
+	prob.pool++;
+  }
+  prob.exitlive = &exitlive;
+
   prob.seq = &seq;
   prob.arcs = &arcs;
   prob.height = &height;
@@ -13231,20 +13286,8 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
      loop without being referenced in it.  That is not this loop's pressure --
      it is the allocator's problem outside, and the walk cannot reach it
      anyway, since it iterates over the body's own instructions.  */
-  basic_block exitbb = NULL;
-  for (unsigned q = 0; q < loop->num_nodes && exitbb == NULL; q++)
-    {
-      edge e;
-      edge_iterator ei;
-
-      FOR_EACH_EDGE (e, ei, body[q]->succs)
-	if (!flow_bb_inside_loop_p (loop, e->dest)
-	    && e->dest != EXIT_BLOCK_PTR_FOR_FN (cfun))
-	  {
-	    exitbb = e->dest;
-	    break;
-	  }
-    }
+  /* EXITBB is found before the ladder, where the engines' problem is
+     built, since RCMS's pressure rows need the same exit-live test.  */
   int maxsig = sigma.is_empty () ? 0 : sigma[0];
   for (unsigned i = 1; i < sigma.length (); i++)
     maxsig = MAX (maxsig, sigma[i]);
@@ -13264,22 +13307,24 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 		  if (when > lastu)
 		    lastu = when;
 		}
-	    if (exitbb != NULL)
-	      {
-		rtx dl = single_set (seq[i]);
-
-		if (dl != NULL_RTX && REG_P (SET_DEST (dl))
-		    && REGNO (SET_DEST (dl)) < FIRST_PSEUDO_REGISTER
-		    && bitmap_bit_p (df_get_live_in (exitbb),
-				     REGNO (SET_DEST (dl))))
-		  lastu = MAX (lastu, maxsig);
-	      }
+	    /* To the end of the schedule, as occ_last: the last date plus
+	       one interval, which is where the drain's replayed work ends.  */
+	    if (exitlive[i])
+	      lastu = MAX (lastu, maxsig + found);
 	    if (lastu < 0)
 	      continue;
-	    int l = lastu - sigma[i];
-	    if (l <= 0)
+	    /* THE COLOURING'S INTERVAL.  It occupies [def + 1 - ec, last],
+	       closed, and from claim level 1 -- the default -- ec is 1 for
+	       every range: [def, last], length last - def + 1.  This counted
+	       last - def, [def, last - 1], one cycle short for every range,
+	       so MaxLive came out below what the colouring has to fit.  Under
+	       -mlms-claim-floor=0 the earlyclobber destinations still claim
+	       their cycle and are not distinguished here.  */
+	    int e = lvx_lms_claim_floor >= 1 ? 1 : 0;
+	    if (lastu - sigma[i] <= 0)
 	      continue;
-	    int ph = ((c - (sigma[i] - lo)) % found + found) % found;
+	    int l = lastu - sigma[i] + e;
+	    int ph = ((c - (sigma[i] + 1 - e - lo)) % found + found) % found;
 	    if (l <= ph)
 	      continue;
 	    int inst = (l - ph + found - 1) / found;
