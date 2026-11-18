@@ -1747,32 +1747,27 @@ lvx_lms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
        MAXIMUM power-of-two degree and is right, because the lcm of a set of
        powers of two is the largest of them; the lcm form says why.
 
-       It mattered because the rounding rule lived in two places and only one
-       of them read -mlms-exact-degree, so a value could have exact degree 3
-       while KUNROLL was the power-of-two 4.  The names then rotate 0,1,2,0
-       through one unrolled kernel and 1,2,0,1 through the next -- the copy
-       that wrote a register is not the copy that reads it.
-       lvx_lms_verify_rename found it as five register conflicts on one loop
-       of the gate's own test program.
+       Code generation also needs KUNROLL to be a power of two -- the
+       preheader peels `count % kunroll' with a mask and takes
+       `count / kunroll' trips with a shift, and on LVX that count feeds
+       LOOPDO (§7quinquies.2b, requirement 2) -- and every degree is rounded
+       to one, so this lcm equals the maximum; it is here to state the
+       invariant, not to widen it.
 
-       THE LCM DOES NOT MAKE EXACT DEGREES USABLE FOR CODEGEN, and treating it
-       as if it did was a mistake worth recording.  Code generation needs
-       KUNROLL to be a power of two -- the preheader peels `count % kunroll'
-       with a mask and takes `count / kunroll' trips with a shift, and on LVX
-       that count feeds LOOPDO (§7quinquies.2b, requirement 2).  No power of
-       two is divisible by three, so under exact degrees the two requirements
-       are incompatible rather than merely in tension, and lvx_option_override
-       refuses the combination.  On the codegen path every degree is therefore
-       a power of two and this lcm equals the maximum; it is here to state the
-       invariant, not to widen it.  */
+       There used to be a -mlms-exact-degree, colouring with unrounded
+       degrees "to separate the cost of the rounding from the cost of the
+       schedule".  Retired 2026-11-18: a value's name count is not a register
+       requirement -- names of different values share a register wherever
+       their lifetimes do not overlap -- so the split it measured was between
+       two quantities that do not predict colourability; register pressure
+       (MaxLive) does.  And no power of two is divisible by three, so it could
+       never reach code generation, where its refusal had already been lost
+       once without anything noticing.  */
     for (unsigned v = 0; v < deg.length (); v++)
       {
 	int p2 = 1;
-	if (lvx_lms_exact_degree)
-	  p2 = MAX (deg[v], 1);
-	else
-	  while (p2 < deg[v])
-	    p2 <<= 1;
+	while (p2 < deg[v])
+	  p2 <<= 1;
 	/* lcm (kun, p2), by gcd.  Both are small and positive.  */
 	int a = kun, b = p2;
 	while (b)
@@ -1850,14 +1845,10 @@ lvx_lms_colour (const auto_vec<int> &def_, const auto_vec<int> &last_,
 	       because that is what the reference allocates (§7quater.5) -- but
 	       the rounding is not neutral when ranges are COMBINED, since
 	       p2 (a + b) can exceed p2 (a) + p2 (b) even though
-	       ceil ((a+b)/II) <= ceil (a/II) + ceil (b/II) always holds.
-	       -mlms-exact-degree separates the two effects.  */
+	       ceil ((a+b)/II) <= ceil (a/II) + ceil (b/II) always holds.  */
 	    int p2 = 1;
-	    if (lvx_lms_exact_degree)
-	      p2 = MAX (deg[v], 1);
-	    else
-	      while (p2 < deg[v])
-		p2 <<= 1;
+	    while (p2 < deg[v])
+	      p2 <<= 1;
 	    /* A VALUE WHOSE ADJUSTED LIFE COLLAPSES TO ZERO IS STILL A VALUE.
 	       This used to `continue', dropping it from the graph: it is read
 	       in the cycle after it is written, so the range the model computes
@@ -5738,8 +5729,8 @@ lvx_lms_lrange_reserved (const auto_vec<rtx_insn *> &seq,
    P2UNROLL IS READ BACK, not recomputed.  lvx_lms_build_lranges puts a
    provisional power-of-two round in it so the structural report has something
    to say; what the renaming uses is the number of anodes the colouring
-   actually built, which is the discipline that fixed the -mlms-exact-degree
-   bug (§7ter.14): a rounding rule in two places goes stale, a count of what
+   actually built, which is the discipline that fixed a rounding rule kept in
+   two places (§7ter.14): a rule in two places goes stale, a count of what
    exists cannot.  */
 
 /* Declared ahead of their definitions: the two accessors over the anode
@@ -6818,7 +6809,7 @@ lvx_lms_verify_lranges (const auto_vec<rtx_insn *> &seq,
    (L - OMEGA) mod P2(V).
 
    P2 IS NOT PASSED IN; it is the number of anodes the colouring made for the
-   value.  Recomputing it from DEG and -mlms-exact-degree would be six lines
+   value.  Recomputing it from DEG and the rounding rule would be six lines
    duplicating lvx_lms_colour, and a duplicate of a rounding rule is a thing
    that goes stale -- this cannot, because it counts what the allocator
    actually built.  A value with no anode has P2 == 0 and is not renamed at

@@ -131,10 +131,6 @@ mlms-regalloc-feasible
 Target Var(lvx_lms_regalloc_feasible) Init(1) Optimization
 Reject an initiation interval whose modulo kernel cannot be register allocated, making colourability a feasibility test inside the II search rather than a property discovered afterwards.
 
-mlms-exact-degree
-Target Var(lvx_lms_exact_degree) Init(0) Optimization
-Colour the interference graph with exact modulo expansion degrees instead of degrees rounded up to a power of two, to separate the cost of the rounding from the cost of the schedule.
-
 mlms-stage-sched
 Target Var(lvx_lms_stage_sched) Init(0) Optimization
 After a modulo schedule converges, shift operations by whole multiples of the initiation interval to shorten live ranges, which changes the stage but not the modulo cycle and so cannot affect resources or the initiation interval (Eichenberger's skip factors).
@@ -405,9 +401,6 @@ Target RejectNegative Joined Alias(mlms-load-latency=) Undocumented
 
 mcms-regalloc-feasible
 Target Alias(mlms-regalloc-feasible) Undocumented
-
-mcms-exact-degree
-Target Alias(mlms-exact-degree) Undocumented
 
 mcms-stage-sched
 Target Alias(mlms-stage-sched) Undocumented

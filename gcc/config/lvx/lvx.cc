@@ -11215,9 +11215,9 @@ lvx_option_override (void)
      the relaxation drops are justified by a displacement adjustment
      (PaCT 1997 §4's fixRelaxed) that does not exist.  Emitting a pipeline
      built on that graph produces a base+displacement operand reading the
-     wrong instance, with nothing to say so: the same shape as the
-     -mlms-exact-degree hole below, where a measurement lever was reachable
-     from the emission path because the gate tested the wrong thing.  */
+     wrong instance, with nothing to say so: the same shape as the hole the
+     retired -mlms-exact-degree had, a measurement lever reachable from the
+     emission path because the gate tested the wrong thing.  */
   /* THE SAME HOLE, FOR THE SAME REASON.  §7tricies.95.  `-mlms-assume-ivdep'
      had only the `requires -mlms-probe' test above, which -mlms-codegen and
      -mlms-pipeline satisfy ALONGSIDE the probe while emission still happens.
