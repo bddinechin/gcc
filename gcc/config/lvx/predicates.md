@@ -225,10 +225,13 @@
 ;; Used for do loop pattern where we have an output reload in a jump insn.
 ;; This is not supported by reload so the insn must handle them.
 ;; This hack comes from the arc backend.
+;; A register until register allocation, then a register or memory: the
+;; doloop counter, which LRA may spill but cannot reload around a jump.  The
+;; test named reload_in_progress, which LRA never sets.
 (define_predicate "shouldbe_register_operand"
   (match_code "reg,subreg,mem")
 {
-  return ((reload_in_progress || reload_completed)
+  return ((lra_in_progress || reload_completed)
           ? general_operand : register_operand) (op, mode);
 })
 

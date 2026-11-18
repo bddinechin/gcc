@@ -17,7 +17,7 @@
      "A system register constraint.")
 
 (define_register_constraint "x" "(XCR_REGS)"
-     "Coprocessor registers.")
+     "The extension unit's 256-bit XVR registers (lvx-2).")
 
 (define_constraint "SYM"
   "An immediate or symbol operand."
@@ -32,9 +32,7 @@
 (define_constraint "S01"
   "A zero or minus 1 constant."
   (and (match_code "const_int,const_vector")
-       (ior (match_test "op == const0_rtx")
-            (match_test "op == constm1_rtx")
-            (match_test "op == CONST0_RTX (mode)")
+       (ior (match_test "op == CONST0_RTX (mode)")
             (match_test "op == CONSTM1_RTX (mode)"))))
 
 (define_constraint "U06"
@@ -45,7 +43,7 @@
 (define_constraint "I10"
   "A signed 10-bit constant."
   (and (match_code "const_int")
-       (match_test "ival >= -512 && ival <= 511")))
+       (match_test "SIGNED_INT_FITS_N_BITS (ival, 10)")))
 
 (define_constraint "H16"
   "A real value that fits on 16bits."
