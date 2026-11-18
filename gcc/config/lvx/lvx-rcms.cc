@@ -565,8 +565,8 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 
   /* ---- the makespan rows: span >= sigma_i + p_i.  One dummy sink with an
      arc from every operation, which is why this objective costs one
-     variable where the cumulative-lifetime one costs a window per value.
-     ---- */
+     variable and n rows, where the cumulative-lifetime one costs n integer
+     variables and one row per REG_RAW arc.  ---- */
   if (f && want_span)
     for (i = 0; i < n; i++)
       {
