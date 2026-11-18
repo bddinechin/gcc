@@ -148,14 +148,22 @@
       case 8:
         return "#";
       case 9:
-        return "copyo %0 = %1";
+        /* COPYO is retired from the ISA, so a 256-bit GPR move is two CATDQ
+           in one bundle -- each catenates two of the source's 64-bit words
+           into one 128-bit half of the destination, first source low.  Both
+           are ALU_LITE, so the pair takes both ALU slots: type `alu' and
+           issue `lite2', which is latency 1 against COPYO's 3, and 8 bytes
+           against 4.  `copy'/`lsu_auxr_auxw' was COPYO's own pair, and there
+           is no (copy, lite2) reservation -- an unreserved pair reserves
+           nothing, silently.  */
+        return "catdq %L0 = %x1, %y1\n\tcatdq %M0 = %z1, %t1";
       default:
         gcc_unreachable ();
       }
   }
-  [(set_attr "type" "xcopy, xload, xload, xload, xstore, xstore, xstore, xmovef, xmoveto, copy")
-   (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_x2, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2, ext_misc_auxw, lite2_misc, lsu_auxr_auxw")
-   (set_attr "length"                "4,       4,         8,        12,             4,               8,              12,                 4,                    8,            4")
+  [(set_attr "type" "xcopy, xload, xload, xload, xstore, xstore, xstore, xmovef, xmoveto, alu")
+   (set_attr "issue" "ext_misc_auxw, lsu, lsu_x, lsu_x2, lsu_memw_accr, lsu_memw_accr_x, lsu_memw_accr_x2, ext_misc_auxw, lite2_misc, lite2")
+   (set_attr "length"                "4,       4,         8,        12,             4,               8,              12,                 4,                    8,            8")
    (set_attr "predicable" "no")]
 )
 
