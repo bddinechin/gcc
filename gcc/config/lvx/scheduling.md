@@ -118,7 +118,6 @@
 (define_insn_reservation "lvx_atomic_lsu2_memw_auxr_x" 24 (and (eq_attr "type" "atomic") (eq_attr "issue" "lsu2_memw_auxr_x")) "lvx_lsu2_memw_auxr_x_r")
 (define_insn_reservation "lvx_atomic_lsu2_memw_auxr_auxw" 24 (and (eq_attr "type" "atomic") (eq_attr "issue" "lsu2_memw_auxr_auxw")) "lvx_lsu2_memw_auxr_auxw_r")
 (define_insn_reservation "lvx_atomic_lsu2_memw_auxr_auxw_x" 24 (and (eq_attr "type" "atomic") (eq_attr "issue" "lsu2_memw_auxr_auxw_x")) "lvx_lsu2_memw_auxr_auxw_x_r")
-(define_insn_reservation "lvx_copy_lsu_auxr_auxw" 3 (and (eq_attr "type" "copy") (eq_attr "issue" "lsu_auxr_auxw")) "lvx_lsu_auxr_auxw_r")
 (define_insn_reservation "lvx_imul_lite" 2 (and (eq_attr "type" "imul") (eq_attr "issue" "lite")) "lvx_lite_r")
 (define_insn_reservation "lvx_imul_lite_x" 2 (and (eq_attr "type" "imul") (eq_attr "issue" "lite_x")) "lvx_lite_x_r")
 (define_insn_reservation "lvx_imul_lite2" 2 (and (eq_attr "type" "imul") (eq_attr "issue" "lite2")) "lvx_lite2_r")
