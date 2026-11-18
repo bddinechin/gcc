@@ -5457,8 +5457,10 @@ lvx_syscall_addrspace_p (rtx x)
    format -- the H32 constraint, whose only user is *fcomp<ALLF>.
 
    The field is a wrapped32: gas takes any 32-bit word, written signed or
-   unsigned, and the instruction reads it at its own width.  FCOMPW is a
-   32-bit operation, so every SF bit pattern fits, negative ones included --
+   unsigned, and the instruction reads it at its own width.  FCOMPH reads the
+   low 16 bits, so every HF fits; it is printed as its 16-bit pattern.
+   FCOMPW is a 32-bit operation, so every SF bit pattern fits, negative ones
+   included --
    lvx_float_fits_bits zero-extends the pattern and then asks for a SIGNED
    32-bit fit, which refused every negative float and cost `x < -1.5f' a
    MAKED.  FCOMPD sign-extends the word to 64 bits, so there a DF fits only
@@ -5470,7 +5472,7 @@ lvx_syscall_addrspace_p (rtx x)
 bool
 lvx_float_fits_imm32 (const REAL_VALUE_TYPE *r, machine_mode mode)
 {
-  if (mode == SFmode)
+  if (mode == HFmode || mode == SFmode)
     return true;
   return lvx_float_fits_bits (r, 32, mode);
 }

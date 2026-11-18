@@ -185,8 +185,9 @@
 ;; logicals compute the low bits correctly, which is all a QI/HI value defines.
 (define_mode_iterator QIHI [  QI HI])
 
-;; Iterator for floating-point compare modes (up to 64-bit)
-(define_mode_iterator ALLF [  SF DF])
+;; Iterator for the scalar floating-point compare modes: FCOMPH, FCOMPW and
+;; FCOMPD, all on both cores.  HF compares natively rather than widening to SF.
+(define_mode_iterator ALLF [  HF SF DF])
 
 ;; Scalar modes used by the mov pattern that fit in a register.
 ;; TI and OI and to be handled elsewhere.
@@ -297,7 +298,7 @@
 
 ;; Iterator for the modes tested by cbranch<m>4
 (define_mode_iterator CBRANCH [
-  SI SF DI DF TI
+  SI HF SF DI DF TI
 ])
 
 ;; Iterator for the integer modes that fit in a GPR.

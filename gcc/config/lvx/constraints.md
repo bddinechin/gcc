@@ -53,8 +53,8 @@
        (match_test "lvx_float_fits_bits(rval,16,mode)")))
 
 (define_constraint "H32"
-  "A real value the 32-bit immediate of an FCOMP*.W format can carry: any SF,
-   and a DF whose bits are a sign-extended 32-bit word."
+  "A real value the 32-bit immediate of an FCOMP*.W format can carry: any HF
+   or SF, and a DF whose bits are a sign-extended 32-bit word."
   (and (match_code "const_double")
        (match_test "lvx_float_fits_imm32 (rval, mode)")))
 

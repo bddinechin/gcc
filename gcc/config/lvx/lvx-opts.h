@@ -311,14 +311,6 @@ enum lvx_arch_type
 #define HAVE_LVX_MULT_V8HF (1) // fmulho
 #define HAVE_LVX_MULT_V8QI (1)
 
-#define HAVE_LVX_CMP_SF (1)
-#define HAVE_LVX_CMP_DF (1)
-#define HAVE_LVX_CMP_V2DF (1)
-#define HAVE_LVX_CMP_V4SF (0)
-#define HAVE_LVX_CMP_V8HF (0)
-#define HAVE_LVX_CMP_V4DI (1) // FIXME: lvx-1
-#define HAVE_LVX_CMP_V4DF (0)
-
 #define HAVE_LVX_NEG_CMP_HF (0)
 #define HAVE_LVX_NEG_CMP_DF (1)
 #define HAVE_LVX_NEG_CMP_DI (1)

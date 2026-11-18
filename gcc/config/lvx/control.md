@@ -721,7 +721,7 @@
         (match_operator:SIDI 1 "float_comparison_operator"
          [(match_operand:ALLF 2 "register_operand" "r,r")
           (match_operand:ALLF 3 "register_f32_operand" "r,H32")]))]
-  "HAVE_LVX_CMP_<ALLF:MODE>"
+  ""
   "fcomp<ALLF:suffix>.%F1 %0 = %2, %3"
   [(set_attr "type" "alu, alu")
    (set_attr "issue" "lite, lite_x")
