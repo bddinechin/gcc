@@ -545,6 +545,19 @@ mlms-rcms-margin=
 Target RejectNegative Joined UInteger Var(lvx_lms_rcms_margin) Init(1) Optimization
 -mlms-rcms-margin=N	How many intervals of slack the scheduling horizon gets above the critical path.  Each one widens every window and so multiplies the binary count; zero makes the model smallest and can make a feasible interval look infeasible, because it forbids placing an operation a stage later than its earliest date.
 
+mlms-rcms-deps=
+Target RejectNegative Joined Enum(lvx_rcms_deps) Var(lvx_lms_rcms_deps) Init(1) Optimization
+-mlms-rcms-deps=FORM	How RCMS writes a dependence i -> j of latency L = theta - II*omega: aggregated, one row sum_t t*x_i_t - sum_t t*x_j_t <= -L, which constrains only the average date in the LP relaxation; or disaggregated (the default, as in LAO), one row per date t, sum_{s>=t} x_i_s + sum_{s<=t+L-1} x_j_s <= 1, whose relaxation is the strong one.  Under the cumulative-lifetime objective the killer follows: one integer k_i with aggregated rows, a time-indexed node k_i_t with disaggregated ones.  Both forms are the same integer program, so their optima are equal; only the relaxation, and so the solve time, differs.
+
+Enum
+Name(lvx_rcms_deps) Type(int)
+
+EnumValue
+Enum(lvx_rcms_deps) String(aggregated) Value(0)
+
+EnumValue
+Enum(lvx_rcms_deps) String(disaggregated) Value(1)
+
 mlms-rcms-check
 Target Var(lvx_lms_rcms_check) Init(0) Optimization
 Verify the integer program against a schedule CMS found at the same interval, instead of trusting that it is right.  A schedule the framework accepted must satisfy every row the model emits, so a failure is a bug in the MODEL -- a sign the wrong way round, a residue off by one, a window a cycle too tight -- and the test needs no solver and runs on the real corpus.

@@ -50,18 +50,28 @@ along with GCC; see the file COPYING3.  If not see
    are a window narrowing, which -mlms-rcms-margin reaches when wanted.
 
    THE OBJECTIVE IS THE CUMULATIVE REGISTER LIFETIME, not the makespan.
-   -mlms-rcms-objective=2 (MCRL) is the default: one integer killer k_i per
-   value-producing operation, bounded by a life_a row k_src >= date(dst) +
+   -mlms-rcms-objective=2 (MCRL) is the default: one killer per
+   value-producing operation, bounded below by each read, date(dst) +
    II*omega for each REG_RAW arc, and the objective minimises
-   sum nregs(i) * (k_i - date(i)), weighted by the REG_NREGS of the
+   sum nregs(i) * (killer(i) - date(i)), weighted by the REG_NREGS of the
    destination.  The makespan compresses the schedule and so fights the
    allocator -- a compressed modulo schedule holds more values in flight,
    and "kernel not colourable" was the commonest reason a solved schedule
    was thrown away (§7tricies.229); the width weighting prices a pair or a
-   quad as the registers it really takes (§7tricies.230).  The killer is ONE
-   integer per value, not a time-indexed node, so it costs n variables and
-   not a window per value.  A loop that defines no value falls back to the
-   makespan.  See docs/modulo-scheduler-interface.md section 9.1.
+   quad as the registers it really takes (§7tricies.230).  A loop that
+   defines no value falls back to the makespan.  See
+   docs/modulo-scheduler-interface.md section 9.1.
+
+   THE DEPENDENCES ARE DISAGGREGATED BY DEFAULT, as in LAO.
+   -mlms-rcms-deps.  Aggregated, an arc is one row over the weighted dates,
+   sum_t t x_i^t - sum_t t x_j^t <= -L, and the killer is one general
+   integer k_i with one life_a row per REG_RAW arc: n integers rather than
+   a window per value.  But that row constrains only the AVERAGE date in
+   the LP relaxation.  Disaggregated, an arc is one row per date t --
+   sum_{s>=t} x_i^s + sum_{s<=t+L-1} x_j^s <= 1 -- and the killer becomes a
+   time-indexed node, k_i_t binaries with kasg_i, each read an arc into it.
+   More rows and a window per killer, and the strong relaxation.  The two
+   forms are one integer program, so their optima are equal.
 
    WHY THE SOLVER IS A SEPARATE PROCESS.  No library is linked into cc1:
    no configure dependency, no licence question, and the model file is an
@@ -341,7 +351,8 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
   unsigned n = st->n, i;
   int t;
 
-  /* ---- the objective: MCRL by default (one integer killer per value),
+  /* ---- the objective: MCRL by default (one killer per value -- a
+     time-indexed node, or one integer with -mlms-rcms-deps=aggregated),
      the makespan (2.1) or feasibility on request.  ---- */
   if (f)
     fprintf (f, "\\ RCMS fn=%s ii=%d n=%u horizon=%d\n",
@@ -399,6 +410,70 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
   const bool mcrl = (lvx_lms_rcms_objective == 2 && any_life);
   const bool want_span = !mcrl;
 
+  /* AGGREGATED OR DISAGGREGATED.  -mlms-rcms-deps.  LAO's
+     buildDependencesDinechin has both forms behind
+     OptimizeRCMSSolving_AggrDeps, and its default is the disaggregated one:
+     the aggregated row constrains only the average date in the LP
+     relaxation, the disaggregated rows constrain every date.  The same
+     integer program either way, so the optima must agree -- a difference
+     between the two forms is a bug, not a result.  */
+  const bool disagg = (lvx_lms_rcms_deps == 1);
+
+  /* The killer of value i, disaggregated, is a node like any other: binaries
+     k_i_t over a window.  Its readers j are the REG_RAW arcs leaving i, and
+     each is an arc j -> killer (i) of latency II*omega, so the window is
+     [max_j (lo_j + II*omega), max_j (hi_j + II*omega)], capped where the
+     aggregated integer k_i is bounded.  The killer issues nothing, so it
+     has no resource rows.  */
+  auto_vec<int> klo, khi;
+  if (mcrl && disagg)
+    {
+      klo.safe_grow_cleared (n);
+      khi.safe_grow_cleared (n);
+      for (i = 0; i < n; i++)
+	klo[i] = khi[i] = INT_MIN;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	{
+	  const lvx_lms_arc *ar = &arcs[a];
+	  if (ar->kind != LVX_ARC_REG_RAW || ar->src >= n || ar->dst >= n
+	      || nregs[ar->src] == 0)
+	    continue;
+	  int l = (int) ((HOST_WIDE_INT) ii * ar->omega);
+	  klo[ar->src] = MAX (klo[ar->src], st->win[ar->dst].lo + l);
+	  khi[ar->src] = MAX (khi[ar->src], st->win[ar->dst].hi + l);
+	}
+      for (i = 0; i < n; i++)
+	if (nregs[i])
+	  {
+	    khi[i] = MIN (khi[i], st->horizon + ii + 1);
+	    if (khi[i] < klo[i])
+	      {
+		*why = "rcms: empty killer window";
+		return false;
+	      }
+	  }
+    }
+
+  /* The killer dates a checked schedule implies: the last read, which is
+     the smallest value every lifetime row admits.  */
+  auto_vec<int> kdate;
+  if (check && mcrl)
+    {
+      kdate.safe_grow_cleared (n);
+      for (i = 0; i < n; i++)
+	kdate[i] = INT_MIN;
+      for (unsigned a = 0; a < arcs.length (); a++)
+	{
+	  const lvx_lms_arc *ar = &arcs[a];
+	  if (ar->kind != LVX_ARC_REG_RAW || ar->src >= n || ar->dst >= n
+	      || nregs[ar->src] == 0)
+	    continue;
+	  kdate[ar->src]
+	    = MAX (kdate[ar->src],
+		   (int) ((*check)[ar->dst] + (HOST_WIDE_INT) ii * ar->omega));
+	}
+    }
+
   if (f)
     {
       if (mcrl)
@@ -413,7 +488,14 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 	  fprintf (f, "Minimize\n obj:");
 	  for (i = 0; i < n; i++)
 	    if (nregs[i])
-	      fprintf (f, " + %d k_%u", nregs[i], i);
+	      {
+		if (!disagg)
+		  fprintf (f, " + %d k_%u", nregs[i], i);
+		else
+		  for (t = klo[i]; t <= khi[i]; t++)
+		    if (t != 0)
+		      fprintf (f, " %+d k_%u_%d", nregs[i] * t, i, t);
+	      }
 	  for (i = 0; i < n; i++)
 	    if (nregs[i])
 	      for (t = st->win[i].lo; t <= st->win[i].hi; t++)
@@ -447,9 +529,13 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 	}
     }
 
-  /* ---- dependences: sigma_j - sigma_i >= theta - ii*omega, written as
-     sum_t t x_i^t - sum_t t x_j^t <= -(theta - ii*omega).  LAO's
-     buildDependencesDinechin, aggregated form.  ---- */
+  /* ---- dependences: sigma_j - sigma_i >= L = theta - ii*omega.  LAO's
+     buildDependencesDinechin, in either of its forms.  Aggregated:
+     sum_t t x_i^t - sum_t t x_j^t <= -L, one row per arc.  Disaggregated:
+     for every date t, sum_{s>=t} x_i^s + sum_{s<=t+L-1} x_j^s <= 1 -- if i
+     is at t or later, j is not before t+L -- over LAO's pruned range
+     t in [max (lo_i, lo_j - L + 1), hi_i], outside which one of the two
+     sums is empty and the row cannot bind.  ---- */
   for (unsigned a = 0; a < arcs.length (); a++)
     {
       const lvx_lms_arc *ar = &arcs[a];
@@ -468,6 +554,40 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
 	    {
 	      *why = "rcms: positive self arc";
 	      return false;
+	    }
+	  continue;
+	}
+
+      if (disagg)
+	{
+	  int ilo = st->win[ar->src].lo, ihi = st->win[ar->src].hi;
+	  int jlo = st->win[ar->dst].lo, jhi = st->win[ar->dst].hi;
+	  for (t = MAX (ilo, jlo - w + 1); t <= ihi; t++)
+	    {
+	      int jlast = MIN (t + w - 1, jhi);
+	      int s;
+	      if (jlast < jlo)
+		continue;
+	      /* Checked as written: the row itself, not the inequality it
+		 stands for, so a mis-emitted row is caught.  */
+	      if (check)
+		{
+		  int si = (*check)[ar->src], sj = (*check)[ar->dst];
+		  if ((si >= t && si <= ihi) + (sj >= jlo && sj <= jlast) > 1)
+		    {
+		      *why = "rcms check: disaggregated dependence violated";
+		      return false;
+		    }
+		}
+	      if (f)
+		{
+		  fprintf (f, " dep_%u_%d:", a, t);
+		  for (s = t; s <= ihi; s++)
+		    fprintf (f, " + x_%u_%d", ar->src, s);
+		  for (s = jlo; s <= jlast; s++)
+		    fprintf (f, " + x_%u_%d", ar->dst, s);
+		  fprintf (f, " <= 1\n");
+		}
 	    }
 	  continue;
 	}
@@ -545,28 +665,96 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
      i -> j.  A use in a later iteration keeps the value alive a whole
      interval longer, which is what the omega term is; dropping it would
      price a loop-carried value as though it died in its own iteration.
-     n general integers and |RAW arcs| rows -- the cheap encoding of
-     section 9.1, not a time-indexed node per value.  ---- */
-  if (f && mcrl)
-    for (unsigned a = 0; a < arcs.length (); a++)
-      {
-	const lvx_lms_arc *ar = &arcs[a];
+     Aggregated: one general integer k_i per value and one row per REG_RAW
+     arc.  Disaggregated: the killer is a time-indexed node, kasg_i makes it
+     take one date, and each REG_RAW arc i -> j is the arc j -> killer (i)
+     of latency ii*omega, disaggregated exactly as a dependence.  ---- */
+  if (mcrl)
+    {
+      if (check)
+	for (i = 0; i < n; i++)
+	  if (nregs[i])
+	    {
+	      int hi = disagg ? khi[i] : st->horizon + ii + 1;
+	      int lo = disagg ? klo[i] : 0;
+	      if (kdate[i] < lo || kdate[i] > hi)
+		{
+		  *why = "rcms check: killer outside its window";
+		  return false;
+		}
+	    }
 
-	if (ar->kind != LVX_ARC_REG_RAW || ar->src >= n || ar->dst >= n
-	    || nregs[ar->src] == 0)
-	  continue;
-	fprintf (f, " life_%u: k_%u", a, ar->src);
-	for (t = st->win[ar->dst].lo; t <= st->win[ar->dst].hi; t++)
-	  if (t != 0)
-	    fprintf (f, " %+d x_%u_%d", -t, ar->dst, t);
-	fprintf (f, " >= " HOST_WIDE_INT_PRINT_DEC "\n",
-		 (HOST_WIDE_INT) ii * ar->omega);
-      }
+      if (disagg && f)
+	for (i = 0; i < n; i++)
+	  if (nregs[i])
+	    {
+	      fprintf (f, " kasg_%u:", i);
+	      for (t = klo[i]; t <= khi[i]; t++)
+		fprintf (f, " + k_%u_%d", i, t);
+	      fprintf (f, " = 1\n");
+	    }
+
+      for (unsigned a = 0; a < arcs.length (); a++)
+	{
+	  const lvx_lms_arc *ar = &arcs[a];
+
+	  if (ar->kind != LVX_ARC_REG_RAW || ar->src >= n || ar->dst >= n
+	      || nregs[ar->src] == 0)
+	    continue;
+
+	  if (!disagg)
+	    {
+	      /* The integer k_i is free above the last read, and the checked
+		 killer is that read, so the row holds by construction; the
+		 window test above is the part a schedule can violate.  */
+	      if (f)
+		{
+		  fprintf (f, " life_%u: k_%u", a, ar->src);
+		  for (t = st->win[ar->dst].lo; t <= st->win[ar->dst].hi; t++)
+		    if (t != 0)
+		      fprintf (f, " %+d x_%u_%d", -t, ar->dst, t);
+		  fprintf (f, " >= " HOST_WIDE_INT_PRINT_DEC "\n",
+			   (HOST_WIDE_INT) ii * ar->omega);
+		}
+	      continue;
+	    }
+
+	  int l = (int) ((HOST_WIDE_INT) ii * ar->omega);
+	  int jlo = st->win[ar->dst].lo, jhi = st->win[ar->dst].hi;
+	  int kl = klo[ar->src], kh = khi[ar->src];
+	  for (t = MAX (jlo, kl - l + 1); t <= jhi; t++)
+	    {
+	      int klast = MIN (t + l - 1, kh);
+	      int s;
+	      if (klast < kl)
+		continue;
+	      if (check)
+		{
+		  int sj = (*check)[ar->dst], kd = kdate[ar->src];
+		  if ((sj >= t && sj <= jhi) + (kd >= kl && kd <= klast) > 1)
+		    {
+		      *why = "rcms check: disaggregated lifetime violated";
+		      return false;
+		    }
+		}
+	      if (f)
+		{
+		  fprintf (f, " life_%u_%d:", a, t);
+		  for (s = t; s <= jhi; s++)
+		    fprintf (f, " + x_%u_%d", ar->dst, s);
+		  for (s = kl; s <= klast; s++)
+		    fprintf (f, " + k_%u_%d", ar->src, s);
+		  fprintf (f, " <= 1\n");
+		}
+	    }
+	}
+    }
 
   /* ---- the makespan rows: span >= sigma_i + p_i.  One dummy sink with an
      arc from every operation, which is why this objective costs one
      variable and n rows, where the cumulative-lifetime one costs n integer
-     variables and one row per REG_RAW arc.  ---- */
+     variables and one row per REG_RAW arc aggregated, a window and a row
+     per date per REG_RAW arc disaggregated.  ---- */
   if (f && want_span)
     for (i = 0; i < n; i++)
       {
@@ -582,14 +770,17 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
       fprintf (f, "Bounds\n");
       if (want_span)
 	fprintf (f, " 0 <= span <= %d\n", st->horizon + 1);
-      if (mcrl)
+      if (mcrl && !disagg)
 	for (i = 0; i < n; i++)
 	  if (nregs[i])
 	    fprintf (f, " 0 <= k_%u <= %d\n", i, st->horizon + ii + 1);
-      fprintf (f, "General\n");
+      /* No section header over nothing: disaggregated MCRL has no general
+	 integer at all.  */
+      if (want_span || (mcrl && !disagg))
+	fprintf (f, "General\n");
       if (want_span)
 	fprintf (f, " span\n");
-      if (mcrl)
+      if (mcrl && !disagg)
 	for (i = 0; i < n; i++)
 	  if (nregs[i])
 	    fprintf (f, " k_%u\n", i);
@@ -597,6 +788,11 @@ lvx_rcms_model (struct lvx_rcms_state *st, int ii, FILE *f,
       for (i = 0; i < n; i++)
 	for (t = st->win[i].lo; t <= st->win[i].hi; t++)
 	  fprintf (f, " x_%u_%d\n", i, t);
+      if (mcrl && disagg)
+	for (i = 0; i < n; i++)
+	  if (nregs[i])
+	    for (t = klo[i]; t <= khi[i]; t++)
+	      fprintf (f, " k_%u_%d\n", i, t);
       fprintf (f, "End\n");
     }
   return true;
@@ -793,7 +989,15 @@ lvx_rcms_size (struct lvx_rcms_state *st, int ii, int *nvar, int *nrow)
   for (i = 0; i < n; i++)
     v += st->win[i].hi - st->win[i].lo + 1;
   r += n;			  /* assignments */
-  r += st->p->arcs->length ();	  /* dependences, self arcs over-counted */
+  if (lvx_lms_rcms_deps == 1)	  /* dependences: a row per date of the source */
+    for (unsigned a = 0; a < st->p->arcs->length (); a++)
+      {
+	const lvx_lms_arc *ar = &(*st->p->arcs)[a];
+	if (ar->src < n)
+	  r += st->win[ar->src].hi - st->win[ar->src].lo + 1;
+      }
+  else
+    r += st->p->arcs->length ();  /* dependences, self arcs over-counted */
   r += n;			  /* makespan */
   r += 15 * ii;			  /* resources, before LAO's kill */
   *nvar = v;
