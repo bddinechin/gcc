@@ -9213,7 +9213,27 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
      the counted kernel the plan already built, whose KUNROLL - 1 counter
      tests make reorg_loops decline the mapping (ITER_REG_USED) so
      lvx_hwloop_fail turns it into a branch loop.  That is slower and right.  */
-  bool hwkern = (doloop && site->kunroll > 1 && lvx_lms_hwkern);
+  /* THE SINGLE-BLOCK RESTRICTION IS BACK.  §7tricies.233.  §7tricies.65
+     lifted it so a body with a data-dependent exit could be a hardware loop
+     too, and the loops that admitted were miscompiled -- dataexit.c's isum,
+     high by exactly the first iteration's term on every point where the
+     data exit fires and on none where only the counted exit does; the fault
+     is in how a data exit DRAINS under this restructuring, and it was never
+     found.  §7tricies.199 then gated the whole structure, including the
+     shape that had agreed with the unpipelined reference on all 151 TSVC2
+     checksums: a body whose only jump is the loopback.  That shape is what
+     lvx-mlir pipelines as a hardware loop with the count rounded down and no
+     exit in the kernel, and it is most of what PolyBench and TSVC are.  So
+     the structure is on again for exactly that shape and declined for the
+     other, which keeps its counted kernel and becomes a branch loop.  */
+  bool data_exit = false;
+  for (unsigned i = 0; i < seq.length (); i++)
+    if (JUMP_P (seq[i]) && (int) i != loopback)
+      data_exit = true;
+  bool hwkern = (doloop && site->kunroll > 1 && lvx_lms_hwkern && !data_exit);
+  if (doloop && site->kunroll > 1 && lvx_lms_hwkern && data_exit)
+    lvx_lms_dump (";; lvx cms:   hwkern declined: a data-dependent exit"
+		  " (§7tricies.65), the kernel stays counted\n");
   /* Every jump must have a destination outside the loop to drain to, or it is
      an intra-loop branch this emission does not model.  */
   /* ONE REGION PER EMITTING WALK.  §7tricies.212: the flow check compares
@@ -9845,7 +9865,10 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	      /* The copied jump is not wanted: delete it and put the two
 		 instructions in its place.  */
 	      delete_insn (j);
-	      if (hk && nodes[nd].kind == LVX_LMS_NODE_KERNEL)
+	      /* Under hwkern the plan's kernel is the REMAINDER copy, run at
+		 most once after the hardware loop, so its counted exits are
+		 outside the loop and do not forbid it.  */
+	      if (hk && nodes[nd].kind == LVX_LMS_NODE_KERNEL && !hwkern)
 		hk->kernel_exits++;
 	      {
 		rtx decr = (cm == SImode
@@ -10659,6 +10682,34 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 		      " %d data exits, counter r%d, trips (M-1)>>%d,"
 		      " leftover in r%d bb%d\n", kbb->index, cur->index, nk,
 		      nx, hwreg, logk, creg, blocks[kfirst]->index);
+
+	/* THE HARDWARE LOOP IS THIS COPY, so the inherited LOOPDO is relinked
+	   onto IT.  §7tricies.233.  In the before order reorg_loops ran after
+	   the pipeliner and mapped DE as a matter of course; with one pass,
+	   before, the relink is the only mapper.  Its LOOPDO goes after the
+	   SETUP in SBB -- where HW holds the trip count it must read -- its
+	   marker onto DE, and the exit falls through into the remainder copy.
+	   HW is dead after the loop, so the zero store on the exit is removed
+	   by the scheduler's DCE.  No counted exit is inside this copy by
+	   construction, and no data exit by the restriction above.  */
+	if (hk)
+	  {
+	    hk->closing = de;
+	    hk->before = sbb;
+	    hk->entry = kbb;
+	    hk->exit = blocks[kfirst];
+	    hk->kernel_exits = 0;
+	    hk->bytes = 0;
+	    for (basic_block b = kbb; b; b = b->next_bb)
+	      {
+		rtx_insn *bi;
+		FOR_BB_INSNS (b, bi)
+		  if (NONDEBUG_INSN_P (bi))
+		    hk->bytes += get_attr_length (bi);
+		if (b == cur)
+		  break;
+	      }
+	  }
       }
     }
 
@@ -10666,7 +10717,7 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
      The block before the kernel is the last prologue node; the exit is the
      main epilogue, which the closing instance falls into; the size is what
      LOOPDO's reach is checked against.  */
-  if (hk && hk->closing != NULL)
+  if (hk && hk->closing != NULL && !hwkern)
     {
       hk->entry = blocks[kfirst];
       hk->before = kfirst > 0 ? blocks[kfirst - 1] : NULL;
