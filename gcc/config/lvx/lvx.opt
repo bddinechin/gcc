@@ -369,6 +369,10 @@ mlms-hwrelink
 Target Var(lvx_lms_hwrelink) Init(1) Optimization
 Relink a mapped hardware loop onto the kernel the pipeliner builds from it: the LOOPDO moves to the fall-through into the kernel, where it reads the right count without arithmetic, its end marker moves to the kernel's closing doloop_end, and the counter is zeroed on exit as the software loop would have left it.  Off, the kernel becomes a branch loop -- which is what every pipelined hardware loop became under the second reorg_loops this replaces, since that pass declined 47 of 47 for a counter live into the epilogue.  A kernel unrolled more than once stays a branch loop either way.
 
+mlms-const-trip
+Target Var(lvx_lms_const_trip) Init(1) Optimization
+Specialise the pipeline of a hardware loop whose trip count is a compile-time constant -- the counter set from a constant in the preheader, which lvx_lms_doloop_trip_count recovers.  The counted exits that cannot fire are not emitted and their drains are deleted, the leftover copy of an unrolled kernel is cut at the one exit that does fire, and the trip-count arithmetic folds to an immediate.  Off, every counted exit is emitted as a test, as for a run-time count.
+
 ; THE OLD SPELLINGS, KEPT AS ALIASES.  §7tricies.223.
 ; 
 ; The generic options became -mlms- when the framework was separated from the

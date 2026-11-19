@@ -8134,6 +8134,12 @@ struct lvx_lms_site
      prologue block and the LOOPDO is no longer reachable from it.
      §7tricies.196.  */
   rtx_insn *loopdo;
+  /* THE TRIP COUNT, WHEN IT IS A CONSTANT, else -1.  §7tricies.236.  The
+     number of loopback instances the original loop executes -- the value
+     the preheader sets the doloop counter to -- from lvx_lms_doloop_trip_count,
+     which reads exactly that and nothing looser.  Found before make_nodes
+     splits the preheader edge, like LOOPDO above.  */
+  HOST_WIDE_INT trip;
 };
 
 /* THE BLOCK A JUMP LEAVES THE LOOP FOR, or null if it has none.  A multi-exit
@@ -8999,6 +9005,11 @@ struct lvx_lms_hwkernel
      of the counter the hardware would not make, so one of these is what
      forbids the hardware loop -- not the unroll factor as such.  */
   int kernel_exits;
+  /* The emission resolved the counted exits from a constant trip count
+     (§7tricies.236), so blocks nothing reaches any more -- drains of exits
+     that cannot fire, the leftover copy past its cut -- are to be deleted
+     once the LOOPDO has been relinked.  */
+  bool const_trip;
 };
 
 static bool
@@ -9734,6 +9745,64 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
       }
   }
 
+  /* A CONSTANT TRIP COUNT RESOLVES THE COUNTED EXITS.  §7tricies.236.
+
+     The loopback instance of iteration L exits iff L = N - 1, N being the
+     trip count -- the counter's initial value, which the preheader sets from
+     a constant on 56 of tsvc.c's 58 pipelined loops.  So when N is known the
+     counted exits are not tests but facts: the prologue's P = LK - K + 1
+     instances (iterations 0 .. P - 1, LK the ITER_SLOT iteration) never fire
+     when N > P; the kernel is reached with M = N - P instances remaining;
+     the hardware loop runs T = (M - 1) div K complete trips; and the
+     leftover copy exits at its R-th loopback instance, R = M - T * K in
+     [1, K], which is iteration LK - K + R.  Everything else is dead: the
+     other K - 1 leftover exits, their drains, the leftover slots past the
+     cut, and SETUP's three instructions of mask-and-shift, which fold to
+     `hw = T'.  For K = 1 the same P exits go and nothing else changes: the
+     relinked LOOPDO reads the counter, and the prologue's decrements are
+     kept so that it reads M.
+
+     The prologue decrements are KEPT, and that is the whole of the
+     bookkeeping: without them the counter would hold N at the kernel, and
+     every consumer of M -- SETUP, the LOOPDO -- would need N - P folded in
+     by hand.  A decrement is one TINY the schedule already had room for.
+
+     N <= P is the short loop whose exit falls inside the prologue, and it
+     keeps the run-time path: nothing here is wrong for it, it is simply not
+     the case this is for.  The counted kernel (hwkern demoted, K > 1) is
+     excluded too, because its K - 1 exits are INSIDE the loop it runs and
+     must keep counting.  */
+  bool ctrip = false, ct_cut = false;
+  int ct_R = 0, ct_T = 0, ct_live_iter = -1, ct_nlb = 0;
+  if (lvx_lms_const_trip && doloop && site->trip > 0
+      && (hwkern || site->kunroll == 1))
+    {
+      int ck = site->kunroll;
+      int lk = nodes[mainep].exit_iter;
+      HOST_WIDE_INT cp = lk - ck + 1, cn = site->trip;
+
+      if (cp >= 0 && cn > cp)
+	{
+	  HOST_WIDE_INT cm = cn - cp;
+
+	  ct_T = (int) ((cm - 1) / ck);
+	  ct_R = (int) (cm - (HOST_WIDE_INT) ct_T * ck);
+	  ct_live_iter = lk - ck + ct_R;
+	  ctrip = true;
+	  lvx_lms_dump (";; lvx cms:   const trip N=" HOST_WIDE_INT_PRINT_DEC
+			" P=" HOST_WIDE_INT_PRINT_DEC " M="
+			HOST_WIDE_INT_PRINT_DEC " T=%d R=%d: the loopback"
+			" exits at iteration %d, %s\n", cn, cp, cm, ct_T, ct_R,
+			ct_live_iter, hwkern ? "hwkern" : "relink");
+	}
+      else
+	lvx_lms_dump (";; lvx cms:   const trip N=" HOST_WIDE_INT_PRINT_DEC
+		      " declined: the exit falls among the prologue's "
+		      HOST_WIDE_INT_PRINT_DEC " counted instances\n", cn, cp);
+    }
+  if (hk)
+    hk->const_trip = ctrip;
+
   *why = "cannot redirect an epilogue to the loop exit";
   for (unsigned k = 0; k < nnode; k++)
     {
@@ -9794,6 +9863,19 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
       bool is_iter = ((int) i == loopback
 		      && slots[q].date == nodes[mainep].exit_date
 		      && slots[q].iter == nodes[mainep].exit_iter);
+
+      /* §7tricies.236: past the leftover copy's cut nothing of the kernel
+	 runs, and a drain for a counted exit that cannot fire is never
+	 entered.  Neither is emitted; the caller deletes the blocks.  */
+      if (ctrip)
+	{
+	  if (ct_cut && nodes[nd].kind == LVX_LMS_NODE_KERNEL)
+	    continue;
+	  if (nodes[nd].kind == LVX_LMS_NODE_EPILOGUE
+	      && nodes[nd].exit_insn == loopback
+	      && nodes[nd].exit_iter != ct_live_iter)
+	    continue;
+	}
 
       /* Where to put it: after the last insn this block received, or after
 	 the block note on the first.  BB_HEAD can be a CODE_LABEL and the
@@ -9949,6 +10031,72 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 		 outside the loop and do not forbid it.  */
 	      if (hk && nodes[nd].kind == LVX_LMS_NODE_KERNEL && !hwkern)
 		hk->kernel_exits++;
+	      /* §7tricies.236: a counted exit whose outcome is known.  In the
+		 prologue it cannot fire, so only its decrement is kept -- the
+		 counter must still reach the kernel holding M.  In the
+		 leftover copy the first R - 1 are not emitted at all (the
+		 counter is read by nothing after SETUP), and the R-th is the
+		 exit: unconditional, the counter zeroed as the software loop
+		 would have left it, the fall-through into the rest of the
+		 copy removed.  The closing instance at R = K is the hwkern
+		 drop above, so it never reaches here.  */
+	      if (ctrip && nodes[nd].kind == LVX_LMS_NODE_PROLOGUE)
+		{
+		  rtx decr = (cm == SImode
+			      ? gen_addsi3 (creg_rtx, creg_rtx, constm1_rtx)
+			      : gen_adddi3 (creg_rtx, creg_rtx, constm1_rtx));
+		  rtx_insn *di = emit_insn_after_noloc (decr, after, NULL);
+
+		  lvx_lms_group_tag (after, nd, slots[q].date,
+				     slots[q].iter * 65536 + (int) i);
+		  tail[nd] = di;
+		  nemit++;
+		  lvx_lms_dump (";; lvx cms:   const trip: prologue counted"
+				" exit insn=%u iter=%d cannot fire, decrement"
+				" kept\n", i, slots[q].iter);
+		  continue;
+		}
+	      if (ctrip && nodes[nd].kind == LVX_LMS_NODE_KERNEL)
+		{
+		  ct_nlb++;
+		  if (ct_nlb < ct_R)
+		    {
+		      lvx_lms_dump (";; lvx cms:   const trip: leftover"
+				    " counted exit insn=%u iter=%d cannot"
+				    " fire, not emitted\n", i, slots[q].iter);
+		      continue;
+		    }
+		  rtx_insn *zi = emit_insn_after_noloc
+				   (gen_move_insn (creg_rtx, const0_rtx), after,
+				    NULL);
+		  rtx_insn *uj = emit_jump_insn_after_noloc
+				   (gen_jump (block_label (blocks[ep])), zi);
+		  edge fe;
+
+		  JUMP_LABEL (uj) = block_label (blocks[ep]);
+		  LABEL_NUSES (JUMP_LABEL (uj))++;
+		  /* An unconditional jump ends its block with a BARRIER, or
+		     verify_flow_info reports "missing barrier after block".  */
+		  emit_barrier_after (uj);
+		  fe = find_fallthru_edge (bb->succs);
+		  if (fe)
+		    remove_edge (fe);
+		  if (!find_edge (bb, blocks[ep]))
+		    {
+		      edge ne = make_edge (bb, blocks[ep], 0);
+		      ne->probability = profile_probability::always ();
+		    }
+		  lvx_lms_group_tag (after, nd, slots[q].date,
+				     slots[q].iter * 65536 + (int) i);
+		  tail[nd] = uj;
+		  nemit += 2;
+		  ct_cut = true;
+		  lvx_lms_dump (";; lvx cms:   const trip: leftover counted"
+				" exit insn=%u iter=%d is THE exit -> node %d,"
+				" the copy is cut here\n", i, slots[q].iter,
+				ep);
+		  continue;
+		}
 	      {
 		rtx decr = (cm == SImode
 			    ? gen_addsi3 (creg_rtx, creg_rtx, constm1_rtx)
@@ -10127,6 +10275,10 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
       rtx_insn *after;
 
       if (nodes[k].kind != LVX_LMS_NODE_EPILOGUE)
+	continue;
+      /* §7tricies.236: a drain nothing enters gets no copies either.  */
+      if (ctrip && nodes[k].exit_insn == loopback
+	  && nodes[k].exit_iter != ct_live_iter)
 	continue;
 
       for (unsigned g = 0; g < lr.length (); g++)
@@ -10598,8 +10750,18 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	*why = "no NOTE_INSN_BASIC_BLOCK in the hardware loop's preheader";
 	if (!at)
 	  return false;
-	for (int x = 0; x < 4; x++)
-	  at = emit_insn_after_noloc (seq4[x], at, NULL), nemit++;
+	if (ctrip)
+	  {
+	    /* §7tricies.236: the trips are a constant, and the leftover
+	       count is nothing -- its exits were resolved, so no instruction
+	       reads it.  */
+	    at = emit_insn_after_noloc (gen_move_insn (hw_rtx, GEN_INT (ct_T)),
+					at, NULL);
+	    nemit++;
+	  }
+	else
+	  for (int x = 0; x < 4; x++)
+	    at = emit_insn_after_noloc (seq4[x], at, NULL), nemit++;
       }
 
       /* THE EXIT-FREE KERNEL, as a chain of blocks.  The same slots, in the
@@ -14659,6 +14821,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
       site.loop = loop;
       site.loopdo = loopdo;
       site.kunroll = plkun;
+      site.trip = lvx_lms_doloop_trip_count (loop, body);
       /* §7tricies.43: all exits from the loopback's own block, so the body
 	 runs to completion once per entry.  */
       {
@@ -15313,6 +15476,20 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 		      lvx_hwloop_unmap_end (hk.closing);
 		    }
 		  site.loopdo = NULL;
+		}
+	      /* §7tricies.236: the drains of counted exits that cannot fire,
+		 and the leftover copy past its cut, were left as blocks with
+		 no predecessor.  After the relink, so that the LOOPDO's
+		 geometry was taken on the blocks it was built with.  */
+	      if (emitted && hk.const_trip)
+		{
+		  int nbb = n_basic_blocks_for_fn (cfun);
+
+		  delete_unreachable_blocks ();
+		  lvx_lms_dump (";; lvx cms: fn=%s loop %d const trip: %d"
+				" unreachable blocks deleted\n",
+				current_function_name (), loop->num,
+				nbb - n_basic_blocks_for_fn (cfun));
 		}
 	      lvx_lms_dump (";; lvx cms: fn=%s loop %d pipeline %s emitted=%d"
 			    " slots=%u\n", current_function_name (),
