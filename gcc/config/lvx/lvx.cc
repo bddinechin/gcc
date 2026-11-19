@@ -5938,19 +5938,166 @@ lvx_loopend_set_marker (rtx_insn *insn, int num)
 static struct hw_doloop_hooks lvx_doloop_hooks
   = { lvx_hwloop_pattern_reg, lvx_hwloop_optimize, lvx_hwloop_fail };
 
-/* THE SECOND PASS'S VIEW: a doloop_end the first pass already mapped is not a
-   doloop_end.  Reported here rather than refused in `opt', because a refusal
-   there would call `fail' and rewrite it.  §7tricies.201.  */
-static rtx
-lvx_hwloop_pattern_reg_unmapped (rtx_insn *insn)
+/* RELINK THE INHERITED HARDWARE LOOP ONTO THE KERNEL.  §7tricies.232.
+
+   The pipeliner copies the latch into the kernel, so the kernel's closing
+   doloop_end is a fresh insn the mapping never saw, and the LOOPDO the first
+   reorg_loops placed describes a loop that no longer exists: its count is the
+   original trip count, its end marker names the original latch, and its
+   position is before the prologue.  §7tricies.201 answered that with a
+   SECOND reorg_loops, and measured on tsvc.c that pass found 47 kernels and
+   declined all 47 -- "uses iteration counter register" -- so every pipelined
+   hardware loop came out a branch loop.  Three facts make a direct relink
+   both simpler and correct where the second pass was neither:
+
+     COUNT.  lvx_loopdo reads its count from the counter register when it
+     EXECUTES.  Placed at the end of the last prologue block it loads exactly
+     the value the counter holds there -- the remaining loopback instances,
+     which is the quantity the software kernel counts -- so no arithmetic is
+     needed and none is done.
+     END MARKER.  The terminator prints it from a side table keyed by the
+     insn's UID (§7tricies.215), so the mark moves to the kernel's closing
+     copy in one table write and the same number stays in the LOOPDO.
+     THE COUNTER AFTER THE LOOP.  A mapped doloop_end emits no instruction,
+     not even its decrement, so the GPR keeps its entry value while the
+     software loop would have left it at 0 -- compare-before-decrement,
+     exit when the old value is 1.  That is the real reason hw-doloop.cc
+     refuses a counter live into the successor, and it is why the epilogue's
+     own `add -1; cbranch' exits read a stale register.  One MAKED 0 at the
+     kernel's exit restores the software state exactly, and the refusal is
+     no longer needed.
+
+   KUNROLL > 1 is not handled here: its K - 1 counted exits are software
+   decrements the hardware does not make, so LC would count trips while the
+   GPR counts instances -- the (M - 1) / K arithmetic of hwkern, which is
+   gated as miscompiling.  Those kernels stay branch loops, as they did under
+   the second pass, through lvx_hwloop_unmap_end.
+
+   Returns false, having changed nothing, when the kernel is out of LOOPDO's
+   reach or the prologue does not fall through into it -- the same two
+   conditions lvx_hwloop_optimize applies.  */
+
+bool
+lvx_hwloop_relink (rtx_insn *loopdo, rtx_insn *closing, basic_block before,
+		   basic_block entry, basic_block exit_bb, long kernel_bytes)
 {
-  if (lvx_hwloop_mapped_p (insn))
-    return NULL_RTX;
-  return lvx_hwloop_pattern_reg (insn);
+  if (loopdo == NULL || closing == NULL || before == NULL || entry == NULL
+      || exit_bb == NULL
+      || recog_memoized (loopdo) != CODE_FOR_lvx_loopdo
+      || lvx_hwloop_pattern_reg (closing) == NULL_RTX)
+    return false;
+
+  /* The same reach test as the mapping's, on the kernel's own size.  */
+  long range = (2L << get_attr_pcrel (loopdo)) - LVX_SCHED2_BUNDLE_SIZE;
+  if (kernel_bytes + (kernel_bytes >> 2) >= range)
+    {
+      if (dump_file)
+	fprintf (dump_file, ";; lvx hwloop: kernel is %ld bytes, past LOOPDO's"
+		 " %ld-byte reach, not relinked\n", kernel_bytes, range);
+      return false;
+    }
+
+  /* The LOOPDO must execute on the fall-through into the kernel and on no
+     other path: a prologue block that ends in a jump -- a counted or data
+     exit -- has two successors, and a LOOPDO run on the path that leaves
+     would arm a loop never entered.  So when the block before the kernel is
+     not a pure fall-through, give the edge a block of its own, exactly as
+     hwkern does with split_edge: the new block falls through into the
+     kernel and nothing else reaches it.  */
+  edge ft = find_fallthru_edge (before->succs);
+  if (ft == NULL || ft->dest != entry)
+    {
+      if (dump_file)
+	fprintf (dump_file, ";; lvx hwloop: no fall-through from the prologue"
+		 " into the kernel, not relinked\n");
+      return false;
+    }
+  basic_block ldbb = before;
+  if (!single_succ_p (before) || JUMP_P (BB_END (before)))
+    {
+      ldbb = split_edge (ft);
+      if (ldbb == NULL)
+	return false;
+    }
+  rtx_insn *at = BB_END (ldbb);
+  if (at == NULL || JUMP_P (at))
+    return false;
+
+  rtx cnt = lvx_hwloop_pattern_reg (closing);
+  int endnum = INTVAL (XVECEXP (PATTERN (loopdo), 0, 1));
+
+  /* Refuse before touching anything if the kernel has no fall-through out.  */
+  if (BLOCK_FOR_INSN (closing) == NULL
+      || find_fallthru_edge (BLOCK_FOR_INSN (closing)->succs) == NULL)
+    return false;
+
+  /* A fresh LOOPDO on the kernel's counter, where the count is right.  */
+  emit_insn_after_noloc (gen_lvx_loopdo (cnt, GEN_INT (endnum)), at, ldbb);
+  delete_insn (loopdo);
+
+  /* The marker and the mapped bit move to the closing copy.  */
+  lvx_loopend_set_marker (closing, endnum);
+  lvx_hwloop_mark_mapped (closing);
+
+  /* And the counter is what the software loop would have left: 0.  ON THE
+     KERNEL'S FALL-THROUGH EDGE, not in the block it reaches: the main
+     epilogue node can be empty and merged away later, and a store put in a
+     block that vanishes vanishes with it.  commit_one_edge_insertion puts it
+     at the head of the successor when that is safe and splits the edge when
+     it is not, so every path out of the hardware loop runs it and no other
+     path does.  */
+  {
+    basic_block kb = BLOCK_FOR_INSN (closing);
+    edge fe = kb ? find_fallthru_edge (kb->succs) : NULL;
+
+    if (fe == NULL)
+      return false;
+    /* When nothing after the loop reads the counter, the scheduler's DCE
+       removes this store; when the epilogue's exits read it, it stays.  So
+       it costs an instruction exactly where it is needed and nowhere else,
+       which is why it is emitted unconditionally.  */
+    insert_insn_on_edge (gen_move_insn (cnt, const0_rtx), fe);
+    commit_one_edge_insertion (fe);
+  }
+
+  if (dump_file)
+    fprintf (dump_file, ";; lvx hwloop: LOOPDO relinked onto the kernel,"
+	     " marker .L%d on insn %d, counter r%d zeroed on exit\n",
+	     endnum, INSN_UID (closing), REGNO (cnt));
+  return true;
 }
 
-static struct hw_doloop_hooks lvx_doloop_hooks_pass2
-  = { lvx_hwloop_pattern_reg_unmapped, lvx_hwloop_optimize, lvx_hwloop_fail };
+/* THE KERNEL'S CLOSING doloop_end AS A BRANCH LOOP, when no LOOPDO will drive
+   it.  An unmapped doloop_end prints `# loopdo end' and nothing else, so left
+   alone the kernel has no loop-back at all -- this is what the second
+   reorg_loops used to supply through lvx_hwloop_fail.  Same rewrite, on the
+   one insn: decrement, branch while non-zero to where the copy already
+   pointed, delete the copy.  */
+
+void
+lvx_hwloop_unmap_end (rtx_insn *closing)
+{
+  rtx cnt;
+  rtx_insn *lab;
+
+  if (closing == NULL || (cnt = lvx_hwloop_pattern_reg (closing)) == NULL_RTX)
+    return;
+  lab = JUMP_LABEL_AS_INSN (closing);
+  if (lab == NULL || !LABEL_P (lab))
+    return;
+
+  machine_mode mode = GET_MODE (cnt);
+  rtx decr = (mode == SImode ? gen_addsi3 (cnt, cnt, constm1_rtx)
+	      : gen_adddi3 (cnt, cnt, constm1_rtx));
+  emit_insn_before_noloc (decr, closing, NULL);
+  rtx test = gen_rtx_NE (VOIDmode, NULL_RTX, NULL_RTX);
+  rtx cb = (mode == SImode ? gen_cbranchsi4 (test, cnt, const0_rtx, lab)
+	    : gen_cbranchdi4 (test, cnt, const0_rtx, lab));
+  rtx_insn *j = emit_jump_insn_before_noloc (cb, closing);
+  JUMP_LABEL (j) = lab;
+  LABEL_NUSES (lab)++;
+  delete_insn (closing);
+}
 
 /* Handling of Hardware Loops }}} */
 
@@ -13668,71 +13815,16 @@ lvx_machine_dependent_reorg (void)
       lvx_lms_pipeline_loops ();
       timevar_pop (TV_SMS);
 
-      /* AND MAP WHAT THE PIPELINER JUST BUILT.  §7tricies.201.  This is the
-	 whole of what the after-mapping order was missing, and the reason it
-	 produced wrong code rather than merely slower code.
-
-	 In the BEFORE order reorg_loops runs after LMS and maps the kernels
-	 as a matter of course -- measured, 932 of the corpus's 1120 loopdo
-	 instructions survive pipelining.  In the AFTER order nothing did, so
-	 every kernel's doloop_end copy printed `# loopdo end' and emitted no
-	 loop-back whatsoever.
-
-	 A SECOND reorg_loops is the fix, and it is the fix precisely because
-	 it reuses the tested path: discover_loops recomputes from the final
-	 CFG, (lvx_hwloop_optimize) places the LOOPDO and its end label where
-	 the kernel actually is, and lvx_hwloop_fail converts what it refuses
-	 into a decrement and a branch -- which the later schedule_ebbs
-	 absorbs, this running well before it.  No hand-maintained trip count
-	 is involved, which is what made the alternative designs large: the
-	 arithmetic for that lives in `hwkern' and stays gated.
-
-	 The hooks differ from the first pass's in one callback: a doloop_end
-	 the first pass already mapped must not be DISCOVERED here, or the
-	 loops LMS left alone would be mapped twice.  */
-      /* ONLY IF THE PIPELINER ACTUALLY WALKED.  §7tricies.231.
-	 lvx_lms_pipeline_loops returns immediately when there is neither a
-	 dump file nor codegen -- the walk has no consumer -- so under
-	 -mlms-probe alone it builds nothing and leaves the CFG as it found
-	 it.  Running a second reorg_loops over that CFG is not merely
-	 pointless, which the comment above already says: it ICEs, in
-	 verify_flow_info with "REG_BR_PROB is set but cfg probability is
-	 not", from reorder_loops -> cfg_layout_finalize.
-
-	 The shape of the bug is why it survived so long.  Every census and
-	 every comparison passes -fdump-rtl-mach, which makes dump_file
-	 non-null, which makes the walk run, which makes this safe -- so the
-	 configuration that crashes is the one nobody measures, and the one
-	 that ships.  Measured: tsvc.c ICEs at -O2 -mlms-probe without
-	 -fdump-rtl-mach and compiles with it, on all three engines alike.
-
-	 The condition is the walk's own precondition, written once here, so
-	 the two cannot drift apart.  */
-      if (optimize && lvx_lms_reorg2 && (dump_file || lvx_lms_codegen))
-	{
-	  lvx_check_doloop_discoverable ();
-	  if (lvx_lms_probe_cfg)
-	    lvx_lms_dump_cfg ("reorg: before the second reorg_loops");
-	  /* do_reorder STAYS TRUE.  §7tricies.215.  It was turned off in
-	     §7tricies.214 because `true' gates reorder_loops, which enters
-	     cfg_layout_initialize and merges blocks on finalisation -- the
-	     merge that displaced the LOOPDO end label.  That was a workaround
-	     for a vulnerable label, and the label is no longer vulnerable:
-	     the terminator prints the marker itself, so its position is the
-	     instruction's.  Turned back on, and MEASURED back on -- 0 label
-	     drift over 48 hardware loops in 31 files in the after order,
-	     where `true' used to drift 1 of 4 on inffast.c alone, and both
-	     zlib round trips correct with 30 pipelines each.  Keeping it off
-	     would discard the layout this pass exists to produce for no
-	     remaining reason.  */
-	  /* §7tricies.219: and this one too -- it exists only because LMS
-	     created the kernels it maps.  */
-	  timevar_push (TV_SMS);
-	  reorg_loops (true, &lvx_doloop_hooks_pass2);
-	  timevar_pop (TV_SMS);
-	  if (lvx_lms_probe_cfg)
-	    lvx_lms_dump_cfg ("reorg: after the second reorg_loops");
-	}
+      /* THE SECOND reorg_loops IS GONE.  §7tricies.232.  It existed to put a
+	 LOOPDO on the kernels the pipeliner built (§7tricies.201), and
+	 measured on tsvc.c it found 47 and declined every one -- the counter
+	 is live into the epilogue -- so each pipelined hardware loop came out
+	 a branch loop at the price of a df_analyze, two discover_loops, a
+	 cleanup_cfg and a reorder_loops, plus the verify_flow_info ICE of
+	 §7tricies.231 when the walk had not run.  The pipeliner now relinks
+	 the inherited LOOPDO onto its kernel itself (lvx_hwloop_relink), or
+	 turns the closing copy into a branch (lvx_hwloop_unmap_end) where it
+	 cannot, so there is nothing left for a second pass to map.  */
     }
 
   /* AFTER reorg_loops, because its cleanup_cfg renumbers and merges blocks:

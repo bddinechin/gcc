@@ -8982,6 +8982,25 @@ lvx_lms_seq_pcopy (const auto_vec<int> &psrc, const auto_vec<int> &pdst,
   return true;
 }
 
+
+/* WHAT THE EMISSION HANDS BACK ABOUT THE KERNEL'S HARDWARE LOOP.
+   §7tricies.232.  Filled only for a doloop whose closing instance was
+   emitted; the caller decides between relinking the inherited LOOPDO onto
+   it and turning it into a branch loop, and needs the geometry to do
+   either.  */
+struct lvx_lms_hwkernel
+{
+  rtx_insn *closing;	/* the kernel's one doloop_end copy, or NULL */
+  basic_block before;	/* the block that falls through into the kernel */
+  basic_block entry;	/* blocks[kfirst] */
+  basic_block exit;	/* the main epilogue the closing copy falls into */
+  long bytes;		/* the kernel blocks' summed insn lengths */
+  /* Counted exits emitted INSIDE a kernel node: each is a software decrement
+     of the counter the hardware would not make, so one of these is what
+     forbids the hardware loop -- not the unroll factor as such.  */
+  int kernel_exits;
+};
+
 static bool
 lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 		       const auto_vec<rtx_insn *> &seq,
@@ -8990,11 +9009,14 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 		       const auto_vec<basic_block> &blocks,
 		       const auto_vec<lvx_lms_lrange_part *> &lr,
 		       unsigned HOST_WIDE_INT avail,
-		       int *nemit_out, const char **why)
+		       int *nemit_out, const char **why,
+		       struct lvx_lms_hwkernel *hk = NULL)
 {
   unsigned nnode = nodes.length ();
   int nemit = 0;
 
+  if (hk)
+    memset (hk, 0, sizeof (*hk));
   *nemit_out = 0;
   *why = "skeleton does not match the plan";
   if (blocks.length () != nnode || nnode == 0)
@@ -9766,6 +9788,11 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 		  *why = "cannot retarget the kernel's closing branch";
 		  return false;
 		}
+	      /* §7tricies.232: the one doloop_end the kernel holds.  The
+		 caller relinks the inherited LOOPDO onto it, or makes it a
+		 branch; either way it must know which insn that is.  */
+	      if (hk && lvx_doloop_end_p (seq[i]))
+		hk->closing = j;
 	    }
 	  else if (lvx_doloop_end_p (seq[i]))
 	    {
@@ -9818,6 +9845,8 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	      /* The copied jump is not wanted: delete it and put the two
 		 instructions in its place.  */
 	      delete_insn (j);
+	      if (hk && nodes[nd].kind == LVX_LMS_NODE_KERNEL)
+		hk->kernel_exits++;
 	      {
 		rtx decr = (cm == SImode
 			    ? gen_addsi3 (creg_rtx, creg_rtx, constm1_rtx)
@@ -10631,6 +10660,26 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 		      " leftover in r%d bb%d\n", kbb->index, cur->index, nk,
 		      nx, hwreg, logk, creg, blocks[kfirst]->index);
       }
+    }
+
+  /* THE KERNEL'S GEOMETRY, for the hardware-loop relink.  §7tricies.232.
+     The block before the kernel is the last prologue node; the exit is the
+     main epilogue, which the closing instance falls into; the size is what
+     LOOPDO's reach is checked against.  */
+  if (hk && hk->closing != NULL)
+    {
+      hk->entry = blocks[kfirst];
+      hk->before = kfirst > 0 ? blocks[kfirst - 1] : NULL;
+      hk->exit = blocks[mainep];
+      hk->bytes = 0;
+      for (unsigned k = 0; k < nnode; k++)
+	if (nodes[k].kind == LVX_LMS_NODE_KERNEL)
+	  {
+	    rtx_insn *bi;
+	    FOR_BB_INSNS (blocks[k], bi)
+	      if (NONDEBUG_INSN_P (bi))
+		hk->bytes += get_attr_length (bi);
+	  }
     }
 
   /* THE INSTANCE SET EACH BLOCK RECEIVED, printed so that what EXECUTES can
@@ -14777,6 +14826,8 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 	      const char *iwhy = NULL;
 	      int nemit = 0;
 	      bool emitted = false;
+	      struct lvx_lms_hwkernel hk;
+	      memset (&hk, 0, sizeof (hk));
 
 	      /* THE LIVE RANGE PATH IS WHAT EMITS.  §7tricies.32.  Four of the
 		 five gates that stood here were properties of the CLASS
@@ -15081,7 +15132,7 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 		      emitted = lvx_lms_emit_pipeline (&site, seq, plslots,
 						       plnodes, cgblocks,
 						       cglr, cgavail, &nemit,
-						       &iwhy);
+						       &iwhy, &hk);
 		  }
 		lvx_lms_dump (";; lvx cms: fn=%s loop %d cgcolour %s nodes=%d"
 			      " maxreg=%d kunroll=%d subst=%d refused=%d"
@@ -15105,28 +15156,50 @@ lvx_lms_pipeline_loop (class loop *loop, basic_block *body)
 		for (unsigned k = 0; k < cglr.length (); k++)
 		  delete cglr[k];
 	      }
-	      /* THE INHERITED LOOPDO IS NOW STALE, SO IT GOES.  §7tricies.201.
-		 In the after-mapping order a mapped loop arrives with an
-		 lvx_loopdo in its preheader, and the pipeline has just
-		 replaced the loop that LOOPDO described: its count is the
-		 original trip count, its end label the original loop's, and
-		 its POSITION is before the prologue -- so the hardware loop
-		 would span the prologue as well.  All three are wrong and
-		 none is worth patching, because the second reorg_loops will
-		 map the kernel properly from the final CFG.  Deleting it is
-		 what makes room for that.
+	      /* THE INHERITED LOOPDO: RELINKED ONTO THE KERNEL, OR DROPPED.
+		 §7tricies.232.  A mapped loop arrives with an lvx_loopdo in
+		 its preheader describing the loop the pipeline has just
+		 replaced -- count, end marker and position all stale
+		 (§7tricies.201).  The answer used to be to delete it and run
+		 reorg_loops again; that pass declined 47 of 47 kernels for a
+		 counter live into the epilogue, so every pipelined hardware
+		 loop became a branch loop.
 
-		 It is the whole of 7tricies.196's wrong code: site->loopdo
-		 was recorded and never read, so the kernel ran unrolled and
-		 overlapped against the original count, and the gate's
-		 hardware-loop arm failed all eight tests.  */
+		 For KUNROLL = 1 the LOOPDO is moved instead: at the
+		 fall-through into the kernel it reads the right count by
+		 position, the marker moves to the kernel's closing copy, and
+		 the counter is zeroed on exit so the epilogue reads what the
+		 software loop would have left.  For KUNROLL > 1 the K - 1
+		 counted exits are software decrements the hardware does not
+		 make, so the kernel stays a branch loop -- and the closing
+		 copy must then be REWRITTEN as one, because an unmapped
+		 doloop_end emits nothing, which is the whole of what the
+		 second pass used to do for it.  */
 	      if (emitted && site.loopdo != NULL)
 		{
-		  lvx_lms_dump (";; lvx cms: fn=%s loop %d LOOPDODROP uid=%d,"
-				" the second mapping will remap the kernel\n",
-				current_function_name (), loop->num,
-				INSN_UID (site.loopdo));
-		  delete_insn (site.loopdo);
+		  bool relinked = false;
+
+		  if (lvx_lms_hwrelink && hk.closing && hk.kernel_exits == 0)
+		    relinked = lvx_hwloop_relink (site.loopdo, hk.closing,
+						  hk.before, hk.entry, hk.exit,
+						  hk.bytes);
+		  if (relinked)
+		    lvx_lms_dump (";; lvx cms: fn=%s loop %d LOOPDORELINK"
+				  " uid=%d -> kernel bb%d, %ld bytes\n",
+				  current_function_name (), loop->num,
+				  INSN_UID (hk.closing), hk.entry->index,
+				  hk.bytes);
+		  else
+		    {
+		      lvx_lms_dump (";; lvx cms: fn=%s loop %d LOOPDODROP"
+				    " uid=%d kernelexits=%d closing=%d, the"
+				    " kernel is a branch loop\n",
+				    current_function_name (), loop->num,
+				    INSN_UID (site.loopdo), hk.kernel_exits,
+				    hk.closing ? INSN_UID (hk.closing) : -1);
+		      delete_insn (site.loopdo);
+		      lvx_hwloop_unmap_end (hk.closing);
+		    }
 		  site.loopdo = NULL;
 		}
 	      lvx_lms_dump (";; lvx cms: fn=%s loop %d pipeline %s emitted=%d"

@@ -361,9 +361,9 @@ mlms-hwkern
 Target Var(lvx_lms_hwkern) Init(0) Optimization
 Build the exit-free copy of an unrolled doloop kernel, so the repetition can be a hardware loop over it with a remainder copy after it.  OFF BY DEFAULT BECAUSE IT MISCOMPILES: 7tricies.65 showed the loops it admits are wrong by something that is neither the drain nor bundle speculation, and 7tricies.190's zlib failure carries hwkern=1.  It was reachable in the SHIPPED configuration -- hwkern is (doloop && kunroll > 1), which -fno-hwloop made unreachable and nothing else did -- so the structure is behind a flag until the fault is found, and the loops fall back to a counted kernel that reorg_loops declines and lvx_hwloop_fail turns into a branch loop.  7tricies.62, 7tricies.65, 7tricies.199.
 
-mlms-reorg2
-Target Var(lvx_lms_reorg2) Init(1) Optimization
-Run the SECOND reorg_loops that maps the kernels the pipeliner just built (7tricies.201).  On by default because without it a kernel emits no loop-back at all.  -mno-lms-reorg2 is a bisection knob: the after order returns wrong code even at built=0, where this pass has nothing new to map and acts only on loops the FIRST reorg_loops already mapped, so turning it off separates its damage from the rest of the after-order path.
+mlms-hwrelink
+Target Var(lvx_lms_hwrelink) Init(1) Optimization
+Relink a mapped hardware loop onto the kernel the pipeliner builds from it: the LOOPDO moves to the fall-through into the kernel, where it reads the right count without arithmetic, its end marker moves to the kernel's closing doloop_end, and the counter is zeroed on exit as the software loop would have left it.  Off, the kernel becomes a branch loop -- which is what every pipelined hardware loop became under the second reorg_loops this replaces, since that pass declined 47 of 47 for a counter live into the epilogue.  A kernel unrolled more than once stays a branch loop either way.
 
 ; THE OLD SPELLINGS, KEPT AS ALIASES.  §7tricies.223.
 ; 
@@ -506,9 +506,6 @@ Target Alias(mlms-own-bundles) Undocumented
 
 mcms-hwkern
 Target Alias(mlms-hwkern) Undocumented
-
-mcms-reorg2
-Target Alias(mlms-reorg2) Undocumented
 
 mlms-engine=
 Target RejectNegative Joined UInteger Var(lvx_lms_which_engine) Init(0) Optimization

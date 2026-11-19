@@ -285,6 +285,13 @@ extern rtx
 lvx_hwloop_pattern_reg (rtx_insn *insn);
 
 extern bool
+lvx_hwloop_relink (rtx_insn *loopdo, rtx_insn *closing, basic_block before,
+		   basic_block entry, basic_block exit_bb, long kernel_bytes);
+
+extern void
+lvx_hwloop_unmap_end (rtx_insn *closing);
+
+extern bool
 lvx_insn_defs_regno_p (rtx_insn *insn, unsigned regno, bool *partial = NULL);
 
 extern bool
