@@ -359,7 +359,11 @@ Never let a bundle span a basic-block boundary.  STOP is otherwise placed only a
 
 mlms-hwkern
 Target Var(lvx_lms_hwkern) Init(1) Optimization
-Keep an unrolled doloop kernel a hardware loop: the count rounded down to whole trips of KUNROLL iterations over an exit-free copy of the kernel, and the leftover iterations in a remainder copy after it -- the scheme lvx-mlir uses.  Restricted to a body whose only jump is the loopback (7tricies.233): 7tricies.65 lifted that restriction so a body with a data-dependent exit could qualify too and the loops it admitted were miscompiled, by something in how such an exit drains that was never found, so 7tricies.199 switched the whole structure off.  The single-jump shape had agreed with the unpipelined reference on all 151 TSVC2 checksums and is what the structure is on for again; a body with a data exit keeps its counted kernel and becomes a branch loop.  Off, every unrolled kernel is a branch loop.
+Keep an unrolled doloop kernel a hardware loop: the count rounded down to whole trips of KUNROLL iterations over an exit-free copy of the kernel, and the leftover iterations in a remainder copy after it -- the scheme lvx-mlir uses.  Was restricted to a body whose only jump is the loopback (7tricies.233, lifted again by 7tricies.234 with -mlms-hwkern-dataexit): 7tricies.65 lifted that restriction so a body with a data-dependent exit could qualify too and the loops it admitted were miscompiled, by something in how such an exit drains that was never found, so 7tricies.199 switched the whole structure off.  The single-jump shape had agreed with the unpipelined reference on all 151 TSVC2 checksums and is what the structure is on for again; a body with a data exit keeps its counted kernel and becomes a branch loop.  Off, every unrolled kernel is a branch loop.
+
+mlms-hwkern-dataexit
+Target Var(lvx_lms_hwkern_dataexit) Init(1) Optimization
+Let hwkern take a body with a data-dependent exit, the exit staying in the exit-free copy as 7tricies.65 built it.  On by default since 7tricies.234: the miscompile that gated it was fixed the day it was found (7tricies.69, adace65b411 -- a drain must not re-run what the branch's bundle destroyed), and 7tricies.199 gated the structure on a source note that outlived the fix; at the exact failing shape the ISS agrees with native over dataexit.c's whole sweep with 1442 data exits taken inside the hardware loop.  -mno-lms-hwkern-dataexit restores the single-jump restriction of 7tricies.233 for bisection.
 
 mlms-hwrelink
 Target Var(lvx_lms_hwrelink) Init(1) Optimization

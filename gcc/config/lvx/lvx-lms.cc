@@ -9201,37 +9201,60 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
      Two registers are in play and they must be different ones: the hardware
      loop's own counter, which nothing but its doloop_end may mention, and the
      pipeline's counter live range, which the remainder copy's tests read.  */
-  /* GATED, BECAUSE THE STRUCTURE BELOW IS KNOWN TO MISCOMPILE.  §7tricies.199.
-     The note further down says it plainly -- "REACHABLE ONLY FOR TRACING at
-     the moment: §7tricies.65 showed the loops this admits are miscompiled" --
-     and nothing enforced it: the only thing keeping it out of the shipped
-     configuration was that `doloop' is false under -fno-hwloop, which every
-     development arm passed.  Remove that flag, as §7tricies.189 did, and the
-     path emits at -O2.  §7tricies.190's zlib miscompile carries hwkern=1.
+  /* NO LONGER GATED, AND THE HISTORY IS THE POINT.  §7tricies.233/.234.
+     This block read "GATED, BECAUSE THE STRUCTURE BELOW IS KNOWN TO
+     MISCOMPILE" (§7tricies.199), on the strength of a note further down that
+     had ALREADY BEEN FIXED -- §7tricies.69, adace65b411, 2026-10-29, three
+     weeks before the gate went in.  What the gate got right was that nothing
+     enforced the restriction it believed in: the only thing keeping the path
+     out of the shipped configuration was `doloop' being false under
+     -fno-hwloop, which every development arm passed, so §7tricies.189's
+     removal of that flag made it emit at -O2 and §7tricies.190's zlib
+     miscompile carries hwkern=1.
 
-     Refusing it is not a loss of correctness anywhere: the loop falls back to
-     the counted kernel the plan already built, whose KUNROLL - 1 counter
-     tests make reorg_loops decline the mapping (ITER_REG_USED) so
-     lvx_hwloop_fail turns it into a branch loop.  That is slower and right.  */
-  /* THE SINGLE-BLOCK RESTRICTION IS BACK.  §7tricies.233.  §7tricies.65
-     lifted it so a body with a data-dependent exit could be a hardware loop
-     too, and the loops that admitted were miscompiled -- dataexit.c's isum,
-     high by exactly the first iteration's term on every point where the
-     data exit fires and on none where only the counted exit does; the fault
-     is in how a data exit DRAINS under this restructuring, and it was never
-     found.  §7tricies.199 then gated the whole structure, including the
-     shape that had agreed with the unpipelined reference on all 151 TSVC2
-     checksums: a body whose only jump is the loopback.  That shape is what
-     lvx-mlir pipelines as a hardware loop with the count rounded down and no
-     exit in the kernel, and it is most of what PolyBench and TSVC are.  So
-     the structure is on again for exactly that shape and declined for the
-     other, which keeps its counted kernel and becomes a branch loop.  */
+     What is true NOW: -mlms-hwkern is Init(1) and -mlms-hwkern-dataexit is
+     Init(1), so a body with a data-dependent exit is admitted too, verified
+     at §7tricies.65's exact shape and at MMRP's twelve-exit-slot one.  The
+     refusals that remain are decided BEFORE any RTL is touched
+     (§7tricies.235) and DEMOTE rather than abort.
+
+     Demoting is never a loss of correctness: the loop falls back to the
+     counted kernel the plan already built, whose KUNROLL - 1 counter tests
+     make reorg_loops decline the mapping (ITER_REG_USED) so lvx_hwloop_fail
+     turns it into a branch loop.  That is slower and right.  */
+  /* THE SINGLE-BLOCK RESTRICTION, LIFTED AGAIN -- AND THIS TIME MEASURED
+     SAFE.  §7tricies.234.  §7tricies.65 lifted it and the loops it admitted
+     were miscompiled: dataexit.c's isum, its live-out accumulator high by
+     exactly iteration 0's term wherever the data exit fired.  §7tricies.199
+     gated the whole structure; §7tricies.233 restored it for a body whose
+     only jump is the loopback.  Hunting the drain bug to admit the rest
+     found it already dead: at the exact failing shape -- II 2, nstages 4,
+     kunroll 4, four data exits in the exit-free chain, reached with
+     -mno-lms-pin-tainted-loads since the tainted-load rule otherwise pins
+     the load behind the exit and keeps the schedule shallow -- the ISS
+     agrees with native over the whole (n, stop) sweep, and the instruction
+     trace shows 1442 data exits taken from inside the hardware loop.
+
+     What killed it was §7tricies.69, adace65b411, the SAME DAY: the drain
+     decided what it still owed by body index and so re-ran, at the exit's
+     own date, an earlier iteration's TERM whose operand the branch's bundle
+     had legitimately clobbered -- a VLIW reads every operand before any
+     write lands, the replay did not.  The filter below became lexicographic
+     on (iteration, insn) and that commit lifted the restriction.  The
+     source note citing §7tricies.65 outlived the fix, and §7tricies.199
+     gated hwkern on the strength of it without re-running dataexit.c.  So
+     a data-dependent exit in the exit-free copy is admitted again, the chain
+     of §7tricies.65 being already in place, and
+     -mno-lms-hwkern-dataexit restores the single-jump restriction for
+     bisection.  validation/cms/dataexit.c is the standing control.  */
   bool data_exit = false;
   for (unsigned i = 0; i < seq.length (); i++)
     if (JUMP_P (seq[i]) && (int) i != loopback)
       data_exit = true;
-  bool hwkern = (doloop && site->kunroll > 1 && lvx_lms_hwkern && !data_exit);
-  if (doloop && site->kunroll > 1 && lvx_lms_hwkern && data_exit)
+  bool hwkern = (doloop && site->kunroll > 1 && lvx_lms_hwkern
+		 && (!data_exit || lvx_lms_hwkern_dataexit));
+  if (doloop && site->kunroll > 1 && lvx_lms_hwkern && data_exit
+      && !lvx_lms_hwkern_dataexit)
     lvx_lms_dump (";; lvx cms:   hwkern declined: a data-dependent exit"
 		  " (§7tricies.65), the kernel stays counted\n");
   /* Every jump must have a destination outside the loop to drain to, or it is
@@ -9274,13 +9297,69 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
      instance branches to.  "Exit-free" means free of the COUNTED exits, which
      is the whole of what hw-doloop.cc's ITER_REG_USED forbids.
 
-     REACHABLE ONLY FOR TRACING at the moment: §7tricies.65 showed the loops
-     this admits are miscompiled, by something that is neither the drain nor
-     bundle speculation, so the chain is here to let the executing instance
-     set be traced against the plan.  */
-  *why = "a doloop kernel with kunroll > 1 has no prologue to set up from";
+     AND IT IS AN ORDINARY PATH AGAIN, not a tracing aid.  §7tricies.234.
+     This note used to read "REACHABLE ONLY FOR TRACING at the moment:
+     §7tricies.65 showed the loops this admits are miscompiled" -- and that
+     sentence outlived the fix by three weeks.  §7tricies.69 (adace65b411,
+     2026-10-29) killed the drain bug the day it was found; §7tricies.199 then
+     gated the whole of hwkern on the strength of this stale note, without
+     re-running dataexit.c.  THE SECOND COPY OF A NOTE IS WHERE THE STALENESS
+     HIDES: the twin above `data_exit' was rewritten when the restriction was
+     lifted and this one was not.  A data exit in the exit-free chain is
+     correct and measured so -- see the note at `hwkern' above.  */
+  /* HWKERN'S REFUSALS ARE DECIDED HERE, BEFORE ANYTHING IS TOUCHED.
+     §7tricies.235.  The structure's own block used to refuse in the middle
+     of emission -- "no free register for the hardware loop's own counter",
+     "the kernel is not entered by a fall-through" -- after the slot loop had
+     emitted the whole plan and DELETED the kernel's closing doloop_end.  The
+     caller took `emitted = false' as "nothing built" and left pass 1's
+     LOOPDO where it was, over a half-built pipeline with no terminator: a
+     LOOPDO naming an end marker nothing printed, which gas accepts and ld
+     refuses -- `undefined reference to .L1099' in tsvc.c's vbor, invisible
+     to every -S sweep and to a gate whose kernels all fit.  It is
+     §7tricies.59's hazard again, and its rule: refuse before touching.
+
+     So the two refusals that depend on the loop -- a register free of every
+     live range for the trip count, and a fall-through from the last
+     prologue node into the kernel -- are asked here, on the plan and the
+     skeleton, and a `no' DEMOTES hwkern to the counted kernel instead of
+     aborting the emission.  The counted kernel is always right; it is only
+     a branch loop.  */
+  int hwreg = -1;
   if (hwkern && kfirst == 0)
-    return false;
+    {
+      lvx_lms_dump (";; lvx cms:   hwkern declined: no prologue to set the"
+		    " count up from, the kernel stays counted\n");
+      hwkern = false;
+    }
+  if (hwkern)
+    {
+      unsigned HOST_WIDE_INT free_regs = avail;
+      for (unsigned g = 0; g < lr.length (); g++)
+	{
+	  lvx_lms_lrange_part *q = lr[g];
+	  for (int x = 0; x < LVX_LMS_MAX_KUNROLL; x++)
+	    if (q->reg[x] >= 0 && q->reg[x] < 64)
+	      for (int t = 0; t < MAX (q->nregs, 1) && q->reg[x] + t < 64; t++)
+		free_regs &= ~((unsigned HOST_WIDE_INT) 1 << (q->reg[x] + t));
+	}
+      for (int r = 0; r < 64; r++)
+	if ((free_regs >> r) & 1)
+	  {
+	    hwreg = r;
+	    break;
+	  }
+      edge ke = kfirst > 0 ? find_edge (blocks[kfirst - 1], blocks[kfirst])
+			   : NULL;
+      if (hwreg < 0 || ke == NULL || !(ke->flags & EDGE_FALLTHRU))
+	{
+	  lvx_lms_dump (";; lvx cms:   hwkern declined: %s, the kernel stays"
+			" counted\n",
+			hwreg < 0 ? "no free register for the trip count"
+				  : "no fall-through into the kernel");
+	  hwkern = false;
+	}
+    }
 
   /* A SIDE EFFECT IN THE PROLOGUE IS NOT THE SAME AS A SPECULATED ONE.
      §7tricies.42.
@@ -10464,8 +10543,7 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
       machine_mode cm = GET_MODE (cnt);
       int creg = cg ? lvx_lms_lrange_reg (cg, 0, cdly)
 		    : (REG_P (cnt) ? (int) REGNO (cnt) : -1);
-      unsigned HOST_WIDE_INT free_regs = avail;
-      int hwreg = -1, k2 = site->kunroll, logk = 0;
+      int k2 = site->kunroll, logk = 0;
       rtx cnt_rtx, hw_rtx;
       basic_block sbb, kbb;
       edge e;
@@ -10474,29 +10552,12 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
       if (creg < 0 || !REG_P (cnt) || (cg && cg->p2unroll != 1))
 	return false;
 
-      /* A REGISTER NO LIVE RANGE HOLDS.  The hardware loop's counter may be
-	 mentioned by nothing but its own doloop_end, so it cannot be the
-	 pipeline's counter live range -- which the remainder copy reads -- nor
-	 any other live range's name.  AVAIL is what the colouring was allowed to
-	 use; what it did not take is free across the whole pipeline.  */
-      for (unsigned g = 0; g < lr.length (); g++)
-	{
-	  lvx_lms_lrange_part *q = lr[g];
-	  for (int x = 0; x < LVX_LMS_MAX_KUNROLL; x++)
-	    if (q->reg[x] >= 0 && q->reg[x] < 64)
-	      /* NREGS, not one -- §7tricies.154, as above.  */
-	      for (int t = 0; t < MAX (q->nregs, 1) && q->reg[x] + t < 64; t++)
-		free_regs &= ~((unsigned HOST_WIDE_INT) 1 << (q->reg[x] + t));
-	}
-      for (int r = 0; r < 64; r++)
-	if ((free_regs >> r) & 1)
-	  {
-	    hwreg = r;
-	    break;
-	  }
-      *why = "no free register for the hardware loop's own counter";
-      if (hwreg < 0)
-	return false;
+      /* A REGISTER NO LIVE RANGE HOLDS, found before emission began
+	 (§7tricies.235): the hardware loop's counter may be mentioned by
+	 nothing but its own doloop_end, so it cannot be the pipeline's counter
+	 live range -- which the remainder copy reads -- nor any other live
+	 range's name.  */
+      gcc_assert (hwreg >= 0);
 
       while ((1 << (logk + 1)) <= k2)
 	logk++;
