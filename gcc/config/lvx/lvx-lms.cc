@@ -9336,6 +9336,79 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
      skeleton, and a `no' DEMOTES hwkern to the counted kernel instead of
      aborting the emission.  The counted kernel is always right; it is only
      a branch loop.  */
+  /* A CONSTANT TRIP COUNT RESOLVES THE COUNTED EXITS.  §7tricies.236.
+
+     The loopback instance of iteration L exits iff L = N - 1, N being the
+     trip count -- the counter's initial value, which the preheader sets from
+     a constant on 56 of tsvc.c's 58 pipelined loops.  So when N is known the
+     counted exits are not tests but facts: the prologue's P = LK - K + 1
+     instances (iterations 0 .. P - 1, LK the ITER_SLOT iteration) never fire
+     when N > P; the kernel is reached with M = N - P instances remaining;
+     the hardware loop runs T = (M - 1) div K complete trips; and the
+     leftover copy exits at its R-th loopback instance, R = M - T * K in
+     [1, K], which is iteration LK - K + R.  Everything else is dead: the
+     other K - 1 leftover exits, their drains, the leftover slots past the
+     cut, and SETUP's three instructions of mask-and-shift, which fold to
+     `hw = T'.  For K = 1 the same P exits go and nothing else changes: the
+     relinked LOOPDO reads the counter, and the prologue's decrements are
+     kept so that it reads M.
+
+     The prologue decrements are KEPT, and that is the whole of the
+     bookkeeping: without them the counter would hold N at the kernel, and
+     every consumer of M -- SETUP, the LOOPDO -- would need N - P folded in
+     by hand.  A decrement is one TINY the schedule already had room for.
+
+     N <= P is the short loop whose exit falls inside the prologue, and it
+     keeps the run-time path: nothing here is wrong for it, it is simply not
+     the case this is for.  The counted kernel (hwkern demoted, K > 1) is
+     excluded too, because its K - 1 exits are INSIDE the loop it runs and
+     must keep counting -- decided below, once hwkern's own refusals have
+     been asked, since one of them is answered by the constant trip: a
+     hardware loop that mentions the pipeline's counter nowhere can count
+     its trips in the counter's own register.  */
+  bool ctrip = false, ct_cut = false;
+  int ct_R = 0, ct_T = 0, ct_live_iter = -1, ct_nlb = 0;
+  if (lvx_lms_const_trip && doloop && site->trip > 0
+      && (hwkern || site->kunroll == 1))
+    {
+      int ck = site->kunroll;
+      int lk = nodes[mainep].exit_iter;
+      HOST_WIDE_INT cp = lk - ck + 1, cn = site->trip;
+
+      if (cp >= 0 && cn > cp)
+	{
+	  HOST_WIDE_INT cm = cn - cp;
+
+	  ct_T = (int) ((cm - 1) / ck);
+	  ct_R = (int) (cm - (HOST_WIDE_INT) ct_T * ck);
+	  ct_live_iter = lk - ck + ct_R;
+	  ctrip = true;
+	  lvx_lms_dump (";; lvx cms:   const trip N=" HOST_WIDE_INT_PRINT_DEC
+			" P=" HOST_WIDE_INT_PRINT_DEC " M="
+			HOST_WIDE_INT_PRINT_DEC " T=%d R=%d: the loopback"
+			" exits at iteration %d, %s\n", cn, cp, cm, ct_T, ct_R,
+			ct_live_iter, hwkern ? "hwkern" : "relink");
+	}
+      else
+	lvx_lms_dump (";; lvx cms:   const trip N=" HOST_WIDE_INT_PRINT_DEC
+		      " declined: the exit falls among the prologue's "
+		      HOST_WIDE_INT_PRINT_DEC " counted instances\n", cn, cp);
+    }
+  /* The counter's register, for that fallback: the one SETUP would read,
+     found as SETUP finds it, and only when the range does not rotate.  */
+  int ct_creg = -1;
+  if (ctrip)
+    {
+      rtx cpat = PATTERN (seq[loopback]);
+      rtx cnt = SET_DEST (XVECEXP (cpat, 0, 1));
+      int cslot = lvx_lms_reg_index (cpat, &SET_DEST (XVECEXP (cpat, 0, 1)));
+      bool cdly = false;
+      lvx_lms_lrange_part *cg = lvx_lms_lrange_of (lr, loopback, cslot, &cdly);
+
+      if (REG_P (cnt) && (!cg || cg->p2unroll == 1))
+	ct_creg = cg ? lvx_lms_lrange_reg (cg, 0, cdly) : (int) REGNO (cnt);
+    }
+
   int hwreg = -1;
   if (hwkern && kfirst == 0)
     {
@@ -9360,6 +9433,20 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	    hwreg = r;
 	    break;
 	  }
+      /* §7tricies.236: under a constant trip nothing in the hardware loop
+	 mentions the pipeline's counter -- the prologue's decrements precede
+	 SETUP, SETUP writes `hw = T' and reads nothing, the exit-free copy
+	 has no counted instance, and the leftover's one exit zeroes it
+	 outside the loop -- so the counter's own register can count the
+	 trips when no other is free.  This is the one demotion tsvc.c had,
+	 vbor's.  */
+      if (hwreg < 0 && ctrip && ct_creg >= 0)
+	{
+	  hwreg = ct_creg;
+	  lvx_lms_dump (";; lvx cms:   hwkern: no free register for the trip"
+			" count, the counter's own r%d serves under the"
+			" constant trip\n", ct_creg);
+	}
       edge ke = kfirst > 0 ? find_edge (blocks[kfirst - 1], blocks[kfirst])
 			   : NULL;
       if (hwreg < 0 || ke == NULL || !(ke->flags & EDGE_FALLTHRU))
@@ -9371,6 +9458,16 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	  hwkern = false;
 	}
     }
+  /* §7tricies.236, settled: a demoted kernel is the counted one, whose exits
+     must keep counting.  */
+  if (ctrip && !hwkern && site->kunroll > 1)
+    {
+      ctrip = false;
+      lvx_lms_dump (";; lvx cms:   const trip withdrawn: the kernel stays"
+		    " counted\n");
+    }
+  if (hk)
+    hk->const_trip = ctrip;
 
   /* A SIDE EFFECT IN THE PROLOGUE IS NOT THE SAME AS A SPECULATED ONE.
      §7tricies.42.
@@ -9744,64 +9841,6 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	  }
       }
   }
-
-  /* A CONSTANT TRIP COUNT RESOLVES THE COUNTED EXITS.  §7tricies.236.
-
-     The loopback instance of iteration L exits iff L = N - 1, N being the
-     trip count -- the counter's initial value, which the preheader sets from
-     a constant on 56 of tsvc.c's 58 pipelined loops.  So when N is known the
-     counted exits are not tests but facts: the prologue's P = LK - K + 1
-     instances (iterations 0 .. P - 1, LK the ITER_SLOT iteration) never fire
-     when N > P; the kernel is reached with M = N - P instances remaining;
-     the hardware loop runs T = (M - 1) div K complete trips; and the
-     leftover copy exits at its R-th loopback instance, R = M - T * K in
-     [1, K], which is iteration LK - K + R.  Everything else is dead: the
-     other K - 1 leftover exits, their drains, the leftover slots past the
-     cut, and SETUP's three instructions of mask-and-shift, which fold to
-     `hw = T'.  For K = 1 the same P exits go and nothing else changes: the
-     relinked LOOPDO reads the counter, and the prologue's decrements are
-     kept so that it reads M.
-
-     The prologue decrements are KEPT, and that is the whole of the
-     bookkeeping: without them the counter would hold N at the kernel, and
-     every consumer of M -- SETUP, the LOOPDO -- would need N - P folded in
-     by hand.  A decrement is one TINY the schedule already had room for.
-
-     N <= P is the short loop whose exit falls inside the prologue, and it
-     keeps the run-time path: nothing here is wrong for it, it is simply not
-     the case this is for.  The counted kernel (hwkern demoted, K > 1) is
-     excluded too, because its K - 1 exits are INSIDE the loop it runs and
-     must keep counting.  */
-  bool ctrip = false, ct_cut = false;
-  int ct_R = 0, ct_T = 0, ct_live_iter = -1, ct_nlb = 0;
-  if (lvx_lms_const_trip && doloop && site->trip > 0
-      && (hwkern || site->kunroll == 1))
-    {
-      int ck = site->kunroll;
-      int lk = nodes[mainep].exit_iter;
-      HOST_WIDE_INT cp = lk - ck + 1, cn = site->trip;
-
-      if (cp >= 0 && cn > cp)
-	{
-	  HOST_WIDE_INT cm = cn - cp;
-
-	  ct_T = (int) ((cm - 1) / ck);
-	  ct_R = (int) (cm - (HOST_WIDE_INT) ct_T * ck);
-	  ct_live_iter = lk - ck + ct_R;
-	  ctrip = true;
-	  lvx_lms_dump (";; lvx cms:   const trip N=" HOST_WIDE_INT_PRINT_DEC
-			" P=" HOST_WIDE_INT_PRINT_DEC " M="
-			HOST_WIDE_INT_PRINT_DEC " T=%d R=%d: the loopback"
-			" exits at iteration %d, %s\n", cn, cp, cm, ct_T, ct_R,
-			ct_live_iter, hwkern ? "hwkern" : "relink");
-	}
-      else
-	lvx_lms_dump (";; lvx cms:   const trip N=" HOST_WIDE_INT_PRINT_DEC
-		      " declined: the exit falls among the prologue's "
-		      HOST_WIDE_INT_PRINT_DEC " counted instances\n", cn, cp);
-    }
-  if (hk)
-    hk->const_trip = ctrip;
 
   *why = "cannot redirect an epilogue to the loop exit";
   for (unsigned k = 0; k < nnode; k++)
