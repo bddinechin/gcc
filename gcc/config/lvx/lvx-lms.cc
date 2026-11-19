@@ -9367,6 +9367,16 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
      hardware loop that mentions the pipeline's counter nowhere can count
      its trips in the counter's own register.  */
   bool ctrip = false, ct_cut = false;
+  /* CT_PROLOG: N <= P, the exit is a prologue instance and nothing after it
+     runs -- no kernel, no hardware loop.  CT_NOHW: T <= 1, the hardware loop
+     would run zero or one trips, so none is issued and the exit-free copy
+     runs once in straight line (T = 1) or not at all (T = 0).  Both are what
+     lvx-mlir's Pipeline.cpp does with constant bounds, found when the author
+     asked whether it had been checked: "a trip count shorter than the
+     pipeline exits from the prologue, which needs no guard", and "a kernel
+     of one trip peels to none ... a hardware loop counted to one is only its
+     overhead".  */
+  bool ct_prolog = false, ct_nohw = false;
   int ct_R = 0, ct_T = 0, ct_live_iter = -1, ct_nlb = 0;
   if (lvx_lms_const_trip && doloop && site->trip > 0
       && (hwkern || site->kunroll == 1))
@@ -9383,16 +9393,32 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	  ct_R = (int) (cm - (HOST_WIDE_INT) ct_T * ck);
 	  ct_live_iter = lk - ck + ct_R;
 	  ctrip = true;
+	  ct_nohw = hwkern && ct_T <= 1;
 	  lvx_lms_dump (";; lvx cms:   const trip N=" HOST_WIDE_INT_PRINT_DEC
 			" P=" HOST_WIDE_INT_PRINT_DEC " M="
 			HOST_WIDE_INT_PRINT_DEC " T=%d R=%d: the loopback"
-			" exits at iteration %d, %s\n", cn, cp, cm, ct_T, ct_R,
-			ct_live_iter, hwkern ? "hwkern" : "relink");
+			" exits at iteration %d, %s%s\n", cn, cp, cm, ct_T, ct_R,
+			ct_live_iter, hwkern ? "hwkern" : "relink",
+			ct_nohw ? ", no hardware loop" : "");
+	}
+      else if (cp > 0 && kfirst > 0)
+	{
+	  /* The exit is the prologue's instance for iteration N - 1: emit
+	     the prologue up to it, jump to its drain, and nothing else --
+	     the kernel is never reached, so no hardware loop is set up.  */
+	  ct_live_iter = (int) cn - 1;
+	  ct_prolog = true;
+	  ctrip = true;
+	  hwkern = false;
+	  lvx_lms_dump (";; lvx cms:   const trip N=" HOST_WIDE_INT_PRINT_DEC
+			" <= P=" HOST_WIDE_INT_PRINT_DEC ": the loopback exits"
+			" at prologue iteration %d, no kernel\n", cn, cp,
+			ct_live_iter);
 	}
       else
 	lvx_lms_dump (";; lvx cms:   const trip N=" HOST_WIDE_INT_PRINT_DEC
-		      " declined: the exit falls among the prologue's "
-		      HOST_WIDE_INT_PRINT_DEC " counted instances\n", cn, cp);
+		      " declined: P=" HOST_WIDE_INT_PRINT_DEC " kfirst=%d\n",
+		      cn, cp, kfirst);
     }
   /* The counter's register, for that fallback: the one SETUP would read,
      found as SETUP finds it, and only when the range does not rotate.  */
@@ -9418,7 +9444,7 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
     }
   if (hwkern)
     {
-      unsigned HOST_WIDE_INT free_regs = avail;
+      unsigned HOST_WIDE_INT free_regs = ct_nohw ? 0 : avail;
       for (unsigned g = 0; g < lr.length (); g++)
 	{
 	  lvx_lms_lrange_part *q = lr[g];
@@ -9440,7 +9466,7 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	 outside the loop -- so the counter's own register can count the
 	 trips when no other is free.  This is the one demotion tsvc.c had,
 	 vbor's.  */
-      if (hwreg < 0 && ctrip && ct_creg >= 0)
+      if (hwreg < 0 && ctrip && !ct_nohw && ct_creg >= 0)
 	{
 	  hwreg = ct_creg;
 	  lvx_lms_dump (";; lvx cms:   hwkern: no free register for the trip"
@@ -9449,7 +9475,8 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	}
       edge ke = kfirst > 0 ? find_edge (blocks[kfirst - 1], blocks[kfirst])
 			   : NULL;
-      if (hwreg < 0 || ke == NULL || !(ke->flags & EDGE_FALLTHRU))
+      if ((hwreg < 0 && !ct_nohw) || ke == NULL
+	  || !(ke->flags & EDGE_FALLTHRU))
 	{
 	  lvx_lms_dump (";; lvx cms:   hwkern declined: %s, the kernel stays"
 			" counted\n",
@@ -9460,7 +9487,7 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
     }
   /* §7tricies.236, settled: a demoted kernel is the counted one, whose exits
      must keep counting.  */
-  if (ctrip && !hwkern && site->kunroll > 1)
+  if (ctrip && !hwkern && !ct_prolog && site->kunroll > 1)
     {
       ctrip = false;
       lvx_lms_dump (";; lvx cms:   const trip withdrawn: the kernel stays"
@@ -9908,7 +9935,7 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	 entered.  Neither is emitted; the caller deletes the blocks.  */
       if (ctrip)
 	{
-	  if (ct_cut && nodes[nd].kind == LVX_LMS_NODE_KERNEL)
+	  if (ct_cut && nodes[nd].kind != LVX_LMS_NODE_EPILOGUE)
 	    continue;
 	  if (nodes[nd].kind == LVX_LMS_NODE_EPILOGUE
 	      && nodes[nd].exit_insn == loopback
@@ -10079,6 +10106,43 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 		 would have left it, the fall-through into the rest of the
 		 copy removed.  The closing instance at R = K is the hwkern
 		 drop above, so it never reaches here.  */
+	      if (ctrip && ct_prolog && nodes[nd].kind == LVX_LMS_NODE_PROLOGUE
+		  && slots[q].iter == ct_live_iter)
+		{
+		  /* N <= P: this instance is the exit.  Its decrement brings
+		     the counter to 0, as the software loop would have, then
+		     an unconditional jump to its drain; the rest of the
+		     prologue and the whole kernel are never reached.  */
+		  rtx decr = (cm == SImode
+			      ? gen_addsi3 (creg_rtx, creg_rtx, constm1_rtx)
+			      : gen_adddi3 (creg_rtx, creg_rtx, constm1_rtx));
+		  rtx_insn *di = emit_insn_after_noloc (decr, after, NULL);
+		  rtx_insn *uj = emit_jump_insn_after_noloc
+				   (gen_jump (block_label (blocks[ep])), di);
+		  edge fe;
+
+		  JUMP_LABEL (uj) = block_label (blocks[ep]);
+		  LABEL_NUSES (JUMP_LABEL (uj))++;
+		  emit_barrier_after (uj);
+		  fe = find_fallthru_edge (bb->succs);
+		  if (fe)
+		    remove_edge (fe);
+		  if (!find_edge (bb, blocks[ep]))
+		    {
+		      edge ne = make_edge (bb, blocks[ep], 0);
+		      ne->probability = profile_probability::always ();
+		    }
+		  lvx_lms_group_tag (after, nd, slots[q].date,
+				     slots[q].iter * 65536 + (int) i);
+		  tail[nd] = uj;
+		  nemit += 2;
+		  ct_cut = true;
+		  lvx_lms_dump (";; lvx cms:   const trip: prologue counted"
+				" exit insn=%u iter=%d is THE exit -> node %d,"
+				" nothing after it is emitted\n", i,
+				slots[q].iter, ep);
+		  continue;
+		}
 	      if (ctrip && nodes[nd].kind == LVX_LMS_NODE_PROLOGUE)
 		{
 		  rtx decr = (cm == SImode
@@ -10724,7 +10788,11 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
      which is the one entry a hardware loop may have (process_incoming_edges:
      INCOMING_DEST must be the head) and which also gives (lvx_hwloop_optimize)
      the dedicated preheader it looks for the counter's SET in.  */
-  if (hwkern)
+  if (ctrip && hwkern && ct_T == 0)
+    lvx_lms_dump (";; lvx cms:   const trip: T=0, no hardware loop and no"
+		  " exit-free copy, the prologue falls into the leftover"
+		  " copy\n");
+  if (hwkern && !(ctrip && ct_T == 0))
     {
       rtx cpat = PATTERN (seq[loopback]);
       rtx cnt = SET_DEST (XVECEXP (cpat, 0, 1));
@@ -10748,12 +10816,13 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	 nothing but its own doloop_end, so it cannot be the pipeline's counter
 	 live range -- which the remainder copy reads -- nor any other live
 	 range's name.  */
-      gcc_assert (hwreg >= 0);
+      if (!ct_nohw)
+	gcc_assert (hwreg >= 0);
 
       while ((1 << (logk + 1)) <= k2)
 	logk++;
       cnt_rtx = gen_rtx_REG (cm, creg);
-      hw_rtx = gen_rtx_REG (cm, hwreg);
+      hw_rtx = ct_nohw ? NULL_RTX : gen_rtx_REG (cm, hwreg);
 
       e = find_edge (blocks[kfirst - 1], blocks[kfirst]);
       *why = "the kernel is not entered by a fall-through";
@@ -10789,7 +10858,9 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	*why = "no NOTE_INSN_BASIC_BLOCK in the hardware loop's preheader";
 	if (!at)
 	  return false;
-	if (ctrip)
+	if (ct_nohw)
+	  ;				/* T = 1: the copy runs once, uncounted */
+	else if (ctrip)
 	  {
 	    /* §7tricies.236: the trips are a constant, and the leftover
 	       count is nothing -- its exits were resolved, so no instruction
@@ -10922,23 +10993,35 @@ lvx_lms_emit_pipeline (const struct lvx_lms_site *site,
 	if (nk == 0)
 	  return false;
 
-	de = emit_jump_insn_after_noloc
-	       ((cm == SImode
-		 ? gen_doloop_end_si (hw_rtx, block_label (kbb))
-		 : gen_doloop_end_di (hw_rtx, block_label (kbb))),
-		at);
-	JUMP_LABEL (de) = block_label (kbb);
-	LABEL_NUSES (JUMP_LABEL (de))++;
-	nemit++;
-	if (!find_edge (cur, kbb))
+	if (ct_nohw)
 	  {
-	    edge be = make_edge (cur, kbb, 0);
-	    edge fe;
+	    /* T = 1: no loop-back at all.  The chain's last block already
+	       falls through into the leftover copy, and with no closing
+	       doloop_end the caller drops the inherited LOOPDO.  */
+	    de = NULL;
+	    lvx_lms_dump (";; lvx cms:   const trip: T=1, the exit-free copy"
+			  " runs once in straight line, no LOOPDO\n");
+	  }
+	else
+	  {
+	    de = emit_jump_insn_after_noloc
+		   ((cm == SImode
+		     ? gen_doloop_end_si (hw_rtx, block_label (kbb))
+		     : gen_doloop_end_di (hw_rtx, block_label (kbb))),
+		    at);
+	    JUMP_LABEL (de) = block_label (kbb);
+	    LABEL_NUSES (JUMP_LABEL (de))++;
+	    nemit++;
+	    if (!find_edge (cur, kbb))
+	      {
+		edge be = make_edge (cur, kbb, 0);
+		edge fe;
 
-	    be->probability = profile_probability::even ();
-	    fe = find_fallthru_edge (cur->succs);
-	    if (fe)
-	      fe->probability = profile_probability::even ();
+		be->probability = profile_probability::even ();
+		fe = find_fallthru_edge (cur->succs);
+		if (fe)
+		  fe->probability = profile_probability::even ();
+	      }
 	  }
 	lvx_lms_dump (";; lvx cms:   hwloop kernel bb%d..bb%d: %d insns,"
 		      " %d data exits, counter r%d, trips (M-1)>>%d,"
