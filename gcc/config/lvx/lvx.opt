@@ -191,6 +191,10 @@ mcms-mcrl-gate
 Target Var(lvx_cms_mcrl_gate) Init(1) Optimization
 Reach for the minimum cumulative register lifetime dates at the current initiation interval when an unseeded construction fails there, or when its makespan overshoots the dependence graph's own bound.
 
+mcms-mcrl-feedback=
+Target RejectNegative Joined UInteger Var(lvx_cms_mcrl_feedback) Init(0) Optimization
+-mcms-mcrl-feedback=N	Carry the makespan a construction actually reached back into the window the minimum cumulative register lifetime dates are solved in, and use those dates as the next pass's release dates: 0 off, 1 the span of the last complete copy whether or not it converged, 2 the shortest span seen at this interval.  The dependence-only window can sit below what list scheduling achieves, so solving inside it asks for dates the resources have already disproved.
+
 mlms-codegen
 Target Var(lvx_lms_codegen) Init(0) Optimization
 Emit the convergent modulo schedule as code, rather than only measuring it.  Incomplete: builds the pipeline block structure only.  Enables the loop walk by itself; -mlms-probe is not needed for code generation, only for the dump.

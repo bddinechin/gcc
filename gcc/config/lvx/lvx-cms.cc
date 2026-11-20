@@ -240,7 +240,7 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 		  const auto_vec<int> &release,
 		  int ii, int delta, auto_vec<int> &sigma,
 		  auto_vec<int> *blame, auto_vec<int> *culprit,
-		  unsigned vseed = 0)
+		  unsigned vseed = 0, int *span_out = NULL)
 {
   unsigned n = seq.length ();
   if (n == 0 || ii <= 0)
@@ -690,6 +690,40 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 	    ready_at[sk] = placed;
 	}
 
+      /* THE SPAN THIS CONSTRUCTION ACTUALLY REACHED, copy by copy.
+	 §7tricies.238.  SIGMA is returned only on success, so a failed pass
+	 reported nothing about how long its schedule was -- and that is the
+	 one quantity the MCRL window wants back (lvx_lms_dates_in_window's
+	 MAKESPAN_FLOOR, §7quinvicies.4).  Recorded for every COMPLETE copy,
+	 so what survives is the last one, whether or not the projection ever
+	 verified.
+
+	 It is the span of the copy, first issue to last issue inclusive,
+	 which is the date of the author's O_{n+1} plus the one-cycle resource
+	 dangle of the last task (§7tricies.237) -- the same quantity
+	 lvx_lms_sigma_span computes on a schedule.  */
+      if (span_out != NULL && (unsigned) placed % n == 0)
+	{
+	  int clo = -1, chi = -1;
+	  bool whole = true;
+
+	  for (unsigned i = 0; i < n; i++)
+	    {
+	      int d = date[(unsigned) bc * n + i];
+	      if (d < 0)
+		{
+		  whole = false;
+		  break;
+		}
+	      if (clo < 0 || d < clo)
+		clo = d;
+	      if (chi < 0 || d > chi)
+		chi = d;
+	    }
+	  if (whole && chi >= clo)
+	    *span_out = chi - clo + 1;
+	}
+
       /* Stationarity: a copy that repeats its predecessor exactly II cycles
 	 later IS the kernel.  */
       if (bc > 0 && (unsigned) placed % n == 0)
@@ -785,6 +819,46 @@ lvx_cms_converge (const auto_vec<rtx_insn *> &seq,
 
 
 
+/* THE MCRL DATES AT THIS II, SOLVED INSIDE A WINDOW BOUNDED BY MAKESPAN_FLOOR.
+   §7tricies.238.  Extracted from the body of lvx_cms_swo_at_ii so that a
+   later pass can solve it again against a makespan the construction has
+   since demonstrated, which is what -mcms-mcrl-feedback is.
+
+   Returns false, leaving OUT alone, when the window is empty or the flow does
+   not solve -- both of which mean "no dates to offer", not an error.  */
+
+static bool
+lvx_cms_mcrl_dates_at (const auto_vec<rtx_insn *> &seq,
+		       const auto_vec<lvx_lms_arc> &arcs,
+		       const auto_vec<int> &tosink, int ii,
+		       int makespan_floor, auto_vec<int> &out,
+		       int *makespan_out = NULL,
+		       HOST_WIDE_INT *cost_out = NULL)
+{
+  unsigned n = seq.length ();
+  auto_vec<int> es, ls, nodates, md;
+  int wfirst = -1, wmake = 0, wempty = 0;
+  HOST_WIDE_INT mcost = 0;
+  unsigned nn, ne;
+
+  lvx_lms_dates_in_window (seq, arcs, nodates, tosink, ii, &wfirst, &wmake,
+			   &wempty, &es, &ls, makespan_floor);
+  if (makespan_out)
+    *makespan_out = wmake;
+  if (wempty || es.length () != n || ls.length () != n)
+    return false;
+  if (lvx_lms_mcrl_dates (seq, arcs, es, ls, ii, md, &mcost, &nn, &ne)
+      != LVX_NETWORK_SOLVED
+      || md.length () != n)
+    return false;
+  out.truncate (0);
+  for (unsigned i = 0; i < n; i++)
+    out.safe_push (md[i]);
+  if (cost_out)
+    *cost_out = mcost;
+  return true;
+}
+
 /* SQUEAKY WHEEL OPTIMIZATION at a fixed II, after Joslin and Clements, JAIR
    1999: Construct, Analyze, Prioritize, and go round again.
 
@@ -875,31 +949,11 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
      first call, and §7quinvicies.6.2 measured the feedback as changing the
      MCRL optimum in one loop of forty-five, so nothing is lost by it.  */
   auto_vec<int> mcrl;
-  if (mcrl_release)
-    {
-      auto_vec<int> es, ls, nodates;
-      int wfirst = -1, wmake = 0, wempty = 0;
-      lvx_lms_dates_in_window (seq, arcs, nodates, tosink, ii,
-			       &wfirst, &wmake, &wempty, &es, &ls, 0);
-      if (!wempty && es.length () == n && ls.length () == n)
-	{
-	  HOST_WIDE_INT mcost;
-	  unsigned nn, ne;
-	  auto_vec<int> md;
-	  if (lvx_lms_mcrl_dates (seq, arcs, es, ls, ii, md, &mcost, &nn, &ne)
-	      == LVX_NETWORK_SOLVED)
-	    {
-	      for (unsigned i = 0; i < n; i++)
-		mcrl.safe_push (md[i]);
-	      /* As FLOORS only when asked: priority 3 wants the dates for
-		 ORDERING, and applying them as floors too would measure both
-		 mechanisms at once.  */
-	      if (mcrl_release)
-		for (unsigned i = 0; i < n; i++)
-		  release[i] = md[i];
-	    }
-	}
-    }
+  if (mcrl_release && lvx_cms_mcrl_dates_at (seq, arcs, tosink, ii, 0, mcrl))
+    /* As FLOORS only when asked: priority 3 wants the dates for ORDERING, and
+       applying them as floors too would measure both mechanisms at once.  */
+    for (unsigned i = 0; i < n; i++)
+      release[i] = mcrl[i];
 
   /* PIN THE LOOP-BACK BRANCH TO THE LAST STAGE.
      Llosa & Freudenberger factor a pipelined loop's code size into the stage
@@ -1121,6 +1175,9 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
   auto_vec<int> bestsig;
   int bestspan = -1;
   bool have_best = false;
+  /* §7tricies.238: the span the last construction reached, and the shortest
+     seen at this II.  -1 until a copy completes.  */
+  int fb_last = -1, fb_best = -1;
 
   if (dump_file && lvx_lms_probe && lvx_cms_release_policy == 6)
     lvx_lms_dump (";; lvx cms: ONCRIT ii=%d n=%u oncrit=%u holdable=%u\n",
@@ -1169,8 +1226,20 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	  if (vseed == 0)
 	    vseed = 0x9e3779b9u;
 	}
-      if (lvx_cms_converge (seq, arcs, prio, release, ii, delta, sigma,
-			    &blame, &culprit, vseed))
+      /* §7tricies.238: the span is recorded whatever the outcome, because a
+	 FAILED construction's span is exactly what the window wants back.
+	 Hence the result is taken first and tested after.  */
+      int pass_span = -1;
+      bool converged = lvx_cms_converge (seq, arcs, prio, release, ii, delta,
+					 sigma, &blame, &culprit, vseed,
+					 &pass_span);
+      if (pass_span > 0)
+	{
+	  fb_last = pass_span;
+	  if (fb_best < 0 || pass_span < fb_best)
+	    fb_best = pass_span;
+	}
+      if (converged)
 	{
 	  /* ACCEPTANCE IS LMS'S, NOT THE ENGINE'S.  §7tricies.222.  Verifying
 	     and colouring are what any engine must be judged by, so they are
@@ -1462,6 +1531,61 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	lvx_lms_dump (";; lvx cms: fn=%s II=%d SQUEAK pass=%d named=%u"
 		      " movable=%u\n", current_function_name (), ii, pass,
 		      sqk_named, sqk_movable);
+
+      /* THE REALISED MAKESPAN, CARRIED BACK INTO THE MCRL WINDOW.
+	 §7tricies.238, the author's experiment.
+
+	 The window Lstart is bounded by the DEPENDENCE-ONLY makespan rounded
+	 up to whole stages, and §7quinvicies.4 measured that bound sitting
+	 BELOW the span list scheduling achieves in 45 of 163 loops -- so the
+	 dates MCRL offers are the optimum of a region the resources have
+	 already disproved, and as release floors they aim at a schedule that
+	 does not exist.  Feeding the achieved span back widens the window to
+	 what the machine actually did; the optimum over a superset can only
+	 be lower, and the dates land where the schedule really is.
+
+	 Taken from the LAST COMPLETE COPY of the construction just run,
+	 converged or not -- which is the whole point, since a pass that
+	 failed is the one whose release dates most need changing.  Policy 2
+	 is the variant: the shortest span seen at this II, for when the last
+	 construction was a bad draw rather than the state of play.
+
+	 It REPLACES the policy's assignment above rather than flooring it:
+	 the question being asked is what the MCRL dates alone are worth as
+	 release dates, and mixing them with the policy's would measure two
+	 mechanisms at once -- the same reason the top-of-function seeding is
+	 kept separate (§7septvicies.3).  The branch pin below still wins,
+	 being structural.  */
+      if (lvx_cms_mcrl_feedback)
+	{
+	  int fb = (lvx_cms_mcrl_feedback == 2) ? fb_best : fb_last;
+	  auto_vec<int> fbd;
+	  int fbmake = 0;
+	  HOST_WIDE_INT fbcost = 0;
+
+	  if (fb > 0
+	      && lvx_cms_mcrl_dates_at (seq, arcs, tosink, ii, fb, fbd,
+					&fbmake, &fbcost))
+	    {
+	      unsigned moved = 0;
+
+	      for (unsigned i = 0; i < n; i++)
+		{
+		  if (release[i] != fbd[i])
+		    moved++;
+		  release[i] = fbd[i];
+		}
+	      if (dump_file && lvx_lms_probe)
+		lvx_lms_dump (";; lvx cms: fn=%s II=%d MCRLFB pass=%d span=%d"
+			      " window=%d cost=" HOST_WIDE_INT_PRINT_DEC
+			      " moved=%u/%u\n", current_function_name (), ii,
+			      pass, fb, fbmake, fbcost, moved, n);
+	    }
+	  else if (dump_file && lvx_lms_probe)
+	    lvx_lms_dump (";; lvx cms: fn=%s II=%d MCRLFB pass=%d span=%d"
+			  " declined\n", current_function_name (), ii, pass,
+			  fb);
+	}
 
       /* The branch pin is structural, so it survives the policy's
 	 reassignment above -- which sets RELEASE to 0 for every task it
