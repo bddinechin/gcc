@@ -178,6 +178,12 @@ lvx_lms_mrt_trial (auto_vec<struct lvx_sched_resources> &mrt,
 extern unsigned
 lvx_lms_mrt_violations (const auto_vec<struct lvx_sched_resources> &mrt);
 
+/* The acyclic makespan: max over i of ASAP (i) + p_i, the LATENCY-INCLUSIVE
+   figure ALAP is taken against.  Not a schedule length and not a stage count
+   -- those come from lvx_lms_sigma_span.  §7tricies.237.  */
+extern int
+lvx_lms_makespan (const auto_vec<rtx_insn *> &seq, const auto_vec<int> &asap);
+
 extern void
 lvx_lms_path_metrics (const auto_vec<rtx_insn *> &seq,
 		      const auto_vec<lvx_lms_arc> &arcs,

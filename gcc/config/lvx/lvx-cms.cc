@@ -937,13 +937,21 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
 	    branch_floor = height[branch_i] + slack[branch_i];
 	  else
 	    {
-	      /* The last stage of the dependence-only makespan.  Reaches the
+	      /* The last stage of the dependence-only schedule.  Reaches the
 		 target by construction, but is not clamped to the ALAP, so it
-		 can stretch the schedule -- which is the trade to measure.  */
-	      int m = 1;
-	      for (unsigned i = 0; i < n; i++)
-		m = MAX (m, height[i] + lvx_lms_latency (seq[i]));
-	      int stages = (m + ii - 1) / ii;
+		 can stretch the schedule -- which is the trade to measure.
+
+		 FROM THE ISSUE SPAN, NOT THE LATENCY-INCLUSIVE MAKESPAN.
+		 §7tricies.237.  This recomputed `max (height + latency)' --
+		 lvx_lms_path_metrics' acyclic makespan, written out a second
+		 time -- and then divided it by II to get a STAGE COUNT, which
+		 is the one thing that quantity must not be used for:
+		 nstages is ceil (span / II) with span the first issue to the
+		 last issue inclusive (§7quinvicies.5), so a last instruction
+		 of latency above one inflated the count and pushed the floor
+		 past the last stage.  lvx_lms_sigma_span is that span, and
+		 works on HEIGHT exactly as it works on a schedule.  */
+	      int stages = (lvx_lms_sigma_span (height) + ii - 1) / ii;
 	      branch_floor = MAX (stages - 1, 0) * ii;
 	    }
 	  if (branch_floor < 0)

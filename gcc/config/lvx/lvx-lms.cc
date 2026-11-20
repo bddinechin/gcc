@@ -11458,11 +11458,41 @@ lvx_lms_slot_fits_p (const struct lvx_sched_resources *slot, rtx_insn *insn)
   return true;
 }
 
+/* THE ACYCLIC MAKESPAN: the date by which every value a single iteration
+   produces is available, max over i of ASAP (i) + p_i.  §7tricies.237.
+
+   This is the LATENCY-INCLUSIVE figure, SPANLAT's acyclic twin, and it is
+   NOT the schedule length and NOT a stage count.  The author's O_{n+1} -- a
+   zero-resource end task depending at latency ZERO on every other -- is
+   scheduled at the last ISSUE date, and the makespan as a length is that plus
+   the resource dangle of the last task, one cycle on LVX where an instruction
+   occupies its issue slot and nothing more.  That quantity is
+   lvx_lms_sigma_span (hi - lo + 1), and §7quinvicies.5 states at length why a
+   stage count must come from it and not from here: an iteration is in flight
+   in the kernel from its first issue to its last issue, and the latency still
+   in the pipe is paid by the consumer, in the consumer's own stage.
+
+   What THIS one is for is ALAP, where it is the right reference precisely
+   because TOSINK counts latencies too: ALAP = makespan - TOSINK is then the
+   latest start that does not delay the completion of the critical chain, and
+   both sides of the subtraction are in the same units.  Extracted so the
+   formula has one home -- it was written out a second time in CMS's branch
+   pin, where it was ALSO the wrong quantity (§7tricies.237).  */
+
+int
+lvx_lms_makespan (const auto_vec<rtx_insn *> &seq, const auto_vec<int> &asap)
+{
+  int makespan = 1;
+
+  for (unsigned i = 0; i < seq.length () && i < asap.length (); i++)
+    makespan = MAX (makespan, asap[i] + lvx_lms_latency (seq[i]));
+  return makespan;
+}
+
 /* Longest path from each node to the end over the INTRA-iteration arcs,
-   counting the node's own processing time: TOSINK.  The makespan is the largest
-   ASAP + latency, ALAP is the makespan less TOSINK, and SLACK is the room
-   between ALAP and ASAP -- how many cycles a node may be delayed without
-   lengthening one iteration.
+   counting the node's own processing time: TOSINK.  ALAP is the acyclic
+   makespan above less TOSINK, and SLACK is the room between ALAP and ASAP --
+   how many cycles a node may be delayed without lengthening one iteration.
 
    ASAP, passed in, is HEIGHT: a FORWARD relaxation, so it is the longest path
    FROM the source, not to the sink.  Worth saying because the list scheduler's
@@ -11499,9 +11529,7 @@ lvx_lms_path_metrics (const auto_vec<rtx_insn *> &seq,
 	      tosink[i] = cand;
 	  }
 
-  int makespan = 1;
-  for (unsigned i = 0; i < n; i++)
-    makespan = MAX (makespan, asap[i] + lvx_lms_latency (seq[i]));
+  int makespan = lvx_lms_makespan (seq, asap);
   for (unsigned i = 0; i < n; i++)
     slack[i] = (makespan - tosink[i]) - asap[i];
 }
