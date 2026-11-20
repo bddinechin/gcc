@@ -2508,7 +2508,7 @@ lvx_lms_mcrl_dates (const auto_vec<rtx_insn *> &seq,
 		    const auto_vec<int> &lstart,
 		    int ii, auto_vec<int> &dates,
 		    HOST_WIDE_INT *cost_out, unsigned *nn_out,
-		    unsigned *ne_out)
+		    unsigned *ne_out, bool *binding_out)
 {
   unsigned n = seq.length ();
   *cost_out = 0;
@@ -2566,11 +2566,13 @@ lvx_lms_mcrl_dates (const auto_vec<rtx_insn *> &seq,
       net.add_arc (dnode[arcs[a].dst], cnode[arcs[a].src], -1,
 		   -(HOST_WIDE_INT) ii * arcs[a].omega);
 
-  /* The window.  */
+  /* The window.  The RETURN arcs are kept, because whether any of them
+     carries flow is what says the Lstart bounds bind at all (§7tricies.239).  */
+  auto_vec<unsigned> larc;
   for (unsigned i = 0; i < n; i++)
     {
       net.add_arc (d0, dnode[i], -1, -estart[i]);
-      net.add_arc (dnode[i], d0, -1, lstart[i]);
+      larc.safe_push (net.add_arc (dnode[i], d0, -1, lstart[i]));
     }
 
   *nn_out = net.node_count ();
@@ -2581,6 +2583,24 @@ lvx_lms_mcrl_dates (const auto_vec<rtx_insn *> &seq,
     return r;
 
   *cost_out = net.cost ();
+
+  /* DOES THE UPPER HALF OF THE WINDOW BIND?  §7tricies.239.  A `D_i -> D_0'
+     arc carrying no flow is a Lstart bound the optimum does not touch, and
+     raising its cost -- which is what a larger makespan does, uniformly, to
+     every one of them -- only makes its reduced cost MORE non-negative.  So
+     when none of them carries flow the current potentials stay optimal under
+     any increase of the makespan, and the dates cannot change: the caller may
+     skip the whole re-solve.  */
+  if (binding_out)
+    {
+      *binding_out = false;
+      for (unsigned i = 0; i < larc.length (); i++)
+	if (net.flow (larc[i]) != 0)
+	  {
+	    *binding_out = true;
+	    break;
+	  }
+    }
 
   int lo = 0;
   for (unsigned i = 0; i < n; i++)

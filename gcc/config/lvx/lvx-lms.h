@@ -168,7 +168,7 @@ lvx_lms_mcrl_dates (const auto_vec<rtx_insn *> &seq,
 		    const auto_vec<int> &lstart,
 		    int ii, auto_vec<int> &dates,
 		    HOST_WIDE_INT *cost_out, unsigned *nn_out,
-		    unsigned *ne_out);
+		    unsigned *ne_out, bool *binding_out = NULL);
 
 extern unsigned
 lvx_lms_mrt_trial (auto_vec<struct lvx_sched_resources> &mrt,

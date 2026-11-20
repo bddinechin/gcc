@@ -833,7 +833,8 @@ lvx_cms_mcrl_dates_at (const auto_vec<rtx_insn *> &seq,
 		       const auto_vec<int> &tosink, int ii,
 		       int makespan_floor, auto_vec<int> &out,
 		       int *makespan_out = NULL,
-		       HOST_WIDE_INT *cost_out = NULL)
+		       HOST_WIDE_INT *cost_out = NULL,
+		       bool *binding_out = NULL)
 {
   unsigned n = seq.length ();
   auto_vec<int> es, ls, nodates, md;
@@ -847,7 +848,8 @@ lvx_cms_mcrl_dates_at (const auto_vec<rtx_insn *> &seq,
     *makespan_out = wmake;
   if (wempty || es.length () != n || ls.length () != n)
     return false;
-  if (lvx_lms_mcrl_dates (seq, arcs, es, ls, ii, md, &mcost, &nn, &ne)
+  if (lvx_lms_mcrl_dates (seq, arcs, es, ls, ii, md, &mcost, &nn, &ne,
+			  binding_out)
       != LVX_NETWORK_SOLVED
       || md.length () != n)
     return false;
@@ -1178,6 +1180,18 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
   /* §7tricies.238: the span the last construction reached, and the shortest
      seen at this II.  -1 until a copy completes.  */
   int fb_last = -1, fb_best = -1;
+  /* §7tricies.239: what the last feedback solve was given, and whether its
+     answer can move when the makespan rises.  Measured on PolyBench, 222
+     re-solves: 81% were handed the same span as the solve before (identical
+     inputs, so identical dates), and a further 9% changed the span without
+     moving the optimum -- which is exactly the case BINDING = false
+     recognises, since raising the cost of a window return arc that carries no
+     flow leaves the potentials optimal.  Ten percent of re-solves actually
+     need doing, and a successive-shortest-paths solver cannot warm-start a
+     cost change, so the cheap thing is not to ask it.  */
+  int fb_solved_for = -1;
+  bool fb_binding = true;
+  auto_vec<int> fb_dates;
 
   if (dump_file && lvx_lms_probe && lvx_cms_release_policy == 6)
     lvx_lms_dump (";; lvx cms: ONCRIT ii=%d n=%u oncrit=%u holdable=%u\n",
@@ -1559,32 +1573,50 @@ lvx_cms_swo_at_ii (const auto_vec<rtx_insn *> &seq,
       if (lvx_cms_mcrl_feedback)
 	{
 	  int fb = (lvx_cms_mcrl_feedback == 2) ? fb_best : fb_last;
-	  auto_vec<int> fbd;
 	  int fbmake = 0;
 	  HOST_WIDE_INT fbcost = 0;
+	  /* THE TWO EXACT SHORT-CIRCUITS, asked before the flow is built.
+	     Both leave the dates the last solve produced in force, which is
+	     what makes them equivalences rather than approximations: the same
+	     span re-solved gives the same dates, and a larger span with no
+	     binding Lstart arc gives the same dates too.  */
+	  bool skip = (fb > 0 && !fb_dates.is_empty ()
+		       && (fb == fb_solved_for
+			   || (!fb_binding && fb > fb_solved_for)));
 
-	  if (fb > 0
-	      && lvx_cms_mcrl_dates_at (seq, arcs, tosink, ii, fb, fbd,
-					&fbmake, &fbcost))
+	  if (!skip && fb > 0
+	      && lvx_cms_mcrl_dates_at (seq, arcs, tosink, ii, fb, fb_dates,
+					&fbmake, &fbcost, &fb_binding))
+	    fb_solved_for = fb;
+	  else if (!skip)
 	    {
-	      unsigned moved = 0;
-
-	      for (unsigned i = 0; i < n; i++)
-		{
-		  if (release[i] != fbd[i])
-		    moved++;
-		  release[i] = fbd[i];
-		}
 	      if (dump_file && lvx_lms_probe)
 		lvx_lms_dump (";; lvx cms: fn=%s II=%d MCRLFB pass=%d span=%d"
-			      " window=%d cost=" HOST_WIDE_INT_PRINT_DEC
-			      " moved=%u/%u\n", current_function_name (), ii,
-			      pass, fb, fbmake, fbcost, moved, n);
+			      " declined\n", current_function_name (), ii,
+			      pass, fb);
+	      goto no_feedback;
 	    }
-	  else if (dump_file && lvx_lms_probe)
-	    lvx_lms_dump (";; lvx cms: fn=%s II=%d MCRLFB pass=%d span=%d"
-			  " declined\n", current_function_name (), ii, pass,
-			  fb);
+
+	  {
+	    unsigned moved = 0;
+
+	    for (unsigned i = 0; i < n && i < fb_dates.length (); i++)
+	      {
+		if (release[i] != fb_dates[i])
+		  moved++;
+		release[i] = fb_dates[i];
+	      }
+	    if (dump_file && lvx_lms_probe)
+	      lvx_lms_dump (";; lvx cms: fn=%s II=%d MCRLFB pass=%d span=%d"
+			    " window=%d cost=" HOST_WIDE_INT_PRINT_DEC
+			    " moved=%u/%u%s\n", current_function_name (), ii,
+			    pass, fb, fbmake, fbcost, moved, n,
+			    skip ? (fb == fb_solved_for ? " skipped:same-span"
+						        : " skipped:unbound")
+				 : "");
+	  }
+	no_feedback:
+	  ;
 	}
 
       /* The branch pin is structural, so it survives the policy's
