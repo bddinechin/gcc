@@ -109,6 +109,161 @@ lvx_network::initial_potentials (void)
   return false;
 }
 
+/* A RADIX-4 HEAP WITH DECREASE-KEY.  §7tricies.240.
+
+   The design is Benoit Dupont de Dinechin's PQueue in LAO's CDT/CCL, itself
+   after R. E. Tarjan, "Data Structures and Network Algorithms": a d-ary heap
+   in an array, children of x at d*x + 1 .. d*x + d and parent at
+   (x - 1) / d, with d = 4.  Reimplemented here rather than copied, in GCC's
+   containers and with the one change the use demands.
+
+   WHY FOUR AND NOT TWO, which is the whole of what the choice buys: sifting
+   UP costs log_d (n) comparisons and sifting DOWN costs d * log_d (n),
+   because a down step must find the smallest of d children.  Dijkstra does
+   at most one decrease-key per ARC and exactly one extract-min per NODE, and
+   m is several times n here, so the frequent operation must be the cheap
+   one.  A binary heap makes every decrease-key a quarter dearer in depth for
+   an extract-min we perform n times only.
+
+   THE CHANGE: PQueue locates an entry to update by pointer arithmetic into
+   its array, which needs the caller to know where the entry currently is.
+   Dijkstra knows a NODE and not its slot, so M_POS carries node -> slot and
+   is maintained by both sift directions.  That is the only part of a d-ary
+   heap that is easy to get wrong, and the selftests below check it.  */
+
+namespace {
+
+class lvx_pqueue
+{
+public:
+  void init (unsigned n)
+  {
+    m_heap.truncate (0);
+    m_pos.truncate (0);
+    m_key.truncate (0);
+    for (unsigned i = 0; i < n; i++)
+      {
+	m_pos.safe_push (-1);
+	m_key.safe_push (0);
+      }
+  }
+
+  bool empty (void) const { return m_heap.is_empty (); }
+
+  /* Insert V at K, or lower its key to K when it is already in.  A key that
+     is not an improvement is ignored, which is what lets the caller push
+     unconditionally on a successful relaxation.  */
+  void push (unsigned v, HOST_WIDE_INT k)
+  {
+    if (m_pos[v] < 0)
+      {
+	m_key[v] = k;
+	m_heap.safe_push (v);
+	m_pos[v] = (int) m_heap.length () - 1;
+	sift_up ((unsigned) m_pos[v]);
+      }
+    else if (k < m_key[v])
+      {
+	m_key[v] = k;
+	sift_up ((unsigned) m_pos[v]);
+      }
+  }
+
+  unsigned pop (void)
+  {
+    unsigned top = m_heap[0];
+    unsigned last = m_heap.pop ();
+
+    m_pos[top] = -1;
+    if (!m_heap.is_empty ())
+      {
+	place (0, last);
+	sift_down (0);
+      }
+    return top;
+  }
+
+private:
+  void place (unsigned x, unsigned v) { m_heap[x] = v; m_pos[v] = (int) x; }
+
+  void sift_up (unsigned x)
+  {
+    unsigned v = m_heap[x];
+
+    while (x > 0)
+      {
+	unsigned p = (x - 1) >> 2;
+
+	if (m_key[m_heap[p]] <= m_key[v])
+	  break;
+	place (x, m_heap[p]);
+	x = p;
+      }
+    place (x, v);
+  }
+
+  void sift_down (unsigned x)
+  {
+    unsigned n = m_heap.length ();
+    unsigned v = m_heap[x];
+
+    for (;;)
+      {
+	unsigned first = 4 * x + 1, best = first;
+
+	if (first >= n)
+	  break;
+	for (unsigned c = first + 1; c < first + 4 && c < n; c++)
+	  if (m_key[m_heap[c]] < m_key[m_heap[best]])
+	    best = c;
+	if (m_key[m_heap[best]] >= m_key[v])
+	  break;
+	place (x, m_heap[best]);
+	x = best;
+      }
+    place (x, v);
+  }
+
+  auto_vec<unsigned> m_heap;	/* slot -> node */
+  auto_vec<int> m_pos;		/* node -> slot, -1 when absent */
+  auto_vec<HOST_WIDE_INT> m_key;
+};
+
+} /* anonymous namespace */
+
+/* EVERY ARC AT BOTH ITS ENDS, so a relaxation walks a node's own arcs instead
+   of all of them.  §7tricies.240.  The scan this replaces visited every arc
+   for every settled node, which made one augmentation O (n * m); the index is
+   built once per solve because only flows and potentials change after it.  */
+
+void
+lvx_network::build_incidence (void)
+{
+  unsigned n = m_nodes.length (), m = m_arcs.length ();
+
+  m_first.truncate (0);
+  m_inc.truncate (0);
+  m_first.safe_grow_cleared (n + 2);
+  for (unsigned a = 0; a < m; a++)
+    {
+      m_first[m_arcs[a].tail + 1]++;
+      m_first[m_arcs[a].head + 1]++;
+    }
+  for (unsigned v = 0; v < n + 1; v++)
+    m_first[v + 1] += m_first[v];
+  m_inc.safe_grow_cleared (2 * m);
+  {
+    auto_vec<unsigned> at;
+    for (unsigned v = 0; v <= n; v++)
+      at.safe_push (m_first[v]);
+    for (unsigned a = 0; a < m; a++)
+      {
+	m_inc[at[m_arcs[a].tail]++] = 2 * a;		/* forward at the tail */
+	m_inc[at[m_arcs[a].head]++] = 2 * a + 1;	/* backward at the head */
+      }
+  }
+}
+
 /* Push AMOUNT units from SRC to DST along a cheapest residual path, updating
    the potentials so reduced costs stay non-negative.  Dijkstra over the
    residual network, which is legitimate exactly because of that invariant.  */
@@ -120,10 +275,15 @@ lvx_network::augment (unsigned src, unsigned dst, HOST_WIDE_INT amount)
 
   while (amount > 0)
     {
-      /* Cheapest residual distances, in reduced cost.  */
+      /* Cheapest residual distances, in reduced cost.  Dijkstra over the
+	 incidence index with the radix-4 heap above (§7tricies.240); the
+	 reduced costs are non-negative by the potentials' invariant, which
+	 is what makes a Dijkstra legitimate here at all.  */
       auto_vec<HOST_WIDE_INT> dist;
       auto_vec<int> from_arc;
       auto_vec<bool> forward, done;
+      lvx_pqueue pq;
+
       dist.safe_grow_cleared (n);
       from_arc.safe_grow_cleared (n);
       forward.safe_grow_cleared (n);
@@ -135,49 +295,50 @@ lvx_network::augment (unsigned src, unsigned dst, HOST_WIDE_INT amount)
 	  forward[i] = true;
 	  done[i] = false;
 	}
+      pq.init (n);
       dist[src] = 0;
+      pq.push (src, 0);
 
-      for (unsigned it = 0; it < n; it++)
+      while (!pq.empty ())
 	{
-	  int u = -1;
-	  for (unsigned i = 0; i < n; i++)
-	    if (!done[i] && dist[i] != HOST_WIDE_INT_MAX
-		&& (u < 0 || dist[i] < dist[u]))
-	      u = (int) i;
-	  if (u < 0)
-	    break;
+	  unsigned u = pq.pop ();
+
+	  if (done[u])
+	    continue;			/* a stale entry; the heap keeps none,
+					   but a guard costs nothing */
 	  done[u] = true;
 
-	  for (unsigned a = 0; a < m_arcs.length (); a++)
+	  for (unsigned k = m_first[u]; k < m_first[u + 1]; k++)
 	    {
+	      unsigned a = m_inc[k] >> 1;
+	      bool back = (m_inc[k] & 1) != 0;
 	      const arc &e = m_arcs[a];
-	      /* Forward residual.  */
-	      if (e.tail == (unsigned) u
-		  && (e.capacity < 0 || e.flow < e.capacity))
+	      HOST_WIDE_INT rc;
+	      unsigned v;
+
+	      if (!back)
 		{
-		  HOST_WIDE_INT rc = e.cost + m_nodes[e.tail].pi
-				     - m_nodes[e.head].pi;
-		  gcc_checking_assert (rc >= 0);
-		  if (dist[u] + rc < dist[e.head])
-		    {
-		      dist[e.head] = dist[u] + rc;
-		      from_arc[e.head] = (int) a;
-		      forward[e.head] = true;
-		    }
+		  /* Forward residual, from this arc's tail.  */
+		  if (!(e.capacity < 0 || e.flow < e.capacity))
+		    continue;
+		  rc = e.cost + m_nodes[e.tail].pi - m_nodes[e.head].pi;
+		  v = e.head;
 		}
-	      /* Backward residual: undoing flow costs the negation.  */
-	      if (e.head == (unsigned) u && e.flow > 0)
+	      else
 		{
-		  HOST_WIDE_INT rc = -e.cost + m_nodes[e.head].pi
-				     - m_nodes[e.tail].pi;
-		  gcc_checking_assert (rc >= 0);
-		  if (dist[u] + rc < dist[e.tail])
-		    {
-		      dist[e.tail] = dist[u] + rc;
-		      from_arc[e.tail] = (int) a;
-		      forward[e.tail] = false;
-		    }
+		  /* Backward residual: undoing flow costs the negation.  */
+		  if (e.flow <= 0)
+		    continue;
+		  rc = -e.cost + m_nodes[e.head].pi - m_nodes[e.tail].pi;
+		  v = e.tail;
 		}
+	      gcc_checking_assert (rc >= 0);
+	      if (done[v] || dist[u] + rc >= dist[v])
+		continue;
+	      dist[v] = dist[u] + rc;
+	      from_arc[v] = (int) a;
+	      forward[v] = !back;
+	      pq.push (v, dist[v]);
 	    }
 	}
 
@@ -236,6 +397,7 @@ lvx_network::solve (void)
   for (unsigned a = 0; a < m_arcs.length (); a++)
     m_arcs[a].flow = 0;
 
+  build_incidence ();
   if (!initial_potentials ())
     return LVX_NETWORK_UNBOUNDED;
 
@@ -414,11 +576,111 @@ lvx_network_test_empty (void)
   ASSERT_EQ (net.cost (), 0);
 }
 
+/* THE OPTIMALITY CERTIFICATE, over pseudo-random networks.  §7tricies.240.
+
+   The right test for a min-cost flow is not "does it agree with another
+   implementation" but the condition that DEFINES an optimum: with potentials
+   pi, every residual arc must have a non-negative reduced cost.  Equivalently,
+   for every arc, flow < capacity implies rc >= 0 and flow > 0 implies
+   rc <= 0 -- so an arc strictly between its bounds has rc exactly 0.  That
+   is checkable without a reference solver and it catches precisely what a
+   wrong heap would produce: a path that was not the cheapest, leaving some
+   arc with a negative reduced cost.
+
+   Conservation is checked alongside, since a heap bug can also lose flow.
+   The generator is a fixed-seed xorshift so a failure is reproducible.  */
+
+static void
+lvx_network_test_optimality_certificate (void)
+{
+  unsigned state = 0x9e3779b9u;
+  auto rnd = [&state] (unsigned m) -> unsigned
+    {
+      state ^= state << 13;
+      state ^= state >> 17;
+      state ^= state << 5;
+      return state % m;
+    };
+
+  for (int trial = 0; trial < 40; trial++)
+    {
+      lvx_network net;
+      unsigned n = 4 + rnd (12);
+      auto_vec<HOST_WIDE_INT> req;
+      HOST_WIDE_INT bal = 0;
+
+      for (unsigned i = 0; i < n; i++)
+	req.safe_push (0);
+      /* A few supply/demand pairs, so the instance is feasible by
+	 construction once the arcs below connect everything.  */
+      for (unsigned k = 0; k < 1 + rnd (3); k++)
+	{
+	  unsigned sp = rnd (n), dm = rnd (n);
+	  HOST_WIDE_INT amt = 1 + rnd (4);
+
+	  if (sp == dm)
+	    continue;
+	  req[sp] += amt;
+	  req[dm] -= amt;
+	}
+      for (unsigned i = 0; i < n; i++)
+	{
+	  net.add_node (req[i]);
+	  bal += req[i];
+	}
+      ASSERT_EQ (bal, 0);
+      /* A ring, so every node reaches every other, then random chords.  */
+      for (unsigned i = 0; i < n; i++)
+	net.add_arc (i, (i + 1) % n, -1, (HOST_WIDE_INT) rnd (9));
+      for (unsigned k = 0; k < n * 2; k++)
+	{
+	  unsigned t = rnd (n), h = rnd (n);
+
+	  if (t != h)
+	    net.add_arc (t, h, (HOST_WIDE_INT) (1 + rnd (6)),
+			 (HOST_WIDE_INT) rnd (9));
+	}
+
+      if (net.solve () != LVX_NETWORK_SOLVED)
+	continue;			/* infeasible draws are not the test */
+
+      /* Conservation at every node.  */
+      for (unsigned i = 0; i < n; i++)
+	{
+	  HOST_WIDE_INT net_out = 0;
+
+	  for (unsigned a = 0; a < net.arc_count (); a++)
+	    {
+	      if (net.arc_tail (a) == i)
+		net_out += net.flow (a);
+	      if (net.arc_head (a) == i)
+		net_out -= net.flow (a);
+	    }
+	  ASSERT_EQ (net_out, req[i]);
+	}
+
+      /* And the certificate.  */
+      for (unsigned a = 0; a < net.arc_count (); a++)
+	{
+	  HOST_WIDE_INT rc = (net.arc_cost (a)
+			      + net.potential (net.arc_tail (a))
+			      - net.potential (net.arc_head (a)));
+	  HOST_WIDE_INT f = net.flow (a), cap = net.arc_capacity (a);
+
+	  if (cap < 0 || f < cap)
+	    ASSERT_TRUE (rc >= 0);
+	  if (f > 0)
+	    ASSERT_TRUE (rc <= 0);
+	}
+    }
+}
+
 /* Run all of the above.  */
 
 void
 lvx_network_cc_tests (void)
 {
+  lvx_network_test_optimality_certificate ();
   lvx_network_test_empty ();
   lvx_network_test_two_paths ();
   lvx_network_test_capacity_forces_split ();

@@ -117,6 +117,12 @@ public:
   enum lvx_network_result solve (void);
 
   HOST_WIDE_INT flow (unsigned arc) const { return m_arcs[arc].flow; }
+
+  /* Read-back for the selftests' optimality certificate (§7tricies.240).  */
+  unsigned arc_tail (unsigned a) const { return m_arcs[a].tail; }
+  unsigned arc_head (unsigned a) const { return m_arcs[a].head; }
+  HOST_WIDE_INT arc_cost (unsigned a) const { return m_arcs[a].cost; }
+  HOST_WIDE_INT arc_capacity (unsigned a) const { return m_arcs[a].capacity; }
   HOST_WIDE_INT cost (void) const { return m_cost; }
 
   /* The node potential, which is what MCRL reads back as a date: the dual
@@ -143,6 +149,15 @@ private:
   HOST_WIDE_INT m_total_supply;
   HOST_WIDE_INT m_cost;
 
+  /* THE INCIDENCE INDEX, in compressed-row form.  §7tricies.240.  M_INC
+     holds every arc twice -- once at its tail and once at its head, since a
+     residual graph needs both directions -- as `2 * arc + backward', and
+     M_FIRST[v] .. M_FIRST[v + 1] is node V's slice of it.  Built once per
+     solve, because the topology never changes while flows and potentials do.  */
+  auto_vec<unsigned> m_first;
+  auto_vec<unsigned> m_inc;
+
+  void build_incidence (void);
   bool initial_potentials (void);
   bool augment (unsigned src, unsigned dst, HOST_WIDE_INT amount);
 };
