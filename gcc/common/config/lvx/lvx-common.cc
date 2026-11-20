@@ -66,6 +66,20 @@ static const struct default_options lvx_option_optimization_table[] =
 
     {OPT_LEVELS_3_PLUS, OPT_funroll_loops, NULL, 1},
 
+    /* LATE MODULO SCHEDULING AT -O3, beside -funroll-loops and for the same
+       reason: it is a space-for-speed transformation.  A pipelined loop costs
+       a prologue of NSTAGES - 1 stages, a kernel unrolled KUNROLL times, and
+       one epilogue per exit, so it is exactly what -O2 is meant not to spend
+       -- and exactly what -O3 is.  GCC's own -fmodulo-sched is in no -O level
+       at all; this target has more to gain, a VLIW inner loop being where its
+       issue width is won or lost, but not enough to make -O2 grow.
+
+       -mlms-pipeline requires -mlms-codegen and is refused without it, so
+       both are set.  Neither reaches -Os or -Oz: OPT_LEVELS_3_PLUS excludes
+       them, which is the point.  */
+    {OPT_LEVELS_3_PLUS, OPT_mlms_codegen, NULL, 1},
+    {OPT_LEVELS_3_PLUS, OPT_mlms_pipeline, NULL, 1},
+
     {OPT_LEVELS_NONE, 0, NULL, 0}
   };
 
